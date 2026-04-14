@@ -1,0 +1,22 @@
+# Configuration Supabase pour les Edge Functions
+
+# Désactiver la vérification JWT pour le webhook Stripe
+# Les webhooks Stripe n'envoient pas de header Authorization
+# La vérification de signature Stripe est suffisante pour sécuriser le webhook
+[functions.stripe-webhook]
+verify_jwt = false
+
+# Désactiver la vérification JWT pour le proxy d'images
+# Les balises <img> ne peuvent pas envoyer de headers d'authentification
+# La validation de l'URL (uniquement Hailuo) est suffisante pour sécuriser
+[functions.image-proxy]
+verify_jwt = false
+
+# Veo / Vertex depuis le navigateur : le preflight CORS (OPTIONS) ne passe pas la vérification
+# JWT de la passerelle sans cela. L’auth utilisateur est faite dans la fonction (Bearer + getUser).
+[functions.vertex-veo-video]
+verify_jwt = false
+
+# Même motif : le navigateur envoie OPTIONS sans JWT valide pour le preflight CORS.
+[functions.video-postprocess]
+verify_jwt = false

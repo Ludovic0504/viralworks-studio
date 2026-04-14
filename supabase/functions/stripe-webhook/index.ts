@@ -1,0 +1,506 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") ?? "", {
+  apiVersion: "2024-11-20.acacia",
+  httpClient: Stripe.createFetchHttpClient(),
+});
+
+const webhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET") ?? "";
+
+serve(async (req) => {
+  try {
+    // Les webhooks Stripe n'envoient pas de header Authorization
+    // On peut utiliser le paramètre apikey dans l'URL ou le header apikey
+    // La vérification de signature Stripe est suffisante pour sécuriser le webhook
+    
+    const url = new URL(req.url);
+    const apikeyFromUrl = url.searchParams.get("apikey");
+    const apikeyFromHeader = req.headers.get("apikey");
+    
+    // Si apikey est fourni (via URL ou header), on l'utilise pour authentifier la requête Supabase
+    // Sinon, on continue quand même car la signature Stripe est suffisante
+    if (apikeyFromUrl || apikeyFromHeader) {
+      console.log("✅ apikey fourni pour authentification Supabase");
+    } else {
+      console.log("⚠️ Pas de apikey fourni, mais la signature Stripe sera vérifiée");
+    }
+    
+    const signature = req.headers.get("stripe-signature");
+    if (!signature) {
+      console.error("❌ Missing stripe-signature header");
+      return new Response("Missing signature", { status: 400 });
+    }
+
+    const body = await req.text();
+    let event: Stripe.Event;
+
+    try {
+      // Utiliser constructEventAsync pour l'environnement Deno/Supabase Edge Functions
+      event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret);
+      console.log("✅ Signature Stripe vérifiée avec succès");
+    } catch (err) {
+      console.error("❌ Webhook signature verification failed:", err);
+      return new Response(`Webhook Error: ${err.message}`, { status: 400 });
+    }
+
+    const serviceRoleKey = Deno.env.get("SERVICE_ROLE_KEY");
+    if (!serviceRoleKey) {
+      console.error("⚠️ SERVICE_ROLE_KEY n'est pas configurée dans les secrets Supabase");
+      return new Response(
+        JSON.stringify({ error: "Configuration manquante: SERVICE_ROLE_KEY" }),
+        { status: 500 }
+      );
+    }
+
+    const supabaseClient = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      serviceRoleKey
+    );
+
+    // Gérer les événements Stripe
+    if (event.type === "checkout.session.completed") {
+      console.log("📦 Événement checkout.session.completed reçu");
+      const session = event.data.object as Stripe.Checkout.Session;
+      const userId = session.metadata?.user_id;
+      const credits = parseInt(session.metadata?.credits || "0", 10);
+      const type = session.metadata?.type || "credits";
+
+      console.log("📋 Métadonnées:", { userId, credits, type, sessionId: session.id });
+
+      if (!userId) {
+        console.error("❌ User ID manquant dans les métadonnées");
+        return new Response("User ID manquant", { status: 400 });
+      }
+
+      if (credits <= 0) {
+        console.error("❌ Nombre de crédits invalide:", credits);
+        return new Response("Nombre de crédits invalide", { status: 400 });
+      }
+
+      // S'assurer que l'utilisateur a une entrée dans user_credits (devrait être créée par le trigger, mais sécurité)
+      // Vérifier d'abord si l'entrée existe, sinon la créer
+      const { data: existingCredits, error: checkError } = await supabaseClient
+        .from("user_credits")
+        .select("user_id")
+        .eq("user_id", userId)
+        .single();
+
+      if (checkError && checkError.code === "PGRST116") {
+        // L'entrée n'existe pas, la créer
+        const { error: insertError } = await supabaseClient
+          .from("user_credits")
+          .insert({
+            user_id: userId,
+            credits: 0,
+          });
+
+        if (insertError) {
+          console.warn("⚠️ Erreur lors de la création user_credits:", insertError);
+        }
+      } else if (checkError) {
+        console.warn("⚠️ Erreur lors de la vérification user_credits:", checkError);
+      }
+      // Si existingCredits existe, on ne fait rien (l'entrée existe déjà)
+
+      if (type === "subscription") {
+        // Gérer l'abonnement
+        const subscriptionId = session.subscription as string;
+        
+        // Récupérer les détails de l'abonnement
+        const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+        
+        // Créer ou mettre à jour l'abonnement dans la base
+        await supabaseClient
+          .from("stripe_subscriptions")
+          .upsert({
+            user_id: userId,
+            stripe_subscription_id: subscriptionId,
+            stripe_customer_id: subscription.customer as string,
+            status: subscription.status,
+            current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
+            current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+            cancel_at_period_end: subscription.cancel_at_period_end,
+          });
+
+        // Ajouter les crédits mensuels (exemple: 1000 crédits par mois)
+        const monthlyCredits = 1000; // À ajuster selon vos besoins
+        
+        // Récupérer les crédits actuels
+        const { data: creditsData } = await supabaseClient
+          .from("user_credits")
+          .select("credits")
+          .eq("user_id", userId)
+          .single();
+
+        const currentCredits = creditsData?.credits || 0;
+        const newCredits = currentCredits + monthlyCredits;
+
+        // Mettre à jour les crédits
+        // Utiliser UPDATE puis INSERT si nécessaire pour éviter les erreurs de contrainte unique
+        if (creditsData) {
+          // L'entrée existe, faire un UPDATE
+          await supabaseClient
+            .from("user_credits")
+            .update({ credits: newCredits })
+            .eq("user_id", userId);
+        } else {
+          // L'entrée n'existe pas, faire un INSERT
+          await supabaseClient
+            .from("user_credits")
+            .insert({
+              user_id: userId,
+              credits: newCredits,
+            });
+        }
+
+        // Créer la transaction
+        const { error: transactionError } = await supabaseClient
+          .from("credit_transactions")
+          .insert({
+            user_id: userId,
+            amount: monthlyCredits,
+            type: "credit",
+            reason: "subscription_payment",
+            metadata: {
+              subscription_id: subscriptionId,
+              payment_intent: session.payment_intent,
+            },
+          });
+
+        if (transactionError) {
+          console.error("❌ Erreur création transaction abonnement:", transactionError);
+        } else {
+          console.log("✅ Transaction abonnement créée");
+        }
+
+        console.log(`✅ Abonnement créé et ${monthlyCredits} crédits ajoutés pour l'utilisateur ${userId}`);
+      } else {
+        // Achat de crédits ponctuel
+        // Récupérer les crédits actuels (ou créer l'entrée si elle n'existe pas)
+        const { data: creditsData, error: creditsError } = await supabaseClient
+          .from("user_credits")
+          .select("credits")
+          .eq("user_id", userId)
+          .single();
+
+        let currentCredits = 0;
+        if (creditsError && creditsError.code === "PGRST116") {
+          // L'utilisateur n'a pas encore de crédits, on va créer l'entrée
+          currentCredits = 0;
+        } else if (creditsData) {
+          currentCredits = creditsData.credits || 0;
+        }
+
+        const newCredits = currentCredits + credits;
+
+        // Mettre à jour ou créer les crédits
+        // Utiliser UPDATE puis INSERT si nécessaire pour éviter les erreurs de contrainte unique
+        let updateError = null;
+        if (creditsData) {
+          // L'entrée existe, faire un UPDATE
+          const { error } = await supabaseClient
+            .from("user_credits")
+            .update({ credits: newCredits })
+            .eq("user_id", userId);
+          updateError = error;
+        } else {
+          // L'entrée n'existe pas, faire un INSERT
+          const { error } = await supabaseClient
+            .from("user_credits")
+            .insert({
+              user_id: userId,
+              credits: newCredits,
+            });
+          updateError = error;
+        }
+
+        if (updateError) {
+          console.error("Erreur lors de la mise à jour des crédits:", updateError);
+          throw updateError;
+        }
+
+        console.log(`✅ Crédits ajoutés: ${credits} (Total: ${newCredits}) pour l'utilisateur ${userId}`);
+
+        // Créer la transaction
+        const { error: transactionError } = await supabaseClient
+          .from("credit_transactions")
+          .insert({
+            user_id: userId,
+            amount: credits,
+            type: "purchase",
+            reason: "stripe_payment",
+            metadata: {
+              session_id: session.id,
+              payment_intent: session.payment_intent,
+            },
+          });
+
+        if (transactionError) {
+          console.error("❌ Erreur création transaction:", transactionError);
+        } else {
+          console.log("✅ Transaction créée pour l'achat de crédits");
+        }
+      }
+
+      // Mettre à jour le paiement (qui a été créé avec status "pending" lors de la création de session)
+      // Utiliser UPDATE pour mettre à jour le statut existant
+      const { error: paymentError } = await supabaseClient
+        .from("stripe_payments")
+        .update({
+          status: "completed",
+          updated_at: new Date().toISOString(),
+          metadata: {
+            ...session.metadata,
+            payment_completed_at: new Date().toISOString(),
+            payment_intent: session.payment_intent,
+          },
+        })
+        .eq("stripe_session_id", session.id);
+
+      if (paymentError) {
+        console.error("❌ Erreur mise à jour paiement:", paymentError);
+        // Si le paiement n'existe pas, le créer
+        const { error: insertError } = await supabaseClient
+          .from("stripe_payments")
+          .insert({
+            user_id: userId,
+            stripe_session_id: session.id,
+            stripe_customer_id: session.customer as string,
+            amount: session.amount_total ? session.amount_total / 100 : 0,
+            currency: session.currency || "eur",
+            status: "completed",
+            metadata: {
+              ...session.metadata,
+              payment_completed_at: new Date().toISOString(),
+              payment_intent: session.payment_intent,
+            },
+          });
+        
+        if (insertError) {
+          console.error("❌ Erreur création paiement:", insertError);
+        } else {
+          console.log("✅ Paiement créé dans stripe_payments (status: completed)");
+        }
+      } else {
+        console.log("✅ Paiement mis à jour dans stripe_payments (status: completed)");
+      }
+
+      console.log("✅ Traitement checkout.session.completed terminé avec succès");
+    }
+
+    // Gérer le renouvellement d'abonnement
+    if (event.type === "invoice.payment_succeeded") {
+      console.log("📦 Événement invoice.payment_succeeded reçu");
+      const invoice = event.data.object as Stripe.Invoice;
+      const subscriptionId = invoice.subscription as string;
+
+      console.log("📋 Facture:", { subscriptionId, invoiceId: invoice.id, amount: invoice.amount_paid });
+
+      if (!subscriptionId) {
+        console.warn("⚠️ Pas de subscription_id dans la facture, ignoré");
+        return new Response(JSON.stringify({ received: true, skipped: "no_subscription" }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      // Récupérer l'abonnement depuis la base
+      const { data: subscriptionData, error: subError } = await supabaseClient
+        .from("stripe_subscriptions")
+        .select("user_id")
+        .eq("stripe_subscription_id", subscriptionId)
+        .single();
+
+      if (subError || !subscriptionData) {
+        console.error("❌ Abonnement non trouvé dans la base:", subError);
+        return new Response(JSON.stringify({ received: true, error: "subscription_not_found" }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      const userId = subscriptionData.user_id;
+      const monthlyCredits = 1000; // Crédits mensuels
+
+      console.log(`💰 Ajout de ${monthlyCredits} crédits pour le renouvellement (user: ${userId})`);
+
+      // Récupérer les crédits actuels (ou créer l'entrée si elle n'existe pas)
+      const { data: creditsData, error: creditsError } = await supabaseClient
+        .from("user_credits")
+        .select("credits")
+        .eq("user_id", userId)
+        .single();
+
+      let currentCredits = 0;
+      if (creditsError && creditsError.code === "PGRST116") {
+        currentCredits = 0;
+      } else if (creditsData) {
+        currentCredits = creditsData.credits || 0;
+      }
+
+      const newCredits = currentCredits + monthlyCredits;
+
+      // Mettre à jour ou créer les crédits
+      // Utiliser UPDATE puis INSERT si nécessaire pour éviter les erreurs de contrainte unique
+      let updateError = null;
+      if (creditsData) {
+        // L'entrée existe, faire un UPDATE
+        const { error } = await supabaseClient
+          .from("user_credits")
+          .update({ credits: newCredits })
+          .eq("user_id", userId);
+        updateError = error;
+      } else {
+        // L'entrée n'existe pas, faire un INSERT
+        const { error } = await supabaseClient
+          .from("user_credits")
+          .insert({
+            user_id: userId,
+            credits: newCredits,
+          });
+        updateError = error;
+      }
+
+      if (updateError) {
+        console.error("❌ Erreur mise à jour crédits renouvellement:", updateError);
+        throw updateError;
+      }
+
+      console.log(`✅ Crédits renouvellement ajoutés: ${monthlyCredits} (Total: ${newCredits})`);
+
+      // Créer la transaction
+      const { error: transactionError } = await supabaseClient
+        .from("credit_transactions")
+        .insert({
+          user_id: userId,
+          amount: monthlyCredits,
+          type: "credit",
+          reason: "subscription_renewal",
+          metadata: {
+            subscription_id: subscriptionId,
+            invoice_id: invoice.id,
+            invoice_amount: invoice.amount_paid,
+          },
+        });
+
+      if (transactionError) {
+        console.error("❌ Erreur création transaction renouvellement:", transactionError);
+      } else {
+        console.log("✅ Transaction de renouvellement créée");
+      }
+
+      // Mettre à jour la date de fin de période de l'abonnement
+      if (invoice.period_end) {
+        await supabaseClient
+          .from("stripe_subscriptions")
+          .update({
+            current_period_end: new Date(invoice.period_end * 1000).toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("stripe_subscription_id", subscriptionId);
+      }
+    }
+
+    // Gérer l'annulation d'abonnement
+    if (event.type === "customer.subscription.deleted") {
+      console.log("📦 Événement customer.subscription.deleted reçu");
+      const subscription = event.data.object as Stripe.Subscription;
+      
+      const { error: updateError } = await supabaseClient
+        .from("stripe_subscriptions")
+        .update({
+          status: "canceled",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("stripe_subscription_id", subscription.id);
+
+      if (updateError) {
+        console.error("❌ Erreur mise à jour abonnement annulé:", updateError);
+      } else {
+        console.log("✅ Abonnement marqué comme annulé");
+      }
+    }
+
+    // Gérer les paiements échoués
+    if (event.type === "checkout.session.async_payment_failed" || event.type === "payment_intent.payment_failed") {
+      console.log("📦 Événement paiement échoué reçu:", event.type);
+      let sessionId: string | null = null;
+      let userId: string | null = null;
+      let amount = 0;
+
+      if (event.type === "checkout.session.async_payment_failed") {
+        const session = event.data.object as Stripe.Checkout.Session;
+        sessionId = session.id;
+        userId = session.metadata?.user_id || null;
+        amount = session.amount_total ? session.amount_total / 100 : 0;
+      } else if (event.type === "payment_intent.payment_failed") {
+        const paymentIntent = event.data.object as Stripe.PaymentIntent;
+        // Récupérer la session depuis les métadonnées si disponible
+        sessionId = paymentIntent.metadata?.session_id || null;
+        userId = paymentIntent.metadata?.user_id || null;
+        amount = paymentIntent.amount ? paymentIntent.amount / 100 : 0;
+      }
+
+      if (sessionId && userId) {
+        // Mettre à jour le statut du paiement en "failed"
+        const { error: updateError } = await supabaseClient
+          .from("stripe_payments")
+          .update({
+            status: "failed",
+            updated_at: new Date().toISOString(),
+            metadata: {
+              failure_reason: event.type,
+              failed_at: new Date().toISOString(),
+            },
+          })
+          .eq("stripe_session_id", sessionId);
+
+        if (updateError) {
+          console.error("❌ Erreur mise à jour paiement échoué:", updateError);
+        } else {
+          console.log(`✅ Paiement échoué enregistré (session: ${sessionId}, user: ${userId})`);
+        }
+      } else {
+        console.warn("⚠️ Impossible de traiter le paiement échoué: sessionId ou userId manquant");
+      }
+    }
+
+    // Gérer les paiements annulés (quand l'utilisateur annule sur la page Stripe)
+    if (event.type === "checkout.session.expired") {
+      console.log("📦 Événement checkout.session.expired reçu");
+      const session = event.data.object as Stripe.Checkout.Session;
+      const sessionId = session.id;
+      const userId = session.metadata?.user_id || null;
+
+      if (sessionId && userId) {
+        const { error: updateError } = await supabaseClient
+          .from("stripe_payments")
+          .update({
+            status: "cancelled",
+            updated_at: new Date().toISOString(),
+            metadata: {
+              cancelled_reason: "session_expired",
+              cancelled_at: new Date().toISOString(),
+            },
+          })
+          .eq("stripe_session_id", sessionId);
+
+        if (updateError) {
+          console.error("❌ Erreur mise à jour paiement annulé:", updateError);
+        } else {
+          console.log(`✅ Paiement annulé enregistré (session: ${sessionId})`);
+        }
+      }
+    }
+
+    return new Response(JSON.stringify({ received: true }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (error) {
+    console.error("Erreur webhook:", error);
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { status: 500 }
+    );
+  }
+});

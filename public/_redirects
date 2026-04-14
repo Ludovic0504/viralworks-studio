@@ -1,0 +1,5 @@
+# Exclure les routes API - elles sont gérées par les fonctions Netlify
+/api/*  /.netlify/functions/:splat  200
+
+# Redirection catch-all pour le SPA
+/*    /index.html   200

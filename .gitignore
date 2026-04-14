@@ -1,0 +1,101 @@
+# Dépendances
+node_modules
+.pnp
+.pnp.js
+
+# Fichiers d'environnement (sensible - ne jamais commiter)
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+
+# Fichiers de build
+dist
+build
+.vite
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Fichiers système
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE / Éditeurs
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.sublime-project
+*.sublime-workspace
+*.code-workspace
+
+# Fichiers temporaires
+.temp
+.tmp
+*.tmp
+.cache
+
+# Supabase
+supabase/.temp/
+supabase/.branches/
+.supabase/
+supabase/logs/
+
+
+# Guides et documentation temporaire / debug
+DEBUG_*.md
+FIX_*.md
+SETUP_*.md
+DEPLOY_*.md
+CONFIGURER_*.md
+WEBHOOK_*.md
+TRACEABILITE_*.md
+VERIFIER_*.md
+AJOUTER_*.md
+DIAGNOSTIC_*.md
+AUTO_ADD_*.md
+*.md.bak
+
+# Fichiers de secrets et configuration sensible
+*.key
+*.pem
+*.p12
+secrets/
+.secrets/
+
+# Fichiers de cache supplémentaires
+.turbo/
+.next/
+out/
+dist-ssr/
+
+# Tests
+coverage
+.nyc_output
+
+# Prisma
+prisma/migrations/
+
+# Netlify
+.netlify/
+
+# Médias lourds locaux
+src/ressources/*.mp4
+src/ressources/*.MP4
+src/ressources/*.mov
+src/ressources/*.MOV
