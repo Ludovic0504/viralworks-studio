@@ -16,6 +16,7 @@ const links = [
 export default function SidebarShell({ children, open, onCloseMenu }) {
   const panelRef = useRef(null);
   const location = useLocation();
+  const previousPathRef = useRef(location.pathname);
   const { session, signOut } = useAuth();
   const email = session?.user?.email;
   const [signingOut, setSigningOut] = useState(false);
@@ -34,7 +35,11 @@ export default function SidebarShell({ children, open, onCloseMenu }) {
 
 
   useEffect(() => {
-    if (open) onCloseMenu?.();
+    // Close only after a real route change (not when `open` flips to true).
+    if (previousPathRef.current !== location.pathname && open) {
+      onCloseMenu?.();
+    }
+    previousPathRef.current = location.pathname;
   }, [location.pathname, open, onCloseMenu]);
 
 
