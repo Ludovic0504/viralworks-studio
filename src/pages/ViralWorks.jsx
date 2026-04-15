@@ -171,6 +171,7 @@ function persistVisualSnapshotsToSession(list) {
 
 /** État initial étape Visuel (référence pour sanitize / reset). */
 const INITIAL_IMAGE_STEP = {
+  campaignIdeaPrompt: "",
   prompt: "",
   ratio: "9:16",
   quantity: 4,
@@ -228,6 +229,12 @@ function sanitizeImageStepFromDraft(raw) {
 
   return {
     ...INITIAL_IMAGE_STEP,
+    campaignIdeaPrompt:
+      typeof raw.campaignIdeaPrompt === "string"
+        ? raw.campaignIdeaPrompt
+        : typeof raw.prompt === "string"
+        ? raw.prompt
+        : "",
     prompt: typeof raw.prompt === "string" ? raw.prompt : "",
     ratio,
     quantity,
@@ -287,8 +294,14 @@ function applyCampagneNonPersistedDefaults(campaign) {
     revealMode: false,
     cinematicMovement: false,
     selfieMode: false,
-    dialogueEnabled: base.dialogueEnabled ?? true,
+    dialogueEnabled: base.dialogueEnabled !== false,
     microAnswer: base.microAnswer ?? null,
+    gateResult: base.gateResult ?? null,
+    clarifyAnswer: base.clarifyAnswer ?? null,
+    clarifyMode: base.clarifyMode ?? null,
+    clarifyDiagnostic: base.clarifyDiagnostic ?? null,
+    proceedAnyway: base.proceedAnyway === true,
+    isClarified: base.isClarified === true,
   };
 }
 
@@ -311,6 +324,12 @@ function serializeCampaignForPrepareGate(c) {
     sequenceType: c.sequenceType === "three_x_8s" ? "three_x_8s" : "single_8s",
     dialogueEnabled: c.dialogueEnabled !== false,
     microAnswer: c.microAnswer ?? null,
+    gateResult: c.gateResult ?? null,
+    clarifyAnswer: c.clarifyAnswer ?? null,
+    clarifyMode: c.clarifyMode ?? null,
+    clarifyDiagnostic: c.clarifyDiagnostic ?? null,
+    proceedAnyway: c.proceedAnyway === true,
+    isClarified: c.isClarified === true,
   });
 }
 
@@ -364,7 +383,11 @@ export default function ViralWorks() {
   const [campaignData, setCampaignData] = useState(() => {
     const spaUi = loadSpaUiState();
     if (spaUi?.campaignData && typeof spaUi.campaignData === "object") {
-      return spaUi.campaignData;
+      const c = spaUi.campaignData;
+      return {
+        ...c,
+        dialogueEnabled: c.dialogueEnabled !== false,
+      };
     }
     const d = loadViralStudioDraft();
     return applyCampagneNonPersistedDefaults(d?.campaign);
@@ -438,10 +461,12 @@ export default function ViralWorks() {
       typeof pairedRaw === "string" ? pairedRaw.trim() : "";
     const hasPaired = pairedTrim.length > 0;
     const promptTrim = String(step.prompt ?? "").trim();
+    const campaignIdeaTrim = String(step.campaignIdeaPrompt ?? "").trim();
     const hasAssets = Boolean(
       step.lastGeneratedImages?.length ||
         step.refCharDataUrl ||
-        promptTrim
+        promptTrim ||
+        campaignIdeaTrim
     );
 
     if (!ideaNow || !hasAssets) return;
@@ -453,7 +478,7 @@ export default function ViralWorks() {
 
     const fresh = {
       ...INITIAL_IMAGE_STEP,
-      prompt: ideaNow,
+      campaignIdeaPrompt: ideaNow,
       pairedCampaignIdea: ideaNow,
     };
     spaImageStepMemory = cloneImageStep(fresh);
@@ -599,6 +624,12 @@ export default function ViralWorks() {
       sequenceType: snapshot.sequenceType === "three_x_8s" ? "three_x_8s" : "single_8s",
       dialogueEnabled: snapshot.dialogueEnabled !== false,
       microAnswer: snapshot.microAnswer ?? null,
+      gateResult: snapshot.gateResult ?? null,
+      clarifyAnswer: snapshot.clarifyAnswer ?? null,
+      clarifyMode: snapshot.clarifyMode ?? null,
+      clarifyDiagnostic: snapshot.clarifyDiagnostic ?? null,
+      proceedAnyway: snapshot.proceedAnyway === true,
+      isClarified: snapshot.isClarified === true,
     };
     setPreparedCampaignSig(serializeCampaignForPrepareGate(next));
     setCampaignData((prev) => ({ ...prev, ...next }));
@@ -637,6 +668,10 @@ export default function ViralWorks() {
 
   const imagePageProps = {
     campaignIdea: campaignData?.idea ?? "",
+    campaignJobType: campaignData?.profession ?? "",
+    campaignModifiers: campaignData?.styleDetails ?? "",
+    campaignClarifyMode: campaignData?.clarifyMode ?? campaignData?.gateResult?.mode ?? null,
+    campaignClarifyAnswer: campaignData?.clarifyAnswer ?? null,
     scriptScene1Idea: String(scriptPromptForImage?.scenes?.[0] ?? scriptPromptForImage?.combined ?? ""),
     campaignRevealMode: Boolean(campaignData?.revealMode),
     campaignMicroAnswer: campaignData?.microAnswer ?? null,
@@ -709,7 +744,7 @@ export default function ViralWorks() {
                 ? "Lance d’abord le cerveau VWS avec le bouton vert dans l’étape Campagne."
                 : undefined
             }
-            className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold transition ${
+            className={`w-full sm:w-auto inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold text-center leading-tight transition ${
               validateStepBlocked
                 ? "bg-white/10 text-gray-500 border border-white/10 cursor-not-allowed opacity-70"
                 : "bg-gradient-to-r from-cyan-500 to-teal-500 text-white shadow-lg shadow-cyan-950/35 hover:from-cyan-400 hover:to-teal-400"
@@ -729,7 +764,12 @@ export default function ViralWorks() {
           <CampagneVWS
             key={campagneMountKey}
             campaignData={campaignData}
-            onCampaignChange={setCampaignData}
+            onCampaignChange={(nextCampaignData) =>
+              setCampaignData((prev) => ({
+                ...prev,
+                ...(nextCampaignData || {}),
+              }))
+            }
             onBrainReady={handleCampaignBrainReady}
             onCampagneFullReset={handleCampagneFullReset}
           />
@@ -743,6 +783,7 @@ export default function ViralWorks() {
             initialIdea={campaignData?.idea ?? ""}
             sequenceType={campaignData?.sequenceType}
             dialogueEnabled={campaignData?.dialogueEnabled !== false}
+            campaignData={campaignData}
             onScriptOutput={setScriptPromptForImage}
           />
         </section>
@@ -763,6 +804,7 @@ export default function ViralWorks() {
             studioScriptPrompt={scriptPromptForImage}
             studioImageStep={imageStep}
             dialogueEnabled={campaignData?.dialogueEnabled !== false}
+            studioCampaignData={campaignData}
           />
         </section>
         <section

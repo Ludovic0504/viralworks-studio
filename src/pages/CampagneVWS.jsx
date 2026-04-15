@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { runVwsPromptEngine } from "../bibliotheque/vwsPromptEngine";
+import { clarifyIdea, runVwsPromptEngine } from "../bibliotheque/vwsPromptEngine";
 import { generateResponse } from "@/bibliotheque/openai/chatgpt-client";
 import {
   VWS_METIER_LABELS,
@@ -44,13 +44,26 @@ export default function CampagneVWS({ onBrainReady, campaignData, onCampaignChan
   const [revealMode, setRevealMode] = useState(campaignData?.revealMode ?? false);
   const [cinematicMovement, setCinematicMovement] = useState(campaignData?.cinematicMovement ?? false);
   const [selfieMode, setSelfieMode] = useState(campaignData?.selfieMode ?? false);
-  const [dialogueEnabled, setDialogueEnabled] = useState(campaignData?.dialogueEnabled ?? true);
+  const [dialogueEnabled, setDialogueEnabled] = useState(
+    () => campaignData?.dialogueEnabled !== false
+  );
+  const [causalAgentSelection, setCausalAgentSelection] = useState(
+    campaignData?.causalAgentSelection ?? null
+  );
+  const [initialStateSelection, setInitialStateSelection] = useState(
+    campaignData?.initialStateSelection ?? null
+  );
+  const [gateResult, setGateResult] = useState(campaignData?.gateResult ?? null);
+  const [clarifyAnswer, setClarifyAnswer] = useState(campaignData?.clarifyAnswer ?? null);
 
   const [loading, setLoading] = useState(false);
   const [inspireLoading, setInspireLoading] = useState(false);
   const [error, setError] = useState("");
   const [microQuestion, setMicroQuestion] = useState(null);
   const [microAnswer, setMicroAnswer] = useState(campaignData?.microAnswer ?? null);
+  const [tempoCompressionDecision, setTempoCompressionDecision] = useState(
+    campaignData?.tempoCompressionDecision ?? null
+  );
   const [showSystemVideo, setShowSystemVideo] = useState(false);
 
   // Vidéo explicative non versionnée dans certains clones.
@@ -61,15 +74,52 @@ export default function CampagneVWS({ onBrainReady, campaignData, onCampaignChan
     metierProfile?.stylePlaceholder ??
     "Ex. : ambiance, lumière, style visuel, matériaux…";
 
+  const buildCampaignSnapshot = (overrides = {}) => ({
+    profession,
+    idea,
+    styleDetails,
+    tempo,
+    cameraFixed,
+    revealMode,
+    cinematicMovement,
+    selfieMode,
+    sequenceType,
+    dialogueEnabled,
+    microAnswer,
+    tempoCompressionDecision,
+    causalAgentSelection,
+    initialStateSelection,
+    gateResult,
+    clarifyAnswer,
+    isClarified: false,
+    ...overrides,
+  });
+
   const setProfession = (v) => {
     setProfessionState(v);
-    onCampaignChange?.({ profession: v, idea, styleDetails, tempo, cameraFixed, revealMode, cinematicMovement, selfieMode, sequenceType, dialogueEnabled, microAnswer });
+    onCampaignChange?.(buildCampaignSnapshot({ profession: v }));
   };
   const setIdea = (v) => {
     setIdeaState(v);
     setMicroAnswer(null);
+    setTempoCompressionDecision(null);
     setMicroQuestion(null);
-    onCampaignChange?.({ profession, idea: v, styleDetails, tempo, cameraFixed, revealMode, cinematicMovement, selfieMode, sequenceType, dialogueEnabled, microAnswer: null });
+    setCausalAgentSelection(null);
+    setInitialStateSelection(null);
+    setGateResult(null);
+    setClarifyAnswer(null);
+    onCampaignChange?.(
+      buildCampaignSnapshot({
+        idea: v,
+        microAnswer: null,
+        tempoCompressionDecision: null,
+        causalAgentSelection: null,
+        initialStateSelection: null,
+        gateResult: null,
+        clarifyAnswer: null,
+        isClarified: false,
+      })
+    );
   };
   const syncState = (updates) => {
     if (updates.profession !== undefined) setProfessionState(updates.profession);
@@ -81,19 +131,50 @@ export default function CampagneVWS({ onBrainReady, campaignData, onCampaignChan
     if (updates.cinematicMovement !== undefined) setCinematicMovement(updates.cinematicMovement);
     if (updates.selfieMode !== undefined) setSelfieMode(updates.selfieMode);
     if (updates.sequenceType !== undefined) setSequenceType(updates.sequenceType);
-    onCampaignChange?.({
-      profession: updates.profession ?? profession,
-      idea: updates.idea ?? idea,
-      styleDetails: updates.styleDetails ?? styleDetails,
-      tempo: normalizeTempo(updates.tempo ?? tempo),
-      cameraFixed: updates.cameraFixed ?? cameraFixed,
-      revealMode: updates.revealMode ?? revealMode,
-      cinematicMovement: updates.cinematicMovement ?? cinematicMovement,
-      selfieMode: updates.selfieMode ?? selfieMode,
-      sequenceType: updates.sequenceType ?? sequenceType,
-      dialogueEnabled: updates.dialogueEnabled ?? dialogueEnabled,
-      microAnswer: updates.microAnswer ?? microAnswer,
-    });
+    if (updates.causalAgentSelection !== undefined) setCausalAgentSelection(updates.causalAgentSelection);
+    if (updates.initialStateSelection !== undefined) setInitialStateSelection(updates.initialStateSelection);
+    if (updates.gateResult !== undefined) setGateResult(updates.gateResult);
+    if (updates.clarifyAnswer !== undefined) setClarifyAnswer(updates.clarifyAnswer);
+    onCampaignChange?.(
+      buildCampaignSnapshot({
+        profession: updates.profession ?? profession,
+        idea: updates.idea ?? idea,
+        styleDetails: updates.styleDetails ?? styleDetails,
+        tempo: normalizeTempo(updates.tempo ?? tempo),
+        cameraFixed: updates.cameraFixed ?? cameraFixed,
+        revealMode: updates.revealMode ?? revealMode,
+        cinematicMovement: updates.cinematicMovement ?? cinematicMovement,
+        selfieMode: updates.selfieMode ?? selfieMode,
+        sequenceType: updates.sequenceType ?? sequenceType,
+        dialogueEnabled: updates.dialogueEnabled ?? dialogueEnabled,
+        microAnswer: updates.microAnswer ?? microAnswer,
+        tempoCompressionDecision:
+          updates.tempoCompressionDecision ?? tempoCompressionDecision,
+        causalAgentSelection:
+          updates.causalAgentSelection ?? causalAgentSelection,
+        initialStateSelection:
+          updates.initialStateSelection ?? initialStateSelection,
+        gateResult: updates.gateResult ?? gateResult,
+        clarifyAnswer: updates.clarifyAnswer ?? clarifyAnswer,
+        isClarified: updates.isClarified ?? false,
+      })
+    );
+  };
+
+  const isIdeaTooDenseForRealtime = (text) => {
+    const raw = String(text || "").trim();
+    if (!raw) return false;
+    const words = raw.split(/\s+/).filter(Boolean);
+    const lower = raw.toLowerCase();
+    const actionSignals =
+      (lower.match(
+        /\b(construire|construction|transform|rénover|renov|appara|progress|étape|phase|puis|ensuite|timelapse|montage|réparation|repair|assemblage)\b/g
+      ) || []).length;
+    const structureSignals =
+      (raw.match(/,/g) || []).length +
+      (raw.match(/\b(puis|ensuite|pendant que|au fur et à mesure|et ensuite)\b/gi) ||
+        []).length;
+    return words.length >= 32 || (words.length >= 24 && actionSignals >= 3) || structureSignals >= 5;
   };
 
   const applyPackVlog = () => {
@@ -134,30 +215,115 @@ export default function CampagneVWS({ onBrainReady, campaignData, onCampaignChan
     setInspireLoading(true);
     setError("");
     try {
-      const systemPrompt = `Tu génères une seule idée d’accroche vidéo courte filmable au smartphone pour TikTok/Reels/Shorts, sous forme d’une phrase en français, sans liste, sans numérotation ni guillemets, décrivant une scène visuelle immédiate avec une action visible dès la première seconde, une situation réelle et filmable, et un geste métier clair, compréhensible visuellement en moins de 3 secondes ; interdits : toute formulation abstraite et toute scène non filmable.
+      const systemPrompt = `Tu génères UNE SEULE idée pour une vidéo très courte (8 secondes), type TikTok/Reels/Shorts.
 
-Renforce ces exigences (scroll-native, pas marketing) :
-- Une seule phrase : scène concrète, pas un concept ni un slogan.
-- Dès la 1re seconde : mains, outil, produit, geste ou mouvement net (pas d’intro « on va voir »).
-- Cadre réaliste smartphone : lieu précis (atelier, véhicule, chantier, comptoir, cuisine…), lumière et cadrage possibles en vrai.
-- Geste métier identifiable : verbes d’action (couper, visser, mesurer, poser, nettoyer, soulever, montrer du doigt, corriger, brancher, étaler, etc.).
-- Scroll : le spectateur comprend le sujet sans audio ni texte à l’écran.
-- Accroche visuelle : la scène doit inclure un élément qui casse une attente normale (problème visible, anomalie, erreur, ou situation surprenante mais crédible) dès le premier plan, pour capter l’attention dès la première seconde — pas seulement un geste « propre » sans tension visuelle.
+Règle absolue : la phrase décrit une scène directement filmable en UNE SEULE PRISE (plan fixe OU plan-séquence où caméra + contenu ne font qu’un seul geste global). Zéro mini-récit, zéro enchaînement d’événements indépendants.
 
-Interdits (même implicites) :
-- Formulations abstraites : explique, présente, partage, révèle, parle de, décrit, raconte, conseille, dévoile, etc., sans action visible en même temps.
-- Ton pub : expertise, passion, excellence, harmonieux, référence, leader, qualité premium, sans geste ni objet au premier plan.
-- Toute scène où l’action n’est pas visible (réunion floue, plan générique, « il parle de… » sans faire quelque chose de filmable).
+Deux types d’idées valides (choisis l’un ou l’autre ; varie ; le type 1 reste le plus fréquent) :
 
-Réponds uniquement par la phrase d’idée, rien d’autre.`;
+Type 1 — Transformation fixe (par défaut) : caméra fixe ou quasi fixe ; une seule logique visuelle globale parmi par exemple remplissage, construction, assemblage, remise en place en timelapse. Tu peux nommer plusieurs éléments (sol, murs, mobilier, objets, matériaux) s’ils obéissent tous au même type de progression (ex. tout se remplit progressivement, tout se construit en accéléré, tout s’assemble).
+
+Type 2 — Révélation par caméra (cas explicite autorisé) : mouvement caméra continu (la caméra avance, travelling, travelling latéral) ; découverte progressive d’un espace ; meubles, décor, structure ou matériaux se révèlent / se posent / se montent au fil du déplacement dans UNE seule logique globale (effet type pub IKEA : un seul flux synchronisé). Pas d’activité humaine indépendante ni de narration en parallèle.
+
+Une idée = UNE seule logique visuelle globale (un seul « moteur » de scène : remplissage, construction, assemblage, révélation synchronisée, etc.). Plusieurs éléments visuels dans la même phrase sont encouragés s’ils suivent tous cette même logique (cohérence : tout avance de la même façon).
+
+Interdit uniquement de mélanger plusieurs logiques différentes : ex. construction ou remplissage accéléré + action humaine indépendante (installer, cuisiner, parler, expliquer) ; apparition automatique + interaction manuelle réaliste + couche narrative ; « la caméra avance » + chef qui fait autre chose + objets qui apparaissent sans lien comme deux histoires séparées.
+
+Impact immédiat : dès la première seconde, le spectateur doit comprendre le lieu + ce qui bouge ou se construit, sans audio ni texte.
+
+La scène doit rester lisible et percutante visuellement même sans contexte métier ; privilégier des détails concrets filmables, pas une idée plate ni des formules d’accroche creuses.
+
+Élément visuel marquant ou satisfaisant (obligatoire, formulé dans la phrase) : au moins un détail concret et visible — répétition rythmée, alignement net, remplissage très lisible, symétrie, motif géométrique, contraste matière/couleur, lignes qui se complètent — décrit factuellement, sans adjectifs de jugement. Ne pas se contenter d’une action générique sans ce « pic » visuel.
+
+Précision anti-générique : éviter les formulations pauvres seules du type « une maison », « un toit », « un bâtiment », « un mur », « une voiture » sans ancrage visuel. Préférer matériau, couleur, style, forme, échelle ou motif distinctifs (ex. tuiles rouges, bardage sombre, verrière, ossature bois clair, carrelage graphique, lignes de parking, etc.) tant que tous les détails restent dans la même logique globale.
+
+Langage de la phrase finale : chaque mot doit soit décrire quelque chose de visible à l’image, soit préciser utilement le type de scène (lieu, type d’objet, matériau, cadrage ou mode de prise utile à la génération). Pas de remplissage décoratif.
+
+Autorisé et utile : qualificatifs factuels — type d’objet ou d’architecture (bâtiment moderne, cuisine professionnelle, hangar agricole), matériaux (bois, zinc, béton, briques rouges, verre), contexte spatial (garage, chantier, appartement nu, toiture, quai), indications de prise non subjectives (vue aérienne, travelling avant, plan large, timelapse) lorsqu’elles clarifient ce qu’on voit.
+
+Interdit dans la phrase finale (bruit inutile) : adjectifs ou jugements subjectifs (harmonieux, captivant, magnifique, esthétique, élégant, immersif, spectaculaire, saisissant, etc.) ; tournures d’interprétation (« créant… », « donnant… », « avec un rendu… », « pour une ambiance… », « visuellement impressionnant ») ; concepts abstraits ou processus invisibles (« en respectant chaque étape », « optimisé », « parfaitement conçu », « une expérience », « pensé pour », « met en valeur », « professionnalisme »).
+
+Structure obligatoire dans la même phrase courte, tous les éléments explicites :
+1) Un lieu précis et concret (ex. garage, chantier, appartement nu, jardin de villa, atelier, comptoir).
+2) Un objet ou support principal ancré visuellement (type précis + au moins un trait distinctif : matériau, couleur, motif ou style — pas un nom générique nu).
+3) UNE action / progression visible immédiatement : soit mécanique fixe (type 1), soit mouvement caméra couplé à une seule révélation progressive (type 2).
+4) Mécanique concrète et continue (timelapse, pièces qui s’emboîtent, éléments qui sortent du sol, pièce par pièce dans le même mouvement d’ensemble ; ou apparition synchronisée au travelling), avec le détail « satisfying » ou marquant intégré naturellement.
+
+Mécaniques visuelles à utiliser (une seule logique globale par idée ; plusieurs éléments possibles dans cette logique) :
+- Type 1 — Timelapse / assemblage / remplissage / remise en place sur cadre stable ; tu peux enchaîner sol + murs + mobilier si tout obéit au même mouvement (ex. tout se met en place en accéléré).
+- Type 2 — Travelling ou avancée caméra : uniquement si elle déroule le même flux unique (découverte d’un espace qui se remplit ou se monte au passage), sans personnage qui mène une autre activité parallèle.
+- Apparition structurée seulement si tu précises le geste visible (ex. sortent du sol, s’emboîtent, se vissent, se posent en rangées) — jamais un « pop » magique sans geste.
+
+Formulations INTERDITES dans la phrase finale (narration, effet « doc ») : « permettant de », « afin de », « grâce à », « montrant que », « illustrant », « on découvre », « on comprend », « on voit comment », « révélant », « dévoilant » — et tout ce qui n’est pas une image directe. Ne décris que ce qui est visible à l’écran, mot pour mot filmable.
+
+Liaisons : « alors que » et « tout en » : interdit s’ils opposent ou combinent deux logiques visuelles différentes. « pendant que » : autorisé en type 2 pour coupler mouvement caméra et révélation progressive (un seul flux) ; en type 1, « avec » ou coordonnées du même type vont souvent mieux pour lier plusieurs éléments sous la même logique. Interdit dès qu’une liaison introduit une activité humaine ou une narration indépendante de la logique principale.
+
+Dans la phrase finale, INTERDIT d’employer ces mots ou formulations vagues (même implicites) — en plus des interdits « langage » ci-dessus :
+transformation, se transforme, changement, amélioration, optimisation, métamorphose, magie, réparation / se répare / « ça se répare » sans décrire la mécanique, disparaît, disparaissent, « les pièces disparaissent », apparaît / apparaissent seuls sans dire comment (matériaux, geste, assemblage), devient, évolue, se convertit, abstraction du type « tout s’arrange ».
+
+INTERDIT aussi :
+- Enchaînements narratifs : « puis », « ensuite », « après », « suivi de », « d’abord… puis », « enfin » (séquence d’étapes indépendantes, pas une seule progression continue).
+- Mélange de plusieurs logiques visuelles différentes (construction / remplissage / assemblage automatique d’un côté, geste humain réel ou parole de l’autre ; ou apparition + interaction + commentaire comme couches séparées).
+- Idées non visibles : diagnostic, analyse, réflexion, stratégie, conseil, narration, voix off, texte à l’écran décrit.
+- Conclusion sur le résultat raconté après coup (« rendu final », « comme neuf », « parfait » comme fin d’histoire) : rester sur ce que la caméra voit en continu.
+- Listes, numérotation, guillemets.
+
+Métier : inspiration uniquement pour choisir lieu + objet + mécanique ; ne jamais écrire le nom du métier ni « métier : » ni parenthèses métier.
+
+Sortie : exactement une phrase courte en français, compréhensible sans audio dès la première seconde, sans préambule.
+
+Réponds uniquement par cette phrase, rien d’autre.`;
       const profile = getVwsMetierProfile(profession);
-      let userPrompt = `Métier : ${metier}. Génère une idée d’accroche vidéo (une phrase) : scène concrète, action visible tout de suite, compatible tournage smartphone.`;
+      let userPrompt = `Métier ou domaine (caché : ne jamais l’écrire dans la phrase) : ${metier}.
+
+Produis une idée nouvelle, concrète, filmable et lisible au premier regard. Choisis soit le type 1 (transformation fixe : caméra fixe, une seule logique globale — tu peux détailler plusieurs éléments qui suivent tous cette logique), soit le type 2 (révélation par caméra : avancée ou travelling + un seul flux d’apparition progressive, style IKEA). Varie entre les deux ; le type 1 peut rester majoritaire. Cohérence : un seul type de progression pour toute la scène. Langage : mots utiles à l’image (lieu, type d’objet, matériau, cadrage factuel) ; zéro adjectif décoratif ou phrase d’effet.
+
+BON — langage factuel utile (ne pas recopier) :
+« Un bâtiment moderne se construit progressivement en timelapse avec une vue aérienne ».
+
+MAUVAIS — bruit abstrait / subjectif (ne pas faire) :
+« Un bâtiment se construit en respectant chaque étape avec un rendu moderne et captivant ».
+
+BON — plusieurs éléments, une seule logique (remplissage / mise en place), ne pas recopier :
+« Une salle de bain vide se remplit progressivement en timelapse avec des carreaux au sol et du mobilier qui se met en place ».
+
+MAUVAIS — plusieurs logiques mélangées :
+« Une salle de bain se construit pendant que quelqu’un installe des objets et parle » — construction + geste humain + parole : incohérent.
+
+MAUVAIS — type 2 raté, plusieurs logiques indépendantes :
+« La caméra avance et le chef cuisine pendant que les objets apparaissent » — cuisine + apparition : deux logiques.
+
+BON — type 2, une seule logique couplée (ne pas recopier ; inventer autre chose) :
+« La caméra avance dans un appartement vide pendant que les meubles et éléments apparaissent progressivement dans chaque pièce ».
+
+MAUVAIS — trop basique / pas assez distinctif (ne pas faire) :
+« Un toit se couvre progressivement en tuiles » — générique, peu d’impact.
+
+BON — même mécanique mais pic visuel et précision (ne pas recopier ; inventer autre chose) :
+« Un toit vide se remplit en timelapse avec des tuiles rouges qui s’emboîtent parfaitement ligne par ligne ».
+
+MAUVAIS — deux actions (ne jamais faire) :
+« Une cuisine se remplit pendant que le chef prépare un plat » — remplissage + cuisine : deux actions (même pattern interdit en type 2).
+
+BON — une seule logique, plusieurs éléments (ustensiles + ingrédients) (ne pas recopier ; inventer autre chose) :
+« Une cuisine professionnelle vide se remplit progressivement avec les ustensiles et ingrédients qui se placent sur le plan de travail ».
+
+MAUVAIS — abstrait / non filmable :
+« Une voiture se transforme et ses pièces défectueuses disparaissent ».
+
+BON — une mécanique, un lieu, un objet (ne pas recopier ; inventer autre chose) :
+« Une Clio 2 démontée dans un garage se réassemble progressivement en timelapse avec les pièces qui reviennent en place ».
+
+Autres repères (inventer une variante ; une seule logique ; détail marquant ; pas de narration « on découvre », « permet de ») :
+- Type 1, jardin : fosse bleue, liner lisse et lames bois chaud d’une piscine semi-enterrée s’emboîtent en flux continu accéléré.
+- Type 1, îlot urbain : façade vitrée et noyau béton d’une tour étroite montent en timelapse, grue fixe, rythme d’étages symétrique vue aérienne.
+- Type 2, appartement : la caméra avance dans les volumes vides pendant que mobilier bas blanc et touches vert émeraude se posent en rangées nettes pièce par pièce.`;
       if (profile?.inspireContext) {
-        userPrompt += ` Contexte terrain à exploiter : ${profile.inspireContext}.`;
+        userPrompt += ` Indices de contexte réaliste (ne pas citer tel quel si ce sont des labels ; en extraire seulement lieux/objets visuels) : ${profile.inspireContext}.`;
       }
       const response = await generateResponse(userPrompt, systemPrompt, {
-        max_tokens: 200,
-        temperature: 0.55,
+        max_tokens: 140,
+        temperature: 0.42,
       });
       let text = (response || "").trim();
       text = text.replace(/^["«'"„]|["»'"”]$/g, "").trim();
@@ -218,7 +384,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
     };
   };
 
-  const handleRun = async () => {
+  const handleRun = async (gateBypass = false) => {
     setError("");
     setLoading(true);
     try {
@@ -226,6 +392,52 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
       const safeIdea = idea.trim();
       if (!safeIdea || safeIdea.length < 8) {
         throw new Error("Décris au moins une idée claire pour la vidéo (8 caractères minimum).");
+      }
+
+      const gate = await clarifyIdea({
+        jobType: safeProfession,
+        mainIdea: safeIdea,
+        modifiers: styleDetails.trim(),
+        tempoSelection: tempo,
+      });
+
+      if (gate.status === "NEEDS_CLARIFICATION" && !gateBypass) {
+        setGateResult(gate);
+        setMicroQuestion({
+          question: gate.question,
+          reason: "clarify_gate",
+          options: [
+            { id: "clarify_apply", label: "J’ai précisé mon idée dans le champ ci-dessus" },
+            { id: "clarify_proceed", label: "Continuer malgré ce diagnostic" },
+          ],
+        });
+        onCampaignChange?.(
+          buildCampaignSnapshot({
+            gateResult: gate,
+            clarifyAnswer: null,
+            isClarified: false,
+          })
+        );
+        setError("Précise ce point avant de préparer la vidéo.");
+        return;
+      }
+
+      if (
+        tempo !== "timelapse" &&
+        !tempoCompressionDecision &&
+        isIdeaTooDenseForRealtime(safeIdea)
+      ) {
+        setMicroQuestion({
+          question:
+            "Cette idée semble trop dense pour 8 secondes en temps réel. Veux-tu passer en “Très rapide : le temps défile” (timelapse) ?",
+          reason: "timelapse_density",
+          options: [
+            { id: "switch_timelapse", label: "Oui, passer en timelapse" },
+            { id: "keep_realtime", label: "Non, garder le temps réel" },
+          ],
+        });
+        setError("Choisis le mode de vitesse pour éviter une vidéo difficile à réaliser en 8 secondes.");
+        return;
       }
 
       const brain = runVwsPromptEngine({
@@ -269,6 +481,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
               sequenceType,
               dialogueEnabled,
               microAnswer,
+              tempoCompressionDecision,
             },
             brain,
           })
@@ -277,7 +490,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         void err;
       }
 
-      onBrainReady?.({
+      const finalPayload = {
         profession: safeProfession,
         idea: safeIdea,
         styleDetails: styleDetails.trim() || "",
@@ -289,7 +502,19 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         sequenceType,
         dialogueEnabled,
         microAnswer,
-      });
+        tempoCompressionDecision,
+        causalAgentSelection: null,
+        initialStateSelection: null,
+        gateResult: gate,
+        clarifyAnswer: gateBypass ? safeIdea : null,
+        clarifyMode: gate.mode,
+        clarifyDiagnostic: gate.diagnostic,
+        proceedAnyway: gateBypass,
+        isClarified: true,
+      };
+
+      onCampaignChange?.(buildCampaignSnapshot(finalPayload));
+      onBrainReady?.(finalPayload);
     } catch (e) {
       setError(e?.message || "Une erreur s’est produite pendant la préparation.");
     } finally {
@@ -298,8 +523,31 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
   };
 
   const handleSelectMicroAnswer = (optionId) => {
+    if (optionId === "clarify_apply" || optionId === "clarify_proceed") {
+      setMicroQuestion(null);
+      setError("");
+      setClarifyAnswer(optionId === "clarify_apply" ? idea : null);
+      void handleRun(optionId === "clarify_proceed");
+      return;
+    }
+    if (optionId === "switch_timelapse" || optionId === "keep_realtime") {
+      const nextTempo = optionId === "switch_timelapse" ? "timelapse" : tempo;
+      if (optionId === "switch_timelapse") {
+        setTempo("timelapse");
+      }
+      setTempoCompressionDecision(optionId);
+      setMicroQuestion(null);
+      onCampaignChange?.(
+        buildCampaignSnapshot({
+          tempo: nextTempo,
+          tempoCompressionDecision: optionId,
+        })
+      );
+      setError("");
+      return;
+    }
     setMicroAnswer(optionId);
-    onCampaignChange?.({ profession, idea, styleDetails, tempo, cameraFixed, revealMode, cinematicMovement, selfieMode, sequenceType, dialogueEnabled, microAnswer: optionId });
+    onCampaignChange?.(buildCampaignSnapshot({ microAnswer: optionId }));
     setError("");
   };
 
@@ -379,7 +627,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
             value={styleDetails}
             onChange={(e) => {
               setStyleDetails(e.target.value);
-              onCampaignChange?.({ profession, idea, styleDetails: e.target.value, tempo, cameraFixed, revealMode, cinematicMovement, selfieMode, sequenceType, dialogueEnabled, microAnswer });
+              onCampaignChange?.({ profession, idea, styleDetails: e.target.value, tempo, cameraFixed, revealMode, cinematicMovement, selfieMode, sequenceType, dialogueEnabled, microAnswer, tempoCompressionDecision });
             }}
             className="w-full rounded-lg border border-white/10 px-3 py-2 text-sm bg-white/5 text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
             placeholder={stylePlaceholder}
@@ -424,7 +672,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
             onChange={(e) => {
               const v = normalizeTempo(e.target.value);
               setTempo(v);
-              onCampaignChange?.({ profession, idea, styleDetails, tempo: v, cameraFixed, revealMode, cinematicMovement, selfieMode, sequenceType, dialogueEnabled, microAnswer });
+              onCampaignChange?.({ profession, idea, styleDetails, tempo: v, cameraFixed, revealMode, cinematicMovement, selfieMode, sequenceType, dialogueEnabled, microAnswer, tempoCompressionDecision });
             }}
             className="w-full rounded-lg border border-white/10 px-3 py-2 text-xs bg-white/5 text-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
           >
@@ -442,7 +690,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
             onChange={(e) => {
               const v = e.target.value;
               setSequenceType(v);
-              onCampaignChange?.({ profession, idea, styleDetails, tempo, cameraFixed, revealMode, cinematicMovement, selfieMode, sequenceType: v, dialogueEnabled, microAnswer });
+              onCampaignChange?.({ profession, idea, styleDetails, tempo, cameraFixed, revealMode, cinematicMovement, selfieMode, sequenceType: v, dialogueEnabled, microAnswer, tempoCompressionDecision });
             }}
             className="w-full rounded-lg border border-white/10 px-3 py-2 text-xs bg-white/5 text-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
           >
@@ -458,16 +706,16 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
             checked={cameraFixed}
             onChange={(v) => {
               setCameraFixed(v);
-              onCampaignChange?.({ profession, idea, styleDetails, tempo, cameraFixed: v, revealMode, cinematicMovement, selfieMode, sequenceType, dialogueEnabled, microAnswer });
+              onCampaignChange?.({ profession, idea, styleDetails, tempo, cameraFixed: v, revealMode, cinematicMovement, selfieMode, sequenceType, dialogueEnabled, microAnswer, tempoCompressionDecision });
             }}
-            label="Image stable"
+            label="Caméra fixe"
             tooltip="Le cadre ne bouge pas : on a l’impression que le téléphone reste posé. Idéal pour montrer un produit, une démo ou une présentation posée."
           />
           <StabilizationOption
             checked={revealMode}
             onChange={(v) => {
               setRevealMode(v);
-              onCampaignChange?.({ profession, idea, styleDetails, tempo, cameraFixed, revealMode: v, cinematicMovement, selfieMode, sequenceType, dialogueEnabled, microAnswer });
+              onCampaignChange?.({ profession, idea, styleDetails, tempo, cameraFixed, revealMode: v, cinematicMovement, selfieMode, sequenceType, dialogueEnabled, microAnswer, tempoCompressionDecision });
             }}
             label="Avant / après visible"
             tooltip="D’abord on voit un état, puis le résultat : la différence saute aux yeux, parfait pour un chantier, une réparation ou une transformation."
@@ -476,7 +724,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
             checked={cinematicMovement}
             onChange={(v) => {
               setCinematicMovement(v);
-              onCampaignChange?.({ profession, idea, styleDetails, tempo, cameraFixed, revealMode, cinematicMovement: v, selfieMode, sequenceType, dialogueEnabled, microAnswer });
+              onCampaignChange?.({ profession, idea, styleDetails, tempo, cameraFixed, revealMode, cinematicMovement: v, selfieMode, sequenceType, dialogueEnabled, microAnswer, tempoCompressionDecision });
             }}
             label="Mouvement doux"
             tooltip="L’image avance lentement ou zoome un peu : rendu plus soigné, comme une petite pub ou une présentation premium."
@@ -485,7 +733,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
             checked={selfieMode}
             onChange={(v) => {
               setSelfieMode(v);
-              onCampaignChange?.({ profession, idea, styleDetails, tempo, cameraFixed, revealMode, cinematicMovement, selfieMode: v, sequenceType, dialogueEnabled, microAnswer });
+              onCampaignChange?.({ profession, idea, styleDetails, tempo, cameraFixed, revealMode, cinematicMovement, selfieMode: v, sequenceType, dialogueEnabled, microAnswer, tempoCompressionDecision });
             }}
             label="Face caméra (selfie)"
             tooltip="C’est vous (ou la personne) face à la caméra, comme un selfie : on parle ou on montre en se filmant soi-même."
@@ -517,6 +765,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
               sequenceType,
               dialogueEnabled: next,
               microAnswer,
+              tempoCompressionDecision,
             });
           }}
           className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${

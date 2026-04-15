@@ -64,6 +64,7 @@ const LS_VIRAL_STUDIO_DRAFT = "vws_studio_draft_v1";
 const SS_CAMPAIGN_IDEA_LIVE_KEY = "vws_studio_campaign_idea_live_v1";
 
 const DEFAULT_IMAGE_STEP = {
+  campaignIdeaPrompt: "",
   prompt: "",
   ratio: "9:16",
   quantity: 4,
@@ -90,6 +91,10 @@ function formatVisualSnapshotLabel(t) {
 
 export default function ImagePage({
   campaignIdea = "",
+  campaignJobType = "",
+  campaignModifiers = "",
+  campaignClarifyMode = null,
+  campaignClarifyAnswer = null,
   scriptScene1Idea = "",
   campaignRevealMode = false,
   campaignMicroAnswer = null,
@@ -105,6 +110,7 @@ export default function ImagePage({
   const uid = session?.user?.id;
 
   const {
+    campaignIdeaPrompt,
     prompt,
     ratio,
     quantity,
@@ -156,17 +162,24 @@ export default function ImagePage({
     wasVisualStepActiveRef.current = visualStepActive;
     if (!justEntered) return;
 
-    const t = String(scriptScene1Idea || campaignIdea || "").trim();
-    if (!t) return;
-
     patchImageStep((prev) => {
-      const p = prev.prompt.trim();
-      if (!p) return { ...prev, prompt: t, pairedCampaignIdea: t };
-      if (t.startsWith(p) && t.length > p.length)
-        return { ...prev, prompt: t, pairedCampaignIdea: t };
-      if (t.length > 8 && p.length <= 2)
-        return { ...prev, prompt: t, pairedCampaignIdea: t };
-      return prev;
+      const next = { ...prev };
+      const campaignText = String(campaignIdea || "").trim();
+      const scriptText = String(scriptScene1Idea || "").trim();
+      if (campaignText) {
+        const currentIdea = String(prev.campaignIdeaPrompt || "").trim();
+        if (!currentIdea || currentIdea.length <= 2 || campaignText.startsWith(currentIdea)) {
+          next.campaignIdeaPrompt = campaignText;
+          next.pairedCampaignIdea = campaignText;
+        }
+      }
+      if (scriptText) {
+        const currentPrompt = String(prev.prompt || "").trim();
+        if (!currentPrompt || currentPrompt.length <= 2) {
+          next.prompt = scriptText;
+        }
+      }
+      return next;
     });
   }, [visualStepActive, campaignIdea, scriptScene1Idea, patchImageStep]);
 
@@ -181,8 +194,8 @@ export default function ImagePage({
   const totalCost = useMemo(() => IMAGE_GENERATION_COST * Number(quantity || 0), [quantity]);
   const canGenerate = useMemo(() => {
     if (!session) return false;
-    return !!prompt.trim() && !busy;
-  }, [prompt, busy, session]);
+    return !!String(campaignIdeaPrompt || "").trim() && !busy;
+  }, [campaignIdeaPrompt, busy, session]);
 
   const fileInputRef = useRef(null);
   const onPickRefImage = () => fileInputRef.current?.click();
@@ -266,10 +279,25 @@ export default function ImagePage({
           apikey: supabaseAnonKey,
         },
         body: JSON.stringify({
-          prompt: buildHookImageApiPrompt(prompt, {
+          prompt: buildHookImageApiPrompt(
+            [
+              String(campaignIdeaPrompt || "").trim() || prompt,
+              campaignJobType ? `Métier: ${campaignJobType}` : "",
+              campaignModifiers ? `Style: ${campaignModifiers}` : "",
+              campaignClarifyMode ? `Mode de transformation: ${campaignClarifyMode}` : "",
+              campaignClarifyAnswer ? `Précision utilisateur: ${campaignClarifyAnswer}` : "",
+            ]
+              .filter(Boolean)
+              .join("\n"),
+            {
             revealMode: campaignRevealMode,
-            initialStateMode: campaignMicroAnswer === "from_nothing" ? "from_nothing" : null,
-          }),
+            initialStateMode:
+              campaignMicroAnswer === "from_nothing" ||
+              String(campaignClarifyAnswer || "").toLowerCase().includes("rien")
+                ? "from_nothing"
+                : null,
+            }
+          ),
           ratio,
           quantity,
           model,
@@ -391,7 +419,7 @@ export default function ImagePage({
 
       patchImageStep({
         lastGeneratedImages: finalUrls,
-        lastGeneratedPrompt: prompt,
+        lastGeneratedPrompt: String(campaignIdeaPrompt || "").trim() || prompt,
         pairedCampaignIdea: String(campaignIdea || "").trim() || null,
       });
       
@@ -521,6 +549,7 @@ export default function ImagePage({
           lastGeneratedImages: null,
           lastGeneratedPrompt: "",
           prompt: "",
+          campaignIdeaPrompt: "",
           refCharDataUrl: null,
           selectedImageIndex: 0,
           modifyInstruction: "",
@@ -536,16 +565,32 @@ export default function ImagePage({
   };
 
   const reloadIdeaFromCampaign = () => {
-    const fromProp = String(campaignIdea || "").trim();
+    const fromCampaign = String(campaignIdea || "").trim();
+    const fromScript = String(scriptScene1Idea || "").trim();
+    const fromProp = fromCampaign || fromScript;
+    const applyReload = (value) => {
+      const hadImages = Boolean(lastGeneratedImages?.length);
+      if (hadImages) {
+        // Conserver les images affichées : on recharge l'idée dans le champ actif
+        // sans vider la session visuelle.
+        patchImageStep({
+          campaignIdeaPrompt: value,
+          pairedCampaignIdea: value,
+        });
+        setModifyError("");
+        return;
+      }
+      patchImageStep({ campaignIdeaPrompt: value, pairedCampaignIdea: value });
+    };
     if (fromProp) {
-      patchImageStep({ prompt: fromProp, pairedCampaignIdea: fromProp });
+      applyReload(fromProp);
       return;
     }
     try {
       const live = sessionStorage.getItem(SS_CAMPAIGN_IDEA_LIVE_KEY);
       const fromLive = live != null ? String(live).trim() : "";
       if (fromLive) {
-        patchImageStep({ prompt: fromLive, pairedCampaignIdea: fromLive });
+        applyReload(fromLive);
         return;
       }
     } catch {
@@ -648,10 +693,10 @@ export default function ImagePage({
   }, [lastGeneratedImages?.length, patchImageStep]);
 
   const hasSessionImages = Boolean(lastGeneratedImages?.length);
-  const bottomFieldValue = hasSessionImages ? modifyInstruction : prompt;
+  const bottomFieldValue = hasSessionImages ? modifyInstruction : campaignIdeaPrompt;
   const setBottomFieldValue = (v) => {
     if (hasSessionImages) patchImageStep({ modifyInstruction: v });
-    else patchImageStep({ prompt: v });
+    else patchImageStep({ campaignIdeaPrompt: v });
   };
   const canBottomSubmit = hasSessionImages
     ? Boolean((modifyInstruction ?? "").trim()) && !modifyLoading && !busy
@@ -660,7 +705,7 @@ export default function ImagePage({
     if (hasSessionImages) void handleModifyImage();
     else void generate();
   };
-  const ideaReadyBadge = Boolean(prompt.trim()) && !hasSessionImages;
+  const ideaReadyBadge = Boolean(String(campaignIdeaPrompt || "").trim()) && !hasSessionImages;
 
   const ratioOptions = [
     { value: "16:9", label: "YouTube" },

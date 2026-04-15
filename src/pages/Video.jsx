@@ -552,11 +552,11 @@ export default function Video({ studioSequenceType, studioScriptPrompt, studioIm
               <div className="h-full w-full studio-step-rail-fill" />
             </div>
           </div>
-          <div className="flex items-center justify-end gap-3">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3">
             <button
               type="button"
               onClick={() => setShowSystemVideo(true)}
-              className="studio-toolbar-btn"
+              className="studio-toolbar-btn sm:w-auto"
             >
               <BookOpen className="w-3.5 h-3.5 text-cyan-400" />
               Explication du système
@@ -1084,7 +1084,6 @@ function VEO3VideoForm({
       setScripts(buildVeo3ScriptsFromSources(studioScriptPromptRef.current, sceneCountRef.current));
       setHookVisual(brain?.coverPrompt ? String(brain.coverPrompt) : "");
       setActiveTab(0);
-      setOutput("");
       setGenerationError("");
       setDuration("8s");
       setMusicStyle("cinematic");
@@ -1607,7 +1606,7 @@ function VEO3VideoForm({
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
             <button
               onClick={handleValidate}
               className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-300 font-medium transition-all"
@@ -1991,7 +1990,6 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
       );
       setHookVisual(brain?.coverPrompt ? String(brain.coverPrompt) : "");
       setActiveTab(0);
-      setOutput("");
       setFormat("16:9");
       setDuration("10s");
       setMusicStyle("cinematic");
@@ -2200,7 +2198,7 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
         <button
           onClick={generate}
           disabled={disabled || loading || (session && (credits === null || credits < VIDEO_GENERATION_COST))}
@@ -2309,7 +2307,7 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
             <button
               onClick={handleValidate}
               className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-300 font-medium transition-all"

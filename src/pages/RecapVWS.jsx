@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { listHistory } from "@/bibliotheque/supabase/historique";
+import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
 
 const LS_HISTORY = "history_v2";
 
@@ -54,22 +55,40 @@ async function downloadUrlFile(url, fileName) {
   const href = String(url || "").trim();
   if (!href) return;
   try {
-    const res = await fetch(href);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const blob = await res.blob();
+    const supabaseUrl = String(import.meta.env.VITE_SUPABASE_URL || "").trim();
+    const supabaseAnonKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY || "").trim();
+    if (!supabaseUrl || !supabaseAnonKey) {
+      throw new Error("Configuration Supabase manquante");
+    }
+    const supabase = getBrowserSupabase();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const proxied = `${supabaseUrl}/functions/v1/image-proxy?url=${encodeURIComponent(
+      href
+    )}&download=1&filename=${encodeURIComponent(fileName)}`;
+    const response = await fetch(proxied, {
+      method: "GET",
+      headers: {
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${session?.access_token || supabaseAnonKey}`,
+      },
+    });
+    if (!response.ok) {
+      throw new Error(`Proxy HTTP ${response.status}`);
+    }
+    const blob = await response.blob();
     const blobUrl = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = blobUrl;
     a.download = fileName;
     a.click();
     URL.revokeObjectURL(blobUrl);
-  } catch {
-    const a = document.createElement("a");
-    a.href = href;
-    a.download = fileName;
-    a.target = "_blank";
-    a.rel = "noopener noreferrer";
-    a.click();
+  } catch (err) {
+    console.error("Téléchargement impossible:", err);
+    alert(
+      "Impossible de lancer un téléchargement direct pour cette vidéo. Vérifie la validité du lien puis réessaie."
+    );
   }
 }
 

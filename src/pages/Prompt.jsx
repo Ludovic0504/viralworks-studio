@@ -13,11 +13,49 @@ import {
   buildSoraStyleSystemPrompt,
   buildSoraStyleUserPrompt,
 } from "@/bibliotheque/videoPromptSchema";
+import { refinePrompt } from "@/bibliotheque/vwsPromptEngine";
 import { hasEnoughCredits, debitCredits, getUserCredits } from "@/bibliotheque/supabase/credits";
 import PageTitle from "../composants/interface/TitrePage";
-import { FileText, Sparkles, Copy, Trash2, Search, X, History, Wand2, Check, BookOpen, Zap, Eye } from "lucide-react";
+import {
+  FileText,
+  Sparkles,
+  Copy,
+  Trash2,
+  Search,
+  X,
+  History,
+  Wand2,
+  Check,
+  BookOpen,
+  Zap,
+  Eye,
+  ChevronDown,
+  Settings2,
+} from "lucide-react";
 
 const PROMPT_GENERATION_COST = 1;
+
+const VWS_BRAIN_LS_KEY = "vws_brain_v2_last";
+const SCRIPT_EXPORT_VIDEO_SCENES_MAX = 3;
+
+function getVwsBrainFromStorage() {
+  try {
+    const raw = localStorage.getItem(VWS_BRAIN_LS_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed?.brain || null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeExportVideoPrompts(arr, sceneCount) {
+  const c = Math.max(1, Math.min(SCRIPT_EXPORT_VIDEO_SCENES_MAX, sceneCount));
+  const src = Array.isArray(arr) ? arr.map((s) => String(s ?? "")) : [];
+  const next = src.slice(0, c);
+  while (next.length < c) next.push("");
+  return next;
+}
 
 /** Libellé affiché pour l’historique (évite d’exposer le nom technique du modèle côté script). */
 function formatHistoryModelLabel(model) {
@@ -64,7 +102,13 @@ async function loadPromptHistoryForSession(session, limit = 100) {
   return getPromptHistory();
 }
 
-export default function PromptAssistant({ initialIdea = "", sequenceType = "single_8s", dialogueEnabled = true, onScriptOutput }) {
+export default function PromptAssistant({
+  initialIdea = "",
+  sequenceType = "single_8s",
+  dialogueEnabled = true,
+  campaignData = null,
+  onScriptOutput,
+}) {
   const [tab, setTab] = useState("script");
   const [showSystemVideo, setShowSystemVideo] = useState(false);
 
@@ -89,11 +133,11 @@ export default function PromptAssistant({ initialIdea = "", sequenceType = "sing
             <div className="h-full w-1/3 studio-step-rail-fill" />
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
           <button
             type="button"
             onClick={() => setShowSystemVideo(true)}
-            className="studio-toolbar-btn"
+            className="studio-toolbar-btn sm:w-auto"
           >
             <BookOpen className="w-3.5 h-3.5 text-cyan-400" />
             Explication du système
@@ -101,7 +145,7 @@ export default function PromptAssistant({ initialIdea = "", sequenceType = "sing
           <button
             type="button"
             onClick={() => setTab("history")}
-            className="studio-toolbar-btn"
+            className="studio-toolbar-btn sm:w-auto"
           >
             <History className="w-3.5 h-3.5" />
             Historique
@@ -116,6 +160,7 @@ export default function PromptAssistant({ initialIdea = "", sequenceType = "sing
           initialIdea={initialIdea}
           sequenceType={sequenceType}
           dialogueEnabled={dialogueEnabled}
+          campaignData={campaignData}
           onScriptOutput={onScriptOutput}
         />
       )}
@@ -401,7 +446,7 @@ function VEO3Generator({ initialIdea = "" }) {
           </p>
 </div>
 
-        <div className="flex items-center gap-3 flex-wrap">
+      <div className="flex items-stretch sm:items-center gap-3 flex-col sm:flex-row flex-wrap">
           <div className="studio-panel inline-flex rounded-xl overflow-hidden p-1">
             <TabButton active={true}>
               <Zap className="w-3.5 h-3.5" />
@@ -411,7 +456,7 @@ function VEO3Generator({ initialIdea = "" }) {
           <button
             onClick={generate}
             disabled={disabled || loading}
-            className={`flex-1 px-6 py-3 rounded-lg font-medium transition-all flex items-center justify-center gap-2 ${
+            className={`w-full sm:flex-1 px-6 py-3 rounded-lg font-medium transition-all flex items-center justify-center gap-2 ${
               disabled || loading || (session && credits !== null && credits < PROMPT_GENERATION_COST)
                 ? "bg-white/5 text-gray-500 cursor-not-allowed border border-white/10"
                 : "bg-gradient-to-r from-emerald-500 to-emerald-400 text-white hover:from-emerald-400 hover:to-emerald-300 shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_25px_rgba(16,185,129,0.4)] active:scale-95"
@@ -431,7 +476,7 @@ function VEO3Generator({ initialIdea = "" }) {
         </button>
         <button
           onClick={reset}
-            className="px-4 py-3 rounded-lg font-medium bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 transition-all active:scale-95"
+            className="w-full sm:w-auto px-4 py-3 rounded-lg font-medium bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 transition-all active:scale-95"
         >
           Réinitialiser
         </button>
@@ -929,21 +974,24 @@ function PromptHistory() {
   );
 }
 
-function ScriptPromptGenerator({ initialIdea = "", sequenceType = "single_8s", dialogueEnabled = true, onScriptOutput }) {
+function ScriptPromptGenerator({
+  initialIdea = "",
+  sequenceType = "single_8s",
+  campaignData = null,
+  onScriptOutput,
+}) {
   const { session } = useAuth();
   const [idea, setIdea] = useState(initialIdea);
   const [output, setOutput] = useState("");
   const isMultiScene = sequenceType === "three_x_8s";
-  const sceneLabels = ["Début", "Transformation", "Résultat"];
-  const [activeScene, setActiveScene] = useState(0);
+  const videoExportSceneCount = sequenceType === "three_x_8s" ? 3 : 1;
   const [sceneOutputs, setSceneOutputs] = useState(["", "", ""]);
-  const [copied, setCopied] = useState(false);
+  const [exportHookText, setExportHookText] = useState("");
+  const [exportVideoTexts, setExportVideoTexts] = useState(["", "", ""]);
   const disabled = useMemo(() => idea.trim().length < 8, [idea]);
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState([]);
   const [selectedItem, setSelectedItem] = useState(null);
-  const outputRef = useRef(null);
-  const prevOutputRef = useRef("");
   const prevInitialIdeaRef = useRef(initialIdea);
   const prevSequenceTypeRef = useRef(sequenceType);
 
@@ -952,8 +1000,8 @@ function ScriptPromptGenerator({ initialIdea = "", sequenceType = "single_8s", d
     prevSequenceTypeRef.current = sequenceType;
     setOutput("");
     setSceneOutputs(["", "", ""]);
-    setActiveScene(0);
-    setCopied(false);
+    setExportHookText("");
+    setExportVideoTexts(["", "", ""]);
     onScriptOutput?.({
       mode: isMultiScene ? "multi" : "single",
       combined: "",
@@ -967,9 +1015,8 @@ function ScriptPromptGenerator({ initialIdea = "", sequenceType = "single_8s", d
     setIdea(initialIdea ?? "");
     setOutput("");
     setSceneOutputs(["", "", ""]);
-    setActiveScene(0);
-    setCopied(false);
-    prevOutputRef.current = "";
+    setExportHookText("");
+    setExportVideoTexts(["", "", ""]);
     onScriptOutput?.({
       mode: isMultiScene ? "multi" : "single",
       combined: "",
@@ -986,19 +1033,13 @@ function ScriptPromptGenerator({ initialIdea = "", sequenceType = "single_8s", d
     return () => window.removeEventListener("onetool:history:changed", refresh);
   }, [session]);
 
-  useEffect(() => {
-    if (output && output !== prevOutputRef.current) {
-      prevOutputRef.current = output;
-    }
-  }, [output]);
-
   const reset = () => {
     setLoading(false);
     setIdea("");
     setOutput("");
     setSceneOutputs(["", "", ""]);
-    setActiveScene(0);
-    setCopied(false);
+    setExportHookText("");
+    setExportVideoTexts(["", "", ""]);
     onScriptOutput?.({
       mode: isMultiScene ? "multi" : "single",
       combined: "",
@@ -1006,16 +1047,13 @@ function ScriptPromptGenerator({ initialIdea = "", sequenceType = "single_8s", d
     });
   };
 
-  const copy = async () => {
-    if (!output) return;
-    try {
-      await navigator.clipboard.writeText(output);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.warn("Impossible de copier le prompt:", err);
-      alert("Impossible de copier");
-    }
+  const refreshBrainExportPrompts = () => {
+    const brain = getVwsBrainFromStorage();
+    const cover = brain?.coverPrompt ? String(brain.coverPrompt).trim() : "";
+    const rawVp = Array.isArray(brain?.videoPrompts) ? brain.videoPrompts : [];
+    const vids = normalizeExportVideoPrompts(rawVp, videoExportSceneCount);
+    setExportHookText(cover);
+    setExportVideoTexts(vids);
   };
 
   const generate = async () => {
@@ -1057,28 +1095,29 @@ function ScriptPromptGenerator({ initialIdea = "", sequenceType = "single_8s", d
         }
       }
       
-      const systemPrompt = buildSoraStyleSystemPrompt("sora2");
-      const runOneScene = async (sceneLabel) => {
-        const sceneContext = `\n\nContrainte multi-scènes: génère uniquement la scène "${sceneLabel}" en restant cohérent avec l'idée globale.`;
-        const userPrompt = buildSoraStyleUserPrompt(`${idea}${sceneContext}`, { dialogueEnabled });
-        const generatedOutput = await generateResponse(userPrompt, systemPrompt, {
-          model: "gpt-4o-mini",
-          temperature: PROMPT_GEN_TEMPERATURE_CONSTRAINED,
-          max_tokens: PROMPT_GEN_MAX_COMPLETION_TOKENS,
-        });
-        if (!generatedOutput || !generatedOutput.trim()) {
-          throw new Error(`Aucun prompt généré pour la scène ${sceneLabel}`);
-        }
-        return clampGeneratedPrompt(generatedOutput.trim());
-      };
+      const refineResult = await refinePrompt({
+        jobType: campaignData?.profession ?? "",
+        mainIdea: idea,
+        modifiers: campaignData?.styleDetails ?? "",
+        tempoSelection: campaignData?.tempo ?? "real_time",
+        revealMode: Boolean(campaignData?.revealMode),
+        cameraLocked: Boolean(campaignData?.cameraFixed),
+        projectFormat:
+          campaignData?.sequenceType === "three_x_8s" ? "three_x_8s" : "single_8s",
+        clarifyMode: campaignData?.clarifyMode ?? campaignData?.gateResult?.mode ?? null,
+        clarifyAnswer: campaignData?.clarifyAnswer ?? null,
+        proceedAnyway: campaignData?.proceedAnyway === true,
+      });
+      const finalized =
+        refineResult?.phases?.PROMPT_EXECUTION_PHASE?.steps?.PROMPT_FINALIZATION?.output || "";
+      if (!String(finalized).trim()) {
+        throw new Error("Aucun prompt final retourné par refinePrompt.");
+      }
+      const trimmedRefined = clampGeneratedPrompt(String(finalized).trim());
 
       let trimmed = "";
       if (isMultiScene) {
-        const nextScenes = [];
-        for (let i = 0; i < sceneLabels.length; i += 1) {
-          setActiveScene(i);
-          nextScenes.push(await runOneScene(sceneLabels[i]));
-        }
+        const nextScenes = [trimmedRefined, trimmedRefined, trimmedRefined];
         const combined = nextScenes.join("\n\n---\n\n");
         setSceneOutputs(nextScenes);
         setOutput(combined);
@@ -1087,23 +1126,16 @@ function ScriptPromptGenerator({ initialIdea = "", sequenceType = "single_8s", d
           combined,
           scenes: nextScenes,
         });
+        refreshBrainExportPrompts();
       } else {
-        const userPrompt = buildSoraStyleUserPrompt(idea, { dialogueEnabled });
-        const generatedOutput = await generateResponse(userPrompt, systemPrompt, {
-          model: "gpt-4o-mini",
-          temperature: PROMPT_GEN_TEMPERATURE_CONSTRAINED,
-          max_tokens: PROMPT_GEN_MAX_COMPLETION_TOKENS,
-        });
-        if (!generatedOutput || !generatedOutput.trim()) {
-          throw new Error("Aucun prompt généré");
-        }
-        trimmed = clampGeneratedPrompt(generatedOutput.trim());
+        trimmed = trimmedRefined;
         setOutput(trimmed);
         onScriptOutput?.({
           mode: "single",
           combined: trimmed,
           scenes: [trimmed, "", ""],
         });
+        refreshBrainExportPrompts();
       }
 
       if (session?.user?.id) {
@@ -1173,7 +1205,10 @@ function ScriptPromptGenerator({ initialIdea = "", sequenceType = "single_8s", d
     }
     setItems(await loadPromptHistoryForSession(session, 100));
   };
-  const renderedOutput = isMultiScene ? sceneOutputs[activeScene] || "" : output;
+
+  const hasScriptResult = Boolean(
+    (output && output.trim()) || sceneOutputs.some((s) => String(s || "").trim())
+  );
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1195,30 +1230,11 @@ function ScriptPromptGenerator({ initialIdea = "", sequenceType = "single_8s", d
           </p>
         </div>
 
-        {isMultiScene ? (
-          <div className="studio-panel p-2 inline-flex gap-1 rounded-xl">
-            {sceneLabels.map((label, idx) => (
-              <button
-                key={label}
-                type="button"
-                onClick={() => setActiveScene(idx)}
-                className={`px-3 py-1.5 text-xs rounded-lg border transition ${
-                  activeScene === idx
-                    ? "bg-emerald-500/20 text-emerald-200 border-emerald-500/40"
-                    : "bg-white/5 text-gray-400 border-white/10 hover:text-gray-200"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        ) : null}
-
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
           <button
             onClick={generate}
             disabled={disabled || loading}
-            className={`flex-1 px-6 py-3 rounded-lg font-medium transition-all flex items-center justify-center gap-2 ${
+            className={`w-full sm:flex-1 px-6 py-3 rounded-lg font-medium transition-all flex items-center justify-center gap-2 ${
               disabled || loading
                 ? "bg-white/5 text-gray-500 cursor-not-allowed border border-white/10"
                 : "bg-gradient-to-r from-emerald-500 to-emerald-400 text-white hover:from-emerald-400 hover:to-emerald-300 shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_25px_rgba(16,185,129,0.4)] active:scale-95"
@@ -1238,52 +1254,82 @@ function ScriptPromptGenerator({ initialIdea = "", sequenceType = "single_8s", d
           </button>
           <button
             onClick={reset}
-            className="px-4 py-3 rounded-lg font-medium bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 transition-all active:scale-95"
+            className="w-full sm:w-auto px-4 py-3 rounded-lg font-medium bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 transition-all active:scale-95"
           >
             Réinitialiser
           </button>
         </div>
 
-        {renderedOutput && (
-          <div className="studio-panel p-5 sm:p-6">
-            <div className="flex items-center justify-between mb-3">
-              <label className="block text-sm font-medium text-gray-300 flex items-center gap-2">
-                <BookOpen className="w-4 h-4 text-emerald-400" />
-                {isMultiScene ? `Prompt — ${sceneLabels[activeScene]}` : "Prompt généré"}
-              </label>
-              <button
-                onClick={copy}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-                  copied
-                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                    : "bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10"
-                }`}
-              >
-                {copied ? (
-                  <>
-                    <Check className="w-3.5 h-3.5" />
-                    Copié
-                  </>
+        {hasScriptResult && (
+          <div className="space-y-4">
+            <details className="studio-panel rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3 sm:px-5 open:border-white/12 open:bg-white/[0.03] transition-colors">
+              <summary className="flex cursor-pointer list-none items-center gap-2 text-xs text-gray-400 hover:text-gray-300 select-none [&::-webkit-details-marker]:hidden">
+                <ChevronDown className="w-3.5 h-3.5 shrink-0 opacity-70" aria-hidden />
+                <Settings2 className="w-3.5 h-3.5 shrink-0 opacity-70" aria-hidden />
+                <span className="font-semibold text-gray-200 tracking-wide">
+                  Script Visuel d’accroche - Généré
+                </span>
+              </summary>
+              <div className="mt-4 border-t border-white/[0.06] pt-4 space-y-3">
+                <p className="text-[11px] text-gray-500 leading-relaxed">
+                  Prompt final du visuel d’accroche (Campagne VWS), identique à la source utilisée dans l’onglet Visuel d’accroche. Lecture seule.
+                </p>
+                <textarea
+                  readOnly
+                  value={exportHookText}
+                  rows={6}
+                  className="w-full rounded-lg border border-white/10 p-3 text-sm text-gray-200 bg-white/[0.04] resize-y font-mono leading-relaxed"
+                  placeholder={
+                    exportHookText.trim()
+                      ? ""
+                      : "Aucun prompt pour l’instant — exécute « Préparer ma vidéo » dans Campagne VWS."
+                  }
+                />
+              </div>
+            </details>
+
+            <details className="studio-panel rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3 sm:px-5 open:border-white/12 open:bg-white/[0.03] transition-colors">
+              <summary className="flex cursor-pointer list-none items-center gap-2 text-xs text-gray-400 hover:text-gray-300 select-none [&::-webkit-details-marker]:hidden">
+                <ChevronDown className="w-3.5 h-3.5 shrink-0 opacity-70" aria-hidden />
+                <Settings2 className="w-3.5 h-3.5 shrink-0 opacity-70" aria-hidden />
+                <span className="font-semibold text-gray-200 tracking-wide">
+                  Script Vidéo virale - Généré
+                </span>
+              </summary>
+              <div className="mt-4 border-t border-white/[0.06] pt-4 space-y-4">
+                <p className="text-[11px] text-gray-500 leading-relaxed">
+                  Prompt(s) final(aux) vidéo (Campagne VWS), comme en Vidéo virale &gt; options avancées &gt; script technique : un bloc en 8 s, ou trois blocs en 24 s. Lecture seule.
+                </p>
+                {videoExportSceneCount <= 1 ? (
+                  <textarea
+                    readOnly
+                    value={exportVideoTexts[0] ?? ""}
+                    rows={6}
+                    className="w-full rounded-lg border border-white/10 p-3 text-sm text-gray-200 bg-white/[0.04] resize-y font-mono leading-relaxed"
+                    placeholder="—"
+                  />
                 ) : (
-                  <>
-                    <Copy className="w-3.5 h-3.5" />
-                    Copier
-                  </>
+                  <div className="space-y-4">
+                    {[0, 1, 2].map((i) => (
+                      <div key={i} className="space-y-1.5">
+                        <p className="text-xs font-semibold text-gray-300">Scène {i + 1}</p>
+                        <textarea
+                          readOnly
+                          value={exportVideoTexts[i] ?? ""}
+                          rows={5}
+                          className="w-full rounded-lg border border-white/10 p-3 text-sm text-gray-200 bg-white/[0.04] resize-y font-mono leading-relaxed"
+                          placeholder="—"
+                        />
+                      </div>
+                    ))}
+                  </div>
                 )}
-              </button>
-            </div>
-            <div className="rounded-lg border border-white/10 bg-white/5 p-4">
-              <pre
-                ref={outputRef}
-                className="whitespace-pre-wrap text-gray-200 text-sm font-mono leading-relaxed"
-              >
-                {renderedOutput}
-              </pre>
-            </div>
+              </div>
+            </details>
           </div>
         )}
 
-        {!renderedOutput && !loading && (
+        {!hasScriptResult && !loading && (
           <div className="studio-panel p-8 text-center">
             <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-white/5 border border-white/10 flex items-center justify-center">
               <Wand2 className="w-8 h-8 text-gray-500" />

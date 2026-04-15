@@ -44,14 +44,19 @@ serve(async (req) => {
       decodedUrl = decodedUrl.replace("http://", "https://");
     }
 
-    // Validation de sécurité : n'autoriser que les URLs Hailuo ou Supabase
+    // Validation de sécurité : n'autoriser que les URLs connues (images + vidéos signées)
     const isHailuoUrl = decodedUrl.includes("hailuo-image") || decodedUrl.includes("aliyuncs.com");
     const isSupabaseUrl = decodedUrl.includes("supabase.co") || decodedUrl.includes("supabase");
-    
-    if (!isHailuoUrl && !isSupabaseUrl) {
+    const isGoogleStorageUrl =
+      decodedUrl.includes("storage.googleapis.com") || decodedUrl.includes("googleapis.com");
+
+    if (!isHailuoUrl && !isSupabaseUrl && !isGoogleStorageUrl) {
       console.error("❌ URL non autorisée:", decodedUrl);
       return new Response(
-        JSON.stringify({ error: "URL non autorisée. Seules les URLs Hailuo et Supabase sont acceptées." }),
+        JSON.stringify({
+          error:
+            "URL non autorisée. Seules les URLs Hailuo, Supabase et Google Storage sont acceptées.",
+        }),
         {
           status: 403,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -61,7 +66,7 @@ serve(async (req) => {
 
     console.log("📥 Proxy image:", decodedUrl);
 
-    // Télécharger l'image depuis l'URL externe
+    // Télécharger la ressource depuis l'URL externe
     const imageResponse = await fetch(decodedUrl, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -121,20 +126,29 @@ serve(async (req) => {
       });
     }
 
-    // Récupérer le type de contenu de l'image
-    const contentType = imageResponse.headers.get("content-type") || "image/jpeg";
-    const imageData = await imageResponse.arrayBuffer();
+    const contentType = imageResponse.headers.get("content-type") || "application/octet-stream";
+    const contentLength = imageResponse.headers.get("content-length");
+    const download = url.searchParams.get("download") === "1";
+    const fileNameParam = url.searchParams.get("filename");
+    const fallbackName = contentType.startsWith("video/") ? "viralworks-video.mp4" : "viralworks-file.bin";
+    const fileName = (fileNameParam && fileNameParam.trim()) || fallbackName;
 
-    console.log("✅ Image téléchargée, taille:", imageData.byteLength, "bytes, type:", contentType);
+    const headers: Record<string, string> = {
+      ...corsHeaders,
+      "Content-Type": contentType,
+      "Cache-Control": "no-cache",
+    };
+    if (contentLength) headers["Content-Length"] = contentLength;
+    if (download) {
+      headers["Content-Disposition"] = `attachment; filename="${fileName.replace(/"/g, "")}"`;
+    }
 
-    // Retourner l'image avec les bons headers CORS
-    return new Response(imageData, {
+    console.log("✅ Ressource proxifiée, type:", contentType, "download:", download);
+
+    // Stream direct pour éviter de charger toute la vidéo en mémoire.
+    return new Response(imageResponse.body, {
       status: 200,
-      headers: {
-        ...corsHeaders,
-        "Content-Type": contentType,
-        "Content-Length": imageData.byteLength.toString(),
-      },
+      headers,
     });
   } catch (error) {
     console.error("❌ Erreur proxy image:", error);

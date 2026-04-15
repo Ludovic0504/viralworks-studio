@@ -11,6 +11,7 @@ const navLinks = [
   { path: "/", label: "Accueil" },
   { path: "/lab", label: "Nouveautés" },
   { path: "/viralworks", label: "ViralWorks" },
+  { path: "/communaute-vws", label: "Communauté VWS" },
   { path: "/boutique", label: "Boutique" },
   { path: "/a-savoir", label: "Informations utiles" },
 ];

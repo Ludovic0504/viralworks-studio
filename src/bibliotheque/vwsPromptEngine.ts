@@ -1,4 +1,5 @@
 import { getVwsEnvironmentHint } from "./vwsMetiersConfig";
+import { generateResponse } from "./openai/chatgpt-client";
 
 export type Tempo = "real_time" | "timelapse" | "slow_motion";
 
@@ -76,6 +77,260 @@ export interface VwsEngineOutput {
       videoTemplate: string;
       hookTemplate: string;
     };
+  };
+}
+
+export interface ClarifyIdeaInput {
+  jobType: string;
+  mainIdea: string;
+  modifiers?: string;
+  tempoSelection: Tempo;
+  causalAgent?: string | null;
+  initialState?: string | null;
+}
+
+export interface ClarifyDiagnostic {
+  category: "A" | "B" | "C" | "D" | "E";
+  reason: string;
+  user_link: string;
+}
+
+export interface ClarifyIdeaResult {
+  status: "VALID" | "NEEDS_CLARIFICATION";
+  mode: "MODE_A" | "MODE_B";
+  diagnostic: ClarifyDiagnostic;
+  question: string;
+}
+
+export interface RefinePromptInput {
+  jobType: string;
+  mainIdea: string;
+  modifiers?: string;
+  tempoSelection: Tempo;
+  revealMode: boolean;
+  cameraLocked: boolean;
+  projectFormat: SequenceType;
+  clarifyMode?: "MODE_A" | "MODE_B" | null;
+  clarifyAnswer?: string | null;
+  proceedAnyway?: boolean;
+}
+
+export interface ExecutionStep {
+  status: "start" | "ok" | "warning" | "error" | "skipped";
+  input: string;
+  output: string;
+  decisions: string[];
+  notes: string;
+  duration_ms?: number;
+}
+
+export interface RefinementResult {
+  trace_mode: "internal_debug_extended";
+  run_id: string;
+  phases: {
+    PRE_PROMPT_PHASE: {
+      steps: {
+        RUN_START: ExecutionStep;
+        UI_INPUT_SNAPSHOT: ExecutionStep;
+        INPUT_NORMALIZATION: ExecutionStep;
+        TRANSFORMATION_MODE_ROUTING: ExecutionStep;
+        CLARIFY_GATE_EVALUATION: ExecutionStep;
+        INTERPRETED_INTENT_VIDEO_NATIVE: ExecutionStep;
+        VISUAL_RICHNESS_LAYER: ExecutionStep;
+        TEMPLATE_ROUTING_DECISION: ExecutionStep;
+        CONSTRAINT_PLAN_ASSEMBLY: ExecutionStep;
+        TEMPORAL_BUDGET_DISTRIBUTION: ExecutionStep;
+      };
+    };
+    PROMPT_EXECUTION_PHASE: {
+      steps: {
+        PROMPT_DRAFT_CONSTRUCTION: ExecutionStep;
+        PROMPT_FINALIZATION: ExecutionStep;
+        PROVIDER_REQUEST_START: ExecutionStep;
+        PROVIDER_STREAM_ACTIVITY: ExecutionStep;
+        PROVIDER_REQUEST_END: ExecutionStep;
+        RAW_MODEL_OUTPUT_CAPTURE: ExecutionStep;
+      };
+    };
+    POST_PROMPT_PHASE: {
+      steps: {
+        OUTPUT_PARSING_START: ExecutionStep;
+        OUTPUT_PARSING_RESULT: ExecutionStep;
+        SCHEMA_VALIDATION: ExecutionStep;
+        CONTINUITY_RULE_EVALUATION: ExecutionStep;
+        FINAL_RESULT_DECISION: ExecutionStep;
+        RUN_END: ExecutionStep;
+      };
+    };
+  };
+}
+
+const CLARIFY_GATE_INSTRUCTION = `Vous êtes le module de diagnostic "Clarify Gate" pour ViralWorks Studio.
+Votre première tâche est d'exécuter le "Transformation Mode Router" avant toute analyse.
+
+### PHASE 0 : TRANSFORMATION MODE ROUTER
+Vous devez classer l'idée dans exactement UN mode :
+
+MODE A — AUTONOMOUS PROGRESSIVE CONSTRUCTION
+Condition : L'idée NE contient PAS d'action humaine déclencheuse au frame 0 (ni main, ni outil, ni acteur).
+Règles :
+- Terrain VIDE obligatoire à t=0.
+- La structure s'assemble d'elle-même.
+
+MODE B — HUMAN-TRIGGERED TRANSFORMATION
+Condition : L'idée contient un humain, une main, un outil ou une action physique au frame 0.
+Règles :
+- Présence humaine/outil AUTORISÉE à t=0.
+- Persistance de l'acteur jusqu'à la fin.
+- Transformation progressive déclenchée par l'action.
+
+RÈGLE D'OR : Le Router l'emporte. Si l'idée est classée MODE B, ignorez toute erreur relative au "Terrain vide" (catégorie A).
+
+FORMAT JSON REQUIS :
+{
+  "status": "VALID" | "NEEDS_CLARIFICATION",
+  "mode": "MODE_A" | "MODE_B",
+  "diagnostic": {
+    "category": "A" | "B" | "C" | "D" | "E",
+    "reason": "phrase courte",
+    "user_link": "idée utilisateur"
+  },
+  "question": "question courte"
+}`;
+
+const REFINEMENT_SYSTEM_INSTRUCTION = `SYSTEM-LEVEL CONTROL ROLE — VEO3 DETERMINISTIC PROMPT ENGINE (ViralWorks Studio)
+You are a deterministic video prompt generation engine. You are NOT creative. You are technical and constraint-driven.
+
+CORE MISSION:
+Generate a final Veo3 video prompt that is strictly 100% English, deterministic, structurally stable, and free from creative drift.
+
+CORE ROUTING RULE — TRANSFORMATION MODE ROUTER:
+BEFORE any other processing, classify the idea into exactly ONE mode using this IF/ELSE decision:
+
+MODE A — AUTONOMOUS PROGRESSIVE CONSTRUCTION
+IF the idea does NOT contain a human-trigger action at frame 0 (no hand, no tool, no actor in frame).
+THEN:
+- Enforce "empty surface/ground at t=0" (no hand, no tool, no actor).
+- Subject assembles progressively over the full 8 seconds.
+- Final state occurs only at the last frame.
+
+MODE B — HUMAN-TRIGGERED TRANSFORMATION
+ELSE (idea contains a human, hand, tool, or physical action at frame 0).
+THEN:
+- ALLOW human/hand/tool presence at t=0.
+- Enforce "primary actor persistence": the actor remains visible and active throughout.
+- Transformation unfolds progressively after the trigger action.
+
+TEMPORAL NORMALIZATION RULE:
+When an input idea contains instantaneous or explosive concepts, you MUST automatically reinterpret them as progressive, time-distributed transformations.
+
+FINAL PROMPT — MANDATORY STRUCTURE (Step 12):
+The final prompt MUST strictly follow this exact structured template. No alternative formats.
+1. Opening Descriptor Line
+2. Idea
+3. Style
+4. Camera
+5. Lighting
+6. Environment
+7. Tone
+8. Important
+
+STRICT LANGUAGE & SEPARATION:
+- 100% English only.
+- User Input (FR) is an INTERNAL SIGNAL only.
+- Interpreted Intent (EN) is the SINGLE source.
+
+DETERMINISM: No stochastic variation. No markdown. Output ONLY valid JSON.`;
+
+function extractJsonObject(raw: string): any | null {
+  const txt = String(raw || "").trim();
+  if (!txt) return null;
+  try {
+    return JSON.parse(txt);
+  } catch {
+    // continue
+  }
+  const fenced = txt.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fenced?.[1]) {
+    try {
+      return JSON.parse(fenced[1]);
+    } catch {
+      // continue
+    }
+  }
+  const first = txt.indexOf("{");
+  const last = txt.lastIndexOf("}");
+  if (first >= 0 && last > first) {
+    try {
+      return JSON.parse(txt.slice(first, last + 1));
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function buildFallbackFinalPrompt(input: RefinePromptInput): string {
+  const mode = input.clarifyMode || "MODE_B";
+  const clarify = input.clarifyAnswer ? `Clarification: ${input.clarifyAnswer}.` : "";
+  return [
+    "Cinematic transformation shot, deterministic sequence, 8-second continuity.",
+    `Idea: ${input.mainIdea}.`,
+    `Style: realistic details, coherent materials, and stable scene logic.`,
+    `Camera: ${input.cameraLocked ? "locked-off stable framing" : "controlled movement with spatial continuity"}, ${input.projectFormat}.`,
+    `Lighting: physically coherent light progression over the full shot.`,
+    `Environment: ${input.modifiers || "profession-matched context"}, no discontinuity, no sudden object teleportation.`,
+    `Tone: factual, grounded, visually explicit.`,
+    `Important: ${mode} routing applied. ${clarify} Build progression must unfold continuously from frame 0 to final frame with no temporal jump.`,
+  ].join("\n");
+}
+
+function normalizeRefinementResult(rawText: string, parsed: any, input: RefinePromptInput): RefinementResult {
+  const finalPrompt =
+    String(parsed?.phases?.PROMPT_EXECUTION_PHASE?.steps?.PROMPT_FINALIZATION?.output || "").trim() ||
+    String(parsed?.final_prompt || parsed?.prompt || "").trim() ||
+    (rawText.trim().startsWith("{") ? "" : rawText.trim()) ||
+    buildFallbackFinalPrompt(input);
+  const mode = input.clarifyMode || "MODE_B";
+  return {
+    trace_mode: "internal_debug_extended",
+    run_id: String(parsed?.run_id || `vws-${Date.now()}`),
+    phases: {
+      PRE_PROMPT_PHASE: {
+        steps: {
+          RUN_START: { status: "ok", input: "", output: "run started", decisions: [], notes: "" },
+          UI_INPUT_SNAPSHOT: { status: "ok", input: input.mainIdea, output: input.jobType, decisions: [], notes: "" },
+          INPUT_NORMALIZATION: { status: "ok", input: input.mainIdea, output: input.mainIdea, decisions: [], notes: "" },
+          TRANSFORMATION_MODE_ROUTING: { status: "ok", input: input.mainIdea, output: mode, decisions: [], notes: "" },
+          CLARIFY_GATE_EVALUATION: { status: "ok", input: input.clarifyAnswer || "", output: input.proceedAnyway ? "PROCEED_ANYWAY" : "VALIDATED", decisions: [], notes: "" },
+          INTERPRETED_INTENT_VIDEO_NATIVE: { status: "ok", input: input.mainIdea, output: input.mainIdea, decisions: [], notes: "" },
+          VISUAL_RICHNESS_LAYER: { status: "ok", input: input.modifiers || "", output: input.modifiers || "", decisions: [], notes: "" },
+          TEMPLATE_ROUTING_DECISION: { status: "ok", input: input.projectFormat, output: input.projectFormat, decisions: [], notes: "" },
+          CONSTRAINT_PLAN_ASSEMBLY: { status: "ok", input: "", output: "", decisions: [], notes: "" },
+          TEMPORAL_BUDGET_DISTRIBUTION: { status: "ok", input: input.tempoSelection, output: input.tempoSelection, decisions: [], notes: "" },
+        },
+      },
+      PROMPT_EXECUTION_PHASE: {
+        steps: {
+          PROMPT_DRAFT_CONSTRUCTION: { status: "ok", input: input.mainIdea, output: finalPrompt, decisions: [], notes: "" },
+          PROMPT_FINALIZATION: { status: "ok", input: input.mainIdea, output: finalPrompt, decisions: [], notes: "" },
+          PROVIDER_REQUEST_START: { status: "ok", input: "", output: "", decisions: [], notes: "" },
+          PROVIDER_STREAM_ACTIVITY: { status: "skipped", input: "", output: "", decisions: [], notes: "" },
+          PROVIDER_REQUEST_END: { status: "ok", input: "", output: "", decisions: [], notes: "" },
+          RAW_MODEL_OUTPUT_CAPTURE: { status: "ok", input: "", output: rawText || finalPrompt, decisions: [], notes: "" },
+        },
+      },
+      POST_PROMPT_PHASE: {
+        steps: {
+          OUTPUT_PARSING_START: { status: "ok", input: "", output: "", decisions: [], notes: "" },
+          OUTPUT_PARSING_RESULT: { status: "ok", input: "", output: "", decisions: [], notes: "" },
+          SCHEMA_VALIDATION: { status: "ok", input: "", output: "", decisions: [], notes: "" },
+          CONTINUITY_RULE_EVALUATION: { status: "ok", input: "", output: "", decisions: [], notes: "" },
+          FINAL_RESULT_DECISION: { status: "ok", input: "", output: "SUCCESS", decisions: [], notes: "" },
+          RUN_END: { status: "ok", input: "", output: "", decisions: [], notes: "" },
+        },
+      },
+    },
   };
 }
 
@@ -454,21 +709,80 @@ export function buildHookImageApiPrompt(
     return "a clearly visible open space prepared for the next transformation step";
   };
 
+  const hasProgressiveTransformationSignal =
+    /\b(remplit|se remplit|progressivement|timelapse|construction|construit|rénov|renov|assembl|apparaît|apparaissent|pose|se pose|avant|après|vide|nu)\b/.test(
+      lower
+    );
+  const explicitEmptyStart =
+    /\b(vide|à partir de rien|depuis rien|terrain nu|pièce nue|sol nu|empty)\b/.test(
+      lower
+    );
+  const forceInitialStateView =
+    options.initialStateMode === "from_nothing" ||
+    options.revealMode ||
+    hasProgressiveTransformationSignal;
+
   const baseIdea =
-    options.initialStateMode === "from_nothing"
+    options.initialStateMode === "from_nothing" || explicitEmptyStart
       ? `Ultra-realistic initial state scene ${inferEnvironment()}, with ${inferOpenSpace()}, natural composition, coherent details, and no visual clutter.`
       : idea;
 
-  if (!options.revealMode) return baseIdea;
+  if (!forceInitialStateView) return baseIdea;
 
   const beforeOnly = [
-    "Contrainte visuelle (format avant/après, image unique) :",
-    "représenter uniquement l’état INITIAL / « avant » — début de chantier, terrain nu, fondations, structure inachevée, ou équivalent selon l’idée.",
-    "Ne pas montrer le résultat final terminé (pas de bâtiment achevé, pas de « après » parfait).",
+    "Contrainte visuelle (image d'accroche de départ) :",
+    "représenter uniquement l’état INITIAL / « avant » de la scène, avant toute manifestation du résultat ou de l’action principale.",
+    "Si l'idée décrit une transformation progressive, montrer la pièce/espace vide ou inachevé au départ (T=0).",
+    "Ne pas montrer d'éléments déjà terminés liés au résultat final (pas de rendu final déjà posé).",
     "Une seule image, cohérente et réaliste, lumière naturelle, cadrage lisible.",
   ].join(" ");
 
   return `${baseIdea}\n\n${beforeOnly}`;
+}
+
+export async function clarifyIdea(input: ClarifyIdeaInput): Promise<ClarifyIdeaResult> {
+  const payload = `Métier: ${input.jobType}\nIdée: ${input.mainIdea}\nParamètres: ${input.modifiers || ""}\nTempo: ${input.tempoSelection}`;
+  const raw = await generateResponse(payload, CLARIFY_GATE_INSTRUCTION, {
+    model: "gpt-4o-mini",
+    temperature: 0,
+    max_tokens: 450,
+  });
+  const parsed = (extractJsonObject(String(raw || "")) || {}) as Partial<ClarifyIdeaResult>;
+  return {
+    status: parsed.status === "VALID" ? "VALID" : "NEEDS_CLARIFICATION",
+    mode: parsed.mode === "MODE_B" ? "MODE_B" : "MODE_A",
+    diagnostic: {
+      category: parsed.diagnostic?.category && ["A", "B", "C", "D", "E"].includes(parsed.diagnostic.category)
+        ? parsed.diagnostic.category
+        : "D",
+      reason: parsed.diagnostic?.reason ? String(parsed.diagnostic.reason) : "Diagnostic non précisé",
+      user_link: parsed.diagnostic?.user_link ? String(parsed.diagnostic.user_link) : input.mainIdea,
+    },
+    question: parsed.question ? String(parsed.question) : "",
+  };
+}
+
+export async function refinePrompt(input: RefinePromptInput): Promise<RefinementResult> {
+  const payload = [
+    `Job: ${input.jobType}`,
+    `User-Idea (FR-Signal): ${input.mainIdea}`,
+    `Context: ${input.modifiers || "none"}`,
+    `Reveal: ${input.revealMode}`,
+    `Tempo-Literal: ${input.tempoSelection}`,
+    `Locked: ${input.cameraLocked}`,
+    `ProjectFormat: ${input.projectFormat}`,
+    `ClarifyMode: ${input.clarifyMode || "none"}`,
+    `ClarifyAnswer: ${input.clarifyAnswer || "none"}`,
+    `ProceedAnyway: ${Boolean(input.proceedAnyway)}`,
+  ].join("\n");
+
+  const raw = await generateResponse(payload, REFINEMENT_SYSTEM_INSTRUCTION, {
+    model: "gpt-4o-mini",
+    temperature: 0,
+    max_tokens: 2400,
+  });
+  const parsed = extractJsonObject(String(raw || ""));
+  return normalizeRefinementResult(String(raw || ""), parsed, input);
 }
 
 export function runVwsPromptEngine(input: UserIdeaInput): VwsEngineOutput {
