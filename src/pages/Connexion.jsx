@@ -226,17 +226,12 @@ export default function Login() {
           signUpError = signUpResult.error;
           
           if (signUpError && signUpError.status === 400 && signUpError.message?.includes("redirect")) {
-            console.warn("⚠️ [SignUp] Erreur avec emailRedirectTo, tentative sans redirection...");
-            signUpResult = await supabase.auth.signUp({
-              email: email.trim().toLowerCase(),
-              password: password,
-            });
-            console.log("🔵 [SignUp] Résultat signUp (sans redirect):", {
-              user: signUpResult.data?.user ? "✅ Utilisateur créé" : "❌ Pas d'utilisateur",
-              session: signUpResult.data?.session ? "✅ Session créée" : "❌ Pas de session",
-              error: signUpResult.error ? "❌ Erreur" : "✅ Pas d'erreur"
-            });
-            signUpError = signUpResult.error;
+            console.warn("⚠️ [SignUp] redirectTo refusé par Supabase (URL non autorisée).");
+            setErrorMsg(
+              "Configuration d'authentification incomplète: l'URL de redirection email n'est pas autorisée dans Supabase. Ajoute https://viralworks-studio.netlify.app/auth/callback dans Authentication > URL Configuration."
+            );
+            setLoading(false);
+            return;
           }
         } catch (err) {
           console.error("❌ [SignUp] Erreur lors de l'inscription:", err);

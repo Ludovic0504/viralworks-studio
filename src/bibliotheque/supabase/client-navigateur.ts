@@ -55,16 +55,7 @@ export function getBrowserSupabase(opts: { remember?: boolean } = {}): SupabaseC
 }
 
 export const getRedirectTo = () => {
-  const PROD_ORIGIN = "https://viralworks-studio.netlify.app";
-  const envSiteUrl = String(import.meta.env.VITE_SITE_URL || "").trim();
-  const windowOrigin =
-    typeof window !== "undefined" ? String(window.location?.origin || "").trim() : "";
-
-  // Always prefer a non-local configured site URL; otherwise use the production Netlify URL.
-  const baseOrigin =
-    (envSiteUrl && !/localhost|127\.0\.0\.1/i.test(envSiteUrl) && envSiteUrl) ||
-    (windowOrigin && !/localhost|127\.0\.0\.1/i.test(windowOrigin) && windowOrigin) ||
-    PROD_ORIGIN;
-
-  return `${baseOrigin.replace(/\/+$/, "")}/auth/callback`;
+  // Canonical production callback used for all email auth links.
+  // This avoids legacy Netlify preview/custom aliases leaking through env configuration.
+  return "https://viralworks-studio.netlify.app/auth/callback";
 }
