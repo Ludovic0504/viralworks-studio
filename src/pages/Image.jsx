@@ -1,8 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { saveHistory as saveHistorySupabase } from "@/bibliotheque/supabase/historique";
-import { hasEnoughCredits, debitCredits, getUserCredits } from "@/bibliotheque/supabase/credits";
+import { hasEnoughCredits, getUserCredits } from "@/bibliotheque/supabase/credits";
 import { uploadImagesFromUrls } from "@/bibliotheque/supabase/storage";
+import {
+  canUseImageGeneration,
+  canUseImageModification,
+  consumeImageGeneration,
+  consumeImageModification,
+  getWorkflowUsage,
+  resetWorkflowUsage,
+} from "@/bibliotheque/workflowQuota";
 import PageTitle from "../composants/interface/TitrePage";
 import {
   modifyImageWithNanoBanana,
@@ -191,7 +199,6 @@ export default function ImagePage({
     }
   };
 
-  const totalCost = useMemo(() => IMAGE_GENERATION_COST * Number(quantity || 0), [quantity]);
   const canGenerate = useMemo(() => {
     if (!session) return false;
     return !!String(campaignIdeaPrompt || "").trim() && !busy;
@@ -212,9 +219,19 @@ export default function ImagePage({
     if (!canGenerate) return;
 
     if (session) {
-      const hasCredits = await hasEnoughCredits(totalCost);
+      const hasCredits = await hasEnoughCredits(1);
       if (!hasCredits) {
         alert("Ton quota actuel ne permet pas de lancer cette génération d’images. Mets à jour ton pack ou ton abonnement dans la Boutique.");
+        return;
+      }
+    }
+
+    if (!canUseImageGeneration()) {
+      const usage = getWorkflowUsage();
+      if (usage.videoAttemptsUsed >= 1) {
+        resetWorkflowUsage();
+      } else {
+        alert("Quota Visuel d'accroche atteint pour ce workflow (3 générations d'images).");
         return;
       }
     }
@@ -228,30 +245,8 @@ export default function ImagePage({
     patchImageStep({ lastGeneratedImages: null });
 
     try {
-      if (session) {
-        setProgress(10);
-        setProgressMessage("Vérification des crédits...");
-        console.log("💳 [Image] Début du débit des crédits...");
-        const debitResult = await debitCredits(
-          totalCost,
-          "image_generation",
-          { model: model, quantity: quantity, ratio: ratio }
-        );
-        
-        console.log("💳 [Image] Résultat du débit:", debitResult);
-        
-        if (!debitResult.success) {
-          const errorMsg = debitResult.error || "Erreur lors du débit des crédits";
-          console.error("❌ [Image] Échec du débit:", errorMsg);
-          alert("Une erreur est survenue lors de l’activation de cette génération. Réessaie dans quelques instants ou contacte le support si le problème persiste.");
-          throw new Error(errorMsg);
-        }
-        
-        if (debitResult.remainingCredits !== undefined) {
-          void debitResult.remainingCredits;
-          console.log("✅ [Image] Crédits mis à jour:", debitResult.remainingCredits);
-        }
-      }
+      setProgress(10);
+      setProgressMessage("Vérification du quota...");
 
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -422,6 +417,7 @@ export default function ImagePage({
         lastGeneratedPrompt: String(campaignIdeaPrompt || "").trim() || prompt,
         pairedCampaignIdea: String(campaignIdea || "").trim() || null,
       });
+      consumeImageGeneration();
       
     } catch (err) {
       console.error("Erreur génération image:", err);
@@ -611,6 +607,16 @@ export default function ImagePage({
     const instruction = String(fromDom ?? modifyInstruction ?? "").trim();
     if (!lastGeneratedImages?.length || !instruction || modifyLoading) return;
 
+    if (!canUseImageModification()) {
+      const usage = getWorkflowUsage();
+      if (usage.videoAttemptsUsed >= 1) {
+        resetWorkflowUsage();
+      } else {
+        alert("Quota Visuel d'accroche atteint pour ce workflow (5 modifications d'image).");
+        return;
+      }
+    }
+
     setModifyError("");
 
     let accessToken = session?.access_token ?? null;
@@ -663,6 +669,7 @@ export default function ImagePage({
             modifyInstruction: "",
           };
         });
+        consumeImageModification();
       } else {
         const msg =
           "L’édition n’a pas renvoyé d’image. Les serveurs peuvent être occupés — réessaie dans quelques instants ou reformule ta consigne.";

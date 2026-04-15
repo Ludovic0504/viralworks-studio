@@ -1,5 +1,5 @@
 import { useMemo, useState, useRef, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import {
   saveHistory as saveHistorySupabase,
@@ -7,6 +7,12 @@ import {
   deleteHistory,
 } from "@/bibliotheque/supabase/historique";
 import { hasEnoughCredits, debitCredits, getUserCredits } from "@/bibliotheque/supabase/credits";
+import {
+  canUseVideoAttempt,
+  consumeVideoAttempt,
+  resetWorkflowUsage,
+  shouldDebitVideoCredit,
+} from "@/bibliotheque/workflowQuota";
 import {
   createVertexVeoVideoTask,
   getSessionAccessTokenForVertexVeo,
@@ -45,6 +51,24 @@ const DURATION_OPTIONS = {
   veo3: ["4s", "6s", "8s"],
   hailuo: ["6s", "10s"],
 };
+
+const VIDEO_QUOTA_EXHAUSTED_MESSAGE =
+  "limite vidéo atteint pour ce mois, veuillez attendre la fin du mois pour le renouvellement des vidéos ou acheter des packs vidéos pour continuer a créer";
+
+function QuotaExhaustedNotice({ onGoToPacks }) {
+  return (
+    <div className="studio-panel p-4 border border-amber-500/35 bg-amber-500/10">
+      <p className="text-sm text-amber-100">{VIDEO_QUOTA_EXHAUSTED_MESSAGE}</p>
+      <button
+        type="button"
+        onClick={onGoToPacks}
+        className="mt-3 inline-flex items-center justify-center rounded-lg bg-amber-400/20 border border-amber-300/40 px-4 py-2 text-xs font-semibold text-amber-100 hover:bg-amber-400/30 transition"
+      >
+        Aller vers Packs vidéos
+      </button>
+    </div>
+  );
+}
 
 /** Libellés d’onglets (1 ou 3 scènes) — plus lisible que « Scène n ». */
 function veo3SceneTabLabels(sceneCount) {
@@ -684,6 +708,7 @@ function VEO3VideoForm({
   dialogueEnabled = true,
 }) {
   const { session } = useAuth();
+  const navigate = useNavigate();
   const sceneCount = useMemo(
     () => sceneCountFromSequence(resolveSequenceType(studioSequenceType)),
     [studioSequenceType]
@@ -710,6 +735,7 @@ function VEO3VideoForm({
   const [progressMessage, setProgressMessage] = useState("");
   /** Message d’erreur métier (jamais confondu avec l’URL vidéo affichée dans <video>). */
   const [generationError, setGenerationError] = useState("");
+  const [showQuotaNotice, setShowQuotaNotice] = useState(false);
   const [validatedHookImage, setValidatedHookImage] = useState(null);
   const studioHookImage = useMemo(() => getHookImageFromStudioStep(studioImageStep), [studioImageStep]);
   const studioScriptPromptRef = useRef(studioScriptPrompt);
@@ -846,15 +872,21 @@ function VEO3VideoForm({
       return;
     }
 
-    if (session) {
+    if (!canUseVideoAttempt()) {
+      resetWorkflowUsage();
+    }
+    const shouldDebitCredit = shouldDebitVideoCredit();
+
+    if (session && shouldDebitCredit) {
       const hasCredits = await hasEnoughCredits(VIDEO_GENERATION_COST);
       if (!hasCredits) {
-        alert("Ton quota actuel ne permet pas de lancer cette génération de vidéo. Mets à jour ton pack ou ton abonnement dans la Boutique.");
+        setShowQuotaNotice(true);
         return;
       }
     }
 
     setLoading(true);
+    setShowQuotaNotice(false);
     setOutput("");
     setGenerationError("");
     setCopied(false);
@@ -867,7 +899,7 @@ function VEO3VideoForm({
     abortRef.current = ctrl;
 
     try {
-      if (session) {
+      if (session && shouldDebitCredit) {
         setProgress(10);
         setProgressMessage("Vérification des crédits...");
         console.log("💳 [Video VEO3] Début du débit des crédits...");
@@ -890,7 +922,11 @@ function VEO3VideoForm({
           if (onCreditsUpdate) onCreditsUpdate();
           console.log("✅ [Video VEO3] Crédits mis à jour:", debitResult.remainingCredits);
         }
+      } else {
+        setProgress(10);
+        setProgressMessage("Utilisation de la variante incluse...");
       }
+      consumeVideoAttempt({ debitedCredit: shouldDebitCredit });
 
       setProgress(25);
       setProgressMessage("Création de la tâche vidéo...");
@@ -1003,6 +1039,10 @@ function VEO3VideoForm({
         setProgressMessage("");
       }, 500);
     }
+  };
+
+  const goToVideoPacks = () => {
+    navigate("/boutique?section=packs-videos");
   };
 
   const recapInputForHistory = () =>
@@ -1161,6 +1201,7 @@ function VEO3VideoForm({
 
   return (
     <>
+      {showQuotaNotice ? <QuotaExhaustedNotice onGoToPacks={goToVideoPacks} /> : null}
       <div className="rounded-xl border border-emerald-500/35 bg-emerald-950/25 p-4 sm:p-5 space-y-4 ring-1 ring-white/[0.06]">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
           <p className="text-sm text-gray-200 leading-relaxed">
@@ -1641,6 +1682,7 @@ function VEO3VideoForm({
 
 function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = true }) {
   const { session } = useAuth();
+  const navigate = useNavigate();
   const [scripts, setScripts] = useState(initialVeo3Scripts);
   const [activeTab, setActiveTab] = useState(0);
   const [hookVisual, setHookVisual] = useState(initialVeo3HookVisual);
@@ -1653,18 +1695,17 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
   const [audioStatus, setAudioStatus] = useState("");
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [credits, setCredits] = useState(null);
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState("");
+  const [showQuotaNotice, setShowQuotaNotice] = useState(false);
   const studioHookImage = useMemo(() => getHookImageFromStudioStep(studioImageStep), [studioImageStep]);
   const prevHookSyncKey = useRef(null);
   const scriptForGeneration = scripts[activeTab] ?? "";
   const disabled = useMemo(() => {
     if (!session) return true;
     if (scriptForGeneration.trim().length < 8) return true;
-    if (credits === null || credits < VIDEO_GENERATION_COST) return true;
     return false;
-  }, [scriptForGeneration, credits, session]);
+  }, [scriptForGeneration, session]);
   const abortRef = useRef(null);
   const outputRef = useRef(null);
 
@@ -1676,8 +1717,7 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
 
   const loadCredits = async () => {
     try {
-      const userCredits = await getUserCredits();
-      setCredits(userCredits);
+      await getUserCredits();
     } catch (err) {
       console.error("Erreur chargement crédits:", err);
     }
@@ -1749,15 +1789,21 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
       return;
     }
 
-    if (session) {
+    if (!canUseVideoAttempt()) {
+      resetWorkflowUsage();
+    }
+    const shouldDebitCredit = shouldDebitVideoCredit();
+
+    if (session && shouldDebitCredit) {
       const hasCredits = await hasEnoughCredits(VIDEO_GENERATION_COST);
       if (!hasCredits) {
-        alert(`Crédits insuffisants. Il vous faut ${VIDEO_GENERATION_COST} crédit(s) pour générer une vidéo.`);
+        setShowQuotaNotice(true);
         return;
       }
     }
 
     setLoading(true);
+    setShowQuotaNotice(false);
     setOutput("");
     setCopied(false);
     setProgress(0);
@@ -1769,7 +1815,7 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
     abortRef.current = ctrl;
 
     try {
-      if (session) {
+      if (session && shouldDebitCredit) {
         setProgress(10);
         setProgressMessage("Vérification des crédits...");
         console.log("💳 [Video Hailuo] Début du débit des crédits...");
@@ -1789,11 +1835,14 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
         }
         
         if (debitResult.remainingCredits !== undefined) {
-          setCredits(debitResult.remainingCredits);
           if (onCreditsUpdate) onCreditsUpdate();
           console.log("✅ [Video Hailuo] Crédits mis à jour:", debitResult.remainingCredits);
         }
+      } else {
+        setProgress(10);
+        setProgressMessage("Utilisation de la variante incluse...");
       }
+      consumeVideoAttempt({ debitedCredit: shouldDebitCredit });
 
       setProgress(25);
       setProgressMessage("Création de la tâche vidéo...");
@@ -1911,6 +1960,10 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
         setProgressMessage("");
       }, 500);
     }
+  };
+
+  const goToVideoPacks = () => {
+    navigate("/boutique?section=packs-videos");
   };
 
   const reset = () => {
@@ -2035,6 +2088,7 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
 
   return (
     <>
+      {showQuotaNotice ? <QuotaExhaustedNotice onGoToPacks={goToVideoPacks} /> : null}
       <div className="studio-panel p-5 sm:p-6 space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-center sm:flex-wrap gap-2 sm:gap-3">
           <h3 className="text-sm font-medium text-gray-300 shrink-0">Sources de la vidéo</h3>
@@ -2201,13 +2255,13 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
         <button
           onClick={generate}
-          disabled={disabled || loading || (session && (credits === null || credits < VIDEO_GENERATION_COST))}
+          disabled={disabled || loading}
           className={`flex-1 px-6 py-3 rounded-lg font-medium transition-all flex items-center justify-center gap-2 ${
-            disabled || loading || (session && (credits === null || credits < VIDEO_GENERATION_COST))
+            disabled || loading
               ? "bg-white/5 text-gray-500 cursor-not-allowed border border-white/10"
               : "bg-gradient-to-r from-emerald-500 to-emerald-400 text-white hover:from-emerald-400 hover:to-emerald-300 shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_25px_rgba(16,185,129,0.4)] active:scale-95"
           }`}
-          title={!session ? "Connectez-vous pour générer" : credits !== null && credits < VIDEO_GENERATION_COST ? "Crédits insuffisants" : scriptForGeneration.trim().length < 8 ? "Saisis le script de la scène active (min 8 caractères)" : ""}
+          title={!session ? "Connectez-vous pour générer" : scriptForGeneration.trim().length < 8 ? "Saisis le script de la scène active (min 8 caractères)" : ""}
         >
           {loading ? (
             <>

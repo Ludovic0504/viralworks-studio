@@ -14,7 +14,13 @@ import {
   buildSoraStyleUserPrompt,
 } from "@/bibliotheque/videoPromptSchema";
 import { refinePrompt } from "@/bibliotheque/vwsPromptEngine";
-import { hasEnoughCredits, debitCredits, getUserCredits } from "@/bibliotheque/supabase/credits";
+import { hasEnoughCredits, getUserCredits } from "@/bibliotheque/supabase/credits";
+import {
+  canUseScript,
+  consumeScriptAttempt,
+  getWorkflowUsage,
+  resetWorkflowUsage,
+} from "@/bibliotheque/workflowQuota";
 import PageTitle from "../composants/interface/TitrePage";
 import {
   FileText,
@@ -308,33 +314,20 @@ function VEO3Generator({ initialIdea = "" }) {
       }
     }
 
+    if (!canUseScript()) {
+      const usage = getWorkflowUsage();
+      if (usage.videoAttemptsUsed >= 1) {
+        resetWorkflowUsage();
+      } else {
+        alert("Quota Script gagnant atteint pour ce workflow (1 essai). Passe à la vidéo finale ou démarre un nouveau workflow vidéo.");
+        return;
+      }
+    }
+
     setLoading(true);
     setOutput("");
 
     try {
-      if (session) {
-        console.log("💳 [Prompt VEO3] Début du débit des crédits...");
-        const debitResult = await debitCredits(
-          PROMPT_GENERATION_COST,
-          "prompt_generation",
-          { model: "veo3" }
-        );
-        
-        console.log("💳 [Prompt VEO3] Résultat du débit:", debitResult);
-        
-        if (!debitResult.success) {
-          const errorMsg = debitResult.error || "Erreur lors du débit des crédits";
-          console.error("❌ [Prompt VEO3] Échec du débit:", errorMsg);
-          alert("Une erreur est survenue lors de l’activation de cette génération. Réessaie dans quelques instants ou contacte le support si le problème persiste.");
-          throw new Error(errorMsg);
-        }
-        
-        if (debitResult.remainingCredits !== undefined) {
-          setCredits(debitResult.remainingCredits);
-          console.log("✅ [Prompt VEO3] Crédits mis à jour:", debitResult.remainingCredits);
-        }
-      }
-      
       const systemPrompt = buildSoraStyleSystemPrompt("veo3");
       const userPrompt = buildSoraStyleUserPrompt(idea);
 
@@ -375,6 +368,7 @@ function VEO3Generator({ initialIdea = "" }) {
         });
       }
       setItems(await loadPromptHistoryForSession(session, 100));
+      consumeScriptAttempt();
     } catch (err) {
       if (session) {
         await loadCredits();
@@ -1073,28 +1067,20 @@ function ScriptPromptGenerator({
       }
     }
 
+    if (!canUseScript()) {
+      const usage = getWorkflowUsage();
+      if (usage.videoAttemptsUsed >= 1) {
+        resetWorkflowUsage();
+      } else {
+        alert("Quota Script gagnant atteint pour ce workflow (1 essai). Passe à la vidéo finale ou démarre un nouveau workflow vidéo.");
+        return;
+      }
+    }
+
     setLoading(true);
     setOutput("");
 
     try {
-      if (session) {
-        console.log("💳 [Prompt Script] Début du débit des crédits...");
-        const debitResult = await debitCredits(
-          PROMPT_GENERATION_COST,
-          "prompt_generation",
-          { model: "sora2" }
-        );
-        
-        console.log("💳 [Prompt Script] Résultat du débit:", debitResult);
-        
-        if (!debitResult.success) {
-          const errorMsg = debitResult.error || "Erreur lors du débit des crédits";
-          console.error("❌ [Prompt Script] Échec du débit:", errorMsg);
-          alert(`Erreur: ${errorMsg}`);
-          throw new Error(errorMsg);
-        }
-      }
-      
       const refineResult = await refinePrompt({
         jobType: campaignData?.profession ?? "",
         mainIdea: idea,
@@ -1160,6 +1146,7 @@ function ScriptPromptGenerator({
         });
       }
       setItems(await loadPromptHistoryForSession(session, 100));
+      consumeScriptAttempt();
     } catch (err) {
       console.error("❌ [Prompt Script] Erreur génération prompt:", err);
 
