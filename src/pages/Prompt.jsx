@@ -17,10 +17,8 @@ import { refinePrompt } from "@/bibliotheque/vwsPromptEngine";
 import { hasEnoughCredits, getUserCredits, USER_CREDITS_UPDATED_EVENT } from "@/bibliotheque/supabase/credits";
 import { getUserSubscription } from "@/bibliotheque/supabase/stripe";
 import {
-  canUseScript,
+  canProceedWithScriptGeneration,
   consumeScriptAttempt,
-  getWorkflowUsage,
-  resetWorkflowUsage,
 } from "@/bibliotheque/workflowQuota";
 import PageTitle from "../composants/interface/TitrePage";
 import {
@@ -379,22 +377,19 @@ function VEO3Generator({ initialIdea = "" }) {
       return;
     }
 
+    let serverCreditsOk = !session;
     if (session) {
       const hasCredits = await hasEnoughCredits(PROMPT_GENERATION_COST);
       if (!hasCredits) {
         alert("Ton quota actuel ne permet pas de lancer une nouvelle génération. Mets à jour ton pack ou ton abonnement dans la Boutique.");
         return;
       }
+      serverCreditsOk = true;
     }
 
-    if (!canUseScript()) {
-      const usage = getWorkflowUsage();
-      if (usage.videoAttemptsUsed >= 1) {
-        resetWorkflowUsage();
-      } else {
-        alert("Quota Script gagnant atteint pour ce workflow (1 essai). Passe à la vidéo finale ou démarre un nouveau workflow vidéo.");
-        return;
-      }
+    if (!canProceedWithScriptGeneration(Boolean(session), serverCreditsOk)) {
+      alert("Quota Script gagnant atteint pour ce workflow (1 essai). Passe à la vidéo finale ou démarre un nouveau workflow vidéo.");
+      return;
     }
 
     setLoading(true);
@@ -1162,22 +1157,19 @@ function ScriptPromptGenerator({
       return;
     }
 
+    let serverCreditsOk = !session;
     if (session) {
       const hasCredits = await hasEnoughCredits(PROMPT_GENERATION_COST);
       if (!hasCredits) {
         openQuotaModal();
         return;
       }
+      serverCreditsOk = true;
     }
 
-    if (!canUseScript()) {
-      const usage = getWorkflowUsage();
-      if (usage.videoAttemptsUsed >= 1) {
-        resetWorkflowUsage();
-      } else {
-        openQuotaModal("Quota Script gagnant atteint pour ce workflow (1 essai).");
-        return;
-      }
+    if (!canProceedWithScriptGeneration(Boolean(session), serverCreditsOk)) {
+      openQuotaModal("Quota Script gagnant atteint pour ce workflow (1 essai).");
+      return;
     }
 
     setLoading(true);

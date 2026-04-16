@@ -4,6 +4,7 @@ export type CommunityUser = {
   userId: string;
   username: string;
   role?: string | null;
+  isSupport?: boolean;
 };
 
 export type CommunityAttachment = {
@@ -23,6 +24,7 @@ export type CommunityMessage = {
   content: string;
   createdAt: string;
   attachment: CommunityAttachment | null;
+  isSupport?: boolean;
 };
 
 export type CommunityConversation = {
@@ -32,9 +34,11 @@ export type CommunityConversation = {
   updatedAt: string;
   lastMessage: string;
   lastMessageAt: string;
+  isSupport?: boolean;
 };
 
 const COMMUNITY_MEDIA_BUCKET = "community-media";
+const SUPPORT_EMAIL = "jean.limonta06@gmail.com";
 const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const ALLOWED_VIDEO_TYPES = new Set(["video/mp4", "video/webm", "video/quicktime"]);
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
@@ -81,10 +85,12 @@ async function loadProfilesMap(userIds: string[]): Promise<Map<string, Community
     .select("user_id, full_name, first_name, last_name, email, role")
     .in("user_id", userIds);
   for (const row of data || []) {
+    const email = String(row.email || "").toLowerCase();
     map.set(String(row.user_id), {
       userId: String(row.user_id),
       username: toUsername(row),
       role: row.role ?? null,
+      isSupport: email === SUPPORT_EMAIL,
     });
   }
   return map;
@@ -174,11 +180,15 @@ export async function listCommunityUsers(search = ""): Promise<CommunityUser[]> 
   if (error) throw new Error(error.message);
   const q = search.trim().toLowerCase();
   return (data || [])
-    .map((row) => ({
-      userId: String(row.user_id),
-      username: toUsername(row),
-      role: row.role ?? null,
-    }))
+    .map((row) => {
+      const email = String(row.email || "").toLowerCase();
+      return {
+        userId: String(row.user_id),
+        username: toUsername(row),
+        role: row.role ?? null,
+        isSupport: email === SUPPORT_EMAIL,
+      };
+    })
     .filter((u) => (q ? u.username.toLowerCase().includes(q) : true))
     .sort((a, b) => a.username.localeCompare(b.username, "fr"));
 }
@@ -186,6 +196,26 @@ export async function listCommunityUsers(search = ""): Promise<CommunityUser[]> 
 export async function getCommunityAdminUser(): Promise<CommunityUser | null> {
   const users = await listCommunityUsers();
   return users.find((u) => String(u.role || "").toLowerCase() === "admin") || null;
+}
+
+export async function getCommunitySupportUser(): Promise<CommunityUser | null> {
+  const { supabase, user } = await ensureAuthUser();
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("user_id, full_name, first_name, last_name, email, role")
+    .ilike("email", SUPPORT_EMAIL)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  const userId = String(data.user_id || "");
+  if (!userId || userId === user.id) return null;
+  return {
+    userId,
+    username: toUsername(data),
+    role: data.role ?? null,
+    isSupport: true,
+  };
 }
 
 export async function listPublicMessages(limit = 300): Promise<CommunityMessage[]> {
@@ -196,16 +226,29 @@ export async function listPublicMessages(limit = 300): Promise<CommunityMessage[
     .order("created_at", { ascending: true })
     .limit(limit);
   if (error) throw new Error(error.message);
-  const userIds = [...new Set((data || []).map((m) => String(m.user_id)))];
+  const userIds = [
+    ...new Set(
+      (data || [])
+        .map((m) => (m.user_id != null ? String(m.user_id) : ""))
+        .filter(Boolean)
+    ),
+  ];
   const users = await loadProfilesMap(userIds);
-  return (data || []).map((row) => ({
-    id: String(row.id),
-    userId: String(row.user_id),
-    username: users.get(String(row.user_id))?.username || "Utilisateur",
-    content: String(row.content || ""),
-    createdAt: String(row.created_at || ""),
-    attachment: toAttachment(row),
-  }));
+  return (data || []).map((row) => {
+    const uid = row.user_id != null ? String(row.user_id) : "";
+    const snapshot = String(row.author_display_name || "").trim();
+    const fromProfile = uid ? users.get(uid)?.username : undefined;
+    const username = fromProfile || snapshot || (uid ? "Utilisateur" : "Ancien membre");
+    return {
+      id: String(row.id),
+      userId: uid,
+      username,
+      content: String(row.content || ""),
+      createdAt: String(row.created_at || ""),
+      attachment: toAttachment(row),
+      isSupport: uid ? users.get(uid)?.isSupport === true : false,
+    };
+  });
 }
 
 export async function sendPublicMessage(input: {
@@ -216,9 +259,16 @@ export async function sendPublicMessage(input: {
   const text = String(input.content || "").trim();
   const file = input.file;
   if (!text && !file) throw new Error("Message vide.");
+  const { data: prof } = await supabase
+    .from("profiles")
+    .select("full_name, first_name, last_name, email")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  const authorDisplayName = prof ? toUsername(prof) : user.email ? String(user.email).split("@")[0] : "Membre";
   const attachment = file ? await uploadAttachment(file, user.id) : null;
   const { error } = await supabase.from("community_public_messages").insert({
     user_id: user.id,
+    author_display_name: authorDisplayName,
     content: text,
     attachment_url: attachment?.url || null,
     attachment_type: attachment?.mimeType || null,
@@ -291,6 +341,7 @@ async function findOrCreateDirectConversation(otherUserId: string): Promise<stri
 
 export async function listPrivateConversations(): Promise<CommunityConversation[]> {
   const { supabase, user } = await ensureAuthUser();
+  const isSupportViewer = String(user.email || "").toLowerCase() === SUPPORT_EMAIL;
   const { data: hiddenRows } = await supabase
     .from("community_private_hidden")
     .select("conversation_id")
@@ -298,7 +349,7 @@ export async function listPrivateConversations(): Promise<CommunityConversation[
   const hidden = new Set((hiddenRows || []).map((r) => String(r.conversation_id)));
   const { data: convRows, error: convErr } = await supabase
     .from("community_private_conversations")
-    .select("id, updated_at, user_a, user_b")
+    .select("id, kind, updated_at, user_a, user_b")
     .or(`user_a.eq.${user.id},user_b.eq.${user.id}`)
     .order("updated_at", { ascending: false });
   if (convErr) throw new Error(convErr.message);
@@ -315,10 +366,11 @@ export async function listPrivateConversations(): Promise<CommunityConversation[
   const users = await loadProfilesMap(userIds);
   const { data: msgRows } = await supabase
     .from("community_private_messages")
-    .select("conversation_id, content, created_at")
+    .select("conversation_id, user_id, content, created_at")
     .in("conversation_id", ids)
     .order("created_at", { ascending: false });
   const lastByConv = new Map<string, { content: string; createdAt: string }>();
+  const hasIncomingByConv = new Map<string, boolean>();
   for (const row of msgRows || []) {
     const id = String(row.conversation_id);
     if (!lastByConv.has(id)) {
@@ -327,8 +379,14 @@ export async function listPrivateConversations(): Promise<CommunityConversation[
         createdAt: String(row.created_at || ""),
       });
     }
+    if (!hasIncomingByConv.has(id)) {
+      hasIncomingByConv.set(id, false);
+    }
+    if (String(row.user_id || "") !== user.id) {
+      hasIncomingByConv.set(id, true);
+    }
   }
-  return visibleConvs.map((conv) => {
+  const rows = visibleConvs.map((conv) => {
     const convId = String(conv.id);
     const userA = String(conv.user_a || "");
     const userB = String(conv.user_b || "");
@@ -342,7 +400,29 @@ export async function listPrivateConversations(): Promise<CommunityConversation[
       updatedAt: String(conv.updated_at || ""),
       lastMessage: last?.content || "",
       lastMessageAt: last?.createdAt || "",
+      isSupport: other?.isSupport === true,
     };
+  });
+  const rowsVisibleForViewer = isSupportViewer
+    ? rows.filter((row) => hasIncomingByConv.get(String(row.id)) === true)
+    : rows;
+  // Garder une seule conversation visible par interlocuteur (évite les doublons "Support").
+  const dedupByOther = new Map<string, CommunityConversation>();
+  for (const row of rowsVisibleForViewer) {
+    const key = String(row.otherUserId || "");
+    const existing = dedupByOther.get(key);
+    if (!existing) {
+      dedupByOther.set(key, row);
+      continue;
+    }
+    if (String(row.updatedAt || "").localeCompare(String(existing.updatedAt || "")) > 0) {
+      dedupByOther.set(key, row);
+    }
+  }
+  return [...dedupByOther.values()].sort((a, b) => {
+    if (a.isSupport && !b.isSupport) return -1;
+    if (!a.isSupport && b.isSupport) return 1;
+    return String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
   });
 }
 
@@ -368,6 +448,7 @@ export async function listPrivateMessages(conversationId: string): Promise<Commu
     content: String(row.content || ""),
     createdAt: String(row.created_at || ""),
     attachment: toAttachment(row),
+    isSupport: users.get(String(row.user_id))?.isSupport === true,
   }));
 }
 
@@ -413,6 +494,26 @@ export async function deletePrivateMessage(messageId: string): Promise<void> {
 
 export async function hideConversationForMe(conversationId: string): Promise<void> {
   const { supabase, user } = await ensureAuthUser();
+  const { data: conv, error: convErr } = await supabase
+    .from("community_private_conversations")
+    .select("id, user_a, user_b")
+    .eq("id", conversationId)
+    .limit(1)
+    .maybeSingle();
+  if (convErr) throw new Error(convErr.message);
+  if (conv) {
+    const otherId = String(conv.user_a) === user.id ? String(conv.user_b) : String(conv.user_a);
+    const { data: otherProfile, error: profileErr } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("user_id", otherId)
+      .limit(1)
+      .maybeSingle();
+    if (profileErr) throw new Error(profileErr.message);
+    if (String(otherProfile?.email || "").toLowerCase() === SUPPORT_EMAIL) {
+      throw new Error("La conversation Support officiel ne peut pas être supprimée.");
+    }
+  }
   const { error: delErr } = await supabase
     .from("community_private_hidden")
     .delete()

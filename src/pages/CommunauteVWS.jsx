@@ -7,6 +7,7 @@ import {
   deletePrivateMessage,
   deletePublicMessage,
   getCommunityAdminUser,
+  getCommunitySupportUser,
   hideConversationForMe,
   listPrivateConversations,
   listPrivateMessages,
@@ -76,7 +77,14 @@ function MessageItem({ mine, msg, onDelete, menuOpen, onMenuToggle }) {
   return (
     <div className={`rounded-xl border px-3 py-2 ${mine ? "border-cyan-500/40 bg-cyan-500/10" : "border-white/10 bg-white/[0.03]"}`}>
       <div className="flex items-center justify-between gap-2 text-[11px] text-gray-400 mb-1">
-        <span className="font-medium text-gray-300">{msg.username}</span>
+        <span className="font-medium text-gray-300 inline-flex items-center gap-1.5">
+          <span>{msg.username}</span>
+          {msg.isSupport ? (
+            <span className="rounded-full border border-cyan-400/40 bg-cyan-500/15 px-2 py-0.5 text-[10px] text-cyan-100">
+              Support officiel
+            </span>
+          ) : null}
+        </span>
         <div className="flex items-center gap-1.5 shrink-0">
           <span>{formatDate(msg.createdAt)}</span>
           {mine ? (
@@ -157,10 +165,18 @@ function PrivateConversationRow({ conversation: c, isActive, onSelect, menuOpen,
       }`}
     >
       <button type="button" onClick={onSelect} className="min-w-0 flex-1 text-left px-3 py-2">
-        <p className="text-sm text-gray-200 font-medium">{c.otherUsername}</p>
+        <p className="text-sm text-gray-200 font-medium inline-flex items-center gap-1.5">
+          <span>{c.otherUsername}</span>
+          {c.isSupport ? (
+            <span className="rounded-full border border-cyan-400/40 bg-cyan-500/15 px-2 py-0.5 text-[10px] text-cyan-100">
+              Support officiel
+            </span>
+          ) : null}
+        </p>
         <p className="text-xs text-gray-500 truncate">{c.lastMessage || "Aucun message"}</p>
       </button>
       <div className="flex shrink-0 items-start pt-1.5 pr-1.5">
+        {c.isSupport ? null : (
         <button
           ref={anchorRef}
           type="button"
@@ -176,6 +192,7 @@ function PrivateConversationRow({ conversation: c, isActive, onSelect, menuOpen,
         >
           <MoreVertical className="w-4 h-4" />
         </button>
+        )}
         {menuOpen
           ? createPortal(
               <div
@@ -268,6 +285,17 @@ export default function CommunauteVWS() {
     }
   };
 
+  const ensureSupportConversation = async () => {
+    try {
+      const support = await getCommunitySupportUser();
+      if (!support?.userId) return;
+      await startPrivateConversation(support.userId);
+    } catch (e) {
+      // Non-bloquant: la page doit rester utilisable même si la création auto échoue.
+      console.warn("Support conversation bootstrap failed:", e);
+    }
+  };
+
   const refreshPrivateMessages = async (conversationId) => {
     if (!conversationId) {
       setPrivateMessages([]);
@@ -292,9 +320,13 @@ export default function CommunauteVWS() {
   };
 
   useEffect(() => {
-    void refreshPublic();
-    void refreshConversations();
-    void refreshUsers();
+    const bootstrap = async () => {
+      await ensureSupportConversation();
+      await refreshPublic();
+      await refreshConversations();
+      await refreshUsers();
+    };
+    void bootstrap();
   }, []);
 
   useEffect(() => {
@@ -390,6 +422,11 @@ export default function CommunauteVWS() {
 
   const removePrivateConversationForMe = async (conversationId) => {
     setConvMenuId(null);
+    const target = privateConversations.find((c) => c.id === conversationId);
+    if (target?.isSupport) {
+      setError("La conversation Support officiel ne peut pas être supprimée.");
+      return;
+    }
     try {
       setBusy(true);
       setError("");

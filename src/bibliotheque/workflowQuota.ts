@@ -80,6 +80,25 @@ export function canUseScript() {
   return usage.scriptAttemptsUsed < WORKFLOW_LIMITS.scriptAttempts;
 }
 
+/**
+ * Autorise une génération « Script gagnant » : quota local (1 essai / cycle) OU,
+ * si l’utilisateur est connecté et a encore assez de crédits serveur (Stripe, admin, etc.),
+ * on ne bloque pas — le coût est déjà contrôlé par `hasEnoughCredits` côté appelant.
+ * Réinitialise le quota local si une vidéo a déjà été entamée sur ce cycle (comportement existant).
+ */
+export function canProceedWithScriptGeneration(
+  hasSession: boolean,
+  hasServerCreditsForStep: boolean
+): boolean {
+  if (canUseScript()) return true;
+  const usage = getWorkflowUsage();
+  if (usage.videoAttemptsUsed >= 1) {
+    resetWorkflowUsage();
+    return true;
+  }
+  return Boolean(hasSession && hasServerCreditsForStep);
+}
+
 export function consumeScriptAttempt() {
   const state = readState();
   state.usage.scriptAttemptsUsed += 1;
