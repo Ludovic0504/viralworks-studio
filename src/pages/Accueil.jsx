@@ -1,11 +1,9 @@
-import { useEffect, useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
-import { ArrowRight, FileText, Image as ImageIcon, Video, LogOut, User, Menu } from "lucide-react";
+import { ArrowRight, Menu } from "lucide-react";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import Footer from "@/composants/disposition/PiedDePage";
 import SidebarShell from "@/composants/disposition/Navbar";
-
-const ROTATING_WORDS = ["script", "visuel", "vidéo"];
 
 const navLinks = [
   { path: "/", label: "Accueil" },
@@ -19,7 +17,6 @@ const navLinks = [
 export default function Accueil() {
   const { session, signOut } = useAuth();
   const location = useLocation();
-  const [currentWord, setCurrentWord] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
@@ -35,18 +32,6 @@ export default function Accueil() {
     ],
     [demoVideoChantierUrl, demoVideoMoteurUrl, demoVideoYachtUrl]
   );
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentWord((prev) => (prev + 1) % ROTATING_WORDS.length);
-    }, 3000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const features = [
-    { icon: FileText, label: "Script Gagnant", color: "cyan", path: "/viralworks", wordKey: "script" },
-    { icon: ImageIcon, label: "Visuel d'accroche", color: "violet", path: "/viralworks", wordKey: "visuel" },
-    { icon: Video, label: "Vidéo virale", color: "yellow", path: "/viralworks", wordKey: "vidéo" },
-  ];
 
   const isActive = (path) => {
     if (path === "/") return location.pathname === "/";
@@ -210,9 +195,9 @@ export default function Accueil() {
             {demoVideos.map(({ src, label }) => (
               <div
                 key={label}
-                className="rounded-xl sm:rounded-2xl overflow-hidden border border-white/10 shadow-[0_0_30px_rgba(15,23,42,0.8)] bg-black/40"
+                className="rounded-xl sm:rounded-2xl overflow-hidden border border-white/10 shadow-[0_0_30px_rgba(15,23,42,0.8)] bg-white/5"
               >
-                <div className="bg-black flex items-center justify-center h-[clamp(110px,18vw,240px)]">
+                <div className="flex items-center justify-center h-[clamp(110px,18vw,240px)]">
                   <video
                     src={src}
                     autoPlay
@@ -220,7 +205,7 @@ export default function Accueil() {
                     muted
                     playsInline
                     preload="auto"
-                    className="block w-full h-full object-contain bg-black"
+                    className="block w-full h-full object-contain"
                   />
                 </div>
                 <p className="text-center text-[10px] sm:text-xs text-gray-500 py-1.5 sm:py-2 px-1.5 sm:px-2 font-medium">
@@ -228,90 +213,6 @@ export default function Accueil() {
                 </p>
               </div>
             ))}
-          </div>
-
-          <div className="grid grid-cols-3 gap-4 sm:gap-6 mb-12 sm:mb-16 max-w-2xl mx-auto">
-            {features.map((feature) => {
-              const Icon = feature.icon;
-              const isActive = ROTATING_WORDS[currentWord] === feature.wordKey;
-              
-              const colorClasses = {
-                cyan: {
-                  border: isActive ? 'border-cyan-500/50' : '',
-                  bg: isActive ? 'bg-cyan-500/10' : '',
-                  bgBlur: 'bg-cyan-500/20',
-                  bgIcon: isActive ? 'bg-cyan-500/20' : '',
-                  borderIcon: isActive ? 'border-cyan-500/50' : '',
-                  text: isActive ? 'text-cyan-300' : '',
-                  shadow: 'shadow-[0_0_30px_rgba(65,209,255,0.3)]'
-                },
-                violet: {
-                  border: isActive ? 'border-violet-500/50' : '',
-                  bg: isActive ? 'bg-violet-500/10' : '',
-                  bgBlur: 'bg-violet-500/20',
-                  bgIcon: isActive ? 'bg-violet-500/20' : '',
-                  borderIcon: isActive ? 'border-violet-500/50' : '',
-                  text: isActive ? 'text-violet-300' : '',
-                  shadow: 'shadow-[0_0_30px_rgba(189,52,254,0.3)]'
-                },
-                yellow: {
-                  border: isActive ? 'border-yellow-500/50' : '',
-                  bg: isActive ? 'bg-yellow-500/10' : '',
-                  bgBlur: 'bg-yellow-500/20',
-                  bgIcon: isActive ? 'bg-yellow-500/20' : '',
-                  borderIcon: isActive ? 'border-yellow-500/50' : '',
-                  text: isActive ? 'text-yellow-300' : '',
-                  shadow: 'shadow-[0_0_30px_rgba(255,234,131,0.3)]'
-                }
-              };
-              
-              const classes = colorClasses[feature.color] || colorClasses.cyan;
-              
-              return (
-                <Link
-                  key={feature.path}
-                  to={feature.path}
-                  className={`group relative flex flex-col items-center justify-center p-6 sm:p-8 rounded-2xl border-2 transition-all duration-500 ${
-                    isActive
-                      ? `${classes.border} ${classes.bg} scale-110 ${classes.shadow}`
-                      : 'border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10 hover:scale-105'
-                  }`}
-                >
-                  {isActive && (
-                    <div 
-                      className={`absolute inset-0 rounded-2xl ${classes.bgBlur} blur-xl animate-pulse`}
-                      style={{ animationDuration: '2s' }}
-                    />
-                  )}
-                  
-                  <div className={`relative z-10 w-12 h-12 sm:w-16 sm:h-16 rounded-xl flex items-center justify-center mb-3 transition-all duration-500 ${
-                    isActive 
-                      ? `${classes.bgIcon} border-2 ${classes.borderIcon}`
-                      : 'bg-white/5 border border-white/10 group-hover:bg-white/10'
-                  }`}>
-                    <Icon 
-                      className={`w-6 h-6 sm:w-8 sm:h-8 transition-all duration-500 ${
-                        isActive 
-                          ? `${classes.text} scale-110`
-                          : 'text-gray-400 group-hover:text-gray-200'
-                      }`}
-                    />
-                  </div>
-                  
-                  <span className={`text-sm sm:text-base font-medium transition-all duration-500 ${
-                    isActive 
-                      ? classes.text
-                      : 'text-gray-400 group-hover:text-gray-200'
-                  }`}>
-                    {feature.label}
-                  </span>
-
-                  {isActive && (
-                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-emerald-400 to-transparent animate-progress" />
-                  )}
-                </Link>
-              );
-            })}
           </div>
 
           <p className="text-base sm:text-lg text-gray-500 mb-10 sm:mb-12 max-w-2xl mx-auto leading-relaxed">
@@ -323,7 +224,7 @@ export default function Accueil() {
               to={session ? "/viralworks" : "/login"}
               className="group inline-flex items-center gap-3 px-8 py-4 text-lg font-semibold text-white bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-xl hover:from-emerald-400 hover:to-emerald-300 transition-all duration-300 shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_30px_rgba(16,185,129,0.5)] hover:scale-105 active:scale-95"
             >
-              <span>{session ? "Commencer" : "Se connecter"}</span>
+              <span>{session ? "Créer ma vidéo" : "Se connecter"}</span>
               <ArrowRight className="w-5 h-5 transition-transform duration-300 group-hover:translate-x-2" />
             </Link>
           </div>

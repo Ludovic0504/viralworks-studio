@@ -209,12 +209,20 @@ export default function PromptAssistant({
             <History className="w-3.5 h-3.5" />
             Historique
           </button>
+          {tab === "history" ? (
+            <button
+              type="button"
+              onClick={() => setTab("script")}
+              className="studio-toolbar-btn sm:w-auto"
+            >
+              <FileText className="w-3.5 h-3.5 text-emerald-400" />
+              Revenir à la génération
+            </button>
+          ) : null}
         </div>
       </div>
 
-      {tab === "history" ? (
-        <PromptHistory />
-      ) : (
+      <div className={tab === "history" ? "hidden" : ""} aria-hidden={tab === "history"}>
         <ScriptPromptGenerator
           initialIdea={initialIdea}
           sequenceType={sequenceType}
@@ -222,7 +230,10 @@ export default function PromptAssistant({
           campaignData={campaignData}
           onScriptOutput={onScriptOutput}
         />
-      )}
+      </div>
+      <div className={tab === "history" ? "" : "hidden"} aria-hidden={tab !== "history"}>
+        <PromptHistory />
+      </div>
 
       {/* Pop-up explication du système */}
       {showSystemVideo && (

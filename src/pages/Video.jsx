@@ -40,6 +40,7 @@ import {
   Image as ImageIcon,
   Settings2,
   ChevronDown,
+  Upload,
 } from "lucide-react";
 
 const VIDEO_GENERATION_COST = 1;
@@ -58,6 +59,10 @@ const VIDEO_QUOTA_EXHAUSTED_MESSAGE =
   "limite vidéo atteint pour ce mois, veuillez attendre la fin du mois pour le renouvellement des vidéos ou acheter des packs vidéos pour continuer a créer";
 const NON_SUBSCRIBER_BLOCKED_MESSAGE =
   "Prenez un abonnement pour profiter de ViralWorks Studio et lancer vos générations.";
+
+function isAcceptedImageFile(file) {
+  return Boolean(file && typeof file.type === "string" && file.type.startsWith("image/"));
+}
 
 function QuotaExhaustedNotice({ open, title, message, actionLabel, onClose, onGoToPacks }) {
   if (!open) return null;
@@ -785,7 +790,9 @@ function VEO3VideoForm({
   const [quotaNoticeMessage, setQuotaNoticeMessage] = useState(VIDEO_QUOTA_EXHAUSTED_MESSAGE);
   const [hasActiveSubscription, setHasActiveSubscription] = useState(false);
   const [validatedHookImage, setValidatedHookImage] = useState(null);
+  const [customHookImage, setCustomHookImage] = useState(null);
   const studioHookImage = useMemo(() => getHookImageFromStudioStep(studioImageStep), [studioImageStep]);
+  const hookImageInputRef = useRef(null);
   const studioScriptPromptRef = useRef(studioScriptPrompt);
   studioScriptPromptRef.current = studioScriptPrompt;
   const sceneCountRef = useRef(sceneCount);
@@ -878,6 +885,10 @@ function VEO3VideoForm({
   useEffect(() => {
     let active = true;
     const syncHookImage = async () => {
+      if (customHookImage) {
+        setValidatedHookImage(customHookImage);
+        return;
+      }
       if (studioImageStep != null && typeof studioImageStep === "object") {
         setValidatedHookImage(studioHookImage);
         return;
@@ -895,7 +906,15 @@ function VEO3VideoForm({
         window.removeEventListener("onetool:history:changed", syncHookImage);
       }
     };
-  }, [session, studioHookImage, studioImageStep]);
+  }, [session, studioHookImage, studioImageStep, customHookImage]);
+
+  useEffect(() => {
+    return () => {
+      if (customHookImage?.isObjectUrl && customHookImage.url) {
+        URL.revokeObjectURL(customHookImage.url);
+      }
+    };
+  }, [customHookImage]);
 
   useEffect(() => {
     const key = `${validatedHookImage?.url || ""}|${validatedHookImage?.prompt || ""}`;
@@ -903,6 +922,48 @@ function VEO3VideoForm({
     prevHookSyncKey.current = key;
     setHookVisual(String(validatedHookImage?.prompt || "").trim());
   }, [validatedHookImage?.url, validatedHookImage?.prompt]);
+
+  const openOwnImagePicker = () => {
+    hookImageInputRef.current?.click();
+  };
+
+  const handleOwnImageSelected = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!isAcceptedImageFile(file)) {
+      alert("Choisis uniquement une image (jpg, png, webp, etc.).");
+      event.target.value = "";
+      return;
+    }
+
+    if (customHookImage?.isObjectUrl && customHookImage.url) {
+      URL.revokeObjectURL(customHookImage.url);
+    }
+
+    const url = URL.createObjectURL(file);
+    const nextImage = {
+      url,
+      prompt: "",
+      source: "upload",
+      fileName: file.name,
+      isObjectUrl: true,
+    };
+    setCustomHookImage(nextImage);
+    setValidatedHookImage(nextImage);
+    event.target.value = "";
+  };
+
+  const clearHookImageSelection = () => {
+    if (customHookImage?.isObjectUrl && customHookImage.url) {
+      URL.revokeObjectURL(customHookImage.url);
+    }
+    setCustomHookImage(null);
+    setValidatedHookImage({ url: "", prompt: "" });
+    setHookVisual("");
+    if (hookImageInputRef.current) {
+      hookImageInputRef.current.value = "";
+    }
+  };
 
   const generate = async () => {
     if (loading) return;
@@ -1309,27 +1370,29 @@ function VEO3VideoForm({
         <div className="studio-panel p-5 sm:p-6 space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-center sm:flex-wrap gap-2 sm:gap-3">
           <h3 className="text-sm font-medium text-gray-300 shrink-0">Sources de la vidéo</h3>
-          <div
-            className="flex flex-wrap gap-1 p-1 rounded-xl bg-white/[0.06] border border-white/10"
-            role="tablist"
-            aria-label="Moments de la vidéo"
-          >
-            {Array.from({ length: sceneCount }, (_, i) => (
-              <button
-                key={i}
-                type="button"
-                role="tab"
-                id={`veo3-tab-scene-${i}`}
-                aria-selected={activeTab === i}
-                aria-controls="veo3-panel-main"
-                tabIndex={activeTab === i ? 0 : -1}
-                onClick={() => setActiveTab(i)}
-                className={tabButtonClass(activeTab === i)}
-              >
-                {sceneTabLabels[i] ?? `Partie ${i + 1}`}
-              </button>
-            ))}
-          </div>
+          {sceneCount > 1 ? (
+            <div
+              className="flex flex-wrap gap-1 p-1 rounded-xl bg-white/[0.06] border border-white/10"
+              role="tablist"
+              aria-label="Moments de la vidéo"
+            >
+              {Array.from({ length: sceneCount }, (_, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  role="tab"
+                  id={`veo3-tab-scene-${i}`}
+                  aria-selected={activeTab === i}
+                  aria-controls="veo3-panel-main"
+                  tabIndex={activeTab === i ? 0 : -1}
+                  onClick={() => setActiveTab(i)}
+                  className={tabButtonClass(activeTab === i)}
+                >
+                  {sceneTabLabels[i] ?? `Partie ${i + 1}`}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
 
         <div role="tabpanel" id="veo3-panel-main">
@@ -1339,7 +1402,7 @@ function VEO3VideoForm({
                 <div className="flex flex-col min-w-0 min-h-[200px] rounded-lg border border-white/10 bg-white/[0.04] p-4">
                   <label className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
                     <BookOpen className="w-4 h-4 text-emerald-400 shrink-0" />
-                    Ce que montre ce moment
+                    Ce que montre la scène
                   </label>
                   <p className="text-sm text-gray-100 leading-relaxed">
                     {veo3ScenePlainDescription(scripts[0] ?? "", 0, sceneCount)}
@@ -1353,26 +1416,62 @@ function VEO3VideoForm({
                     <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
                     Visuel d’accroche
                   </label>
+                  <input
+                    ref={hookImageInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleOwnImageSelected}
+                    className="hidden"
+                  />
                   <div className="rounded-lg border border-white/10 bg-black/50 overflow-hidden flex-1 min-h-[180px] flex flex-col">
                     {validatedHookImage?.url ? (
                       <div className="flex-1 flex items-center justify-center p-3 min-h-[180px]">
-                        <img
-                          src={validatedHookImage.url}
-                          alt="Visuel validé à l’étape précédente"
-                          className="max-w-full max-h-[280px] w-auto h-auto object-contain rounded-md"
-                        />
+                        <div className="relative">
+                          <img
+                            src={validatedHookImage.url}
+                            alt="Visuel validé à l’étape précédente"
+                            className="max-w-full max-h-[280px] w-auto h-auto object-contain rounded-md"
+                          />
+                          <button
+                            type="button"
+                            onClick={clearHookImageSelection}
+                            className="absolute top-2 right-2 inline-flex items-center justify-center w-8 h-8 rounded-full bg-black/70 hover:bg-black/85 border border-white/10 text-white transition-colors"
+                            aria-label="Retirer le visuel d’accroche"
+                            title="Retirer le visuel d’accroche"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                     ) : (
                       <div className="flex-1 flex flex-col items-center justify-center gap-3 p-6 text-center min-h-[180px] text-gray-500">
-                        <div className="w-16 h-16 rounded-xl border border-dashed border-white/20 bg-white/5 flex items-center justify-center">
-                          <ImageIcon className="w-8 h-8 text-gray-600" strokeWidth={1.25} />
-                        </div>
-                        <p className="text-xs max-w-[200px]">
-                          Valide une image à l’étape « Visuel d’accroche » pour l’afficher ici.
-                        </p>
+                        <button
+                          type="button"
+                          onClick={openOwnImagePicker}
+                          className="w-16 h-16 rounded-xl border border-dashed border-white/20 bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors"
+                          aria-label="Téléverser une image personnelle"
+                        >
+                          <Upload className="w-8 h-8 text-gray-600" strokeWidth={1.25} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={openOwnImagePicker}
+                          className="text-xs font-medium text-gray-300 hover:text-white transition-colors"
+                        >
+                          Utiliser ma propre image
+                        </button>
                       </div>
                     )}
                   </div>
+                  {validatedHookImage?.url ? (
+                    <button
+                      type="button"
+                      onClick={openOwnImagePicker}
+                      className="mt-3 self-start text-xs font-medium text-gray-400 hover:text-gray-200 transition-colors"
+                    >
+                      Utiliser ma propre image
+                    </button>
+                  ) : null}
                 </div>
               </div>
               <p className="text-xs text-gray-500 mt-4">
@@ -1386,7 +1485,7 @@ function VEO3VideoForm({
             <div className="flex flex-col min-w-0 space-y-3 rounded-lg border border-white/10 bg-white/[0.04] p-4">
               <label className="block text-sm font-medium text-gray-300 flex items-center gap-2">
                 <BookOpen className="w-4 h-4 text-emerald-400" />
-                Ce que montre ce moment — {sceneTabLabels[activeTab] ?? `Partie ${activeTab + 1}`}
+                Ce que montre la scène — {sceneTabLabels[activeTab] ?? `Partie ${activeTab + 1}`}
               </label>
               <p className="text-xs text-gray-500">
                 Pas d’image d’accroche sur ce moment : la vidéo s’appuie sur la description.
@@ -1415,7 +1514,7 @@ function VEO3VideoForm({
             Durée du clip : <span className="text-gray-300">{duration.replace("s", " s")}</span>
           </p>
           <p className="text-xs text-gray-500 leading-relaxed">
-            🎙️ Dialogue : {dialogueEnabled ? "activé" : "désactivé"} (modifiable dans Vidéo virale)
+            🎙️ Dialogue : {dialogueEnabled ? "activé" : "désactivé"} (modifiable dans Options avancées)
           </p>
           {!dialogueEnabled ? (
             <p className="text-xs text-amber-300/90 leading-relaxed">Dialogue : Désactivé</p>
@@ -1805,6 +1904,8 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
   const [quotaNoticeMessage, setQuotaNoticeMessage] = useState(VIDEO_QUOTA_EXHAUSTED_MESSAGE);
   const [hasActiveSubscription, setHasActiveSubscription] = useState(false);
   const studioHookImage = useMemo(() => getHookImageFromStudioStep(studioImageStep), [studioImageStep]);
+  const [customHookImage, setCustomHookImage] = useState(null);
+  const hookImageInputRef = useRef(null);
   const prevHookSyncKey = useRef(null);
   const scriptForGeneration = scripts[activeTab] ?? "";
   const disabled = useMemo(() => {
@@ -1852,6 +1953,10 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
   useEffect(() => {
     let active = true;
     const syncHookImage = async () => {
+      if (customHookImage) {
+        setValidatedHookImage(customHookImage);
+        return;
+      }
       if (studioHookImage || studioImageStep) {
         setValidatedHookImage(studioHookImage);
         return;
@@ -1869,7 +1974,15 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
         window.removeEventListener("onetool:history:changed", syncHookImage);
       }
     };
-  }, [session, studioHookImage, studioImageStep]);
+  }, [session, studioHookImage, studioImageStep, customHookImage]);
+
+  useEffect(() => {
+    return () => {
+      if (customHookImage?.isObjectUrl && customHookImage.url) {
+        URL.revokeObjectURL(customHookImage.url);
+      }
+    };
+  }, [customHookImage]);
 
   useEffect(() => {
     const key = `${validatedHookImage?.url || ""}|${validatedHookImage?.prompt || ""}`;
@@ -1877,6 +1990,48 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
     prevHookSyncKey.current = key;
     setHookVisual(String(validatedHookImage?.prompt || "").trim());
   }, [validatedHookImage?.url, validatedHookImage?.prompt]);
+
+  const openOwnImagePicker = () => {
+    hookImageInputRef.current?.click();
+  };
+
+  const handleOwnImageSelected = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!isAcceptedImageFile(file)) {
+      alert("Choisis uniquement une image (jpg, png, webp, etc.).");
+      event.target.value = "";
+      return;
+    }
+
+    if (customHookImage?.isObjectUrl && customHookImage.url) {
+      URL.revokeObjectURL(customHookImage.url);
+    }
+
+    const url = URL.createObjectURL(file);
+    const nextImage = {
+      url,
+      prompt: "",
+      source: "upload",
+      fileName: file.name,
+      isObjectUrl: true,
+    };
+    setCustomHookImage(nextImage);
+    setValidatedHookImage(nextImage);
+    event.target.value = "";
+  };
+
+  const clearHookImageSelection = () => {
+    if (customHookImage?.isObjectUrl && customHookImage.url) {
+      URL.revokeObjectURL(customHookImage.url);
+    }
+    setCustomHookImage(null);
+    setValidatedHookImage({ url: "", prompt: "" });
+    setHookVisual("");
+    if (hookImageInputRef.current) {
+      hookImageInputRef.current.value = "";
+    }
+  };
 
   const updateSceneScript = (sceneIndex, value) => {
     setScripts((prev) => {
@@ -2285,26 +2440,62 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
                     <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
                     Visuel d’accroche
                   </label>
+                  <input
+                    ref={hookImageInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleOwnImageSelected}
+                    className="hidden"
+                  />
                   <div className="rounded-lg border border-white/10 bg-black/50 overflow-hidden flex-1 min-h-[180px] flex flex-col">
                     {validatedHookImage?.url ? (
                       <div className="flex-1 flex items-center justify-center p-3 min-h-[180px]">
-                        <img
-                          src={validatedHookImage.url}
-                          alt="Visuel validé à l’étape précédente"
-                          className="max-w-full max-h-[280px] w-auto h-auto object-contain rounded-md"
-                        />
+                        <div className="relative">
+                          <img
+                            src={validatedHookImage.url}
+                            alt="Visuel validé à l’étape précédente"
+                            className="max-w-full max-h-[280px] w-auto h-auto object-contain rounded-md"
+                          />
+                          <button
+                            type="button"
+                            onClick={clearHookImageSelection}
+                            className="absolute top-2 right-2 inline-flex items-center justify-center w-8 h-8 rounded-full bg-black/70 hover:bg-black/85 border border-white/10 text-white transition-colors"
+                            aria-label="Retirer le visuel d’accroche"
+                            title="Retirer le visuel d’accroche"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                     ) : (
                       <div className="flex-1 flex flex-col items-center justify-center gap-3 p-6 text-center min-h-[180px] text-gray-500">
-                        <div className="w-16 h-16 rounded-xl border border-dashed border-white/20 bg-white/5 flex items-center justify-center">
-                          <ImageIcon className="w-8 h-8 text-gray-600" strokeWidth={1.25} />
-                        </div>
-                        <p className="text-xs max-w-[200px]">
-                          Valide une image à l’étape « Visuel d’accroche » pour l’afficher ici.
-                        </p>
+                        <button
+                          type="button"
+                          onClick={openOwnImagePicker}
+                          className="w-16 h-16 rounded-xl border border-dashed border-white/20 bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors"
+                          aria-label="Téléverser une image personnelle"
+                        >
+                          <Upload className="w-8 h-8 text-gray-600" strokeWidth={1.25} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={openOwnImagePicker}
+                          className="text-xs font-medium text-gray-300 hover:text-white transition-colors"
+                        >
+                          Utiliser ma propre image
+                        </button>
                       </div>
                     )}
                   </div>
+                  {validatedHookImage?.url ? (
+                    <button
+                      type="button"
+                      onClick={openOwnImagePicker}
+                      className="mt-3 self-start text-xs font-medium text-gray-400 hover:text-gray-200 transition-colors"
+                    >
+                      Utiliser ma propre image
+                    </button>
+                  ) : null}
                 </div>
               </div>
               <p className="text-xs text-gray-500 mt-4">

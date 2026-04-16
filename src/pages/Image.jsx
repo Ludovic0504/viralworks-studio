@@ -157,6 +157,7 @@ export default function ImagePage({
   campaignModifiers = "",
   campaignClarifyMode = null,
   campaignClarifyAnswer = null,
+  campaignCameraAerialAngle = null,
   scriptScene1Idea = "",
   campaignRevealMode = false,
   campaignMicroAnswer = null,
@@ -365,6 +366,7 @@ export default function ImagePage({
               campaignModifiers ? `Style: ${campaignModifiers}` : "",
               campaignClarifyMode ? `Mode de transformation: ${campaignClarifyMode}` : "",
               campaignClarifyAnswer ? `Précision utilisateur: ${campaignClarifyAnswer}` : "",
+              campaignCameraAerialAngle ? `Aerial angle: ${campaignCameraAerialAngle}` : "",
             ]
               .filter(Boolean)
               .join("\n"),
@@ -377,6 +379,7 @@ export default function ImagePage({
                 : null,
             jobTypeLabel: campaignJobType || "",
             lockedVideoScriptScene0: String(scriptScene1Idea || "").trim() || undefined,
+            cameraAerialAngle: campaignCameraAerialAngle,
             }
           ),
           ratio,

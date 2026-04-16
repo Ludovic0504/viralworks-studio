@@ -794,6 +794,7 @@ export default function ViralWorks() {
     campaignModifiers: campaignData?.styleDetails ?? "",
     campaignClarifyMode: campaignData?.clarifyMode ?? campaignData?.gateResult?.mode ?? null,
     campaignClarifyAnswer: campaignData?.clarifyAnswer ?? null,
+    campaignCameraAerialAngle: campaignData?.cameraAerialAngle ?? null,
     scriptScene1Idea: String(scriptPromptForImage?.scenes?.[0] ?? scriptPromptForImage?.combined ?? ""),
     campaignRevealMode: Boolean(campaignData?.revealMode),
     campaignMicroAnswer: campaignData?.microAnswer ?? null,

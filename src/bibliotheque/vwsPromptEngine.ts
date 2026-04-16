@@ -23,6 +23,18 @@ export interface UserIdeaInput {
   sequenceType: SequenceType;
   dialogueEnabled?: boolean;
   microAnswerId?: string | null;
+  /**
+   * Clarify Gate axis: how transformation happens.
+   * - visible: people or machines are visible causing the change
+   * - automatic: no visible intervention (no people, no machines, no tools)
+   */
+  causalAgentSelection?: "visible" | "automatic" | null;
+  /**
+   * Clarify Gate axis: aerial view angle when user asks for "view from above".
+   * - top_down: directly overhead, no perspective
+   * - angled: high-angle with visible depth/perspective
+   */
+  cameraAerialAngle?: "top_down" | "angled" | null;
 }
 
 export interface GlobalScene {
@@ -81,7 +93,7 @@ export interface VwsEngineOutput {
 }
 
 /** Une seule phase à la fois : pas de redondance inter-axes dans le même appel. */
-export type ClarifyGatePhase = "mode_agent" | "initial_t0" | "none";
+export type ClarifyGatePhase = "mode_agent" | "initial_t0" | "causal_agent" | "camera_aerial_angle" | "none";
 
 export interface ClarifyIdeaInput {
   jobType: string;
@@ -265,10 +277,30 @@ const CLARIFY_GATE_FIXED_MODE_OPTIONS: ClarifyGateOption[] = [
   { id: "vws_gate_mode_human", label: "Un être humain ou artisan est visible dès le début et agit." },
 ];
 
+const CLARIFY_GATE_FIXED_CAUSAL_AGENT_OPTIONS: ClarifyGateOption[] = [
+  { id: "vws_gate_causal_visible", label: "Avec des personnes ou des machines visibles" },
+  { id: "vws_gate_causal_automatic", label: "De manière automatique, sans intervention visible" },
+];
+
+const CLARIFY_GATE_FIXED_CAMERA_AERIAL_ANGLE_OPTIONS: ClarifyGateOption[] = [
+  { id: "vws_gate_camera_top_down", label: "Vue du dessus (directement au-dessus, sans angle)" },
+  { id: "vws_gate_camera_angled", label: "Vue en hauteur avec angle (on voit les côtés et la profondeur)" },
+];
+
 const CLARIFY_GATE_FIXED_T0_OPTIONS: ClarifyGateOption[] = [
   { id: "vws_gate_t0_pristine", label: "État « avant » intact : rien n'est encore engagé au départ." },
   { id: "vws_gate_t0_in_progress", label: "Travaux ou transformation déjà en cours au départ (milieu de progression)." },
 ];
+
+function clarificationHistoryHasCausalAgentAnswer(history: string | null | undefined): boolean {
+  const h = String(history || "");
+  return h.includes("option_id=vws_gate_causal_visible") || h.includes("option_id=vws_gate_causal_automatic");
+}
+
+function clarificationHistoryHasCameraAerialAngleAnswer(history: string | null | undefined): boolean {
+  const h = String(history || "");
+  return h.includes("option_id=vws_gate_camera_top_down") || h.includes("option_id=vws_gate_camera_angled");
+}
 
 /** Heuristique : une seule question « mode / agent causal » si le texte ne tranche pas déjà. */
 export function clarifyGateNeedsModeAgent(mainIdea: string): boolean {
@@ -291,6 +323,72 @@ export function clarifyGateNeedsModeAgent(mainIdea: string): boolean {
   return /\b(construi|rénov|renov|transform|assembler|aménag|chantier|jardin|pelouse|terrasse|haie|piscine|maison|mur|terrain|pizza|prépar|cuisin)\b/.test(
     t
   );
+}
+
+/**
+ * Heuristique : question "comment la transformation se produit-elle ?"
+ * Déclenche uniquement pour idées construction/transformation/assemblage quand ce point n'est pas explicite.
+ */
+export function clarifyGateNeedsCausalAgent(mainIdea: string): boolean {
+  const t = clean(mainIdea).toLowerCase();
+  if (!t || t.length < 4) return false;
+  const isTransform =
+    /\b(construi|construction|chantier|rénov|renov|transform|assembl|aménag|amenag|avant.{0,12}après|avant.{0,12}apres|timelapse)\b/.test(
+      t
+    );
+  if (!isTransform) return false;
+  // Explicit visible intervention
+  if (
+    /\b(ouvrier|ouvriers|artisan|artisans|personne|gens|équipe|equipe|main\b|mains\b|hand\b|hands\b|worker|workers|crew|machine|machines|engin|pelleteuse|grue|bulldozer|robot|tool|tools|outil|outils)\b/.test(
+      t
+    )
+  ) {
+    return false;
+  }
+  // Explicit automatic / no intervention
+  if (
+    /\b(automatique|automatiquement|seul|seule|tout seul|toute seule|sans intervention|sans personne|sans humain|sans main|no one|no human|no hands|autonomous|by itself|on its own)\b/.test(
+      t
+    )
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Heuristique : question "Quel type de vue en hauteur veux-tu ?"
+ * Déclenche si l'idée exprime une vue en hauteur mais n'indique pas clairement "du dessus" vs "avec angle".
+ */
+export function clarifyGateNeedsCameraAerialAngle(mainIdea: string): boolean {
+  const t = clean(mainIdea).toLowerCase();
+  if (!t || t.length < 4) return false;
+
+  const hasAerialConcept =
+    /\b(vue\s*(aérienne|aerienne)|vue\s*en\s*hauteur|vue\s*du\s*ciel|vue\s*en\s*surplomb|surplomb|au[-\s]?dessus|depuis\s*au[-\s]?dessus|from\s*above|overhead|bird'?s[-\s]?eye|aerial\s*view)\b/.test(
+      t
+    );
+  if (!hasAerialConcept) return false;
+
+  // Already explicit top-down / vertical / no angle
+  if (
+    /\b(top[-\s]?down|strict(ement)?\s*(du\s*dessus|overhead)|directement\s*au[-\s]?dessus|pile\s*au[-\s]?dessus|vertical(e)?\s*(pur|pure)?|perpendiculaire\s*au\s*sol|sans\s*angle|sans\s*perspective)\b/.test(
+      t
+    )
+  ) {
+    return false;
+  }
+
+  // Already explicit angled / perspective / depth / sides visible
+  if (
+    /\b(oblique|avec\s*angle|en\s*angle|perspective|profondeur|on\s*voit\s*(les\s*)?(c[oô]t[eé]s|fa[cç]ades?)|high[-\s]?angle|angled|tilt(ed)?\s*down)\b/.test(
+      t
+    )
+  ) {
+    return false;
+  }
+
+  return true;
 }
 
 /** Heuristique : une seule question « t=0 » si le texte ne précise pas déjà l'état initial. */
@@ -485,6 +583,33 @@ function buildInterpretedIntent(rawIdea: string): string {
   return `A person is actively performing this action in a video-native scene: ${base}.`;
 }
 
+function buildInterpretedIntentWithCausalAgent(rawIdea: string, selection: "visible" | "automatic" | null | undefined): string {
+  const base = clean(rawIdea);
+  if (selection === "automatic") {
+    return base
+      ? `The scene shows an autonomous, physically grounded transformation in progress with no visible people, hands, tools, or machines: ${base}.`
+      : "The scene shows an autonomous, physically grounded transformation in progress with no visible people, hands, tools, or machines.";
+  }
+  if (selection === "visible") {
+    return base
+      ? `People or machines are visibly causing the transformation in progress (real physical action, tools, and motion): ${base}.`
+      : "People or machines are visibly causing the transformation in progress (real physical action, tools, and motion).";
+  }
+  return buildInterpretedIntent(rawIdea);
+}
+
+function applyCameraAerialAngleToIntent(intent: string, angle: "top_down" | "angled" | null | undefined): string {
+  const base = clean(intent);
+  if (!base) return base;
+  if (angle === "top_down") {
+    return `${base} Camera viewpoint is a pure top-down overhead view, perpendicular to the ground, with no perspective.`;
+  }
+  if (angle === "angled") {
+    return `${base} Camera viewpoint is a high-angle view with a clear oblique angle, visible perspective, and depth (sides and volume are readable).`;
+  }
+  return base;
+}
+
 function detectEvolvingSubject(rawIdea: string): { subject: string | null; vague: boolean } {
   const idea = clean(rawIdea);
   const lower = idea.toLowerCase();
@@ -577,6 +702,11 @@ function buildStabilization(input: UserIdeaInput): StabilizationConstraints {
   if (input.selfieMode) {
     parts.push("The person films themselves speaking directly to the camera (selfie / vlog style).");
   }
+  if (input.cameraAerialAngle === "top_down") {
+    parts.push("Pure top-down overhead view: camera perpendicular to the ground, no perspective, no visible sides.");
+  } else if (input.cameraAerialAngle === "angled") {
+    parts.push("High-angle with an oblique tilt: visible perspective and depth, sides/facades readable; avoid orthographic look.");
+  }
   const cameraDescription =
     parts.length > 0
       ? parts.join(" ")
@@ -660,6 +790,11 @@ function buildVideoPrompts(
       "- No exclamation marks or question marks",
       "- The video must be 8 seconds long",
     ];
+    if (input.causalAgentSelection === "automatic") {
+      importantLines.push("- No visible people, hands, tools, or machines at any time");
+    } else if (input.causalAgentSelection === "visible") {
+      importantLines.push("- Show visible people or machines causing the transformation (real physical action)");
+    }
     const base = [
       "Ultra realistic cinematic chaotic vlog shot",
       "",
@@ -729,23 +864,22 @@ function buildPromptStructure(params: {
     routing,
     rulesLayer
   );
+  const preferredIdeaForHook = String(interpretedIntent || "").trim() || rawIdea;
   const hookTemplate = [
-    "Transform my idea into an ultra-realistic prompt in English for Hailuo.",
+    "Transforme mon idée en un prompt ultra-réaliste en anglais pour Hailuo.",
+    `Voici mon idée : ${preferredIdeaForHook}.`,
     "",
-    `Here is my idea: ${rawIdea}`,
-    `Interpret it as an action in progress: ${interpretedIntent}`,
-    routingGuidance(routing),
-    "Keep all visual elements persistent and spatially coherent, with a stable environment throughout the scene.",
-    "",
-    "The result must be a complete English text describing:",
-    "- Format & style (always vertical vlog 9:16, ultra-realistic, cinematic)",
-    "- Camera (POV, selfie or not, lens, stability)",
-    "- Subject (appearance, clothing, visual details)",
-    "- Environment (location, lighting, visual atmosphere)",
-    "- Atmosphere & emotions",
-    "- Extras (natural movements, textures, small interactions)",
-    "",
-    "Give me a final prompt under 1100 characters, ready to use.",
+    `Garde-fou (idée interprétée / normalisée EN) : ${interpretedIntent}`,
+    `Garde-fou (routing) : ${routingGuidance(routing)}`,
+    "Garde-fou (cohérence) : Keep all visual elements persistent and spatially coherent, with a stable environment throughout the scene.",
+    "Le résultat doit être un texte complet en anglais décrivant :",
+    "– Le format & style (toujours vertical vlog 9:16, ultra-réaliste, cinématographique).",
+    "– La caméra (POV, selfie ou autre, type de lentille, stabilité).",
+    "– Le sujet (apparence, vêtements, détails visuels).",
+    "– L’environnement (lieu, lumière, ambiance visuelle).",
+    "– L’ambiance & émotions (humeur, sons si utile).",
+    "– Les extras (mouvements naturels, textures, petites interactions).",
+    "Donne-moi un prompt final de 1100 caractères maximum directement prêt à utiliser dans Hailuo.",
   ].join("\n");
 
   return {
@@ -857,6 +991,7 @@ export function buildHookImageApiPrompt(
     initialStateMode?: "from_nothing" | "partially_built" | null;
     jobTypeLabel?: string;
     lockedVideoScriptScene0?: string;
+    cameraAerialAngle?: "top_down" | "angled" | null;
   }
 ): string {
   const idea = clean(userIdea);
@@ -919,11 +1054,43 @@ export function buildHookImageApiPrompt(
   if (options.lockedVideoScriptScene0?.trim()) {
     assembled += `\n\n${freezeVideoScriptForHookStill(options.lockedVideoScriptScene0)}`;
   }
+
+  if (options.cameraAerialAngle === "top_down") {
+    assembled +=
+      "\n\nCamera viewpoint constraint: PURE TOP-DOWN overhead view, camera perpendicular to the ground, no perspective, no visible sides/facades.";
+    // Respect explicit user choice: do not rewrite top-down into oblique.
+    return assembled;
+  }
+  if (options.cameraAerialAngle === "angled") {
+    assembled +=
+      "\n\nCamera viewpoint constraint: HIGH-ANGLE with an oblique tilt, visible perspective and depth (sides/facades readable), avoid any orthographic/top-down-flat look.";
+  }
+
   return applyViewpointSafetyGate(assembled, options.jobTypeLabel || "");
 }
 
 export async function clarifyIdea(input: ClarifyIdeaInput): Promise<ClarifyIdeaResult> {
   const phase: ClarifyGatePhase = input.gatePhase ?? "none";
+  if (phase === "causal_agent") {
+    return {
+      status: "NEEDS_CLARIFICATION",
+      mode: "MODE_A",
+      diagnostic: { category: "D", reason: "Mode d'exécution à préciser", user_link: input.mainIdea },
+      question: "Comment la transformation se produit-elle ?",
+      options: [...CLARIFY_GATE_FIXED_CAUSAL_AGENT_OPTIONS],
+      activePhase: phase,
+    };
+  }
+  if (phase === "camera_aerial_angle") {
+    return {
+      status: "NEEDS_CLARIFICATION",
+      mode: "MODE_A",
+      diagnostic: { category: "D", reason: "Angle de vue en hauteur à préciser", user_link: input.mainIdea },
+      question: "Quel type de vue en hauteur veux-tu ?",
+      options: [...CLARIFY_GATE_FIXED_CAMERA_AERIAL_ANGLE_OPTIONS],
+      activePhase: phase,
+    };
+  }
   const lines = [`Métier: ${input.jobType}`, `Idée: ${input.mainIdea}`, `Paramètres: ${input.modifiers || ""}`];
   if (input.clarificationHistory?.trim()) {
     lines.push(`Historique de clarification (chronologique):\n${input.clarificationHistory.trim()}`);
@@ -965,6 +1132,10 @@ export async function clarifyIdea(input: ClarifyIdeaInput): Promise<ClarifyIdeaR
   if (status === "NEEDS_CLARIFICATION") {
     if (phase === "mode_agent") {
       options = [...CLARIFY_GATE_FIXED_MODE_OPTIONS];
+    } else if (phase === "causal_agent") {
+      options = [...CLARIFY_GATE_FIXED_CAUSAL_AGENT_OPTIONS];
+    } else if (phase === "camera_aerial_angle") {
+      options = [...CLARIFY_GATE_FIXED_CAMERA_AERIAL_ANGLE_OPTIONS];
     } else if (phase === "initial_t0") {
       options = [...CLARIFY_GATE_FIXED_T0_OPTIONS];
     } else {
@@ -1035,7 +1206,10 @@ export function runVwsPromptEngine(input: UserIdeaInput): VwsEngineOutput {
   const rulesLayer = buildRulesLayer();
   const sequences = buildSequences(input.sequenceType, scenarioType);
   const rawIdea = clean(input.idea);
-  const interpretedIntent = buildInterpretedIntent(rawIdea);
+  const interpretedIntent = applyCameraAerialAngleToIntent(
+    buildInterpretedIntentWithCausalAgent(rawIdea, input.causalAgentSelection ?? null),
+    input.cameraAerialAngle ?? null
+  );
   const promptStructure = buildPromptStructure({
     rawIdea: rawIdea || interpretedIntent,
     interpretedIntent,

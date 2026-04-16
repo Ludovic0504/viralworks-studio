@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import {
   clarifyIdea,
   clarifyGateNeedsInitialT0,
+  clarifyGateNeedsCameraAerialAngle,
+  clarifyGateNeedsCausalAgent,
   clarifyGateNeedsModeAgent,
   runVwsPromptEngine,
 } from "../bibliotheque/vwsPromptEngine";
@@ -19,9 +21,11 @@ function normalizeTempo(t) {
 }
 
 function parseClarifyAxesFromHistory(lines) {
-  const merged = { modeAgent: false, initialT0: false };
+  const merged = { modeAgent: false, initialT0: false, causalAgent: false, cameraAerialAngle: false };
   let microFromGate = null;
-  if (!Array.isArray(lines)) return { ...merged, microFromGate };
+  let causalAgentSelectionFromGate = null;
+  let cameraAerialAngleFromGate = null;
+  if (!Array.isArray(lines)) return { ...merged, microFromGate, causalAgentSelectionFromGate };
   for (const line of lines) {
     if (typeof line !== "string") continue;
     if (
@@ -29,6 +33,24 @@ function parseClarifyAxesFromHistory(lines) {
       line.includes("option_id=vws_gate_mode_human")
     ) {
       merged.modeAgent = true;
+    }
+    if (line.includes("option_id=vws_gate_causal_visible")) {
+      merged.causalAgent = true;
+      merged.modeAgent = true;
+      causalAgentSelectionFromGate = "visible";
+    }
+    if (line.includes("option_id=vws_gate_causal_automatic")) {
+      merged.causalAgent = true;
+      merged.modeAgent = true;
+      causalAgentSelectionFromGate = "automatic";
+    }
+    if (line.includes("option_id=vws_gate_camera_top_down")) {
+      merged.cameraAerialAngle = true;
+      cameraAerialAngleFromGate = "top_down";
+    }
+    if (line.includes("option_id=vws_gate_camera_angled")) {
+      merged.cameraAerialAngle = true;
+      cameraAerialAngleFromGate = "angled";
     }
     if (line.includes("option_id=vws_gate_t0_pristine")) {
       merged.initialT0 = true;
@@ -39,7 +61,7 @@ function parseClarifyAxesFromHistory(lines) {
       microFromGate = "partially_built";
     }
   }
-  return { ...merged, microFromGate };
+  return { ...merged, microFromGate, causalAgentSelectionFromGate, cameraAerialAngleFromGate };
 }
 
 function StabilizationOption({ checked, onChange, label, tooltip }) {
@@ -79,6 +101,9 @@ export default function CampagneVWS({ onBrainReady, campaignData, onCampaignChan
   const [causalAgentSelection, setCausalAgentSelection] = useState(
     campaignData?.causalAgentSelection ?? null
   );
+  const [cameraAerialAngle, setCameraAerialAngle] = useState(
+    campaignData?.cameraAerialAngle ?? null
+  );
   const [initialStateSelection, setInitialStateSelection] = useState(
     campaignData?.initialStateSelection ?? null
   );
@@ -117,6 +142,7 @@ export default function CampagneVWS({ onBrainReady, campaignData, onCampaignChan
     microAnswer,
     tempoCompressionDecision,
     causalAgentSelection,
+    cameraAerialAngle,
     initialStateSelection,
     gateResult,
     clarifyAnswer,
@@ -126,6 +152,8 @@ export default function CampagneVWS({ onBrainReady, campaignData, onCampaignChan
     clarifyAxesResolved: {
       modeAgent: campaignData?.clarifyAxesResolved?.modeAgent === true,
       initialT0: campaignData?.clarifyAxesResolved?.initialT0 === true,
+      causalAgent: campaignData?.clarifyAxesResolved?.causalAgent === true,
+      cameraAerialAngle: campaignData?.clarifyAxesResolved?.cameraAerialAngle === true,
     },
     isClarified: false,
     ...overrides,
@@ -141,6 +169,7 @@ export default function CampagneVWS({ onBrainReady, campaignData, onCampaignChan
     setTempoCompressionDecision(null);
     setMicroQuestion(null);
     setCausalAgentSelection(null);
+    setCameraAerialAngle(null);
     setInitialStateSelection(null);
     setGateResult(null);
     setClarifyAnswer(null);
@@ -150,11 +179,12 @@ export default function CampagneVWS({ onBrainReady, campaignData, onCampaignChan
         microAnswer: null,
         tempoCompressionDecision: null,
         causalAgentSelection: null,
+        cameraAerialAngle: null,
         initialStateSelection: null,
         gateResult: null,
         clarifyAnswer: null,
         clarificationHistory: [],
-        clarifyAxesResolved: { modeAgent: false, initialT0: false },
+        clarifyAxesResolved: { modeAgent: false, initialT0: false, causalAgent: false, cameraAerialAngle: false },
         isClarified: false,
       })
     );
@@ -170,6 +200,7 @@ export default function CampagneVWS({ onBrainReady, campaignData, onCampaignChan
     if (updates.selfieMode !== undefined) setSelfieMode(updates.selfieMode);
     if (updates.sequenceType !== undefined) setSequenceType(updates.sequenceType);
     if (updates.causalAgentSelection !== undefined) setCausalAgentSelection(updates.causalAgentSelection);
+    if (updates.cameraAerialAngle !== undefined) setCameraAerialAngle(updates.cameraAerialAngle);
     if (updates.initialStateSelection !== undefined) setInitialStateSelection(updates.initialStateSelection);
     if (updates.gateResult !== undefined) setGateResult(updates.gateResult);
     if (updates.clarifyAnswer !== undefined) setClarifyAnswer(updates.clarifyAnswer);
@@ -190,6 +221,8 @@ export default function CampagneVWS({ onBrainReady, campaignData, onCampaignChan
           updates.tempoCompressionDecision ?? tempoCompressionDecision,
         causalAgentSelection:
           updates.causalAgentSelection ?? causalAgentSelection,
+        cameraAerialAngle:
+          updates.cameraAerialAngle ?? cameraAerialAngle,
         initialStateSelection:
           updates.initialStateSelection ?? initialStateSelection,
         gateResult: updates.gateResult ?? gateResult,
@@ -448,16 +481,27 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
           campaignData?.clarifyAxesResolved?.modeAgent === true || histParsed.modeAgent,
         initialT0:
           campaignData?.clarifyAxesResolved?.initialT0 === true || histParsed.initialT0,
+        causalAgent:
+          campaignData?.clarifyAxesResolved?.causalAgent === true || histParsed.causalAgent,
+        cameraAerialAngle:
+          campaignData?.clarifyAxesResolved?.cameraAerialAngle === true || histParsed.cameraAerialAngle,
       };
       const microForBrain = microAnswer ?? histParsed.microFromGate ?? null;
+      const causalForBrain =
+        causalAgentSelection ?? histParsed.causalAgentSelectionFromGate ?? null;
+      const cameraAerialForBrain =
+        cameraAerialAngle ?? histParsed.cameraAerialAngleFromGate ?? null;
       const histJoined = historyLines.length ? historyLines.join("\n\n") : undefined;
 
       let gate = null;
       for (;;) {
+        const needCameraAerial =
+          !axes.cameraAerialAngle && clarifyGateNeedsCameraAerialAngle(safeIdea);
+        const needCausal = !axes.causalAgent && clarifyGateNeedsCausalAgent(safeIdea);
         const needMode = !axes.modeAgent && clarifyGateNeedsModeAgent(safeIdea);
         const needInitial = !axes.initialT0 && clarifyGateNeedsInitialT0(safeIdea);
 
-        if (!needMode && !needInitial) {
+        if (!needCameraAerial && !needCausal && !needMode && !needInitial) {
           gate = await clarifyIdea({
             jobType: safeProfession,
             mainIdea: safeIdea,
@@ -469,7 +513,13 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
           break;
         }
 
-        const phase = needMode ? "mode_agent" : "initial_t0";
+        const phase = needCameraAerial
+          ? "camera_aerial_angle"
+          : needCausal
+            ? "causal_agent"
+            : needMode
+              ? "mode_agent"
+              : "initial_t0";
         gate = await clarifyIdea({
           jobType: safeProfession,
           mainIdea: safeIdea,
@@ -505,7 +555,12 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         }
 
         if (phase === "mode_agent") axes.modeAgent = true;
-        else axes.initialT0 = true;
+        else if (phase === "causal_agent") {
+          axes.causalAgent = true;
+          axes.modeAgent = true;
+        } else if (phase === "camera_aerial_angle") {
+          axes.cameraAerialAngle = true;
+        } else axes.initialT0 = true;
         onCampaignChange?.(buildCampaignSnapshot({ clarifyAxesResolved: axes }));
       }
 
@@ -539,6 +594,8 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         sequenceType,
         dialogueEnabled,
         microAnswerId: microForBrain,
+        causalAgentSelection: causalForBrain,
+        cameraAerialAngle: cameraAerialForBrain,
       });
 
       const skipBrainInitialMicro = axes.initialT0 === true;
@@ -591,7 +648,8 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         dialogueEnabled,
         microAnswer: microForBrain,
         tempoCompressionDecision,
-        causalAgentSelection: null,
+        causalAgentSelection: causalForBrain,
+        cameraAerialAngle: cameraAerialForBrain,
         initialStateSelection: null,
         gateResult: gate,
         clarifyAnswer: clarifyAnswer ?? null,
@@ -632,6 +690,12 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         initialT0:
           campaignData?.clarifyAxesResolved?.initialT0 === true ||
           String(optionId).startsWith("vws_gate_t0_"),
+        causalAgent:
+          campaignData?.clarifyAxesResolved?.causalAgent === true ||
+          String(optionId).startsWith("vws_gate_causal_"),
+        cameraAerialAngle:
+          campaignData?.clarifyAxesResolved?.cameraAerialAngle === true ||
+          String(optionId).startsWith("vws_gate_camera_"),
       };
       const microPatch =
         optionId === "vws_gate_t0_pristine"
@@ -641,12 +705,30 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
             : {};
       if (optionId === "vws_gate_t0_pristine") setMicroAnswer("from_nothing");
       if (optionId === "vws_gate_t0_in_progress") setMicroAnswer("partially_built");
+      const causalPatch =
+        optionId === "vws_gate_causal_visible"
+          ? { causalAgentSelection: "visible" }
+          : optionId === "vws_gate_causal_automatic"
+            ? { causalAgentSelection: "automatic" }
+            : {};
+      if (optionId === "vws_gate_causal_visible") setCausalAgentSelection("visible");
+      if (optionId === "vws_gate_causal_automatic") setCausalAgentSelection("automatic");
+      const cameraAerialPatch =
+        optionId === "vws_gate_camera_top_down"
+          ? { cameraAerialAngle: "top_down" }
+          : optionId === "vws_gate_camera_angled"
+            ? { cameraAerialAngle: "angled" }
+            : {};
+      if (optionId === "vws_gate_camera_top_down") setCameraAerialAngle("top_down");
+      if (optionId === "vws_gate_camera_angled") setCameraAerialAngle("angled");
       onCampaignChange?.(
         buildCampaignSnapshot({
           clarificationHistory: nextHist,
           gateResult: null,
           clarifyAxesResolved: axesNext,
           ...microPatch,
+          ...causalPatch,
+          ...cameraAerialPatch,
         })
       );
       void handleRun(nextHist);
@@ -671,7 +753,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
           gateResult: null,
           clarifyAnswer: optionId === "clarify_apply" ? idea : null,
           ...(optionId === "clarify_apply"
-            ? { clarifyAxesResolved: { modeAgent: false, initialT0: false }, microAnswer: null }
+            ? { clarifyAxesResolved: { modeAgent: false, initialT0: false, causalAgent: false, cameraAerialAngle: false }, microAnswer: null }
             : {}),
         })
       );
