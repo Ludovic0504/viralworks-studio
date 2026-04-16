@@ -212,15 +212,15 @@ export default function Accueil() {
                 key={label}
                 className="rounded-xl sm:rounded-2xl overflow-hidden border border-white/10 shadow-[0_0_30px_rgba(15,23,42,0.8)] bg-black/40"
               >
-                <div className="bg-black flex items-center justify-center">
+                <div className="bg-black flex items-center justify-center h-[clamp(110px,18vw,240px)]">
                   <video
                     src={src}
                     autoPlay
                     loop
                     muted
                     playsInline
-                    preload="metadata"
-                    className="block w-full h-auto bg-black"
+                    preload="auto"
+                    className="block w-full h-full object-contain bg-black"
                   />
                 </div>
                 <p className="text-center text-[10px] sm:text-xs text-gray-500 py-1.5 sm:py-2 px-1.5 sm:px-2 font-medium">
