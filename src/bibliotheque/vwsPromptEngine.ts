@@ -80,6 +80,9 @@ export interface VwsEngineOutput {
   };
 }
 
+/** Une seule phase à la fois : pas de redondance inter-axes dans le même appel. */
+export type ClarifyGatePhase = "mode_agent" | "initial_t0" | "none";
+
 export interface ClarifyIdeaInput {
   jobType: string;
   mainIdea: string;
@@ -87,6 +90,10 @@ export interface ClarifyIdeaInput {
   tempoSelection: Tempo;
   causalAgent?: string | null;
   initialState?: string | null;
+  /** Lignes chronologiques Q/R ou notes de clarification (spec : boucle jusqu'à VALID). */
+  clarificationHistory?: string | null;
+  /** Phase courante du gate (obligatoire côté Campagne VWS). */
+  gatePhase?: ClarifyGatePhase;
 }
 
 export interface ClarifyDiagnostic {
@@ -95,11 +102,20 @@ export interface ClarifyDiagnostic {
   user_link: string;
 }
 
+export interface ClarifyGateOption {
+  id: string;
+  label: string;
+}
+
 export interface ClarifyIdeaResult {
   status: "VALID" | "NEEDS_CLARIFICATION";
   mode: "MODE_A" | "MODE_B";
   diagnostic: ClarifyDiagnostic;
   question: string;
+  /** Présent si NEEDS_CLARIFICATION : choix structurés (spec : schéma JSON strict). */
+  options?: ClarifyGateOption[];
+  /** Phase évaluée pour ce tour (déduplication côté UI). */
+  activePhase?: ClarifyGatePhase;
 }
 
 export interface RefinePromptInput {
@@ -165,38 +181,141 @@ export interface RefinementResult {
   };
 }
 
-const CLARIFY_GATE_INSTRUCTION = `Vous êtes le module de diagnostic "Clarify Gate" pour ViralWorks Studio.
-Votre première tâche est d'exécuter le "Transformation Mode Router" avant toute analyse.
+const CLARIFY_GATE_FORBIDDEN_TOPICS = `INTERDIT dans la question et les libellés : rythme, vitesse, tempo, timelapse vs temps réel, ordre d'apparition des éléments, séquence de plans, enchaînement, cadence, nombre d'étapes, chorégraphie, mise en scène détaillée, durée, musique. Ces sujets sont gérés par le moteur de prompt, pas par l'utilisateur ici.`;
 
-### PHASE 0 : TRANSFORMATION MODE ROUTER
-Vous devez classer l'idée dans exactement UN mode :
+const CLARIFY_GATE_MODE_AGENT_INSTRUCTION = `Vous êtes le Clarify Gate — phase UNIQUE "mode_agent" (ViralWorks Studio).
+Sortie UNIQUEMENT : JSON valide, sans markdown.
 
-MODE A — AUTONOMOUS PROGRESSIVE CONSTRUCTION
-Condition : L'idée NE contient PAS d'action humaine déclencheuse au frame 0 (ni main, ni outil, ni acteur).
+Tâche : décider si l'agent causal PRINCIPAL à l'instant t=0 est (A) autonome / sans acteur humain visible au début, ou (B) déclenché par un humain ou un artisan visible dès le début.
+
+${CLARIFY_GATE_FORBIDDEN_TOPICS}
+
 Règles :
-- Terrain VIDE obligatoire à t=0.
-- La structure s'assemble d'elle-même.
+- Si l'idée tranche déjà clairement A ou B (historique inclus), status = VALID et options = [].
+- Sinon, status = NEEDS_CLARIFICATION : une seule question courte en français, sans mentionner les sujets interdits.
+- NEEDS : le code fixe les ids d'options ; remplis "question" et "diagnostic" seulement.
 
-MODE B — HUMAN-TRIGGERED TRANSFORMATION
-Condition : L'idée contient un humain, une main, un outil ou une action physique au frame 0.
-Règles :
-- Présence humaine/outil AUTORISÉE à t=0.
-- Persistance de l'acteur jusqu'à la fin.
-- Transformation progressive déclenchée par l'action.
+MODE A = autonome / éléments qui évoluent sans acteur humain au frame 0.
+MODE B = humain ou artisan visible et actif dès le frame 0.
 
-RÈGLE D'OR : Le Router l'emporte. Si l'idée est classée MODE B, ignorez toute erreur relative au "Terrain vide" (catégorie A).
-
-FORMAT JSON REQUIS :
+FORMAT JSON :
 {
   "status": "VALID" | "NEEDS_CLARIFICATION",
   "mode": "MODE_A" | "MODE_B",
-  "diagnostic": {
-    "category": "A" | "B" | "C" | "D" | "E",
-    "reason": "phrase courte",
-    "user_link": "idée utilisateur"
-  },
-  "question": "question courte"
+  "diagnostic": { "category": "A"|"B"|"C"|"D"|"E", "reason": "court", "user_link": "court" },
+  "question": "texte si NEEDS sinon \"\"",
+  "options": []
 }`;
+
+const CLARIFY_GATE_INITIAL_T0_INSTRUCTION = `Vous êtes le Clarify Gate — phase UNIQUE "initial_t0" (ViralWorks Studio).
+Sortie UNIQUEMENT : JSON valide, sans markdown.
+
+Tâche : à l'instant t=0 de la scène, l'état spatial est-il (1) intact / "avant" / rien n'est encore engagé, ou (2) déjà en cours (chantier, travaux commencés, milieu de progression) ? Ne pas re-demander qui agit : cela est déjà tranché ailleurs.
+
+${CLARIFY_GATE_FORBIDDEN_TOPICS}
+
+Règles :
+- Si l'idée précise déjà t=0 (historique inclus), status = VALID et options = [].
+- Sinon NEEDS_CLARIFICATION : une seule question courte en français.
+
+FORMAT JSON :
+{
+  "status": "VALID" | "NEEDS_CLARIFICATION",
+  "mode": "MODE_A" | "MODE_B",
+  "diagnostic": { "category": "A"|"B"|"C"|"D"|"E", "reason": "court", "user_link": "court" },
+  "question": "texte si NEEDS sinon \"\"",
+  "options": []
+}`;
+
+const CLARIFY_GATE_NONE_INSTRUCTION = `Vous êtes le Clarify Gate — synthèse finale (ViralWorks Studio).
+Sortie UNIQUEMENT : JSON valide, sans markdown.
+
+Les axes structuraux sont déjà résolus ou non requis. Tu ne poses AUCUNE question : status doit toujours être VALID. Choisis mode MODE_A ou MODE_B d'après l'idée (agent humain au t=0 ou non).
+
+${CLARIFY_GATE_FORBIDDEN_TOPICS}
+
+FORMAT JSON :
+{
+  "status": "VALID",
+  "mode": "MODE_A" | "MODE_B",
+  "diagnostic": { "category": "D", "reason": "Gate OK", "user_link": "court" },
+  "question": "",
+  "options": []
+}`;
+
+function normalizeClarifyGateOptions(raw: unknown): ClarifyGateOption[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ClarifyGateOption[] = [];
+  const seen = new Set<string>();
+  for (const o of raw) {
+    const id = String((o as { id?: unknown })?.id ?? "").trim();
+    const label = String((o as { label?: unknown })?.label ?? "").trim();
+    if (!id || !label) continue;
+    let uid = id.replace(/\s+/g, "_");
+    if (seen.has(uid)) uid = `${uid}_${seen.size}`;
+    seen.add(uid);
+    out.push({ id: uid, label });
+    if (out.length >= 4) break;
+  }
+  return out;
+}
+
+const CLARIFY_GATE_FIXED_MODE_OPTIONS: ClarifyGateOption[] = [
+  { id: "vws_gate_mode_autonomous", label: "Les éléments évoluent seuls, sans acteur humain visible au début." },
+  { id: "vws_gate_mode_human", label: "Un être humain ou artisan est visible dès le début et agit." },
+];
+
+const CLARIFY_GATE_FIXED_T0_OPTIONS: ClarifyGateOption[] = [
+  { id: "vws_gate_t0_pristine", label: "État « avant » intact : rien n'est encore engagé au départ." },
+  { id: "vws_gate_t0_in_progress", label: "Travaux ou transformation déjà en cours au départ (milieu de progression)." },
+];
+
+/** Heuristique : une seule question « mode / agent causal » si le texte ne tranche pas déjà. */
+export function clarifyGateNeedsModeAgent(mainIdea: string): boolean {
+  const t = clean(mainIdea).toLowerCase();
+  if (!t || t.length < 4) return false;
+  if (
+    /\b(jardinier|paysagiste|ouvrier|artisan|chef|cuisinier|coiffeur|électricien|plombier|client|passant|homme|femme|personne|main\b|mains\b|il\s|elle\s|on voit|travaille|installe|plante|arrose|taille|pose|monte|répar)\b/.test(
+      t
+    )
+  ) {
+    return false;
+  }
+  if (
+    /\b(seuls?|seules?|tout seul|toute seule|sans main|sans personne|automatiquement|magiquement|apparaissent seuls|s'assemblent seuls|se construisent seuls)\b/.test(
+      t
+    )
+  ) {
+    return false;
+  }
+  return /\b(construi|rénov|renov|transform|assembler|aménag|chantier|jardin|pelouse|terrasse|haie|piscine|maison|mur|terrain|pizza|prépar|cuisin)\b/.test(
+    t
+  );
+}
+
+/** Heuristique : une seule question « t=0 » si le texte ne précise pas déjà l'état initial. */
+export function clarifyGateNeedsInitialT0(mainIdea: string): boolean {
+  const t = clean(mainIdea).toLowerCase();
+  if (!t || t.length < 4) return false;
+  if (
+    /\b(déj[aà]|deja|partiellement|en cours|chantier ouvert|milieu de|avant travaux|après travaux|état initial|vide|nu|à partir de rien|depuis rien|herbe intacte|pelouse intacte)\b/.test(
+      t
+    )
+  ) {
+    return false;
+  }
+  return /\b(rénov|renov|construi|transform|aménag|chantier|timelapse|avant.{0,12}après|appara[iî]t|se refait|refaire|paysag|jardin|pelouse|terrasse)\b/.test(
+    t
+  );
+}
+
+function clarificationHistoryHasT0Answer(history: string | null | undefined): boolean {
+  const h = String(history || "");
+  return h.includes("option_id=vws_gate_t0_pristine") || h.includes("option_id=vws_gate_t0_in_progress");
+}
+
+const CLARIFY_GATE_DEFAULT_T0_QUESTION =
+  "À l'instant de départ (t=0), la scène est-elle encore à l'état « avant » (rien n'a encore commencé), ou la transformation est-elle déjà en cours ?";
 
 const REFINEMENT_SYSTEM_INSTRUCTION = `SYSTEM-LEVEL CONTROL ROLE — VEO3 DETERMINISTIC PROMPT ENGINE (ViralWorks Studio)
 You are a deterministic video prompt generation engine. You are NOT creative. You are technical and constraint-driven.
@@ -677,12 +796,68 @@ function maybeBuildMicroQuestion(input: UserIdeaInput): MicroQuestion | null {
 }
 
 /**
+ * Viewpoint safety (spec) : évite les vues zénithales "plates" hors contextes atelier / tabletop.
+ */
+export function applyViewpointSafetyGate(text: string, jobTypeLabel: string): string {
+  const j = clean(jobTypeLabel).toLowerCase();
+  const tabletop =
+    /restaur|menuis|cuisine|bijou|jewel|workshop|tabletop|établi|etabli|atelier|garagiste|coiffeur/.test(j);
+  const replacement = tabletop
+    ? "slightly oblique overhead angle that preserves depth, perspective, and foreshortening (not a flat map view)"
+    : "oblique aerial or eye-level perspective showing vertical planes, depth, and volumetric form (no flat zenith or pure top-down map)";
+  let out = text;
+  const patterns: RegExp[] = [
+    /\bvue\s*zénithale\b/gi,
+    /\bvue\s*zenithale\b/gi,
+    /\btop[-\s]?down\b/gi,
+    /\bbird'?s[-\s]?eye\b/gi,
+    /\bbirds[-\s]?eye\b/gi,
+    /\bvue\s*du\s*haut\b/gi,
+    /\bvue\s*drone\b/gi,
+    /\bvue\s*aérienne\s*strictement\s*verticale\b/gi,
+    /\bstrict(ly)?\s*overhead\b/gi,
+    /\bplan\s*view\b/gi,
+    /\bfrom\s*directly\s*above\b/gi,
+  ];
+  for (const re of patterns) {
+    out = out.replace(re, replacement);
+  }
+  return out;
+}
+
+function freezeVideoScriptForHookStill(scene0: string): string {
+  const t = clean(scene0);
+  if (!t) return "";
+  const lines = t
+    .split(/\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const kept = lines.filter(
+    (line) =>
+      !/^(camera|lighting|tone|important|dialogue)\s*:/i.test(line) &&
+      !/^[\-\*]\s*(camera|pan|zoom|tilt|dolly)\b/i.test(line) &&
+      !/\b(pan|zoom|tilt|dolly|travelling|traveling|handheld|whip\s*pan|cut\s*to)\b/i.test(line)
+  );
+  const core = kept.length ? kept.slice(0, 24).join("\n") : t.slice(0, 2000);
+  return [
+    "LOCKED_VIDEO_SCRIPT_T0 (static still, match opening continuity of this 8s brief; do not contradict materials/environment):",
+    core,
+    "Temporal scissors: single instant T=0 only; no motion verbs, no time progression, no camera moves.",
+  ].join("\n");
+}
+
+/**
  * Prompt réellement envoyé au modèle image (visuel d’accroche).
  * Le champ UI reste l’« idée principale » seule ; ces contraintes sont ajoutées en interne.
  */
 export function buildHookImageApiPrompt(
   userIdea: string,
-  options: { revealMode: boolean; initialStateMode?: "from_nothing" | "partially_built" | null }
+  options: {
+    revealMode: boolean;
+    initialStateMode?: "from_nothing" | "partially_built" | null;
+    jobTypeLabel?: string;
+    lockedVideoScriptScene0?: string;
+  }
 ): string {
   const idea = clean(userIdea);
   if (!idea) return idea;
@@ -727,38 +902,104 @@ export function buildHookImageApiPrompt(
       ? `Ultra-realistic initial state scene ${inferEnvironment()}, with ${inferOpenSpace()}, natural composition, coherent details, and no visual clutter.`
       : idea;
 
-  if (!forceInitialStateView) return baseIdea;
+  let assembled: string;
+  if (!forceInitialStateView) {
+    assembled = baseIdea;
+  } else {
+    const beforeOnly = [
+      "Contrainte visuelle (image d'accroche de départ) :",
+      "représenter uniquement l’état INITIAL / « avant » de la scène, avant toute manifestation du résultat ou de l’action principale.",
+      "Si l'idée décrit une transformation progressive, montrer la pièce/espace vide ou inachevé au départ (T=0).",
+      "Ne pas montrer d'éléments déjà terminés liés au résultat final (pas de rendu final déjà posé).",
+      "Une seule image, cohérente et réaliste, lumière naturelle, cadrage lisible.",
+    ].join(" ");
+    assembled = `${baseIdea}\n\n${beforeOnly}`;
+  }
 
-  const beforeOnly = [
-    "Contrainte visuelle (image d'accroche de départ) :",
-    "représenter uniquement l’état INITIAL / « avant » de la scène, avant toute manifestation du résultat ou de l’action principale.",
-    "Si l'idée décrit une transformation progressive, montrer la pièce/espace vide ou inachevé au départ (T=0).",
-    "Ne pas montrer d'éléments déjà terminés liés au résultat final (pas de rendu final déjà posé).",
-    "Une seule image, cohérente et réaliste, lumière naturelle, cadrage lisible.",
-  ].join(" ");
-
-  return `${baseIdea}\n\n${beforeOnly}`;
+  if (options.lockedVideoScriptScene0?.trim()) {
+    assembled += `\n\n${freezeVideoScriptForHookStill(options.lockedVideoScriptScene0)}`;
+  }
+  return applyViewpointSafetyGate(assembled, options.jobTypeLabel || "");
 }
 
 export async function clarifyIdea(input: ClarifyIdeaInput): Promise<ClarifyIdeaResult> {
-  const payload = `Métier: ${input.jobType}\nIdée: ${input.mainIdea}\nParamètres: ${input.modifiers || ""}\nTempo: ${input.tempoSelection}`;
-  const raw = await generateResponse(payload, CLARIFY_GATE_INSTRUCTION, {
+  const phase: ClarifyGatePhase = input.gatePhase ?? "none";
+  const lines = [`Métier: ${input.jobType}`, `Idée: ${input.mainIdea}`, `Paramètres: ${input.modifiers || ""}`];
+  if (input.clarificationHistory?.trim()) {
+    lines.push(`Historique de clarification (chronologique):\n${input.clarificationHistory.trim()}`);
+  }
+  const payload = lines.join("\n");
+  const system =
+    phase === "mode_agent"
+      ? CLARIFY_GATE_MODE_AGENT_INSTRUCTION
+      : phase === "initial_t0"
+        ? CLARIFY_GATE_INITIAL_T0_INSTRUCTION
+        : CLARIFY_GATE_NONE_INSTRUCTION;
+
+  const raw = await generateResponse(payload, system, {
     model: "gpt-4o-mini",
     temperature: 0,
-    max_tokens: 450,
+    max_tokens: phase === "none" ? 320 : 480,
   });
   const parsed = (extractJsonObject(String(raw || "")) || {}) as Partial<ClarifyIdeaResult>;
+
+  let status: "VALID" | "NEEDS_CLARIFICATION" =
+    parsed.status === "VALID" ? "VALID" : "NEEDS_CLARIFICATION";
+  if (phase === "none") {
+    status = "VALID";
+  }
+
+  /** Le modèle renvoie souvent VALID pour t=0 alors que l'idée ne fixe pas l'état initial ; l'utilisateur doit trancher. */
+  let forcedInitialT0Needs = false;
+  if (
+    phase === "initial_t0" &&
+    status === "VALID" &&
+    clarifyGateNeedsInitialT0(input.mainIdea) &&
+    !clarificationHistoryHasT0Answer(input.clarificationHistory)
+  ) {
+    status = "NEEDS_CLARIFICATION";
+    forcedInitialT0Needs = true;
+  }
+
+  let options: ClarifyGateOption[] = [];
+  if (status === "NEEDS_CLARIFICATION") {
+    if (phase === "mode_agent") {
+      options = [...CLARIFY_GATE_FIXED_MODE_OPTIONS];
+    } else if (phase === "initial_t0") {
+      options = [...CLARIFY_GATE_FIXED_T0_OPTIONS];
+    } else {
+      options = normalizeClarifyGateOptions(parsed.options);
+      if (options.length < 2) {
+        options = [
+          { id: "clarify_apply", label: "J’ai précisé mon idée dans le champ ci-dessus" },
+          { id: "clarify_proceed", label: "Continuer malgré ce diagnostic" },
+        ];
+      }
+    }
+  }
+
+  const reason = forcedInitialT0Needs
+    ? "État à t=0 à préciser pour l'idée"
+    : parsed.diagnostic?.reason
+      ? String(parsed.diagnostic.reason)
+      : "Diagnostic non précisé";
+  let question = parsed.question ? String(parsed.question).trim() : "";
+  if (forcedInitialT0Needs) {
+    question = CLARIFY_GATE_DEFAULT_T0_QUESTION;
+  }
   return {
-    status: parsed.status === "VALID" ? "VALID" : "NEEDS_CLARIFICATION",
+    status,
     mode: parsed.mode === "MODE_B" ? "MODE_B" : "MODE_A",
     diagnostic: {
       category: parsed.diagnostic?.category && ["A", "B", "C", "D", "E"].includes(parsed.diagnostic.category)
         ? parsed.diagnostic.category
         : "D",
-      reason: parsed.diagnostic?.reason ? String(parsed.diagnostic.reason) : "Diagnostic non précisé",
+      reason,
       user_link: parsed.diagnostic?.user_link ? String(parsed.diagnostic.user_link) : input.mainIdea,
     },
-    question: parsed.question ? String(parsed.question) : "",
+    question: question || reason,
+    options: status === "NEEDS_CLARIFICATION" ? options : undefined,
+    activePhase: phase,
   };
 }
 

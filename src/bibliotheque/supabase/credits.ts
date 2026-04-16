@@ -1,5 +1,14 @@
 import { getBrowserSupabase } from "./client-navigateur";
 
+/** Émis après un débit (ou autre action) pour rafraîchir l’affichage des crédits (ex. page Profil). */
+export const USER_CREDITS_UPDATED_EVENT = "vws:user-credits-updated";
+
+export function notifyUserCreditsUpdated() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(USER_CREDITS_UPDATED_EVENT));
+  }
+}
+
 export interface CreditTransaction {
   id: string;
   user_id: string;
@@ -35,22 +44,22 @@ export async function getUserCredits(): Promise<number> {
   
   const { data: { user }, error: userErr } = await supabase.auth.getUser();
   if (userErr || !user) {
-    console.warn("⏭️ Utilisateur non connecté");
+    console.warn("Utilisateur non connecté");
     return 0;
   }
 
-  const { data, error } = await supabase
+  const { data: rows, error } = await supabase
     .from("user_credits")
     .select("credits")
-    .eq("user_id", user.id)
-    .single();
+    .eq("user_id", user.id);
 
   if (error) {
-    console.error("❌ Erreur récupération crédits:", error);
+    console.error("Erreur récupération crédits:", error);
     return 0;
   }
 
-  return data?.credits || 0;
+  if (!rows?.length) return 0;
+  return rows.reduce((sum, r) => sum + Number(r.credits ?? 0), 0);
 }
 
 /**
@@ -77,9 +86,9 @@ export async function debitCredits(
   }
 
   // Appeler la fonction Edge Function pour débiter
-  console.log("💳 [debitCredits] Appel de la fonction debit-credits avec:", { amount, reason, metadata });
+  console.log("[debitCredits] Appel debit-credits:", { amount, reason, metadata });
   
-  const { data, error } = await supabase.functions.invoke('debit-credits', {
+  const { data, error } = await supabase.functions.invoke("debit-credits", {
     body: {
       amount,
       reason,
@@ -88,17 +97,33 @@ export async function debitCredits(
   });
 
   if (error) {
-    console.error("❌ Erreur débit crédits:", error);
-    console.error("❌ Détails erreur:", {
-      message: error.message,
-      context: error.context,
-      status: error.status,
-    });
-    return { success: false, error: error.message || "Erreur lors du débit des crédits" };
+    console.error("Erreur débit crédits:", error);
+    let message = error.message || "Erreur lors du débit des crédits";
+    try {
+      const ctx = error.context as { body?: string } | undefined;
+      if (ctx?.body && typeof ctx.body === "string") {
+        const parsed = JSON.parse(ctx.body) as { error?: string };
+        if (parsed?.error) message = parsed.error;
+      }
+    } catch {
+      /* ignore */
+    }
+    return { success: false, error: message };
   }
 
-  console.log("✅ [debitCredits] Débit réussi:", data);
-  return { success: true, remainingCredits: data?.remaining_credits };
+  if (
+    data &&
+    typeof data === "object" &&
+    "error" in data &&
+    (data as { success?: boolean }).success !== true
+  ) {
+    const errMsg = String((data as { error?: string }).error || "Erreur lors du débit des crédits");
+    return { success: false, error: errMsg };
+  }
+
+  console.log("[debitCredits] Débit réussi:", data);
+  notifyUserCreditsUpdated();
+  return { success: true, remainingCredits: (data as { remaining_credits?: number })?.remaining_credits };
 }
 
 /**
@@ -120,7 +145,7 @@ export async function getCreditTransactions(limit: number = 50): Promise<CreditT
     .limit(limit);
 
   if (error) {
-    console.error("❌ Erreur récupération transactions:", error);
+    console.error("Erreur récupération transactions:", error);
     return [];
   }
 
@@ -145,7 +170,7 @@ export async function getUserRole(): Promise<'user' | 'admin' | null> {
     .single();
 
   if (error) {
-    console.error("❌ Erreur récupération rôle:", error);
+    console.error("Erreur récupération rôle:", error);
     return null;
   }
 

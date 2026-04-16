@@ -3,6 +3,7 @@ import { useAuth } from "@/contexte/FournisseurAuth";
 import { saveHistory as saveHistorySupabase } from "@/bibliotheque/supabase/historique";
 import { hasEnoughCredits, getUserCredits } from "@/bibliotheque/supabase/credits";
 import { uploadImagesFromUrls } from "@/bibliotheque/supabase/storage";
+import { getUserSubscription } from "@/bibliotheque/supabase/stripe";
 import {
   canUseImageGeneration,
   canUseImageModification,
@@ -11,6 +12,10 @@ import {
   getWorkflowUsage,
   resetWorkflowUsage,
 } from "@/bibliotheque/workflowQuota";
+import {
+  LS_VIRAL_STUDIO_DRAFT,
+  SS_CAMPAIGN_IDEA_LIVE_KEY,
+} from "@/bibliotheque/viralWorksStudioStorage";
 import PageTitle from "../composants/interface/TitrePage";
 import {
   modifyImageWithNanoBanana,
@@ -28,6 +33,58 @@ import {
 } from "lucide-react";
 
 const IMAGE_GENERATION_COST = 1;
+const VIDEO_QUOTA_EXHAUSTED_MESSAGE =
+  "limite vidéo atteint pour ce mois, veuillez attendre la fin du mois pour le renouvellement des vidéos ou acheter des packs vidéos pour continuer a créer";
+const NON_SUBSCRIBER_BLOCKED_MESSAGE =
+  "Prenez un abonnement pour profiter de ViralWorks Studio et lancer vos générations.";
+
+function QuotaBlockedModal({ open, title, message, actionLabel, onClose, onGoToShop }) {
+  if (!open) return null;
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <div
+        className="studio-panel max-w-xl w-full overflow-hidden border border-amber-500/35 bg-[#131920]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+          <h2 className="text-base font-semibold text-gray-200">{title || "Quota mensuel épuisé"}</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-gray-200 transition-colors"
+            aria-label="Fermer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="p-6 space-y-4">
+          <div className="rounded-xl border border-amber-500/35 bg-amber-500/10 px-4 py-3">
+            <p className="text-sm text-amber-100">{message || VIDEO_QUOTA_EXHAUSTED_MESSAGE}</p>
+          </div>
+          <div className="flex items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10 transition-all"
+            >
+              Fermer
+            </button>
+            <button
+              type="button"
+              onClick={onGoToShop}
+              className="px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-500 to-teal-500 text-white font-semibold hover:from-cyan-400 hover:to-teal-400 transition-all"
+            >
+              {actionLabel || "Aller vers Packs vidéos"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function userKey(uid) {
   return uid ? `u:${uid}` : "guest";
@@ -68,9 +125,6 @@ function addImageHistory({ uid, prompt, urls, meta }) {
   saveHistory([entry, ...items]);
   window.dispatchEvent(new Event("onetool:history:changed"));
 }
-const LS_VIRAL_STUDIO_DRAFT = "vws_studio_draft_v1";
-const SS_CAMPAIGN_IDEA_LIVE_KEY = "vws_studio_campaign_idea_live_v1";
-
 const DEFAULT_IMAGE_STEP = {
   campaignIdeaPrompt: "",
   prompt: "",
@@ -139,6 +193,9 @@ export default function ImagePage({
   const [showSystemVideo, setShowSystemVideo] = useState(false);
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [showQuotaModal, setShowQuotaModal] = useState(false);
+  const [quotaModalMessage, setQuotaModalMessage] = useState(VIDEO_QUOTA_EXHAUSTED_MESSAGE);
+  const [hasActiveSubscription, setHasActiveSubscription] = useState(false);
   const historyPanelRef = useRef(null);
   /** Valeur réelle du champ au clic (évite instruction vide si le state parent n’est pas encore recalé). */
   const bottomFieldInputRef = useRef(null);
@@ -163,6 +220,26 @@ export default function ImagePage({
     };
     void refresh();
   }, [session, uid]);
+
+  useEffect(() => {
+    let active = true;
+    const loadSubscriptionState = async () => {
+      if (!session?.user?.id) {
+        if (active) setHasActiveSubscription(false);
+        return;
+      }
+      try {
+        const sub = await getUserSubscription();
+        if (active) setHasActiveSubscription(Boolean(sub));
+      } catch {
+        if (active) setHasActiveSubscription(false);
+      }
+    };
+    loadSubscriptionState();
+    return () => {
+      active = false;
+    };
+  }, [session?.user?.id]);
 
   useEffect(() => {
     if (!patchImageStep) return;
@@ -199,6 +276,13 @@ export default function ImagePage({
     }
   };
 
+  const openQuotaModal = (message) => {
+    setQuotaModalMessage(
+      message || (hasActiveSubscription ? VIDEO_QUOTA_EXHAUSTED_MESSAGE : NON_SUBSCRIBER_BLOCKED_MESSAGE)
+    );
+    setShowQuotaModal(true);
+  };
+
   const canGenerate = useMemo(() => {
     if (!session) return false;
     return !!String(campaignIdeaPrompt || "").trim() && !busy;
@@ -221,7 +305,7 @@ export default function ImagePage({
     if (session) {
       const hasCredits = await hasEnoughCredits(1);
       if (!hasCredits) {
-        alert("Ton quota actuel ne permet pas de lancer cette génération d’images. Mets à jour ton pack ou ton abonnement dans la Boutique.");
+        openQuotaModal();
         return;
       }
     }
@@ -231,7 +315,7 @@ export default function ImagePage({
       if (usage.videoAttemptsUsed >= 1) {
         resetWorkflowUsage();
       } else {
-        alert("Quota Visuel d'accroche atteint pour ce workflow (3 générations d'images).");
+        openQuotaModal("Quota Visuel d'accroche atteint pour ce workflow (3 générations d'images).");
         return;
       }
     }
@@ -291,6 +375,8 @@ export default function ImagePage({
               String(campaignClarifyAnswer || "").toLowerCase().includes("rien")
                 ? "from_nothing"
                 : null,
+            jobTypeLabel: campaignJobType || "",
+            lockedVideoScriptScene0: String(scriptScene1Idea || "").trim() || undefined,
             }
           ),
           ratio,
@@ -612,7 +698,7 @@ export default function ImagePage({
       if (usage.videoAttemptsUsed >= 1) {
         resetWorkflowUsage();
       } else {
-        alert("Quota Visuel d'accroche atteint pour ce workflow (5 modifications d'image).");
+        openQuotaModal("Quota Visuel d'accroche atteint pour ce workflow (5 modifications d'image).");
         return;
       }
     }
@@ -822,6 +908,19 @@ export default function ImagePage({
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-10">
+      <QuotaBlockedModal
+        open={showQuotaModal}
+        title={hasActiveSubscription ? "Quota mensuel épuisé" : "Accès abonnement requis"}
+        message={quotaModalMessage}
+        actionLabel={hasActiveSubscription ? "Aller vers Packs vidéos" : "Voir les abonnements"}
+        onClose={() => setShowQuotaModal(false)}
+        onGoToShop={() => {
+          setShowQuotaModal(false);
+          window.location.href = hasActiveSubscription
+            ? "/boutique?section=packs-videos"
+            : "/boutique?section=subscription";
+        }}
+      />
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
         <PageTitle
           green="Visuel"

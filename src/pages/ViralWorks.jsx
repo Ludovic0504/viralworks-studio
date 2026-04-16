@@ -5,19 +5,28 @@ import PromptAssistant from "./Prompt.jsx";
 import ImagePage from "./Image.jsx";
 import VideoPage from "./Video.jsx";
 import RecapVWS from "./RecapVWS.jsx";
-import { Check } from "lucide-react";
-
-const LS_VIRAL_STUDIO_DRAFT = "vws_studio_draft_v1";
-/** Copie locale (tous onglets) — secours si sessionStorage vide (nouvel onglet). */
-const LS_IMAGE_STEP_KEY = "vws_studio_image_step_v1";
-/** Copie par onglet — évite qu’un autre onglet écrase avec un état vide. */
-const SS_IMAGE_STEP_KEY = "vws_studio_image_step_session_v1";
-/** Dernières grilles visuelles (secours UX + restauration après navigation). */
-const SS_VISUAL_SNAPSHOTS_KEY = "vws_studio_visual_snapshots_v1";
-/** Miroir de l’idée campagne (le brouillon efface `idea` à l’enregistrement — pour rechargement UI). */
-const SS_CAMPAIGN_IDEA_LIVE_KEY = "vws_studio_campaign_idea_live_v1";
-/** Étape courante, validations, cerveau préparé — secours si le layout tableau de bord est démonté (ex. retour depuis l’accueil). */
-const SS_SPA_UI_KEY = "vws_studio_spa_ui_v1";
+import {
+  markVideoWorkflowCreditConsumed,
+  resetWorkflowUsage,
+  shouldDebitVideoCredit,
+} from "@/bibliotheque/workflowQuota";
+import {
+  LS_VIRAL_STUDIO_DRAFT,
+  LS_IMAGE_STEP_KEY,
+  SS_IMAGE_STEP_KEY,
+  SS_VISUAL_SNAPSHOTS_KEY,
+  SS_CAMPAIGN_IDEA_LIVE_KEY,
+  SS_SPA_UI_KEY,
+  isReloadNavigation,
+  clearViralWorksTransientSessionKeys,
+  loadSpaUiStateFromSession,
+  loadViralStudioDraftFromLocal,
+} from "@/bibliotheque/viralWorksStudioStorage";
+import { useAuth } from "@/contexte/FournisseurAuth";
+import { debitCredits, hasEnoughCredits } from "@/bibliotheque/supabase/credits";
+import { getUserSubscription } from "@/bibliotheque/supabase/stripe";
+import { Check, X } from "lucide-react";
+import { useLocation } from "react-router-dom";
 
 /**
  * Mémoire module (hors React) : survit au démontage de ViralWorks quand tu quittes /viralworks.
@@ -25,6 +34,19 @@ const SS_SPA_UI_KEY = "vws_studio_spa_ui_v1";
  * alors que l’état mémoire était encore correct avant ce filet.
  */
 let spaImageStepMemory = null;
+
+/**
+ * Au rechargement complet (F5) : vider la session studio une seule fois par chargement de page.
+ * Doit s’exécuter avant la première lecture de `loadSpaUiStateFromSession` (voir ref `spaUiInitialRef`).
+ */
+function purgeStudioSessionIfFullReload() {
+  if (typeof window === "undefined") return;
+  if (!isReloadNavigation()) return;
+  if (window.__vwsStudioReloadPurgeDone) return;
+  window.__vwsStudioReloadPurgeDone = true;
+  spaImageStepMemory = null;
+  clearViralWorksTransientSessionKeys();
+}
 
 function cloneImageStep(s) {
   if (!s) return null;
@@ -92,36 +114,6 @@ function imageStepRichness(s) {
   return n * 10_000 + refW + promptW + modifyW;
 }
 
-/** Rechargement complet : vider la session studio une seule fois par chargement de page. */
-function purgeStudioSessionIfFullReload() {
-  if (typeof window === "undefined") return;
-  if (!isReloadNavigation()) return;
-  if (window.__vwsStudioReloadPurgeDone) return;
-  window.__vwsStudioReloadPurgeDone = true;
-  spaImageStepMemory = null;
-  try {
-    sessionStorage.removeItem(SS_IMAGE_STEP_KEY);
-    localStorage.removeItem(LS_IMAGE_STEP_KEY);
-    sessionStorage.removeItem(SS_VISUAL_SNAPSHOTS_KEY);
-    sessionStorage.removeItem(SS_SPA_UI_KEY);
-  } catch {
-    /* ignore */
-  }
-}
-
-function loadSpaUiState() {
-  if (isReloadNavigation()) return null;
-  try {
-    const raw = sessionStorage.getItem(SS_SPA_UI_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
 function normalizeValidated(v) {
   const base = { 1: false, 2: false, 3: false, 4: false, 5: false };
   if (!v || typeof v !== "object") return base;
@@ -134,13 +126,23 @@ function normalizeValidated(v) {
 /** Choisit l’état le plus « riche » (images > ref > texte) — plus fiable qu’un ordre fixe. */
 function pickInitialImageStep() {
   if (isReloadNavigation()) {
+    const draftImg = sanitizeImageStepFromDraft(loadViralStudioDraftFromLocal()?.imageStep);
+    if (
+      draftImg &&
+      (draftImg.lastGeneratedImages?.length ||
+        draftImg.refCharDataUrl ||
+        String(draftImg.prompt || "").trim() ||
+        String(draftImg.campaignIdeaPrompt || "").trim())
+    ) {
+      return draftImg;
+    }
     return { ...INITIAL_IMAGE_STEP };
   }
 
   const mem = spaImageStepMemory ? sanitizeImageStepFromDraft(spaImageStepMemory) : null;
   const sessionS = readSessionImageStep();
   const localS = readLocalImageStepBackup();
-  const draftS = sanitizeImageStepFromDraft(loadViralStudioDraft()?.imageStep);
+  const draftS = sanitizeImageStepFromDraft(loadViralStudioDraftFromLocal()?.imageStep);
 
   const candidates = [mem, sessionS, localS, draftS].filter(Boolean);
   if (candidates.length === 0) return { ...INITIAL_IMAGE_STEP };
@@ -184,33 +186,6 @@ const INITIAL_IMAGE_STEP = {
   pairedCampaignIdea: null,
 };
 
-function loadViralStudioDraft() {
-  try {
-    const raw = localStorage.getItem(LS_VIRAL_STUDIO_DRAFT);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return null;
-    return {
-      campaign: parsed.campaign && typeof parsed.campaign === "object" ? parsed.campaign : {},
-      scriptPrompt: typeof parsed.scriptPrompt === "string" ? parsed.scriptPrompt : "",
-      imageStep:
-        parsed.imageStep && typeof parsed.imageStep === "object" ? parsed.imageStep : null,
-    };
-  } catch {
-    return null;
-  }
-}
-
-/** Rechargement complet (F5) : ne pas réinjecter le brouillon visuel. */
-function isReloadNavigation() {
-  if (typeof performance === "undefined") return false;
-  const entry = performance.getEntriesByType?.("navigation")?.[0];
-  if (entry && "type" in entry) return entry.type === "reload";
-  const legacy = performance.navigation;
-  if (legacy && typeof legacy.type === "number") return legacy.type === 1;
-  return false;
-}
-
 function sanitizeImageStepFromDraft(raw) {
   if (!raw || typeof raw !== "object") return null;
   const urls = Array.isArray(raw.lastGeneratedImages)
@@ -252,36 +227,45 @@ function sanitizeImageStepFromDraft(raw) {
   };
 }
 
-function appendVisualSnapshotFromStep(step, setVisualSnapshots) {
+function mergeVisualSnapshotsList(prevList, step) {
   const urls = step?.lastGeneratedImages;
-  if (!urls?.length) return;
+  if (!urls?.length) return prevList;
   let sig;
   try {
     sig = JSON.stringify(urls);
   } catch {
-    return;
+    return prevList;
   }
+  const stepClone = cloneImageStep(step);
+  const entry = {
+    id:
+      typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random()}`,
+    t: Date.now(),
+    step: stepClone,
+  };
+  const deduped = prevList.filter((e) => {
+    try {
+      return JSON.stringify(e.step?.lastGeneratedImages) !== sig;
+    } catch {
+      return true;
+    }
+  });
+  return [entry, ...deduped].slice(0, 48);
+}
+
+function scheduleVisualSnapshotFromStep(step, setVisualSnapshots) {
   setVisualSnapshots((list) => {
-    const stepClone = cloneImageStep(step);
-    const entry = {
-      id:
-        typeof crypto !== "undefined" && crypto.randomUUID
-          ? crypto.randomUUID()
-          : `${Date.now()}-${Math.random()}`,
-      t: Date.now(),
-      step: stepClone,
-    };
-    const deduped = list.filter((e) => {
-      try {
-        return JSON.stringify(e.step?.lastGeneratedImages) !== sig;
-      } catch {
-        return true;
-      }
-    });
-    const next = [entry, ...deduped].slice(0, 48);
+    const next = mergeVisualSnapshotsList(list, step);
+    if (next === list) return list;
     persistVisualSnapshotsToSession(next);
     return next;
   });
+}
+
+function appendVisualSnapshotFromStep(step, setVisualSnapshots) {
+  scheduleVisualSnapshotFromStep(step, setVisualSnapshots);
 }
 
 /** Idée principale + options de stabilisation : pas de persistance locale (refresh = état initial). */
@@ -302,6 +286,11 @@ function applyCampagneNonPersistedDefaults(campaign) {
     clarifyDiagnostic: base.clarifyDiagnostic ?? null,
     proceedAnyway: base.proceedAnyway === true,
     isClarified: base.isClarified === true,
+    clarificationHistory: Array.isArray(base.clarificationHistory) ? base.clarificationHistory : [],
+    clarifyAxesResolved: {
+      modeAgent: base.clarifyAxesResolved?.modeAgent === true,
+      initialT0: base.clarifyAxesResolved?.initialT0 === true,
+    },
   };
 }
 
@@ -330,6 +319,11 @@ function serializeCampaignForPrepareGate(c) {
     clarifyDiagnostic: c.clarifyDiagnostic ?? null,
     proceedAnyway: c.proceedAnyway === true,
     isClarified: c.isClarified === true,
+    clarificationHistory: Array.isArray(c.clarificationHistory) ? c.clarificationHistory : [],
+    clarifyAxesResolved: {
+      modeAgent: c.clarifyAxesResolved?.modeAgent === true,
+      initialT0: c.clarifyAxesResolved?.initialT0 === true,
+    },
   });
 }
 
@@ -341,10 +335,16 @@ function normalizeScriptPayload(raw) {
     while (scenes.length < 3) scenes.push("");
     const combined =
       typeof raw.combined === "string" ? raw.combined : scenes.filter(Boolean).join("\n\n---\n\n");
+    const scriptResultMeta =
+      raw.scriptResultMeta && typeof raw.scriptResultMeta === "object" && !Array.isArray(raw.scriptResultMeta)
+        ? raw.scriptResultMeta
+        : undefined;
     return {
       mode: raw.mode === "multi" ? "multi" : "single",
       combined: String(combined ?? ""),
       scenes,
+      refinementRunId: typeof raw.refinementRunId === "string" ? raw.refinementRunId : undefined,
+      scriptResultMeta,
     };
   }
   if (typeof raw === "string") {
@@ -361,6 +361,61 @@ function normalizeScriptPayload(raw) {
   };
 }
 
+const SCRIPT_STEP_CREDIT_COST = 1;
+const VIDEO_STEP_CREDIT_COST = 1;
+const SCRIPT_STEP_VIDEO_QUOTA_MSG =
+  "limite vidéo atteint pour ce mois, veuillez attendre la fin du mois pour le renouvellement des vidéos ou acheter des packs vidéos pour continuer a créer";
+const SCRIPT_STEP_NON_SUB_MSG =
+  "Prenez un abonnement pour profiter de ViralWorks Studio et lancer vos générations.";
+
+function ScriptStepQuotaModal({ open, title, message, actionLabel, onClose, onGoToShop }) {
+  if (!open) return null;
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <div
+        className="studio-panel max-w-xl w-full overflow-hidden border border-amber-500/35 bg-[#131920]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+          <h2 className="text-base font-semibold text-gray-200">{title || "Quota mensuel épuisé"}</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-gray-200 transition-colors"
+            aria-label="Fermer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="p-6 space-y-4">
+          <div className="rounded-xl border border-amber-500/35 bg-amber-500/10 px-4 py-3">
+            <p className="text-sm text-amber-100">{message || SCRIPT_STEP_VIDEO_QUOTA_MSG}</p>
+          </div>
+          <div className="flex items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10 transition-all"
+            >
+              Fermer
+            </button>
+            <button
+              type="button"
+              onClick={onGoToShop}
+              className="px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-500 to-teal-500 text-white font-semibold hover:from-cyan-400 hover:to-teal-400 transition-all"
+            >
+              {actionLabel || "Aller vers Packs vidéos"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const steps = [
   { id: 1, key: "campagne", label: "Campagne VWS" },
   { id: 2, key: "script", label: "Script gagnant" },
@@ -370,49 +425,53 @@ const steps = [
 ];
 
 export default function ViralWorks() {
-  purgeStudioSessionIfFullReload();
+  const location = useLocation();
+  const spaUiInitialRef = useRef(undefined);
+  if (spaUiInitialRef.current === undefined) {
+    purgeStudioSessionIfFullReload();
+    spaUiInitialRef.current = loadSpaUiStateFromSession();
+  }
+  const spaInitial = spaUiInitialRef.current;
+
+  const { session } = useAuth();
+  const [showScriptQuotaModal, setShowScriptQuotaModal] = useState(false);
+  const [scriptQuotaModalMessage, setScriptQuotaModalMessage] = useState(SCRIPT_STEP_VIDEO_QUOTA_MSG);
+  const [hasActiveSubscriptionVw, setHasActiveSubscriptionVw] = useState(false);
 
   const [currentStep, setCurrentStep] = useState(() => {
-    const spaUi = loadSpaUiState();
-    const n = Number(spaUi?.currentStep);
+    const n = Number(spaInitial?.currentStep);
     return Number.isFinite(n) && n >= 1 && n <= 5 ? Math.floor(n) : 1;
   });
-  const [validated, setValidated] = useState(() =>
-    normalizeValidated(loadSpaUiState()?.validated)
-  );
+  const [validated, setValidated] = useState(() => normalizeValidated(spaInitial?.validated));
   const [campaignData, setCampaignData] = useState(() => {
-    const spaUi = loadSpaUiState();
-    if (spaUi?.campaignData && typeof spaUi.campaignData === "object") {
-      const c = spaUi.campaignData;
+    if (spaInitial?.campaignData && typeof spaInitial.campaignData === "object") {
+      const c = spaInitial.campaignData;
       return {
         ...c,
         dialogueEnabled: c.dialogueEnabled !== false,
       };
     }
-    const d = loadViralStudioDraft();
+    const d = loadViralStudioDraftFromLocal();
     return applyCampagneNonPersistedDefaults(d?.campaign);
   });
   const [scriptPromptForImage, setScriptPromptForImage] = useState(() => {
-    const spaUi = loadSpaUiState();
-    if (spaUi?.scriptPromptForImage !== undefined) {
-      return normalizeScriptPayload(spaUi.scriptPromptForImage);
+    if (spaInitial?.scriptPromptForImage !== undefined) {
+      return normalizeScriptPayload(spaInitial.scriptPromptForImage);
     }
-    const d = loadViralStudioDraft();
+    const d = loadViralStudioDraftFromLocal();
     return normalizeScriptPayload(d?.scriptPrompt ?? "");
   });
   const [step1BrainLaunched, setStep1BrainLaunched] = useState(() =>
-    Boolean(loadSpaUiState()?.step1BrainLaunched)
+    Boolean(spaInitial?.step1BrainLaunched)
   );
   const [preparedCampaignSig, setPreparedCampaignSig] = useState(() => {
-    const spaUi = loadSpaUiState();
-    return typeof spaUi?.preparedCampaignSig === "string" && spaUi.preparedCampaignSig.length > 0
-      ? spaUi.preparedCampaignSig
+    return typeof spaInitial?.preparedCampaignSig === "string" && spaInitial.preparedCampaignSig.length > 0
+      ? spaInitial.preparedCampaignSig
       : null;
   });
   const [campagneMountKey, setCampagneMountKey] = useState(() => {
-    const spaUi = loadSpaUiState();
-    return Number.isFinite(Number(spaUi?.campagneMountKey))
-      ? Math.max(0, Math.floor(Number(spaUi.campagneMountKey)))
+    return Number.isFinite(Number(spaInitial?.campagneMountKey))
+      ? Math.max(0, Math.floor(Number(spaInitial.campagneMountKey)))
       : 0;
   });
 
@@ -441,7 +500,14 @@ export default function ViralWorks() {
     const sig = serializeCampaignForPrepareGate(campaignData);
     if (sig === preparedCampaignSig) return;
     setStep1BrainLaunched(false);
-    setValidated((prev) => ({ ...prev, 1: false }));
+    setValidated((prev) => ({
+      ...prev,
+      1: false,
+      2: false,
+      3: false,
+      4: false,
+      5: false,
+    }));
   }, [campaignData, preparedCampaignSig]);
 
   useLayoutEffect(() => {
@@ -532,27 +598,7 @@ export default function ViralWorks() {
     }
     if (lastSnapshottedUrlsRef.current === sig) return;
     lastSnapshottedUrlsRef.current = sig;
-    setVisualSnapshots((list) => {
-      const stepClone = cloneImageStep(imageStep);
-      const entry = {
-        id:
-          typeof crypto !== "undefined" && crypto.randomUUID
-            ? crypto.randomUUID()
-            : `${Date.now()}-${Math.random()}`,
-        t: Date.now(),
-        step: stepClone,
-      };
-      const deduped = list.filter((e) => {
-        try {
-          return JSON.stringify(e.step?.lastGeneratedImages) !== sig;
-        } catch {
-          return true;
-        }
-      });
-      const next = [entry, ...deduped].slice(0, 48);
-      persistVisualSnapshotsToSession(next);
-      return next;
-    });
+    scheduleVisualSnapshotFromStep(imageStep, setVisualSnapshots);
   }, [imageStep]);
 
   useEffect(() => {
@@ -597,6 +643,30 @@ export default function ViralWorks() {
     campagneMountKey,
   ]);
 
+  useEffect(() => {
+    let active = true;
+    const loadSubscriptionState = async () => {
+      if (!session?.user?.id) {
+        if (active) setHasActiveSubscriptionVw(false);
+        return;
+      }
+      try {
+        const sub = await getUserSubscription();
+        if (active) setHasActiveSubscriptionVw(Boolean(sub));
+      } catch {
+        if (active) setHasActiveSubscriptionVw(false);
+      }
+    };
+    loadSubscriptionState();
+    return () => {
+      active = false;
+    };
+  }, [session?.user?.id]);
+
+  /**
+   * Navigation entre étapes : retour arrière toujours autorisé ; pour avancer au-delà de l’étape
+   * courante, toutes les étapes précédentes doivent être marquées validées (bouton global ou raccourci visuel).
+   */
   const canGoToStep = (stepId) => {
     if (stepId <= currentStep) return true;
     for (let i = 1; i < stepId; i += 1) {
@@ -630,6 +700,13 @@ export default function ViralWorks() {
       clarifyDiagnostic: snapshot.clarifyDiagnostic ?? null,
       proceedAnyway: snapshot.proceedAnyway === true,
       isClarified: snapshot.isClarified === true,
+      clarificationHistory: Array.isArray(snapshot.clarificationHistory)
+        ? snapshot.clarificationHistory
+        : [],
+      clarifyAxesResolved: {
+        modeAgent: snapshot.clarifyAxesResolved?.modeAgent === true,
+        initialT0: snapshot.clarifyAxesResolved?.initialT0 === true,
+      },
     };
     setPreparedCampaignSig(serializeCampaignForPrepareGate(next));
     setCampaignData((prev) => ({ ...prev, ...next }));
@@ -647,16 +724,59 @@ export default function ViralWorks() {
     } catch {
       /* ignore */
     }
+    resetWorkflowUsage();
     setPreparedCampaignSig(null);
     setStep1BrainLaunched(false);
-    setValidated((prev) => ({ ...prev, 1: false }));
+    setValidated(normalizeValidated({}));
+    setCurrentStep(1);
+    setScriptPromptForImage(normalizeScriptPayload(""));
     setCampaignData(applyCampagneNonPersistedDefaults({}));
     setCampagneMountKey((k) => k + 1);
     resetImageStep();
   }, [resetImageStep]);
 
-  const handleValidateAndNext = () => {
+  const handleValidateAndNext = async () => {
     if (currentStep === 1 && !step1BrainLaunched) return;
+
+    if (currentStep === 2 && session?.user?.id) {
+      const ok = await hasEnoughCredits(SCRIPT_STEP_CREDIT_COST);
+      if (!ok) {
+        setScriptQuotaModalMessage(
+          hasActiveSubscriptionVw ? SCRIPT_STEP_VIDEO_QUOTA_MSG : SCRIPT_STEP_NON_SUB_MSG
+        );
+        setShowScriptQuotaModal(true);
+        return;
+      }
+    }
+
+    // Dans le flow Studio, l'utilisateur peut valider via le bouton global d'étape.
+    // On débite donc ici au passage de l'étape Vidéo vers le récap (une seule fois par workflow).
+    if (currentStep === 4 && session?.user?.id && shouldDebitVideoCredit()) {
+      const ok = await hasEnoughCredits(VIDEO_STEP_CREDIT_COST);
+      if (!ok) {
+        setScriptQuotaModalMessage(
+          hasActiveSubscriptionVw ? SCRIPT_STEP_VIDEO_QUOTA_MSG : SCRIPT_STEP_NON_SUB_MSG
+        );
+        setShowScriptQuotaModal(true);
+        return;
+      }
+
+      const debitResult = await debitCredits(VIDEO_STEP_CREDIT_COST, "video_generation", {
+        model: "workflow_studio",
+        step: "validate_step_4_to_5",
+      });
+
+      if (!debitResult.success) {
+        alert(
+          debitResult.error ||
+            "Impossible de valider l'étape vidéo. Vérifie tes crédits puis réessaie."
+        );
+        return;
+      }
+
+      markVideoWorkflowCreditConsumed();
+    }
+
     setValidated((prev) => ({ ...prev, [currentStep]: true }));
     if (currentStep < 5) {
       setCurrentStep(currentStep + 1);
@@ -665,6 +785,8 @@ export default function ViralWorks() {
 
   const validateStepBlocked =
     currentStep === 1 && !step1BrainLaunched;
+
+  const studioVideoStepActive = location.pathname === "/viralworks" && currentStep === 4;
 
   const imagePageProps = {
     campaignIdea: campaignData?.idea ?? "",
@@ -689,6 +811,19 @@ export default function ViralWorks() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+      <ScriptStepQuotaModal
+        open={showScriptQuotaModal}
+        title={hasActiveSubscriptionVw ? "Quota mensuel épuisé" : "Accès abonnement requis"}
+        message={scriptQuotaModalMessage}
+        actionLabel={hasActiveSubscriptionVw ? "Aller vers Packs vidéos" : "Voir les abonnements"}
+        onClose={() => setShowScriptQuotaModal(false)}
+        onGoToShop={() => {
+          setShowScriptQuotaModal(false);
+          window.location.href = hasActiveSubscriptionVw
+            ? "/boutique?section=packs-videos"
+            : "/boutique?section=subscription";
+        }}
+      />
       <PageTitle
         green="ViralWorks"
         white="Studio"
@@ -737,7 +872,9 @@ export default function ViralWorks() {
           </span>
           <button
             type="button"
-            onClick={handleValidateAndNext}
+            onClick={() => {
+              void handleValidateAndNext();
+            }}
             disabled={validateStepBlocked}
             title={
               validateStepBlocked
@@ -805,6 +942,7 @@ export default function ViralWorks() {
             studioImageStep={imageStep}
             dialogueEnabled={campaignData?.dialogueEnabled !== false}
             studioCampaignData={campaignData}
+            studioStepActive={studioVideoStepActive}
           />
         </section>
         <section
@@ -812,7 +950,7 @@ export default function ViralWorks() {
           className={currentStep !== 5 ? "hidden" : ""}
           aria-hidden={currentStep !== 5}
         >
-          <RecapVWS campaignData={campaignData} onGoToVideoStep={() => setCurrentStep(4)} />
+          <RecapVWS campaignData={campaignData} onStartNewCampaign={handleCampagneFullReset} />
         </section>
       </div>
     </div>

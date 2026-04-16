@@ -125,7 +125,7 @@ function CardShell({ children, className = "" }) {
   );
 }
 
-export default function RecapVWS({ campaignData = {}, onGoToVideoStep }) {
+export default function RecapVWS({ campaignData = {}, onStartNewCampaign }) {
   const { session } = useAuth();
   const [activeScene, setActiveScene] = useState(0);
   const [showExplain, setShowExplain] = useState(false);
@@ -422,11 +422,11 @@ export default function RecapVWS({ campaignData = {}, onGoToVideoStep }) {
             <div className="flex flex-col sm:flex-row gap-3 mt-3">
               <button
                 type="button"
-                onClick={() => onGoToVideoStep?.()}
+                onClick={() => onStartNewCampaign?.()}
                 className={`flex-1 inline-flex items-center justify-center gap-2 px-5 py-3.5 rounded-xl font-semibold text-sm transition-all ${accent.btnOutline}`}
               >
                 <RefreshCw className="w-4 h-4 shrink-0" />
-                Générer une nouvelle version
+                Faire une autre vidéo
               </button>
             </div>
           </CardShell>

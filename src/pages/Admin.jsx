@@ -290,7 +290,7 @@ export default function Admin() {
         throw new Error(error.message);
       }
 
-      alert(`✅ ${creditAmount} crédit(s) ajouté(s) avec succès !`);
+      alert(`✅ ${creditAmount} vidéo(s) ajoutée(s) avec succès !`);
       setCreditAmount("");
       setReason("");
       setSelectedUser(null);
@@ -337,7 +337,7 @@ export default function Admin() {
         throw new Error(error.message);
       }
 
-      alert(`✅ ${creditAmount} crédit(s) retiré(s) avec succès !`);
+      alert(`✅ ${creditAmount} vidéo(s) retirée(s) avec succès !`);
       setCreditAmount("");
       setReason("");
       setSelectedUser(null);
@@ -629,7 +629,7 @@ export default function Admin() {
                               <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
                                 <span className="flex items-center gap-1">
                                   <Coins className="w-3 h-3" />
-                                  {user.credits || 0} crédits
+                                  {user.credits || 0} vidéo(s)
                                 </span>
                                 <span className="flex items-center gap-1">
                                   <Calendar className="w-3 h-3" />
@@ -1263,7 +1263,7 @@ export default function Admin() {
           <div className="glass-strong rounded-xl p-6 border border-white/10 sticky top-24">
             <h3 className="text-lg font-semibold text-gray-200 mb-4 flex items-center gap-2">
               <Coins className="w-5 h-5 text-emerald-400" />
-              Gérer les crédits
+              Gérer les vidéos
             </h3>
 
             {selectedUser ? (
@@ -1276,13 +1276,13 @@ export default function Admin() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Montant
+                    Nombre de vidéos
                   </label>
                   <input
                     type="number"
                     value={creditAmount}
                     onChange={(e) => setCreditAmount(e.target.value)}
-                    placeholder="Nombre de crédits"
+                    placeholder="Nombre de vidéos (workflows)"
                     className="w-full px-4 py-2 rounded-lg border border-white/10 bg-white/5 text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
                   />
                 </div>
@@ -1307,7 +1307,7 @@ export default function Admin() {
                     className="flex-1 px-4 py-2 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
                   >
                     <Plus className="w-4 h-4" />
-                    Ajouter
+                    Ajouter des vidéos
                   </button>
                   <button
                     onClick={handleRemoveCredits}
@@ -1315,7 +1315,7 @@ export default function Admin() {
                     className="flex-1 px-4 py-2 rounded-lg bg-red-500/20 border border-red-500/30 text-red-300 hover:bg-red-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
                   >
                     <Minus className="w-4 h-4" />
-                    Retirer
+                    Retirer des vidéos
                   </button>
                 </div>
               </div>

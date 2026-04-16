@@ -53,6 +53,7 @@ export async function createCheckoutSession(
         amount,
         credits,
         type,
+        origin: window.location.origin,
       },
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -69,30 +70,59 @@ export async function createCheckoutSession(
       // Si l'erreur contient des détails supplémentaires dans le contexte
       if (error.context) {
         console.error("🔍 Contexte de l'erreur:", error.context);
-        
-        // Essayer de parser le body si c'est une string
-        if (error.context.body) {
+
+        // Cas habituel Supabase: context est une Response
+        if (typeof Response !== "undefined" && error.context instanceof Response) {
           try {
-            const errorBody = typeof error.context.body === 'string' 
-              ? JSON.parse(error.context.body) 
-              : error.context.body;
-            if (errorBody?.error) {
-              errorMessage = errorBody.error;
+            const responseClone = error.context.clone();
+            const rawText = await responseClone.text();
+            console.error("📨 Body brut de la fonction stripe-payment:", rawText);
+
+            if (rawText) {
+              try {
+                const parsed = JSON.parse(rawText);
+                if (parsed?.error) {
+                  errorMessage = parsed.error;
+                } else if (parsed?.message) {
+                  errorMessage = parsed.message;
+                } else {
+                  errorMessage = rawText;
+                }
+              } catch {
+                errorMessage = rawText;
+              }
             }
           } catch (e) {
-            console.warn("Impossible de parser le body de l'erreur:", e);
+            console.warn("Impossible de lire la réponse d'erreur de la fonction:", e);
           }
-        }
-        
-        // Si on a un message dans le contexte
-        if (error.context.message) {
-          errorMessage = error.context.message;
+        } else {
+          // Compat fallback si le contexte expose directement body/message
+          if (error.context.body) {
+            try {
+              const errorBody = typeof error.context.body === "string"
+                ? JSON.parse(error.context.body)
+                : error.context.body;
+              if (errorBody?.error) {
+                errorMessage = errorBody.error;
+              }
+            } catch (e) {
+              console.warn("Impossible de parser le body de l'erreur:", e);
+            }
+          }
+
+          if (error.context.message) {
+            errorMessage = error.context.message;
+          }
         }
       }
       
       // Ajouter le code de statut si disponible
-      if (error.status) {
-        errorMessage += ` (Code: ${error.status})`;
+      const statusCode =
+        (typeof Response !== "undefined" && error.context instanceof Response
+          ? error.context.status
+          : error.status);
+      if (statusCode) {
+        errorMessage += ` (Code: ${statusCode})`;
       }
       
       return { error: errorMessage };

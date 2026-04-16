@@ -1,5 +1,10 @@
 import { useMemo, useState } from "react";
-import { clarifyIdea, runVwsPromptEngine } from "../bibliotheque/vwsPromptEngine";
+import {
+  clarifyIdea,
+  clarifyGateNeedsInitialT0,
+  clarifyGateNeedsModeAgent,
+  runVwsPromptEngine,
+} from "../bibliotheque/vwsPromptEngine";
 import { generateResponse } from "@/bibliotheque/openai/chatgpt-client";
 import {
   VWS_METIER_LABELS,
@@ -11,6 +16,30 @@ const VALID_TEMPOS = new Set(["real_time", "timelapse", "slow_motion"]);
 
 function normalizeTempo(t) {
   return VALID_TEMPOS.has(t) ? t : "real_time";
+}
+
+function parseClarifyAxesFromHistory(lines) {
+  const merged = { modeAgent: false, initialT0: false };
+  let microFromGate = null;
+  if (!Array.isArray(lines)) return { ...merged, microFromGate };
+  for (const line of lines) {
+    if (typeof line !== "string") continue;
+    if (
+      line.includes("option_id=vws_gate_mode_autonomous") ||
+      line.includes("option_id=vws_gate_mode_human")
+    ) {
+      merged.modeAgent = true;
+    }
+    if (line.includes("option_id=vws_gate_t0_pristine")) {
+      merged.initialT0 = true;
+      microFromGate = "from_nothing";
+    }
+    if (line.includes("option_id=vws_gate_t0_in_progress")) {
+      merged.initialT0 = true;
+      microFromGate = "partially_built";
+    }
+  }
+  return { ...merged, microFromGate };
 }
 
 function StabilizationOption({ checked, onChange, label, tooltip }) {
@@ -91,6 +120,13 @@ export default function CampagneVWS({ onBrainReady, campaignData, onCampaignChan
     initialStateSelection,
     gateResult,
     clarifyAnswer,
+    clarificationHistory: Array.isArray(campaignData?.clarificationHistory)
+      ? campaignData.clarificationHistory
+      : [],
+    clarifyAxesResolved: {
+      modeAgent: campaignData?.clarifyAxesResolved?.modeAgent === true,
+      initialT0: campaignData?.clarifyAxesResolved?.initialT0 === true,
+    },
     isClarified: false,
     ...overrides,
   });
@@ -117,6 +153,8 @@ export default function CampagneVWS({ onBrainReady, campaignData, onCampaignChan
         initialStateSelection: null,
         gateResult: null,
         clarifyAnswer: null,
+        clarificationHistory: [],
+        clarifyAxesResolved: { modeAgent: false, initialT0: false },
         isClarified: false,
       })
     );
@@ -211,7 +249,13 @@ export default function CampagneVWS({ onBrainReady, campaignData, onCampaignChan
   };
 
   const handleInspire = async () => {
-    const metier = profession.trim() || "professionnel";
+    if (!String(profession ?? "").trim()) {
+      alert(
+        "Sélectionne d’abord ton métier dans la liste « Ton métier » pour utiliser « M'inspirer »."
+      );
+      return;
+    }
+    const metier = profession.trim();
     setInspireLoading(true);
     setError("");
     try {
@@ -384,7 +428,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
     };
   };
 
-  const handleRun = async (gateBypass = false) => {
+  const handleRun = async (clarificationHistoryOverride = null) => {
     setError("");
     setLoading(true);
     try {
@@ -394,32 +438,75 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         throw new Error("Décris au moins une idée claire pour la vidéo (8 caractères minimum).");
       }
 
-      const gate = await clarifyIdea({
-        jobType: safeProfession,
-        mainIdea: safeIdea,
-        modifiers: styleDetails.trim(),
-        tempoSelection: tempo,
-      });
+      const historyLines =
+        clarificationHistoryOverride ??
+        (Array.isArray(campaignData?.clarificationHistory) ? campaignData.clarificationHistory : []);
 
-      if (gate.status === "NEEDS_CLARIFICATION" && !gateBypass) {
-        setGateResult(gate);
-        setMicroQuestion({
-          question: gate.question,
-          reason: "clarify_gate",
-          options: [
-            { id: "clarify_apply", label: "J’ai précisé mon idée dans le champ ci-dessus" },
-            { id: "clarify_proceed", label: "Continuer malgré ce diagnostic" },
-          ],
+      const histParsed = parseClarifyAxesFromHistory(historyLines);
+      let axes = {
+        modeAgent:
+          campaignData?.clarifyAxesResolved?.modeAgent === true || histParsed.modeAgent,
+        initialT0:
+          campaignData?.clarifyAxesResolved?.initialT0 === true || histParsed.initialT0,
+      };
+      const microForBrain = microAnswer ?? histParsed.microFromGate ?? null;
+      const histJoined = historyLines.length ? historyLines.join("\n\n") : undefined;
+
+      let gate = null;
+      for (;;) {
+        const needMode = !axes.modeAgent && clarifyGateNeedsModeAgent(safeIdea);
+        const needInitial = !axes.initialT0 && clarifyGateNeedsInitialT0(safeIdea);
+
+        if (!needMode && !needInitial) {
+          gate = await clarifyIdea({
+            jobType: safeProfession,
+            mainIdea: safeIdea,
+            modifiers: styleDetails.trim(),
+            tempoSelection: tempo,
+            clarificationHistory: histJoined,
+            gatePhase: "none",
+          });
+          break;
+        }
+
+        const phase = needMode ? "mode_agent" : "initial_t0";
+        gate = await clarifyIdea({
+          jobType: safeProfession,
+          mainIdea: safeIdea,
+          modifiers: styleDetails.trim(),
+          tempoSelection: tempo,
+          clarificationHistory: histJoined,
+          gatePhase: phase,
         });
-        onCampaignChange?.(
-          buildCampaignSnapshot({
-            gateResult: gate,
-            clarifyAnswer: null,
-            isClarified: false,
-          })
-        );
-        setError("Précise ce point avant de préparer la vidéo.");
-        return;
+
+        if (gate.status === "NEEDS_CLARIFICATION") {
+          setGateResult(gate);
+          setMicroQuestion({
+            question: gate.question,
+            reason: "clarify_gate",
+            options: gate.options?.length
+              ? gate.options
+              : [
+                  { id: "clarify_apply", label: "J’ai précisé mon idée dans le champ ci-dessus" },
+                  { id: "clarify_proceed", label: "Continuer malgré ce diagnostic" },
+                ],
+          });
+          onCampaignChange?.(
+            buildCampaignSnapshot({
+              gateResult: gate,
+              clarifyAnswer: null,
+              clarificationHistory: historyLines,
+              clarifyAxesResolved: axes,
+              isClarified: false,
+            })
+          );
+          setError("Précise ce point avant de préparer la vidéo.");
+          return;
+        }
+
+        if (phase === "mode_agent") axes.modeAgent = true;
+        else axes.initialT0 = true;
+        onCampaignChange?.(buildCampaignSnapshot({ clarifyAxesResolved: axes }));
       }
 
       if (
@@ -451,10 +538,11 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         selfieMode,
         sequenceType,
         dialogueEnabled,
-        microAnswerId: microAnswer,
+        microAnswerId: microForBrain,
       });
 
-      if (brain.microQuestion && !microAnswer) {
+      const skipBrainInitialMicro = axes.initialT0 === true;
+      if (brain.microQuestion && !microForBrain && !skipBrainInitialMicro) {
         const questionToShow =
           brain.microQuestion.reason === "ambiguous_subject"
             ? await resolveAmbiguousMicroQuestion(safeIdea)
@@ -480,7 +568,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
               selfieMode,
               sequenceType,
               dialogueEnabled,
-              microAnswer,
+              microAnswer: microForBrain,
               tempoCompressionDecision,
             },
             brain,
@@ -501,15 +589,17 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         selfieMode,
         sequenceType,
         dialogueEnabled,
-        microAnswer,
+        microAnswer: microForBrain,
         tempoCompressionDecision,
         causalAgentSelection: null,
         initialStateSelection: null,
         gateResult: gate,
-        clarifyAnswer: gateBypass ? safeIdea : null,
+        clarifyAnswer: clarifyAnswer ?? null,
         clarifyMode: gate.mode,
         clarifyDiagnostic: gate.diagnostic,
-        proceedAnyway: gateBypass,
+        proceedAnyway: false,
+        clarificationHistory: historyLines,
+        clarifyAxesResolved: axes,
         isClarified: true,
       };
 
@@ -523,11 +613,70 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
   };
 
   const handleSelectMicroAnswer = (optionId) => {
+    const histBase = Array.isArray(campaignData?.clarificationHistory)
+      ? [...campaignData.clarificationHistory]
+      : [];
+
+    if (microQuestion?.reason === "clarify_gate" && gateResult && optionId !== "clarify_apply" && optionId !== "clarify_proceed") {
+      const opt = microQuestion.options?.find((o) => o.id === optionId);
+      if (!opt) return;
+      const line = `Q: ${gateResult.question} A: ${opt.label} (option_id=${opt.id})`;
+      const nextHist = [...histBase, line];
+      setMicroQuestion(null);
+      setError("");
+      setGateResult(null);
+      const axesNext = {
+        modeAgent:
+          campaignData?.clarifyAxesResolved?.modeAgent === true ||
+          String(optionId).startsWith("vws_gate_mode_"),
+        initialT0:
+          campaignData?.clarifyAxesResolved?.initialT0 === true ||
+          String(optionId).startsWith("vws_gate_t0_"),
+      };
+      const microPatch =
+        optionId === "vws_gate_t0_pristine"
+          ? { microAnswer: "from_nothing" }
+          : optionId === "vws_gate_t0_in_progress"
+            ? { microAnswer: "partially_built" }
+            : {};
+      if (optionId === "vws_gate_t0_pristine") setMicroAnswer("from_nothing");
+      if (optionId === "vws_gate_t0_in_progress") setMicroAnswer("partially_built");
+      onCampaignChange?.(
+        buildCampaignSnapshot({
+          clarificationHistory: nextHist,
+          gateResult: null,
+          clarifyAxesResolved: axesNext,
+          ...microPatch,
+        })
+      );
+      void handleRun(nextHist);
+      return;
+    }
+
     if (optionId === "clarify_apply" || optionId === "clarify_proceed") {
       setMicroQuestion(null);
       setError("");
+      const nextHist =
+        optionId === "clarify_apply"
+          ? [...histBase, `Réponse utilisateur : précision saisie dans le champ idée (re-validation). Texte courant : ${idea.trim()}`]
+          : [
+              ...histBase,
+              `L'utilisateur demande de continuer sans répondre à la dernière question structurée : "${gateResult?.question || ""}". Réévalue selon Clarify Gate ; ne renvoie VALID que si l'ambiguïté est levée sans cette réponse.`,
+            ];
       setClarifyAnswer(optionId === "clarify_apply" ? idea : null);
-      void handleRun(optionId === "clarify_proceed");
+      setGateResult(null);
+      onCampaignChange?.(
+        buildCampaignSnapshot({
+          clarificationHistory: nextHist,
+          gateResult: null,
+          clarifyAnswer: optionId === "clarify_apply" ? idea : null,
+          ...(optionId === "clarify_apply"
+            ? { clarifyAxesResolved: { modeAgent: false, initialT0: false }, microAnswer: null }
+            : {}),
+        })
+      );
+      if (optionId === "clarify_apply") setMicroAnswer(null);
+      void handleRun(nextHist);
       return;
     }
     if (optionId === "switch_timelapse" || optionId === "keep_realtime") {
@@ -643,7 +792,12 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
           <button
             type="button"
             onClick={handleInspire}
-            disabled={inspireLoading}
+            disabled={inspireLoading || !String(profession ?? "").trim()}
+            title={
+              !String(profession ?? "").trim()
+                ? "Choisis d’abord ton métier pour utiliser cette action."
+                : undefined
+            }
             className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50 transition"
           >
             {inspireLoading ? (

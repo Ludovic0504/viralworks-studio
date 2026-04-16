@@ -7,10 +7,11 @@ import {
   deleteHistory,
 } from "@/bibliotheque/supabase/historique";
 import { hasEnoughCredits, debitCredits, getUserCredits } from "@/bibliotheque/supabase/credits";
+import { getUserSubscription } from "@/bibliotheque/supabase/stripe";
 import {
   canUseVideoAttempt,
   consumeVideoAttempt,
-  resetWorkflowUsage,
+  markVideoWorkflowCreditConsumed,
   shouldDebitVideoCredit,
 } from "@/bibliotheque/workflowQuota";
 import {
@@ -32,6 +33,7 @@ import {
   History,
   Zap,
   Wand2,
+  RefreshCw,
   Check,
   BookOpen,
   User,
@@ -54,18 +56,53 @@ const DURATION_OPTIONS = {
 
 const VIDEO_QUOTA_EXHAUSTED_MESSAGE =
   "limite vidéo atteint pour ce mois, veuillez attendre la fin du mois pour le renouvellement des vidéos ou acheter des packs vidéos pour continuer a créer";
+const NON_SUBSCRIBER_BLOCKED_MESSAGE =
+  "Prenez un abonnement pour profiter de ViralWorks Studio et lancer vos générations.";
 
-function QuotaExhaustedNotice({ onGoToPacks }) {
+function QuotaExhaustedNotice({ open, title, message, actionLabel, onClose, onGoToPacks }) {
+  if (!open) return null;
   return (
-    <div className="studio-panel p-4 border border-amber-500/35 bg-amber-500/10">
-      <p className="text-sm text-amber-100">{VIDEO_QUOTA_EXHAUSTED_MESSAGE}</p>
-      <button
-        type="button"
-        onClick={onGoToPacks}
-        className="mt-3 inline-flex items-center justify-center rounded-lg bg-amber-400/20 border border-amber-300/40 px-4 py-2 text-xs font-semibold text-amber-100 hover:bg-amber-400/30 transition"
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <div
+        className="studio-panel max-w-xl w-full overflow-hidden border border-amber-500/35 bg-[#131920]"
+        onClick={(e) => e.stopPropagation()}
       >
-        Aller vers Packs vidéos
-      </button>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+          <h2 className="text-base font-semibold text-gray-200">{title || "Quota mensuel épuisé"}</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-gray-200 transition-colors"
+            aria-label="Fermer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="p-6 space-y-4">
+          <div className="rounded-xl border border-amber-500/35 bg-amber-500/10 px-4 py-3">
+            <p className="text-sm text-amber-100">{message || VIDEO_QUOTA_EXHAUSTED_MESSAGE}</p>
+          </div>
+          <div className="flex items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10 transition-all"
+            >
+              Fermer
+            </button>
+            <button
+              type="button"
+              onClick={onGoToPacks}
+              className="px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-500 to-teal-500 text-white font-semibold hover:from-cyan-400 hover:to-teal-400 transition-all"
+            >
+              {actionLabel || "Aller vers Packs vidéos"}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -539,7 +576,14 @@ function audioPostprocessStatusLabel(postData) {
   return "Vidéo prête ; couche audio optionnelle non appliquée.";
 }
 
-export default function Video({ studioSequenceType, studioScriptPrompt, studioImageStep, dialogueEnabled = true } = {}) {
+export default function Video({
+  studioSequenceType,
+  studioScriptPrompt,
+  studioImageStep,
+  dialogueEnabled = true,
+  /** false quand l’étape Vidéo studio n’est pas visible (autre route ou autre onglet) — évite effets inutiles. */
+  studioStepActive = true,
+} = {}) {
   const [tab, setTab] = useState("veo3");
   const { session } = useAuth();
   const [showSystemVideo, setShowSystemVideo] = useState(false);
@@ -598,6 +642,7 @@ export default function Video({ studioSequenceType, studioScriptPrompt, studioIm
               studioScriptPrompt={studioScriptPrompt}
               studioImageStep={studioImageStep}
               dialogueEnabled={dialogueEnabled}
+              studioStepActive={studioStepActive}
             />
           ) : (
             <HailuoVideoForm onCreditsUpdate={loadCredits} studioImageStep={studioImageStep} dialogueEnabled={dialogueEnabled} />
@@ -706,6 +751,7 @@ function VEO3VideoForm({
   studioScriptPrompt,
   studioImageStep,
   dialogueEnabled = true,
+  studioStepActive = true,
 }) {
   const { session } = useAuth();
   const navigate = useNavigate();
@@ -736,6 +782,8 @@ function VEO3VideoForm({
   /** Message d’erreur métier (jamais confondu avec l’URL vidéo affichée dans <video>). */
   const [generationError, setGenerationError] = useState("");
   const [showQuotaNotice, setShowQuotaNotice] = useState(false);
+  const [quotaNoticeMessage, setQuotaNoticeMessage] = useState(VIDEO_QUOTA_EXHAUSTED_MESSAGE);
+  const [hasActiveSubscription, setHasActiveSubscription] = useState(false);
   const [validatedHookImage, setValidatedHookImage] = useState(null);
   const studioHookImage = useMemo(() => getHookImageFromStudioStep(studioImageStep), [studioImageStep]);
   const studioScriptPromptRef = useRef(studioScriptPrompt);
@@ -748,6 +796,7 @@ function VEO3VideoForm({
   const sceneTabLabels = useMemo(() => veo3SceneTabLabels(sceneCount), [sceneCount]);
 
   useEffect(() => {
+    if (studioStepActive === false) return;
     const url = validatedHookImage?.url ? String(validatedHookImage.url).trim() : "";
     if (!url) {
       setDerivedFormat("9:16");
@@ -766,7 +815,7 @@ function VEO3VideoForm({
     };
     img.onerror = () => setDerivedFormat("9:16");
     img.src = url;
-  }, [validatedHookImage?.url]);
+  }, [validatedHookImage?.url, studioStepActive]);
 
   useEffect(() => {
     const payloadKey =
@@ -796,6 +845,26 @@ function VEO3VideoForm({
       loadCredits();
     }
   }, [session]);
+
+  useEffect(() => {
+    let active = true;
+    const loadSubscriptionState = async () => {
+      if (!session?.user?.id) {
+        if (active) setHasActiveSubscription(false);
+        return;
+      }
+      try {
+        const sub = await getUserSubscription();
+        if (active) setHasActiveSubscription(Boolean(sub));
+      } catch {
+        if (active) setHasActiveSubscription(false);
+      }
+    };
+    loadSubscriptionState();
+    return () => {
+      active = false;
+    };
+  }, [session?.user?.id]);
 
   const loadCredits = async () => {
     try {
@@ -873,13 +942,19 @@ function VEO3VideoForm({
     }
 
     if (!canUseVideoAttempt()) {
-      resetWorkflowUsage();
+      alert(
+        "Tu as atteint la limite de générations vidéo pour ce parcours (incluant la variante). Valide et enregistre ta vidéo, ou lance un nouveau projet depuis le récap (« Faire une autre vidéo ») ou en réinitialisant la campagne."
+      );
+      return;
     }
-    const shouldDebitCredit = shouldDebitVideoCredit();
+    const shouldReserveCredit = shouldDebitVideoCredit();
 
-    if (session && shouldDebitCredit) {
+    if (session && shouldReserveCredit) {
       const hasCredits = await hasEnoughCredits(VIDEO_GENERATION_COST);
       if (!hasCredits) {
+        setQuotaNoticeMessage(
+          hasActiveSubscription ? VIDEO_QUOTA_EXHAUSTED_MESSAGE : NON_SUBSCRIBER_BLOCKED_MESSAGE
+        );
         setShowQuotaNotice(true);
         return;
       }
@@ -899,34 +974,11 @@ function VEO3VideoForm({
     abortRef.current = ctrl;
 
     try {
-      if (session && shouldDebitCredit) {
-        setProgress(10);
-        setProgressMessage("Vérification des crédits...");
-        console.log("💳 [Video VEO3] Début du débit des crédits...");
-        const debitResult = await debitCredits(
-          VIDEO_GENERATION_COST,
-          "video_generation",
-          { model: "veo3", format: derivedFormat, duration: duration }
-        );
-        
-        console.log("💳 [Video VEO3] Résultat du débit:", debitResult);
-        
-        if (!debitResult.success) {
-          const errorMsg = debitResult.error || "Erreur lors du débit des crédits";
-          console.error("❌ [Video VEO3] Échec du débit:", errorMsg);
-          alert("Une erreur est survenue lors de l’activation de cette génération. Réessaie dans quelques instants ou contacte le support si le problème persiste.");
-          throw new Error(errorMsg);
-        }
-        
-        if (debitResult.remainingCredits !== undefined) {
-          if (onCreditsUpdate) onCreditsUpdate();
-          console.log("✅ [Video VEO3] Crédits mis à jour:", debitResult.remainingCredits);
-        }
-      } else {
-        setProgress(10);
-        setProgressMessage("Utilisation de la variante incluse...");
-      }
-      consumeVideoAttempt({ debitedCredit: shouldDebitCredit });
+      setProgress(10);
+      setProgressMessage(
+        shouldReserveCredit ? "Vérification du quota vidéo…" : "Préparation de la variante…"
+      );
+      consumeVideoAttempt({ debitedCredit: false });
 
       setProgress(25);
       setProgressMessage("Création de la tâche vidéo...");
@@ -1042,7 +1094,9 @@ function VEO3VideoForm({
   };
 
   const goToVideoPacks = () => {
-    navigate("/boutique?section=packs-videos");
+    navigate(
+      hasActiveSubscription ? "/boutique?section=packs-videos" : "/boutique?section=subscription"
+    );
   };
 
   const recapInputForHistory = () =>
@@ -1075,12 +1129,44 @@ function VEO3VideoForm({
     setCopied(false);
   };
 
+  const prepareAnotherVideoVersion = () => {
+    setOutput("");
+    setGenerationError("");
+    setCopied(false);
+  };
+
   const handleValidate = async () => {
     if (!output?.trim() || !isHttpUrl(output)) return;
     const hookImageUrl = String(validatedHookImage?.url || "").trim();
     const hookImagePrompt = String(validatedHookImage?.prompt || "").trim();
     
     try {
+      if (session?.user?.id && shouldDebitVideoCredit()) {
+        const hasCredits = await hasEnoughCredits(VIDEO_GENERATION_COST);
+        if (!hasCredits) {
+          setQuotaNoticeMessage(
+            hasActiveSubscription ? VIDEO_QUOTA_EXHAUSTED_MESSAGE : NON_SUBSCRIBER_BLOCKED_MESSAGE
+          );
+          setShowQuotaNotice(true);
+          return;
+        }
+        const debitResult = await debitCredits(
+          VIDEO_GENERATION_COST,
+          "video_generation",
+          { model: "veo3", format: derivedFormat, duration: duration, step: "validate_enregistrer" }
+        );
+        if (!debitResult.success) {
+          alert(
+            debitResult.error ||
+              "Impossible de finaliser l’enregistrement. Vérifie tes crédits vidéo puis réessaie."
+          );
+          return;
+        }
+        markVideoWorkflowCreditConsumed();
+        await loadCredits();
+        if (onCreditsUpdate) onCreditsUpdate();
+      }
+
       if (!session?.user?.id) {
         addHistoryEntry({
           id: crypto.randomUUID?.() || String(Date.now()),
@@ -1201,7 +1287,14 @@ function VEO3VideoForm({
 
   return (
     <>
-      {showQuotaNotice ? <QuotaExhaustedNotice onGoToPacks={goToVideoPacks} /> : null}
+      <QuotaExhaustedNotice
+        open={showQuotaNotice}
+        title={hasActiveSubscription ? "Quota mensuel épuisé" : "Accès abonnement requis"}
+        message={quotaNoticeMessage}
+        actionLabel={hasActiveSubscription ? "Aller vers Packs vidéos" : "Voir les abonnements"}
+        onClose={() => setShowQuotaNotice(false)}
+        onGoToPacks={goToVideoPacks}
+      />
       <div className="rounded-xl border border-emerald-500/35 bg-emerald-950/25 p-4 sm:p-5 space-y-4 ring-1 ring-white/[0.06]">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
           <p className="text-sm text-gray-200 leading-relaxed">
@@ -1636,6 +1729,17 @@ function VEO3VideoForm({
             ) : null}
           </div>
 
+          <div className="flex flex-col sm:flex-row gap-3 mt-4">
+            <button
+              type="button"
+              onClick={prepareAnotherVideoVersion}
+              className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-all bg-white/5 hover:bg-white/10 text-gray-200 border border-white/15"
+            >
+              <RefreshCw className="w-4 h-4 shrink-0" />
+              Générer une nouvelle version
+            </button>
+          </div>
+
           {/* Message informatif */}
           <div className="mb-4 p-4 rounded-lg bg-blue-500/10 border border-blue-500/30 flex items-start gap-3">
             <User className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
@@ -1698,6 +1802,8 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState("");
   const [showQuotaNotice, setShowQuotaNotice] = useState(false);
+  const [quotaNoticeMessage, setQuotaNoticeMessage] = useState(VIDEO_QUOTA_EXHAUSTED_MESSAGE);
+  const [hasActiveSubscription, setHasActiveSubscription] = useState(false);
   const studioHookImage = useMemo(() => getHookImageFromStudioStep(studioImageStep), [studioImageStep]);
   const prevHookSyncKey = useRef(null);
   const scriptForGeneration = scripts[activeTab] ?? "";
@@ -1714,6 +1820,26 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
       loadCredits();
     }
   }, [session]);
+
+  useEffect(() => {
+    let active = true;
+    const loadSubscriptionState = async () => {
+      if (!session?.user?.id) {
+        if (active) setHasActiveSubscription(false);
+        return;
+      }
+      try {
+        const sub = await getUserSubscription();
+        if (active) setHasActiveSubscription(Boolean(sub));
+      } catch {
+        if (active) setHasActiveSubscription(false);
+      }
+    };
+    loadSubscriptionState();
+    return () => {
+      active = false;
+    };
+  }, [session?.user?.id]);
 
   const loadCredits = async () => {
     try {
@@ -1790,13 +1916,19 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
     }
 
     if (!canUseVideoAttempt()) {
-      resetWorkflowUsage();
+      alert(
+        "Tu as atteint la limite de générations vidéo pour ce parcours (incluant la variante). Valide et enregistre ta vidéo, ou lance un nouveau projet depuis le récap (« Faire une autre vidéo ») ou en réinitialisant la campagne."
+      );
+      return;
     }
-    const shouldDebitCredit = shouldDebitVideoCredit();
+    const shouldReserveCredit = shouldDebitVideoCredit();
 
-    if (session && shouldDebitCredit) {
+    if (session && shouldReserveCredit) {
       const hasCredits = await hasEnoughCredits(VIDEO_GENERATION_COST);
       if (!hasCredits) {
+        setQuotaNoticeMessage(
+          hasActiveSubscription ? VIDEO_QUOTA_EXHAUSTED_MESSAGE : NON_SUBSCRIBER_BLOCKED_MESSAGE
+        );
         setShowQuotaNotice(true);
         return;
       }
@@ -1815,34 +1947,11 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
     abortRef.current = ctrl;
 
     try {
-      if (session && shouldDebitCredit) {
-        setProgress(10);
-        setProgressMessage("Vérification des crédits...");
-        console.log("💳 [Video Hailuo] Début du débit des crédits...");
-        const debitResult = await debitCredits(
-          VIDEO_GENERATION_COST,
-          "video_generation",
-          { model: "hailuo", format: format, duration: duration }
-        );
-        
-        console.log("💳 [Video Hailuo] Résultat du débit:", debitResult);
-        
-        if (!debitResult.success) {
-          const errorMsg = debitResult.error || "Erreur lors du débit des crédits";
-          console.error("❌ [Video Hailuo] Échec du débit:", errorMsg);
-          alert(`Erreur: ${errorMsg}`);
-          throw new Error(errorMsg);
-        }
-        
-        if (debitResult.remainingCredits !== undefined) {
-          if (onCreditsUpdate) onCreditsUpdate();
-          console.log("✅ [Video Hailuo] Crédits mis à jour:", debitResult.remainingCredits);
-        }
-      } else {
-        setProgress(10);
-        setProgressMessage("Utilisation de la variante incluse...");
-      }
-      consumeVideoAttempt({ debitedCredit: shouldDebitCredit });
+      setProgress(10);
+      setProgressMessage(
+        shouldReserveCredit ? "Vérification du quota vidéo…" : "Préparation de la variante…"
+      );
+      consumeVideoAttempt({ debitedCredit: false });
 
       setProgress(25);
       setProgressMessage("Création de la tâche vidéo...");
@@ -1963,7 +2072,9 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
   };
 
   const goToVideoPacks = () => {
-    navigate("/boutique?section=packs-videos");
+    navigate(
+      hasActiveSubscription ? "/boutique?section=packs-videos" : "/boutique?section=subscription"
+    );
   };
 
   const reset = () => {
@@ -1990,12 +2101,43 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
     setCopied(false);
   };
 
+  const prepareAnotherVideoVersion = () => {
+    setOutput("");
+    setCopied(false);
+  };
+
   const handleValidate = async () => {
-    if (!output || !output.trim()) return;
+    if (!output?.trim() || !isHttpUrl(output)) return;
     const hookImageUrl = String(validatedHookImage?.url || "").trim();
     const hookImagePrompt = String(validatedHookImage?.prompt || "").trim();
     
     try {
+      if (session?.user?.id && shouldDebitVideoCredit()) {
+        const hasCredits = await hasEnoughCredits(VIDEO_GENERATION_COST);
+        if (!hasCredits) {
+          setQuotaNoticeMessage(
+            hasActiveSubscription ? VIDEO_QUOTA_EXHAUSTED_MESSAGE : NON_SUBSCRIBER_BLOCKED_MESSAGE
+          );
+          setShowQuotaNotice(true);
+          return;
+        }
+        const debitResult = await debitCredits(
+          VIDEO_GENERATION_COST,
+          "video_generation",
+          { model: "hailuo", format: format, duration: duration, step: "validate_enregistrer" }
+        );
+        if (!debitResult.success) {
+          alert(
+            debitResult.error ||
+              "Impossible de finaliser l’enregistrement. Vérifie tes crédits vidéo puis réessaie."
+          );
+          return;
+        }
+        markVideoWorkflowCreditConsumed();
+        await loadCredits();
+        if (onCreditsUpdate) onCreditsUpdate();
+      }
+
       if (!session?.user?.id) {
         addHistoryEntry({
           id: crypto.randomUUID?.() || String(Date.now()),
@@ -2088,7 +2230,14 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
 
   return (
     <>
-      {showQuotaNotice ? <QuotaExhaustedNotice onGoToPacks={goToVideoPacks} /> : null}
+      <QuotaExhaustedNotice
+        open={showQuotaNotice}
+        title={hasActiveSubscription ? "Quota mensuel épuisé" : "Accès abonnement requis"}
+        message={quotaNoticeMessage}
+        actionLabel={hasActiveSubscription ? "Aller vers Packs vidéos" : "Voir les abonnements"}
+        onClose={() => setShowQuotaNotice(false)}
+        onGoToPacks={goToVideoPacks}
+      />
       <div className="studio-panel p-5 sm:p-6 space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-center sm:flex-wrap gap-2 sm:gap-3">
           <h3 className="text-sm font-medium text-gray-300 shrink-0">Sources de la vidéo</h3>
@@ -2247,7 +2396,10 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
             <span>{audioEnabled ? "Audio auto activé" : "Audio auto désactivé"}</span>
           </div>
           <div className="flex items-center justify-end text-xs text-gray-400 mt-2">
-            <span>Coût : <span className="text-emerald-400 font-semibold">{VIDEO_GENERATION_COST} crédit{VIDEO_GENERATION_COST > 1 ? "s" : ""}</span></span>
+            <span>
+              Crédit vidéo :{" "}
+              <span className="text-emerald-400 font-semibold">déduit à « Valider et enregistrer »</span>
+            </span>
           </div>
         </div>
       </div>
@@ -2271,7 +2423,7 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
           ) : (
             <>
               <Sparkles className="w-4 h-4" />
-              Générer la vidéo {session && `(${VIDEO_GENERATION_COST} crédit)`}
+              Générer la vidéo
             </>
           )}
         </button>
@@ -2303,7 +2455,7 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
         </div>
       )}
 
-      {output && !loading && (
+      {output && !loading && isHttpUrl(output) && (
         <>
           <div className="studio-panel p-5 sm:p-6">
             <div className="flex items-center justify-between mb-3">
@@ -2350,6 +2502,17 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
             ) : null}
           </div>
 
+          <div className="flex flex-col sm:flex-row gap-3 mt-4">
+            <button
+              type="button"
+              onClick={prepareAnotherVideoVersion}
+              className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-all bg-white/5 hover:bg-white/10 text-gray-200 border border-white/15"
+            >
+              <RefreshCw className="w-4 h-4 shrink-0" />
+              Générer une nouvelle version
+            </button>
+          </div>
+
           {/* Message informatif */}
           <div className="mb-4 p-4 rounded-lg bg-blue-500/10 border border-blue-500/30 flex items-start gap-3">
             <User className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
@@ -2379,6 +2542,12 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
           </div>
         </>
       )}
+
+      {output && !loading && !isHttpUrl(output) ? (
+        <div className="studio-panel p-5 sm:p-6 border border-amber-500/30 bg-amber-950/20">
+          <p className="text-sm text-amber-100 whitespace-pre-wrap break-words">{output}</p>
+        </div>
+      ) : null}
 
       {!output && !loading && (
         <div className="studio-panel p-8 text-center">

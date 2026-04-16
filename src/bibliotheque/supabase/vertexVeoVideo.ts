@@ -192,6 +192,21 @@ export type PollVertexVeoOptions = {
   model?: string;
 };
 
+/** Message API brut → texte plus lisible (surcharge Vertex / Veo). */
+function formatVertexVeoFailureMessage(raw: string | undefined): string {
+  const msg = String(raw || "").trim();
+  if (!msg) return "La génération vidéo a échoué.";
+  const lower = msg.toLowerCase();
+  if (
+    lower.includes("high load") ||
+    lower.includes("cannot process your request") ||
+    lower.includes("try again later")
+  ) {
+    return "Le service vidéo est temporairement saturé (côté fournisseur). Réessaie dans quelques minutes. Tes crédits ne sont pas débités tant que tu n’as pas validé et enregistré la vidéo.";
+  }
+  return msg;
+}
+
 /**
  * Attend la fin de l’opération (success / failed / timeout).
  */
@@ -237,7 +252,7 @@ export async function pollVertexVeoUntilComplete(
     }
 
     if (statusData.status === "failed") {
-      throw new Error(statusData.error || "La génération vidéo a échoué.");
+      throw new Error(formatVertexVeoFailureMessage(statusData.error));
     }
 
     await new Promise((r) => setTimeout(r, intervalMs));

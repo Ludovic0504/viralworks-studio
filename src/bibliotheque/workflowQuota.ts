@@ -125,3 +125,10 @@ export function consumeVideoAttempt({ debitedCredit }: { debitedCredit: boolean 
   }
   writeState(state);
 }
+
+/** Appelé au « Valider et enregistrer » vidéo : le crédit serveur est débité une seule fois par workflow. */
+export function markVideoWorkflowCreditConsumed() {
+  const state = readState();
+  state.usage.videoCreditDebited = true;
+  writeState(state);
+}

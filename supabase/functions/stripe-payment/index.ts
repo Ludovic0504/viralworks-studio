@@ -20,6 +20,30 @@ const stripe = stripeSecretKey
     })
   : null;
 
+function resolveBaseUrl(req: Request, requestedOrigin?: unknown): string {
+  const fallbackUrl = Deno.env.get("SITE_URL") || "http://localhost:5173";
+
+  const candidates = [
+    typeof requestedOrigin === "string" ? requestedOrigin : "",
+    req.headers.get("origin") || "",
+    fallbackUrl,
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    try {
+      const url = new URL(candidate);
+      if (url.protocol === "http:" || url.protocol === "https:") {
+        return url.origin;
+      }
+    } catch {
+      // Ignorer les URLs invalides et continuer sur le fallback suivant.
+    }
+  }
+
+  return "http://localhost:5173";
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
@@ -87,7 +111,18 @@ serve(async (req) => {
       );
     }
 
-    const { amount, credits, type } = requestBody;
+    const { amount, credits, type, origin } = requestBody;
+
+    console.log("🟦 stripe-payment appelée", {
+      userId: user.id,
+      email: user.email,
+      amount,
+      credits,
+      type,
+      origin,
+      hasStripeKey: Boolean(stripeSecretKey),
+      stripeKeyPrefix: stripeSecretKey ? stripeSecretKey.slice(0, 8) : null,
+    });
 
     if (!amount || !credits) {
       return new Response(
@@ -109,10 +144,10 @@ serve(async (req) => {
         .eq("user_id", user.id)
         .single();
 
-      if (paymentData?.stripe_customer_id) {
-        customerId = paymentData.stripe_customer_id;
-      } else {
-        // Créer un nouveau customer Stripe
+      const clientToUse = supabaseAdminClient || supabaseClient;
+
+      const createAndPersistCustomer = async () => {
+        console.log("👤 Création d'un customer Stripe", { userId: user.id, email: user.email });
         const customer = await stripe.customers.create({
           email: user.email,
           metadata: {
@@ -120,19 +155,44 @@ serve(async (req) => {
           },
         });
         customerId = customer.id;
+        console.log("✅ Customer Stripe créé", { customerId, userId: user.id });
 
-        // Sauvegarder le customer_id dans la base (utiliser admin client si disponible)
-        const clientToUse = supabaseAdminClient || supabaseClient;
-        await clientToUse
-          .from("stripe_customers")
-          .upsert({
-            user_id: user.id,
-            stripe_customer_id: customerId,
-            email: user.email,
-          });
+        await clientToUse.from("stripe_customers").upsert({
+          user_id: user.id,
+          stripe_customer_id: customerId,
+          email: user.email,
+        });
+      };
+
+      if (paymentData?.stripe_customer_id) {
+        customerId = paymentData.stripe_customer_id;
+        console.log("👤 Customer Stripe en base trouvé", { customerId, userId: user.id });
+
+        // Vérifier que le customer existe bien dans Stripe (utile si la clé Stripe a changé)
+        try {
+          await stripe.customers.retrieve(customerId);
+          console.log("✅ Customer Stripe confirmé", { customerId, userId: user.id });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.warn("⚠️ Customer Stripe invalide, recréation…", { customerId, userId: user.id, msg });
+          await createAndPersistCustomer();
+        }
+      } else {
+        await createAndPersistCustomer();
       }
 
+      const baseUrl = resolveBaseUrl(req, origin);
+      console.log("🌍 URL de retour Checkout résolue", { baseUrl, userId: user.id });
+
       // Créer la session de checkout
+      console.log("🧾 Création session Checkout Stripe", {
+        userId: user.id,
+        customerId,
+        amount,
+        credits,
+        type,
+        baseUrl,
+      });
       const session = await stripe.checkout.sessions.create({
         customer: customerId,
         payment_method_types: ["card"],
@@ -157,13 +217,18 @@ serve(async (req) => {
           },
         ],
         mode: type === "subscription" ? "subscription" : "payment",
-        success_url: `${Deno.env.get("SITE_URL") || "http://localhost:5173"}/boutique?payment=success`,
-        cancel_url: `${Deno.env.get("SITE_URL") || "http://localhost:5173"}/boutique?payment=cancelled`,
+        success_url: `${baseUrl}/boutique?payment=success`,
+        cancel_url: `${baseUrl}/boutique?payment=cancelled`,
         metadata: {
           user_id: user.id,
           credits: credits.toString(),
           type: type || "credits",
         },
+      });
+      console.log("✅ Session Checkout Stripe créée", {
+        sessionId: session.id,
+        url: session.url,
+        userId: user.id,
       });
 
       // Enregistrer la tentative de paiement (même si elle n'est pas encore complétée)

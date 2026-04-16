@@ -206,22 +206,24 @@ export default function Accueil() {
           </div>
 
           {/* Vidéos de démonstration VWS */}
-          <div className="mb-10 sm:mb-14 grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 max-w-5xl mx-auto">
+          <div className="mb-10 sm:mb-14 grid grid-cols-3 gap-2 sm:gap-4 lg:gap-6 max-w-5xl mx-auto">
             {demoVideos.map(({ src, label }) => (
               <div
                 key={label}
-                className="rounded-2xl overflow-hidden border border-white/10 shadow-[0_0_30px_rgba(15,23,42,0.8)] bg-black/40"
+                className="rounded-xl sm:rounded-2xl overflow-hidden border border-white/10 shadow-[0_0_30px_rgba(15,23,42,0.8)] bg-black/40"
               >
-                <video
-                  src={src}
-                  autoPlay
-                  loop
-                  muted
-                  playsInline
-                  preload="metadata"
-                  className="w-full aspect-video object-cover"
-                />
-                <p className="text-center text-xs text-gray-500 py-2 px-2 font-medium">
+                <div className="bg-black flex items-center justify-center">
+                  <video
+                    src={src}
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    preload="metadata"
+                    className="block w-full h-auto bg-black"
+                  />
+                </div>
+                <p className="text-center text-[10px] sm:text-xs text-gray-500 py-1.5 sm:py-2 px-1.5 sm:px-2 font-medium">
                   {label}
                 </p>
               </div>

@@ -3,7 +3,12 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { listHistory } from "@/bibliotheque/supabase/historique";
-import { getUserCredits, getCreditTransactions, getUserRole } from "@/bibliotheque/supabase/credits";
+import {
+  getUserCredits,
+  getCreditTransactions,
+  getUserRole,
+  USER_CREDITS_UPDATED_EVENT,
+} from "@/bibliotheque/supabase/credits";
 import { getUserPayments, getUserSubscription, cancelSubscription } from "@/bibliotheque/supabase/stripe";
 import { getUserProfile, updateUserProfile, uploadAvatar, deleteAvatar } from "@/bibliotheque/supabase/profil";
 import { 
@@ -87,15 +92,21 @@ export default function Profil() {
     const refresh = () => {
       loadStats();
     };
+    const refreshCreditsOnly = () => {
+      loadCredits();
+    };
     const onVisibility = () => {
       if (document.visibilityState === "visible") {
         loadStats();
+        loadCredits();
       }
     };
     window.addEventListener("onetool:history:changed", refresh);
+    window.addEventListener(USER_CREDITS_UPDATED_EVENT, refreshCreditsOnly);
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
       window.removeEventListener("onetool:history:changed", refresh);
+      window.removeEventListener(USER_CREDITS_UPDATED_EVENT, refreshCreditsOnly);
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [session]);

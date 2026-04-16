@@ -10,7 +10,7 @@ const CREDIT_PACKAGES = [
     id: "starter",
     name: "+3 vidéos",
     subtitle: "Pour un besoin ponctuel",
-    credits: 100,
+    credits: 3,
     price: 14.99,
     popular: false,
     icon: "🎯",
@@ -20,7 +20,7 @@ const CREDIT_PACKAGES = [
     id: "pro",
     name: "+10 vidéos",
     subtitle: "Pour un sprint de contenu",
-    credits: 500,
+    credits: 10,
     price: 49,
     popular: true,
     icon: "⚡",
@@ -30,7 +30,7 @@ const CREDIT_PACKAGES = [
     id: "expert",
     name: "+30 vidéos",
     subtitle: "Pour un gros mois / lancement",
-    credits: 1500,
+    credits: 30,
     price: 149,
     popular: false,
     icon: "🚀",
@@ -105,6 +105,17 @@ export default function Boutique() {
       }, 3000);
     }
   }, [paymentStatus, session, navigate]);
+
+  useEffect(() => {
+    const section = searchParams.get("section");
+    if (section === "subscription") {
+      setActiveTab("subscription");
+      return;
+    }
+    if (section === "packs-videos") {
+      setActiveTab("credits");
+    }
+  }, [searchParams]);
 
   const loadData = async () => {
     try {

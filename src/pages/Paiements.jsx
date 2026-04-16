@@ -9,9 +9,9 @@ import {
 } from "lucide-react";
 
 const CREDIT_PACKAGES = [
-  { id: "starter", name: "Starter", credits: 100, price: 9.99, popular: false },
-  { id: "pro", name: "Pro", credits: 500, price: 39.99, popular: true },
-  { id: "expert", name: "Expert", credits: 1500, price: 99.99, popular: false },
+  { id: "starter", name: "Starter", credits: 3, price: 9.99, popular: false },
+  { id: "pro", name: "Pro", credits: 10, price: 39.99, popular: true },
+  { id: "expert", name: "Expert", credits: 30, price: 99.99, popular: false },
 ];
 
 const SUBSCRIPTION_PLANS = [

@@ -8,127 +8,144 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
   try {
-    // Créer le client Supabase
-    const supabaseClient = createClient(
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: "Authorization requis" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const supabaseUser = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_ANON_KEY") ?? "",
       {
         global: {
-          headers: { Authorization: req.headers.get("Authorization")! },
+          headers: { Authorization: authHeader },
         },
       }
     );
 
-    // Récupérer l'utilisateur
     const {
       data: { user },
       error: userError,
-    } = await supabaseClient.auth.getUser();
+    } = await supabaseUser.auth.getUser();
 
     if (userError || !user) {
+      return new Response(JSON.stringify({ error: "Non autorisé" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const serviceRoleKey = Deno.env.get("SERVICE_ROLE_KEY");
+    if (!serviceRoleKey) {
+      console.error("SERVICE_ROLE_KEY manquant");
       return new Response(
-        JSON.stringify({ error: "Non autorisé" }),
+        JSON.stringify({ error: "Configuration serveur incomplète" }),
         {
-          status: 401,
+          status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         }
       );
     }
+
+    const supabaseAdmin = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      serviceRoleKey,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      }
+    );
 
     const { amount, reason, metadata } = await req.json();
 
-    if (!amount || amount <= 0) {
-      return new Response(
-        JSON.stringify({ error: "Montant invalide" }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+    if (!amount || typeof amount !== "number" || amount <= 0) {
+      return new Response(JSON.stringify({ error: "Montant invalide" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    // Vérifier les crédits actuels
-    const { data: creditsData, error: creditsError } = await supabaseClient
-      .from("user_credits")
-      .select("credits")
-      .eq("user_id", user.id)
-      .single();
+    const meta =
+      metadata && typeof metadata === "object" && !Array.isArray(metadata)
+        ? metadata
+        : {};
 
-    if (creditsError) {
-      // Si l'utilisateur n'a pas encore de crédits, initialiser à 0
-      const { error: insertError } = await supabaseClient
-        .from("user_credits")
-        .insert({ user_id: user.id, credits: 0 });
+    const { data: rpcRaw, error: rpcError } = await supabaseAdmin.rpc(
+      "debit_user_credits_atomic",
+      {
+        p_user_id: user.id,
+        p_amount: Math.floor(amount),
+        p_reason: typeof reason === "string" ? reason : "generation",
+        p_metadata: meta as Record<string, unknown>,
+      },
+    );
 
-      if (insertError) {
-        throw insertError;
-      }
-    }
-
-    const currentCredits = creditsData?.credits || 0;
-
-    if (currentCredits < amount) {
+    if (rpcError) {
+      console.error("Erreur RPC debit_user_credits_atomic:", rpcError);
       return new Response(
         JSON.stringify({
-          error: "Crédits insuffisants",
-          current_credits: currentCredits,
-          required: amount,
+          error:
+            rpcError.message ||
+            "Erreur lors du débit (vérifie que la migration SQL est appliquée).",
         }),
         {
-          status: 402, // Payment Required
+          status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        },
       );
     }
 
-    // Débiter les crédits
-    const newCredits = currentCredits - amount;
+    const rpcData = rpcRaw as {
+      success?: boolean;
+      error?: string;
+      current_credits?: number;
+      required?: number;
+      remaining_credits?: number;
+      debited?: number;
+    } | null;
 
-    const { error: updateError } = await supabaseClient
-      .from("user_credits")
-      .update({ credits: newCredits })
-      .eq("user_id", user.id);
-
-    if (updateError) {
-      throw updateError;
-    }
-
-    // Créer la transaction
-    const { error: transactionError } = await supabaseClient
-      .from("credit_transactions")
-      .insert({
-        user_id: user.id,
-        amount: -amount, // Négatif pour un débit
-        type: "debit",
-        reason: reason || "generation",
-        metadata: metadata || {},
-      });
-
-    if (transactionError) {
-      console.error("Erreur création transaction:", transactionError);
-      // Ne pas échouer si la transaction ne peut pas être créée
+    if (!rpcData || rpcData.success !== true) {
+      const msg = String(rpcData?.error || "Débit refusé");
+      const insufficient = msg === "Crédits insuffisants";
+      return new Response(
+        JSON.stringify({
+          error: msg,
+          current_credits: rpcData?.current_credits,
+          required: rpcData?.required ?? amount,
+        }),
+        {
+          status: insufficient ? 402 : 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
 
     return new Response(
       JSON.stringify({
         success: true,
-        remaining_credits: newCredits,
-        debited: amount,
+        remaining_credits: rpcData.remaining_credits,
+        debited: rpcData.debited ?? amount,
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      },
     );
   } catch (error) {
     console.error("Erreur débit crédits:", error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({
+        error: error instanceof Error ? error.message : String(error),
+      }),
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
