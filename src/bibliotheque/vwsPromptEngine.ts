@@ -863,7 +863,7 @@ function buildStabilization(input: UserIdeaInput): StabilizationConstraints {
   }
   if (input.selfieMode) {
     parts.push(
-      "Strict first-person selfie POV from the subject's own front camera while speaking (vlog style). No visible camera rig, no selfie stick, and no accessory between the subject and camera. Never use a third-person/external camera showing someone filming themselves."
+      "Strict first-person selfie POV: front camera at stable eye level ~60–80 cm from the face (tripod or fixed support feel), not an arm extended toward the lens. Do not show the camera-holding hand, wrist, or phone; no limb blob in the foreground corners. Never use a third-person camera filming the subject."
     );
   }
   if (input.cameraAerialAngle === "top_down") {
@@ -962,6 +962,10 @@ function buildVideoPrompts(
       /\b(selfie|face cam[ée]ra|vlog|se filme|se filmant|filming myself)\b/i.test(input.idea);
     if (input.selfieMode || input.inferredSelfiePov || ideaSelfieSignal) {
       importantLines.push("- Camera must be strict first-person selfie POV from the subject's own front camera");
+      importantLines.push(
+        "- Eye-level front camera ~60–80 cm from face (stable, like on a mini tripod); never an arm reaching toward the lens"
+      );
+      importantLines.push("- Do not show the camera-holding hand, wrist, phone edge, or blurry foreground limb blob");
       importantLines.push("- No visible selfie stick, rig, pole, or accessory between subject and camera");
       importantLines.push("- Never use an external/third-person camera showing someone filming themselves");
     }
@@ -1241,8 +1245,15 @@ export function buildHookImageApiPrompt(
   }
 
   if (enforceSelfiePov) {
-    assembled +=
-      "\n\nCamera viewpoint constraint: STRICT FIRST-PERSON SELFIE POV from the subject's own front camera while speaking and presenting the pool. No visible selfie stick, rig, pole, or accessory between subject and camera. Do not show the hand holding the camera in frame (the forearm/upper arm can be visible if natural). Never use a third-person/external camera angle, and never show a separate camera filming the subject.";
+    assembled += [
+      "",
+      "CRITICAL — Selfie POV (must follow all lines):",
+      "Interpret as first-person POV from the subject's phone front camera placed at stable eye level ~60–80 cm in front of the face (like a phone on a mini tripod or resting on a fixed support), NOT an arm extended straight toward the lens.",
+      "FORBIDDEN: the camera-holding hand, its fingers, or wrist; any phone edge or screen bezel in frame; any arm or forearm reaching straight toward the lens or dominating the lower corners; any giant blurry foreground limb blob; selfie stick, pole, or grip visible.",
+      "ALLOWED: upper arms and shoulders at the sides in a natural pose (no reach toward the lens). The other hand may gesture toward the pool at torso side, fully visible with correct finger count and sharp detail.",
+      "Composition: centered face and upper torso, clean edges, no extreme wide-angle distortion on the face.",
+      "Never use a third-person or external camera showing someone filming themselves.",
+    ].join("\n");
   }
 
   assembled +=

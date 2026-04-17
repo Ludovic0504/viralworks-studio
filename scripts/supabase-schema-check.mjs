@@ -81,6 +81,27 @@ const tables = {
     "updated_at",
     "published_at",
   ],
+  informations_utiles_sections: [
+    "id",
+    "slug",
+    "title",
+    "icon_name",
+    "color",
+    "sort_order",
+    "is_active",
+    "created_at",
+    "updated_at",
+  ],
+  informations_utiles_items: [
+    "id",
+    "section_id",
+    "title",
+    "content",
+    "example",
+    "sort_order",
+    "created_at",
+    "updated_at",
+  ],
 };
 
 async function checkTable(table, cols) {

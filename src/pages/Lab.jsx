@@ -1,11 +1,38 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import PageTitle from "../composants/interface/TitrePage";
-import { getNouveautes } from "@/bibliotheque/supabase/nouveautes";
-import { 
-  Search, X, Rocket, TrendingUp, CheckCircle2, Zap,
-  FileText, Image as ImageIcon, Video, Settings, Users, BookOpen,
-  History, Calendar, Filter, Sparkles
+import { useAuth } from "@/contexte/FournisseurAuth";
+import { isAdmin } from "@/bibliotheque/supabase/credits";
+import {
+  getNouveautes,
+  getAllNouveautes,
+  deleteNouveaute,
+  toggleNouveaute,
+} from "@/bibliotheque/supabase/nouveautes";
+import BlocFormulaireNouveaute from "@/composants/nouveautes/BlocFormulaireNouveaute";
+import {
+  Search,
+  X,
+  Rocket,
+  TrendingUp,
+  CheckCircle2,
+  Zap,
+  FileText,
+  Image as ImageIcon,
+  Video,
+  Settings,
+  Users,
+  BookOpen,
+  History,
+  Calendar,
+  Filter,
+  Sparkles,
+  Shield,
+  Plus,
+  Edit,
+  Trash2,
+  CheckCircle,
+  XCircle,
 } from "lucide-react";
 
 const EVENT_TYPES = {
@@ -59,24 +86,64 @@ const ICON_MAP = {
 };
 
 export default function Lab() {
+  const { session } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedType, setSelectedType] = useState("all");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [nouveautes, setNouveautes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isAdminUser, setIsAdminUser] = useState(false);
+  const [editingNouveaute, setEditingNouveaute] = useState(null);
+  const [showNouveauteForm, setShowNouveauteForm] = useState(false);
+  const [adminActionBusy, setAdminActionBusy] = useState(false);
 
-  useEffect(() => {
-    loadNouveautes();
-  }, []);
-
-  const loadNouveautes = async () => {
+  const loadNouveautes = useCallback(async () => {
+    setLoading(true);
     try {
-      const data = await getNouveautes();
+      let admin = false;
+      if (session) {
+        admin = await isAdmin();
+        setIsAdminUser(admin);
+      } else {
+        setIsAdminUser(false);
+      }
+      const data = session && admin ? await getAllNouveautes() : await getNouveautes();
       setNouveautes(data);
     } catch (err) {
       console.error("Erreur chargement nouveautés:", err);
     } finally {
       setLoading(false);
+    }
+  }, [session]);
+
+  useEffect(() => {
+    loadNouveautes();
+  }, [loadNouveautes]);
+
+  const handleDeleteNouveaute = async (id) => {
+    if (!confirm("Supprimer cette nouveauté ? Cette action est définitive.")) return;
+    setAdminActionBusy(true);
+    try {
+      const result = await deleteNouveaute(id);
+      if (!result.success) throw new Error(result.error);
+      await loadNouveautes();
+    } catch (err) {
+      alert(`Erreur : ${err.message}`);
+    } finally {
+      setAdminActionBusy(false);
+    }
+  };
+
+  const handleToggleNouveaute = async (id, currentStatus) => {
+    setAdminActionBusy(true);
+    try {
+      const result = await toggleNouveaute(id, !currentStatus);
+      if (!result.success) throw new Error(result.error);
+      await loadNouveautes();
+    } catch (err) {
+      alert(`Erreur : ${err.message}`);
+    } finally {
+      setAdminActionBusy(false);
     }
   };
 
@@ -84,16 +151,19 @@ export default function Lab() {
     return nouveautes.map((n) => {
       const iconName = n.icon_name || "Rocket";
       const Icon = ICON_MAP[iconName] || Rocket;
-      
+
       return {
         id: n.id,
-        type: n.type === 'creation' || n.type === 'fonctionnalite' ? 'feature' : n.type,
+        type: n.type === "creation" || n.type === "fonctionnalite" ? "feature" : n.type,
         title: n.title,
         description: n.description,
         date: n.published_at ? new Date(n.published_at) : new Date(n.created_at),
         category: n.category,
         link: n.redirect_path,
+        linkLabel: n.redirect_label || "Découvrir",
+        is_active: n.is_active,
         icon: Icon,
+        nouveauteSource: n,
       };
     });
   }, [nouveautes]);
@@ -241,6 +311,47 @@ export default function Lab() {
           </div>
         </div>
 
+        {isAdminUser && (
+          <div className="glass-strong rounded-xl border border-violet-500/30 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex items-center gap-2 text-violet-200">
+              <Shield className="w-5 h-5 shrink-0" />
+              <div>
+                <p className="font-medium">Mode administrateur</p>
+                <p className="text-sm text-gray-400">
+                  Ajoutez, modifiez ou supprimez des événements directement depuis cette page.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setEditingNouveaute(null);
+                setShowNouveauteForm(true);
+              }}
+              disabled={adminActionBusy}
+              className="px-4 py-2 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 shrink-0"
+            >
+              <Plus className="w-4 h-4" />
+              Nouvel événement
+            </button>
+          </div>
+        )}
+
+        {isAdminUser && showNouveauteForm && (
+          <BlocFormulaireNouveaute
+            editingNouveaute={editingNouveaute}
+            onCancel={() => {
+              setShowNouveauteForm(false);
+              setEditingNouveaute(null);
+            }}
+            onSuccess={() => {
+              setShowNouveauteForm(false);
+              setEditingNouveaute(null);
+              loadNouveautes();
+            }}
+          />
+        )}
+
         <div className="relative">
           <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-gradient-to-b from-cyan-500/30 via-violet-500/30 to-yellow-500/30 hidden md:block" />
 
@@ -268,9 +379,11 @@ export default function Lab() {
                       </div>
                     </div>
 
-                    <div className={`flex-1 glass-strong rounded-xl border border-white/10 p-6 hover:border-white/20 hover:bg-white/5 transition-all group-hover:scale-[1.02] ${
-                      isEven ? "md:ml-0" : "md:ml-16"
-                    }`}>
+                    <div
+                      className={`flex-1 glass-strong rounded-xl border border-white/10 p-6 hover:border-white/20 hover:bg-white/5 transition-all group-hover:scale-[1.02] ${
+                        isEven ? "md:ml-0" : "md:ml-16"
+                      } ${isAdminUser && event.is_active === false ? "opacity-60 border-amber-500/20" : ""}`}
+                    >
                       <div className="flex items-start justify-between gap-4 mb-4">
                         <div className="flex items-start gap-4 flex-1">
                           <div className={`w-12 h-12 rounded-lg ${eventType.bg} ${eventType.border} border flex items-center justify-center flex-shrink-0`}>
@@ -285,6 +398,11 @@ export default function Lab() {
                               <span className="text-xs text-gray-500 bg-white/5 px-2 py-1 rounded border border-white/10">
                                 {event.category}
                               </span>
+                              {isAdminUser && event.is_active === false && (
+                                <span className="text-xs px-2 py-1 rounded border border-amber-500/40 text-amber-200 bg-amber-500/10">
+                                  Masqué (inactif)
+                                </span>
+                              )}
                               <div className="flex items-center gap-1 text-xs text-gray-500">
                                 <Calendar className="w-3 h-3" />
                                 {event.date.toLocaleDateString("fr-FR", { 
@@ -308,9 +426,54 @@ export default function Lab() {
                                 to={event.link}
                                 className="inline-flex items-center gap-1.5 text-sm font-medium text-emerald-400 hover:text-emerald-300 transition-colors group/link"
                               >
-                                Découvrir
+                                {event.linkLabel}
                                 <Sparkles className="w-4 h-4 group-hover/link:scale-110 transition-transform" />
                               </Link>
+                            )}
+
+                            {isAdminUser && (
+                              <div className="mt-4 flex flex-wrap items-center gap-2 pt-4 border-t border-white/10">
+                                <button
+                                  type="button"
+                                  disabled={adminActionBusy}
+                                  onClick={() =>
+                                    handleToggleNouveaute(event.id, event.is_active)
+                                  }
+                                  className={`p-2 rounded-lg border transition-all disabled:opacity-50 ${
+                                    event.is_active
+                                      ? "bg-green-500/20 border-green-500/30 text-green-300 hover:bg-green-500/30"
+                                      : "bg-gray-500/20 border-gray-500/30 text-gray-400 hover:bg-gray-500/30"
+                                  }`}
+                                  title={event.is_active ? "Désactiver (masquer du public)" : "Activer"}
+                                >
+                                  {event.is_active ? (
+                                    <CheckCircle className="w-4 h-4" />
+                                  ) : (
+                                    <XCircle className="w-4 h-4" />
+                                  )}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={adminActionBusy}
+                                  onClick={() => {
+                                    setEditingNouveaute(event.nouveauteSource);
+                                    setShowNouveauteForm(true);
+                                  }}
+                                  className="p-2 rounded-lg bg-blue-500/20 border border-blue-500/30 text-blue-300 hover:bg-blue-500/30 transition-all disabled:opacity-50"
+                                  title="Modifier"
+                                >
+                                  <Edit className="w-4 h-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={adminActionBusy}
+                                  onClick={() => handleDeleteNouveaute(event.id)}
+                                  className="p-2 rounded-lg bg-red-500/20 border border-red-500/30 text-red-300 hover:bg-red-500/30 transition-all disabled:opacity-50"
+                                  title="Supprimer"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
                             )}
                           </div>
                         </div>
