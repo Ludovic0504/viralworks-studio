@@ -78,36 +78,114 @@ serve(async (req) => {
       );
     }
 
-    // Récupérer ou créer les crédits de l'utilisateur cible
-    const { data: creditsData, error: creditsError } = await supabaseAdminClient
-      .from("user_credits")
-      .select("credits")
-      .eq("user_id", target_user_id)
-      .single();
+    const meta =
+      metadata && typeof metadata === "object" && !Array.isArray(metadata)
+        ? metadata
+        : {};
 
-    const currentCredits = creditsData?.credits || 0;
-    const newCredits = currentCredits + amount;
+    const category = String(meta.credit_category || "workflow_video");
+    const isWorkflowVideo = category === "workflow_video";
+    let newCredits = 0;
+    let newBucketValue: number | null = null;
 
-    if (creditsError && creditsError.code === "PGRST116") {
-      // L'utilisateur n'a pas encore de crédits, créer l'entrée
-      const { error: insertError } = await supabaseAdminClient
+    if (isWorkflowVideo) {
+      // Crédits workflow vidéo (solde principal historique)
+      const { data: creditsData, error: creditsError } = await supabaseAdminClient
         .from("user_credits")
-        .insert({ user_id: target_user_id, credits: newCredits });
+        .select("credits")
+        .eq("user_id", target_user_id)
+        .single();
 
-      if (insertError) {
-        throw insertError;
+      const currentCredits = creditsData?.credits || 0;
+      newCredits = currentCredits + amount;
+      if (newCredits < 0) {
+        return new Response(
+          JSON.stringify({ error: "Crédits workflow insuffisants" }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
       }
-    } else if (creditsError) {
-      throw creditsError;
-    } else {
-      // Mettre à jour les crédits
-      const { error: updateError } = await supabaseAdminClient
-        .from("user_credits")
-        .update({ credits: newCredits })
-        .eq("user_id", target_user_id);
 
-      if (updateError) {
-        throw updateError;
+      if (creditsError && creditsError.code === "PGRST116") {
+        const { error: insertError } = await supabaseAdminClient
+          .from("user_credits")
+          .insert({ user_id: target_user_id, credits: newCredits });
+
+        if (insertError) {
+          throw insertError;
+        }
+      } else if (creditsError) {
+        throw creditsError;
+      } else {
+        const { error: updateError } = await supabaseAdminClient
+          .from("user_credits")
+          .update({ credits: newCredits })
+          .eq("user_id", target_user_id);
+
+        if (updateError) {
+          throw updateError;
+        }
+      }
+    } else {
+      // Crédits dédiés (texte/image/video) dans user_credit_buckets
+      const columnByCategory: Record<string, string> = {
+        text_generation: "text_generation",
+        image_generation: "image_generation",
+        image_modification: "image_modification",
+        video_generation: "video_generation",
+      };
+      const targetColumn = columnByCategory[category];
+      if (!targetColumn) {
+        return new Response(
+          JSON.stringify({ error: `Catégorie de crédit inconnue: ${category}` }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      const { data: bucketData, error: bucketError } = await supabaseAdminClient
+        .from("user_credit_buckets")
+        .select("text_generation,image_generation,image_modification,video_generation")
+        .eq("user_id", target_user_id)
+        .single();
+
+      const currentBucketValue = Number(bucketData?.[targetColumn] || 0);
+      newBucketValue = currentBucketValue + amount;
+      if (newBucketValue < 0) {
+        return new Response(
+          JSON.stringify({ error: "Crédits insuffisants dans cette catégorie" }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      if (bucketError && bucketError.code === "PGRST116") {
+        const row = {
+          user_id: target_user_id,
+          text_generation: 0,
+          image_generation: 0,
+          image_modification: 0,
+          video_generation: 0,
+          [targetColumn]: newBucketValue,
+        };
+        const { error: insertError } = await supabaseAdminClient
+          .from("user_credit_buckets")
+          .insert(row);
+        if (insertError) throw insertError;
+      } else if (bucketError) {
+        throw bucketError;
+      } else {
+        const { error: updateError } = await supabaseAdminClient
+          .from("user_credit_buckets")
+          .update({ [targetColumn]: newBucketValue, updated_at: new Date().toISOString() })
+          .eq("user_id", target_user_id);
+        if (updateError) throw updateError;
       }
     }
 
@@ -119,7 +197,7 @@ serve(async (req) => {
         amount: amount,
         type: amount > 0 ? "admin_add" : "admin_remove",
         reason: reason || "admin_manual",
-        metadata: metadata || {},
+        metadata: meta,
         created_by: user.id,
       });
 
@@ -130,7 +208,9 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        new_credits: newCredits,
+        category,
+        new_credits: isWorkflowVideo ? newCredits : undefined,
+        new_category_credits: !isWorkflowVideo ? newBucketValue : undefined,
         added: amount,
       }),
       {

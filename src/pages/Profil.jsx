@@ -5,17 +5,25 @@ import { useAuth } from "@/contexte/FournisseurAuth";
 import { listHistory } from "@/bibliotheque/supabase/historique";
 import {
   getUserCredits,
+  getUserCreditBuckets,
   getCreditTransactions,
   getUserRole,
   USER_CREDITS_UPDATED_EVENT,
 } from "@/bibliotheque/supabase/credits";
+import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
+import {
+  getWorkflowUsage,
+  WORKFLOW_LIMITS,
+  WORKFLOW_QUOTA_STORAGE_KEY,
+  WORKFLOW_QUOTA_UPDATED_EVENT,
+} from "@/bibliotheque/workflowQuota";
 import { getUserPayments, getUserSubscription, cancelSubscription } from "@/bibliotheque/supabase/stripe";
 import { getUserProfile, updateUserProfile, uploadAvatar, deleteAvatar } from "@/bibliotheque/supabase/profil";
 import { 
   User, Mail, Calendar, Settings, LogOut, Edit2, Save, X, 
   FileText, Image as ImageIcon, Video, Sparkles, TrendingUp,
   Clock, ExternalLink, Coins, Shield, ShoppingBag, CreditCard, CheckCircle, XCircle, AlertCircle, ChevronDown, ChevronUp, Upload, Briefcase, Trash2, Crown, AlertTriangle,
-  Download, Share2, Link as LinkIcon, Copy, Check
+  Download, Share2, Link as LinkIcon, Copy, Check, Info
 } from "lucide-react";
 
 const LS_HISTORY = "history_v2";
@@ -66,6 +74,15 @@ export default function Profil() {
   const [selectedVideoItem, setSelectedVideoItem] = useState(null);
   const [downloadFormat, setDownloadFormat] = useState("png");
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const [showQuotaDetails, setShowQuotaDetails] = useState(false);
+  const [creditBuckets, setCreditBuckets] = useState({
+    text_generation: 0,
+    image_generation: 0,
+    image_modification: 0,
+    video_generation: 0,
+  });
+  /** Compteurs studio (localStorage) : générations déjà faites dans le cycle courant. */
+  const [workflowStudioUsage, setWorkflowStudioUsage] = useState(() => getWorkflowUsage());
   
   const [formData, setFormData] = useState({
     first_name: "",
@@ -94,6 +111,7 @@ export default function Profil() {
     };
     const refreshCreditsOnly = () => {
       loadCredits();
+      setWorkflowStudioUsage(getWorkflowUsage());
     };
     const onVisibility = () => {
       if (document.visibilityState === "visible") {
@@ -110,6 +128,74 @@ export default function Profil() {
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [session]);
+
+  useEffect(() => {
+    const userId = session?.user?.id;
+    if (!userId) return;
+
+    const supabase = getBrowserSupabase();
+    const channel = supabase
+      .channel(`profil-credits-${userId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "user_credits", filter: `user_id=eq.${userId}` },
+        () => {
+          loadCredits();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "credit_transactions", filter: `user_id=eq.${userId}` },
+        () => {
+          loadCredits();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "user_credit_buckets", filter: `user_id=eq.${userId}` },
+        () => {
+          loadCredits();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [session?.user?.id]);
+
+  useEffect(() => {
+    if (showQuotaDetails && session?.user?.id) {
+      void loadCredits();
+      setWorkflowStudioUsage(getWorkflowUsage());
+    }
+  }, [showQuotaDetails, session?.user?.id]);
+
+  useEffect(() => {
+    const syncStudioUsage = () => setWorkflowStudioUsage(getWorkflowUsage());
+    syncStudioUsage();
+    window.addEventListener(WORKFLOW_QUOTA_UPDATED_EVENT, syncStudioUsage);
+    const onStorage = (e) => {
+      if (e.key === WORKFLOW_QUOTA_STORAGE_KEY) syncStudioUsage();
+    };
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(WORKFLOW_QUOTA_UPDATED_EVENT, syncStudioUsage);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (session) setWorkflowStudioUsage(getWorkflowUsage());
+  }, [session]);
+
+  useEffect(() => {
+    if (!showQuotaDetails) return;
+    const id = window.setInterval(() => {
+      setWorkflowStudioUsage(getWorkflowUsage());
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [showQuotaDetails]);
 
   const loadStats = async () => {
     setLoading(true);
@@ -148,6 +234,8 @@ export default function Profil() {
     try {
       const userCredits = await getUserCredits();
       setCredits(userCredits);
+      const buckets = await getUserCreditBuckets();
+      setCreditBuckets(buckets);
       const userTransactions = await getCreditTransactions(100);
       setTransactions(userTransactions);
     } catch (err) {
@@ -613,18 +701,162 @@ export default function Profil() {
     day: "numeric"
   }) : "Date inconnue";
 
+  /** Solde workflow (user_credits) : c’est ce que vérifient Prompt, Image, Vidéo et le studio. */
+  const workflowBal = credits === null ? null : Number(credits) || 0;
+  const workflowPackCount = workflowBal === null ? null : Math.max(0, workflowBal);
+
+  // 1 crédit workflow complet = 1 texte, 3 générations image, 5 modifications image,
+  // 1 génération vidéo + 1 variante vidéo. Les « restants » soustraient l’usage studio (local).
+  const u = workflowStudioUsage;
+  const quotaTextCap =
+    workflowPackCount === null
+      ? null
+      : workflowPackCount * WORKFLOW_LIMITS.scriptAttempts + (creditBuckets.text_generation || 0);
+  const quotaTextRem =
+    quotaTextCap === null ? null : Math.max(0, quotaTextCap - (u.scriptAttemptsUsed || 0));
+
+  const quotaImgGenCap =
+    workflowPackCount === null
+      ? null
+      : workflowPackCount * WORKFLOW_LIMITS.imageGenerations + (creditBuckets.image_generation || 0);
+  const quotaImgGenRem =
+    quotaImgGenCap === null ? null : Math.max(0, quotaImgGenCap - (u.imageGenerationsUsed || 0));
+
+  const quotaImgModCap =
+    workflowPackCount === null
+      ? null
+      : workflowPackCount * WORKFLOW_LIMITS.imageModifications +
+        (creditBuckets.image_modification || 0);
+  const quotaImgModRem =
+    quotaImgModCap === null ? null : Math.max(0, quotaImgModCap - (u.imageModificationsUsed || 0));
+
+  const vAttempts = u.videoAttemptsUsed || 0;
+  const quotaVidGenCap =
+    workflowPackCount === null
+      ? null
+      : workflowPackCount * 1 + (creditBuckets.video_generation || 0);
+  const quotaVidGenRem =
+    quotaVidGenCap === null ? null : Math.max(0, quotaVidGenCap - Math.min(1, vAttempts));
+
+  const quotaVidVarCap = workflowPackCount === null ? null : workflowPackCount * 1;
+  const quotaVidVarRem =
+    quotaVidVarCap === null ? null : Math.max(0, quotaVidVarCap - Math.max(0, vAttempts - 1));
+
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {showQuotaDetails && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+          onClick={() => setShowQuotaDetails(false)}
+        >
+          <div
+            className="glass-strong max-w-lg w-full rounded-2xl border border-white/10 p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-semibold text-gray-100">Détails des quotas</h3>
+              <button
+                type="button"
+                onClick={() => setShowQuotaDetails(false)}
+                className="p-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300"
+                title="Fermer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="space-y-3">
+              <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3">
+                <p className="text-sm text-emerald-100 font-medium">Workflow vidéo (complet)</p>
+                <p className="text-xs text-emerald-300 mt-1">
+                  Même solde que la carte « Vidéos disponibles » :{" "}
+                  {credits !== null ? credits : "…"}
+                </p>
+                <p className="text-[11px] text-emerald-300/90 mt-1">
+                  Packs workflow actifs : {workflowPackCount === null ? "…" : workflowPackCount}
+                </p>
+              </div>
+              <p className="text-[11px] text-gray-500 px-0.5">
+                Les « restants » tiennent compte de ton utilisation dans ViralWorks Studio (compteur local,
+                mois en cours). Le solde workflow serveur (carte ci-dessus) ne diminue qu’à la fin du
+                parcours lorsque le crédit est débité. Les bonus admin s’ajoutent par catégorie.
+              </p>
+              <div className="rounded-lg border border-cyan-500/25 bg-cyan-500/10 p-3">
+                <p className="text-sm text-cyan-100">Texte - génération</p>
+                <p className="text-xs text-cyan-200 mt-1 font-medium">
+                  Restant (studio) : {quotaTextRem === null ? "…" : quotaTextRem}
+                </p>
+                <p className="text-[11px] text-cyan-300/90 mt-1">
+                  Plafond {quotaTextCap === null ? "…" : quotaTextCap} · Déjà utilisé :{" "}
+                  {u.scriptAttemptsUsed || 0} · Workflow (
+                  {workflowPackCount === null ? "…" : workflowPackCount} × {WORKFLOW_LIMITS.scriptAttempts}) ·
+                  Bonus : {creditBuckets.text_generation}
+                </p>
+              </div>
+              <div className="rounded-lg border border-violet-500/25 bg-violet-500/10 p-3">
+                <p className="text-sm text-violet-100">Image</p>
+                <p className="text-xs text-violet-200 mt-1 font-medium">
+                  Génération — restant (studio) : {quotaImgGenRem === null ? "…" : quotaImgGenRem}
+                </p>
+                <p className="text-[11px] text-violet-300/90">
+                  Plafond {quotaImgGenCap === null ? "…" : quotaImgGenCap} · Déjà utilisé :{" "}
+                  {u.imageGenerationsUsed || 0} · Workflow (
+                  {workflowPackCount === null ? "…" : workflowPackCount} × {WORKFLOW_LIMITS.imageGenerations})
+                  · Bonus : {creditBuckets.image_generation}
+                </p>
+                <p className="text-xs text-violet-200 mt-2 font-medium">
+                  Modification — restant (studio) : {quotaImgModRem === null ? "…" : quotaImgModRem}
+                </p>
+                <p className="text-[11px] text-violet-300/90">
+                  Plafond {quotaImgModCap === null ? "…" : quotaImgModCap} · Déjà utilisé :{" "}
+                  {u.imageModificationsUsed || 0} · Workflow (
+                  {workflowPackCount === null ? "…" : workflowPackCount} ×{" "}
+                  {WORKFLOW_LIMITS.imageModifications}) · Bonus : {creditBuckets.image_modification}
+                </p>
+              </div>
+              <div className="rounded-lg border border-yellow-500/25 bg-yellow-500/10 p-3">
+                <p className="text-sm text-yellow-100">Vidéo</p>
+                <p className="text-xs text-yellow-200 mt-1 font-medium">
+                  Génération — restant (studio) : {quotaVidGenRem === null ? "…" : quotaVidGenRem}
+                </p>
+                <p className="text-[11px] text-yellow-300/90 mt-1">
+                  Plafond {quotaVidGenCap === null ? "…" : quotaVidGenCap} · Passages vidéo lancés :{" "}
+                  {vAttempts} · Workflow ({workflowPackCount === null ? "…" : workflowPackCount} × 1) · Bonus
+                  : {creditBuckets.video_generation}
+                </p>
+                <p className="text-xs text-yellow-200 mt-2 font-medium">
+                  Variante (si la 1re ne convient pas) — restant (studio) :{" "}
+                  {quotaVidVarRem === null ? "…" : quotaVidVarRem}
+                </p>
+                <p className="text-[11px] text-yellow-300/90">
+                  Plafond variante {quotaVidVarCap === null ? "…" : quotaVidVarCap} · Workflow (
+                  {workflowPackCount === null ? "…" : workflowPackCount} × 1)
+                </p>
+              </div>
+            </div>
+            <p className="text-[11px] text-gray-400 mt-4">
+              Chaque pack workflow complet définit un plafond ; les lignes « restant » se mettent à jour
+              dès qu’une étape consomme un quota dans le studio (y compris sans fermer ce pop-up).
+            </p>
+          </div>
+        </div>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
         <div className="glass-strong rounded-xl border border-white/10 p-6">
           <div className="flex items-center justify-between mb-2">
             <div className="w-10 h-10 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
-              <Coins className="w-5 h-5 text-emerald-400" />
+              <Video className="w-5 h-5 text-emerald-400" />
             </div>
-            <TrendingUp className="w-4 h-4 text-gray-400" />
+            <button
+              type="button"
+              onClick={() => setShowQuotaDetails(true)}
+              className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 hover:text-emerald-300 transition-all"
+              title="Voir workflow vidéo et autres quotas"
+            >
+              <Info className="w-4 h-4" />
+            </button>
           </div>
           <p className="text-2xl font-bold text-gray-200">{credits !== null ? credits : "..."}</p>
-          <p className="text-xs text-gray-400 mt-1">Crédits disponibles</p>
+          <p className="text-xs text-gray-400 mt-1">Vidéos disponibles</p>
           <Link
             to="/boutique"
             className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-sm font-medium transition-all"
@@ -1130,6 +1362,11 @@ export default function Profil() {
                           {tx.reason === "image_generation" && "Génération d'image"}
                           {tx.reason === "video_generation" && "Génération de vidéo"}
                           {tx.reason === "admin_manual" && "Ajout manuel"}
+                          {tx.reason === "admin_manual_workflow_video" && "Admin - crédits workflow vidéo"}
+                          {tx.reason === "admin_manual_text_generation" && "Admin - crédits texte"}
+                          {tx.reason === "admin_manual_image_generation" && "Admin - crédits image (génération)"}
+                          {tx.reason === "admin_manual_image_modification" && "Admin - crédits image (modification)"}
+                          {tx.reason === "admin_manual_video_generation" && "Admin - crédits vidéo (génération)"}
                           {tx.reason === "stripe_payment" && "Achat de crédits"}
                           {tx.reason === "subscription_payment" && "Abonnement"}
                           {tx.reason === "subscription_renewal" && "Renouvellement abonnement"}

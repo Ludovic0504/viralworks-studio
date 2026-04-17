@@ -36,6 +36,13 @@ export interface UserRole {
   updated_at: string;
 }
 
+export interface UserCreditBuckets {
+  text_generation: number;
+  image_generation: number;
+  image_modification: number;
+  video_generation: number;
+}
+
 /**
  * Récupère les crédits de l'utilisateur connecté
  */
@@ -60,6 +67,46 @@ export async function getUserCredits(): Promise<number> {
 
   if (!rows?.length) return 0;
   return rows.reduce((sum, r) => sum + Number(r.credits ?? 0), 0);
+}
+
+/**
+ * Récupère les crédits dédiés par catégorie (texte/image/vidéo).
+ */
+export async function getUserCreditBuckets(): Promise<UserCreditBuckets> {
+  const supabase = getBrowserSupabase();
+  const empty: UserCreditBuckets = {
+    text_generation: 0,
+    image_generation: 0,
+    image_modification: 0,
+    video_generation: 0,
+  };
+
+  const {
+    data: { user },
+    error: userErr,
+  } = await supabase.auth.getUser();
+  if (userErr || !user) return empty;
+
+  const { data, error } = await supabase
+    .from("user_credit_buckets")
+    .select("text_generation,image_generation,image_modification,video_generation")
+    .eq("user_id", user.id)
+    .single();
+
+  if (error) {
+    if ((error as { code?: string }).code === "PGRST116") {
+      return empty;
+    }
+    console.error("Erreur récupération crédits dédiés:", error);
+    return empty;
+  }
+
+  return {
+    text_generation: Number(data?.text_generation || 0),
+    image_generation: Number(data?.image_generation || 0),
+    image_modification: Number(data?.image_modification || 0),
+    video_generation: Number(data?.video_generation || 0),
+  };
 }
 
 /**

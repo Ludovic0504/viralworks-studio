@@ -72,6 +72,7 @@ serve(async (req) => {
     const [
       { data: profiles, error: profilesError },
       { data: credits, error: creditsError },
+      { data: creditBuckets, error: creditBucketsError },
       { data: subscriptions, error: subscriptionsError },
       { data: payments, error: paymentsError },
       { data: transactions, error: transactionsError },
@@ -80,6 +81,7 @@ serve(async (req) => {
     ] = await Promise.all([
       supabaseAdminClient.from("profiles").select("user_id, email, full_name, first_name, last_name, created_at, role").order("created_at", { ascending: false }),
       supabaseAdminClient.from("user_credits").select("user_id, credits"),
+      supabaseAdminClient.from("user_credit_buckets").select("user_id, text_generation, image_generation, image_modification, video_generation"),
       supabaseAdminClient.from("stripe_subscriptions").select("*").order("created_at", { ascending: false }),
       supabaseAdminClient.from("stripe_payments").select("*").order("created_at", { ascending: false }),
       supabaseAdminClient.from("credit_transactions").select("*").order("created_at", { ascending: false }),
@@ -92,6 +94,9 @@ serve(async (req) => {
     }
     if (creditsError) {
       console.error("Erreur récupération crédits:", creditsError);
+    }
+    if (creditBucketsError) {
+      console.error("Erreur récupération crédits dédiés:", creditBucketsError);
     }
     if (subscriptionsError) {
       console.error("Erreur récupération abonnements:", subscriptionsError);
@@ -113,9 +118,14 @@ serve(async (req) => {
     const usersWithAuth = (profiles || []).map((profile) => {
       const authUser = authUsers?.users?.find((u) => u.id === profile.user_id);
       const userCredits = credits?.find((c) => c.user_id === profile.user_id);
+      const userBuckets = creditBuckets?.find((b) => b.user_id === profile.user_id);
       return {
         ...profile,
         credits: userCredits?.credits || 0,
+        credits_text_generation: userBuckets?.text_generation || 0,
+        credits_image_generation: userBuckets?.image_generation || 0,
+        credits_image_modification: userBuckets?.image_modification || 0,
+        credits_video_generation: userBuckets?.video_generation || 0,
         email_verified: authUser?.email_confirmed_at ? true : false,
         last_sign_in_at: authUser?.last_sign_in_at || null,
         created_at_auth: authUser?.created_at || null,

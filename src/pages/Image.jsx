@@ -158,6 +158,8 @@ export default function ImagePage({
   campaignClarifyMode = null,
   campaignClarifyAnswer = null,
   campaignCameraAerialAngle = null,
+  campaignGlobalIntentProfile = null,
+  campaignSelfieMode = false,
   scriptScene1Idea = "",
   campaignRevealMode = false,
   campaignMicroAnswer = null,
@@ -303,21 +305,26 @@ export default function ImagePage({
   async function generate() {
     if (!canGenerate) return;
 
+    let hasServerCredits = true;
     if (session) {
-      const hasCredits = await hasEnoughCredits(1);
-      if (!hasCredits) {
+      hasServerCredits = await hasEnoughCredits(1);
+      if (!hasServerCredits) {
         openQuotaModal();
         return;
       }
     }
 
     if (!canUseImageGeneration()) {
-      const usage = getWorkflowUsage();
-      if (usage.videoAttemptsUsed >= 1) {
-        resetWorkflowUsage();
-      } else {
-        openQuotaModal("Quota Visuel d'accroche atteint pour ce workflow (3 générations d'images).");
-        return;
+      // Le quota local peut être désynchronisé (ex: crédits workflow rajoutés côté admin).
+      // Tant que le solde serveur est OK, on laisse générer.
+      if (!(session && hasServerCredits)) {
+        const usage = getWorkflowUsage();
+        if (usage.videoAttemptsUsed >= 1) {
+          resetWorkflowUsage();
+        } else {
+          openQuotaModal("Quota Visuel d'accroche atteint pour ce workflow (3 générations d'images).");
+          return;
+        }
       }
     }
 
@@ -380,6 +387,8 @@ export default function ImagePage({
             jobTypeLabel: campaignJobType || "",
             lockedVideoScriptScene0: String(scriptScene1Idea || "").trim() || undefined,
             cameraAerialAngle: campaignCameraAerialAngle,
+            globalIntent: campaignGlobalIntentProfile,
+            selfieMode: campaignSelfieMode,
             }
           ),
           ratio,
@@ -697,12 +706,16 @@ export default function ImagePage({
     if (!lastGeneratedImages?.length || !instruction || modifyLoading) return;
 
     if (!canUseImageModification()) {
-      const usage = getWorkflowUsage();
-      if (usage.videoAttemptsUsed >= 1) {
-        resetWorkflowUsage();
-      } else {
-        openQuotaModal("Quota Visuel d'accroche atteint pour ce workflow (5 modifications d'image).");
-        return;
+      // Même logique: ne pas bloquer à tort si le solde serveur permet encore une action.
+      const hasServerCredits = session ? await hasEnoughCredits(1) : false;
+      if (!(session && hasServerCredits)) {
+        const usage = getWorkflowUsage();
+        if (usage.videoAttemptsUsed >= 1) {
+          resetWorkflowUsage();
+        } else {
+          openQuotaModal("Quota Visuel d'accroche atteint pour ce workflow (5 modifications d'image).");
+          return;
+        }
       }
     }
 

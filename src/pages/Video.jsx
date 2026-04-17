@@ -1003,10 +1003,14 @@ function VEO3VideoForm({
     }
 
     if (!canUseVideoAttempt()) {
-      alert(
-        "Tu as atteint la limite de générations vidéo pour ce parcours (incluant la variante). Valide et enregistre ta vidéo, ou lance un nouveau projet depuis le récap (« Faire une autre vidéo ») ou en réinitialisant la campagne."
-      );
-      return;
+      const bypass =
+        Boolean(session) && (await hasEnoughCredits(VIDEO_GENERATION_COST));
+      if (!bypass) {
+        alert(
+          "Tu as atteint la limite de générations vidéo pour ce parcours (incluant la variante). Valide et enregistre ta vidéo, ou lance un nouveau projet depuis le récap (« Faire une autre vidéo ») ou en réinitialisant la campagne."
+        );
+        return;
+      }
     }
     const shouldReserveCredit = shouldDebitVideoCredit();
 
@@ -1322,17 +1326,10 @@ function VEO3VideoForm({
     });
   };
 
-  const clampDialoguePhrase = (s) => {
-    const w = String(s).trim().split(/\s+/).filter(Boolean);
-    if (w.length <= 12) return w.join(" ");
-    return w.slice(0, 12).join(" ");
-  };
-
   const updateDialogueByScene = (sceneIndex, value) => {
-    const v = clampDialoguePhrase(value);
     setDialogueByScene((prev) => {
       const next = [...ensureVeo3SceneScripts(prev)];
-      next[sceneIndex] = v;
+      next[sceneIndex] = value;
       return next;
     });
   };
@@ -1619,8 +1616,7 @@ function VEO3VideoForm({
                           type="text"
                           value={dialogueGlobal}
                           disabled={!dialogueEnabled}
-                          onChange={(e) => setDialogueGlobal(clampDialoguePhrase(e.target.value))}
-                          maxLength={96}
+                          onChange={(e) => setDialogueGlobal(e.target.value)}
                           className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                           placeholder="Ex. : Regardez la différence avant et après."
                           autoComplete="off"
@@ -1643,7 +1639,6 @@ function VEO3VideoForm({
                               value={dialogueByScene[i] ?? ""}
                               disabled={!dialogueEnabled}
                               onChange={(e) => updateDialogueByScene(i, e.target.value)}
-                              maxLength={96}
                               className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
                               placeholder="Une courte phrase pour ce moment"
                               autoComplete="off"
@@ -2071,10 +2066,14 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
     }
 
     if (!canUseVideoAttempt()) {
-      alert(
-        "Tu as atteint la limite de générations vidéo pour ce parcours (incluant la variante). Valide et enregistre ta vidéo, ou lance un nouveau projet depuis le récap (« Faire une autre vidéo ») ou en réinitialisant la campagne."
-      );
-      return;
+      const bypass =
+        Boolean(session) && (await hasEnoughCredits(VIDEO_GENERATION_COST));
+      if (!bypass) {
+        alert(
+          "Tu as atteint la limite de générations vidéo pour ce parcours (incluant la variante). Valide et enregistre ta vidéo, ou lance un nouveau projet depuis le récap (« Faire une autre vidéo ») ou en réinitialisant la campagne."
+        );
+        return;
+      }
     }
     const shouldReserveCredit = shouldDebitVideoCredit();
 

@@ -5,6 +5,7 @@ import {
   clarifyGateNeedsCameraAerialAngle,
   clarifyGateNeedsCausalAgent,
   clarifyGateNeedsModeAgent,
+  inferGlobalIntent,
   runVwsPromptEngine,
 } from "../bibliotheque/vwsPromptEngine";
 import { generateResponse } from "@/bibliotheque/openai/chatgpt-client";
@@ -155,6 +156,7 @@ export default function CampagneVWS({ onBrainReady, campaignData, onCampaignChan
       causalAgent: campaignData?.clarifyAxesResolved?.causalAgent === true,
       cameraAerialAngle: campaignData?.clarifyAxesResolved?.cameraAerialAngle === true,
     },
+    globalIntentProfile: campaignData?.globalIntentProfile ?? null,
     isClarified: false,
     ...overrides,
   });
@@ -183,6 +185,7 @@ export default function CampagneVWS({ onBrainReady, campaignData, onCampaignChan
         initialStateSelection: null,
         gateResult: null,
         clarifyAnswer: null,
+        globalIntentProfile: null,
         clarificationHistory: [],
         clarifyAxesResolved: { modeAgent: false, initialT0: false, causalAgent: false, cameraAerialAngle: false },
         isClarified: false,
@@ -492,14 +495,32 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
       const cameraAerialForBrain =
         cameraAerialAngle ?? histParsed.cameraAerialAngleFromGate ?? null;
       const histJoined = historyLines.length ? historyLines.join("\n\n") : undefined;
+      const preIntent = await inferGlobalIntent({
+        profession: safeProfession,
+        idea: safeIdea,
+        styleDetails: styleDetails.trim() || "",
+        revealMode,
+        selfieMode,
+        cameraFixed,
+        cinematicMovement,
+        tempo,
+        sequenceType,
+      });
+      const isPresentationSelfie =
+        preIntent.intentFamily === "presentation" &&
+        (preIntent.humanPresence === "selfie" || selfieMode === true);
+      const inferredSelfiePov = preIntent.humanPresence === "selfie";
 
       let gate = null;
       for (;;) {
         const needCameraAerial =
           !axes.cameraAerialAngle && clarifyGateNeedsCameraAerialAngle(safeIdea);
-        const needCausal = !axes.causalAgent && clarifyGateNeedsCausalAgent(safeIdea);
-        const needMode = !axes.modeAgent && clarifyGateNeedsModeAgent(safeIdea);
-        const needInitial = !axes.initialT0 && clarifyGateNeedsInitialT0(safeIdea);
+        const needCausal =
+          !isPresentationSelfie && !axes.causalAgent && clarifyGateNeedsCausalAgent(safeIdea);
+        const needMode =
+          !isPresentationSelfie && !axes.modeAgent && clarifyGateNeedsModeAgent(safeIdea);
+        const needInitial =
+          !isPresentationSelfie && !axes.initialT0 && clarifyGateNeedsInitialT0(safeIdea);
 
         if (!needCameraAerial && !needCausal && !needMode && !needInitial) {
           gate = await clarifyIdea({
@@ -565,6 +586,25 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
       }
 
       if (
+        preIntent.intentFamily === "presentation" &&
+        sequenceType !== "three_x_8s" &&
+        !tempoCompressionDecision
+      ) {
+        setMicroQuestion({
+          question: "Cette présentation semble assez courte. Veux-tu partir sur une vidéo plus longue de 24 secondes ?",
+          reason: "presentation_duration",
+          info:
+            "Passer en 24 secondes active 3 scènes (3 x 8s) et consomme 3 crédits au total au lieu de 1.",
+          options: [
+            { id: "switch_24s", label: "Oui, passer en 24 sec" },
+            { id: "keep_8s", label: "Non, garder 8 sec" },
+          ],
+        });
+        setError("Choisis une durée adaptée à cette présentation.");
+        return;
+      }
+
+      if (
         tempo !== "timelapse" &&
         !tempoCompressionDecision &&
         isIdeaTooDenseForRealtime(safeIdea)
@@ -596,7 +636,10 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         microAnswerId: microForBrain,
         causalAgentSelection: causalForBrain,
         cameraAerialAngle: cameraAerialForBrain,
+        inferredSelfiePov,
       });
+
+      const globalIntentProfile = preIntent;
 
       const skipBrainInitialMicro = axes.initialT0 === true;
       if (brain.microQuestion && !microForBrain && !skipBrainInitialMicro) {
@@ -658,6 +701,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         proceedAnyway: false,
         clarificationHistory: historyLines,
         clarifyAxesResolved: axes,
+        globalIntentProfile,
         isClarified: true,
       };
 
@@ -771,6 +815,22 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
       onCampaignChange?.(
         buildCampaignSnapshot({
           tempo: nextTempo,
+          tempoCompressionDecision: optionId,
+        })
+      );
+      setError("");
+      return;
+    }
+    if (optionId === "switch_24s" || optionId === "keep_8s") {
+      const nextSequenceType = optionId === "switch_24s" ? "three_x_8s" : "single_8s";
+      if (optionId === "switch_24s") {
+        setSequenceType("three_x_8s");
+      }
+      setTempoCompressionDecision(optionId);
+      setMicroQuestion(null);
+      onCampaignChange?.(
+        buildCampaignSnapshot({
+          sequenceType: nextSequenceType,
           tempoCompressionDecision: optionId,
         })
       );
@@ -1045,7 +1105,19 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
 
       {microQuestion && (
         <div className="mt-4 border-t border-white/10 pt-3 space-y-2">
-          <p className="text-xs text-gray-300">{microQuestion.question}</p>
+          <div className="flex items-start gap-2">
+            <p className="text-xs text-gray-300">{microQuestion.question}</p>
+            {microQuestion.info ? (
+              <span className="relative inline-flex items-center group shrink-0 mt-0.5">
+                <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-cyan-500/35 bg-cyan-500/10 text-[10px] font-semibold text-cyan-200 cursor-help">
+                  i
+                </span>
+                <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 hidden w-72 -translate-x-1/2 rounded-lg border border-cyan-500/25 bg-[#0d1a22] px-2.5 py-2 text-[11px] leading-snug text-cyan-100 shadow-lg group-hover:block">
+                  {microQuestion.info}
+                </span>
+              </span>
+            ) : null}
+          </div>
           <div className="flex flex-wrap gap-2 mt-1">
             {microQuestion.options.map((opt) => (
               <button

@@ -35,6 +35,8 @@ export interface UserIdeaInput {
    * - angled: high-angle with visible depth/perspective
    */
   cameraAerialAngle?: "top_down" | "angled" | null;
+  /** Selfie POV inferred from global intent understanding (even without explicit "selfie" keyword). */
+  inferredSelfiePov?: boolean;
 }
 
 export interface GlobalScene {
@@ -92,6 +94,14 @@ export interface VwsEngineOutput {
   };
 }
 
+export interface GlobalIntentProfile {
+  intentFamily: "presentation" | "transformation" | "demonstration" | "human_interaction" | "other";
+  hookGoal: "show_finished_result" | "show_start_state" | "show_action_in_progress";
+  humanPresence: "selfie" | "visible" | "none" | "unknown";
+  confidence: number;
+  source: "heuristic" | "llm";
+}
+
 /** Une seule phase à la fois : pas de redondance inter-axes dans le même appel. */
 export type ClarifyGatePhase = "mode_agent" | "initial_t0" | "causal_agent" | "camera_aerial_angle" | "none";
 
@@ -141,6 +151,18 @@ export interface RefinePromptInput {
   clarifyMode?: "MODE_A" | "MODE_B" | null;
   clarifyAnswer?: string | null;
   proceedAnyway?: boolean;
+}
+
+export interface InferGlobalIntentInput {
+  profession: string;
+  idea: string;
+  styleDetails?: string;
+  revealMode: boolean;
+  selfieMode: boolean;
+  cameraFixed: boolean;
+  cinematicMovement: boolean;
+  tempo: Tempo;
+  sequenceType: SequenceType;
 }
 
 export interface ExecutionStep {
@@ -402,7 +424,7 @@ export function clarifyGateNeedsInitialT0(mainIdea: string): boolean {
   ) {
     return false;
   }
-  return /\b(rénov|renov|construi|transform|aménag|chantier|timelapse|avant.{0,12}après|appara[iî]t|se refait|refaire|paysag|jardin|pelouse|terrasse)\b/.test(
+  return /\b(rénov|renov|construi|transform|aménag|chantier|timelapse|avant.{0,12}après|appara[iî]t|se refait|refaire|paysag)\b/.test(
     t
   );
 }
@@ -502,12 +524,30 @@ function buildFallbackFinalPrompt(input: RefinePromptInput): string {
   ].join("\n");
 }
 
+function enforceCameraLockPrompt(promptText: string, cameraLocked: boolean): string {
+  const txt = String(promptText || "").trim();
+  if (!txt || !cameraLocked) return txt;
+  const alreadyMentionsLock =
+    /\b(locked[-\s]?off|static camera|camera fixed|fixed camera|no camera movement|tripod|no pan|no tilt|no dolly)\b/i.test(
+      txt
+    );
+  if (alreadyMentionsLock) return txt;
+  return [
+    txt,
+    "",
+    "Important camera lock:",
+    "Use a locked-off static camera for the full shot.",
+    "No camera movement at any time: no pan, tilt, dolly, zoom, orbit, crane, or handheld drift.",
+  ].join("\n");
+}
+
 function normalizeRefinementResult(rawText: string, parsed: any, input: RefinePromptInput): RefinementResult {
-  const finalPrompt =
+  const rawFinalPrompt =
     String(parsed?.phases?.PROMPT_EXECUTION_PHASE?.steps?.PROMPT_FINALIZATION?.output || "").trim() ||
     String(parsed?.final_prompt || parsed?.prompt || "").trim() ||
     (rawText.trim().startsWith("{") ? "" : rawText.trim()) ||
     buildFallbackFinalPrompt(input);
+  const finalPrompt = enforceCameraLockPrompt(rawFinalPrompt, input.cameraLocked);
   const mode = input.clarifyMode || "MODE_B";
   return {
     trace_mode: "internal_debug_extended",
@@ -553,6 +593,128 @@ function normalizeRefinementResult(rawText: string, parsed: any, input: RefinePr
 
 function clean(text: string | undefined | null): string {
   return (text || "").trim();
+}
+
+function clamp01(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(1, n));
+}
+
+function inferGlobalIntentHeuristic(input: InferGlobalIntentInput): GlobalIntentProfile {
+  const idea = clean(input.idea).toLowerCase();
+  const hasSelfie = input.selfieMode || /\b(selfie|face cam[ée]ra|vlog|se filme)\b/.test(idea);
+  const hasPresentationVerbs =
+    /\b(pr[ée]sente|montre|explique|parle|d[ée]crit|visite|avis|t[ée]moigne)\b/.test(idea);
+  const hasTransformationSignals =
+    /\b(avant.{0,12}apr[eè]s|construction|chantier|timelapse|r[ée]nov|transform|assembl|appara[iî]t|se remplit|progressivement)\b/.test(
+      idea
+    );
+  const hasHumanSignals =
+    /\b(homme|femme|personne|artisan|ouvrier|il|elle|je|on voit|parle|montre|main|mains)\b/.test(idea);
+
+  if (hasSelfie || (hasPresentationVerbs && hasHumanSignals && !hasTransformationSignals)) {
+    return {
+      intentFamily: "presentation",
+      hookGoal: "show_finished_result",
+      humanPresence: hasSelfie ? "selfie" : "visible",
+      confidence: hasSelfie ? 0.95 : 0.85,
+      source: "heuristic",
+    };
+  }
+  if (hasTransformationSignals || input.revealMode) {
+    return {
+      intentFamily: "transformation",
+      hookGoal: "show_start_state",
+      humanPresence: hasHumanSignals ? "visible" : "none",
+      confidence: 0.75,
+      source: "heuristic",
+    };
+  }
+  if (hasHumanSignals) {
+    return {
+      intentFamily: "human_interaction",
+      hookGoal: "show_action_in_progress",
+      humanPresence: "visible",
+      confidence: 0.72,
+      source: "heuristic",
+    };
+  }
+  return {
+    intentFamily: "other",
+    hookGoal: "show_action_in_progress",
+    humanPresence: "unknown",
+    confidence: 0.55,
+    source: "heuristic",
+  };
+}
+
+const GLOBAL_INTENT_SYSTEM_INSTRUCTION = `You classify user video intent for routing.
+Return JSON only:
+{
+  "intentFamily": "presentation" | "transformation" | "demonstration" | "human_interaction" | "other",
+  "hookGoal": "show_finished_result" | "show_start_state" | "show_action_in_progress",
+  "humanPresence": "selfie" | "visible" | "none" | "unknown",
+  "confidence": 0.0
+}
+Rules:
+- If selfie/vlog person talking to camera and showing result => presentation + show_finished_result + selfie.
+- If before/after or progressive build intent => transformation + show_start_state.
+- Keep deterministic, no prose, JSON only.`;
+
+export async function inferGlobalIntent(input: InferGlobalIntentInput): Promise<GlobalIntentProfile> {
+  const heuristic = inferGlobalIntentHeuristic(input);
+  // Low-cost path: skip LLM when heuristic is already clear.
+  if (heuristic.confidence >= 0.82) {
+    return heuristic;
+  }
+  const payload = [
+    `Profession: ${clean(input.profession)}`,
+    `Idea: ${clean(input.idea)}`,
+    `StyleDetails: ${clean(input.styleDetails)}`,
+    `RevealMode: ${Boolean(input.revealMode)}`,
+    `SelfieMode: ${Boolean(input.selfieMode)}`,
+    `CameraFixed: ${Boolean(input.cameraFixed)}`,
+    `CinematicMovement: ${Boolean(input.cinematicMovement)}`,
+    `Tempo: ${input.tempo}`,
+    `SequenceType: ${input.sequenceType}`,
+  ].join("\n");
+
+  try {
+    const raw = await generateResponse(payload, GLOBAL_INTENT_SYSTEM_INSTRUCTION, {
+      model: "gpt-4o-mini",
+      temperature: 0,
+      max_tokens: 140,
+    });
+    const parsed = extractJsonObject(String(raw || ""));
+    if (!parsed || typeof parsed !== "object") return heuristic;
+    const intentFamily =
+      parsed.intentFamily === "presentation" ||
+      parsed.intentFamily === "transformation" ||
+      parsed.intentFamily === "demonstration" ||
+      parsed.intentFamily === "human_interaction"
+        ? parsed.intentFamily
+        : "other";
+    const hookGoal =
+      parsed.hookGoal === "show_finished_result" ||
+      parsed.hookGoal === "show_start_state"
+        ? parsed.hookGoal
+        : "show_action_in_progress";
+    const humanPresence =
+      parsed.humanPresence === "selfie" ||
+      parsed.humanPresence === "visible" ||
+      parsed.humanPresence === "none"
+        ? parsed.humanPresence
+        : "unknown";
+    return {
+      intentFamily,
+      hookGoal,
+      humanPresence,
+      confidence: clamp01(Number(parsed.confidence)),
+      source: "llm",
+    };
+  } catch {
+    return heuristic;
+  }
 }
 
 function normalizeIdea(rawIdea: string): { subject: string; action: string } {
@@ -700,7 +862,9 @@ function buildStabilization(input: UserIdeaInput): StabilizationConstraints {
     parts.push("Smooth zoom or slow camera movement for a premium, cinematic look.");
   }
   if (input.selfieMode) {
-    parts.push("The person films themselves speaking directly to the camera (selfie / vlog style).");
+    parts.push(
+      "Strict first-person selfie POV from the subject's own front camera while speaking (vlog style). No visible camera rig, no selfie stick, and no accessory between the subject and camera. Never use a third-person/external camera showing someone filming themselves."
+    );
   }
   if (input.cameraAerialAngle === "top_down") {
     parts.push("Pure top-down overhead view: camera perpendicular to the ground, no perspective, no visible sides.");
@@ -790,6 +954,17 @@ function buildVideoPrompts(
       "- No exclamation marks or question marks",
       "- The video must be 8 seconds long",
     ];
+    if (input.cameraFixed) {
+      importantLines.push("- Locked-off static camera only for the full shot");
+      importantLines.push("- Forbid any pan, tilt, dolly, zoom, orbit, crane, or handheld drift");
+    }
+    const ideaSelfieSignal =
+      /\b(selfie|face cam[ée]ra|vlog|se filme|se filmant|filming myself)\b/i.test(input.idea);
+    if (input.selfieMode || input.inferredSelfiePov || ideaSelfieSignal) {
+      importantLines.push("- Camera must be strict first-person selfie POV from the subject's own front camera");
+      importantLines.push("- No visible selfie stick, rig, pole, or accessory between subject and camera");
+      importantLines.push("- Never use an external/third-person camera showing someone filming themselves");
+    }
     if (input.causalAgentSelection === "automatic") {
       importantLines.push("- No visible people, hands, tools, or machines at any time");
     } else if (input.causalAgentSelection === "visible") {
@@ -992,11 +1167,19 @@ export function buildHookImageApiPrompt(
     jobTypeLabel?: string;
     lockedVideoScriptScene0?: string;
     cameraAerialAngle?: "top_down" | "angled" | null;
+    globalIntent?: GlobalIntentProfile | null;
+    selfieMode?: boolean;
   }
 ): string {
   const idea = clean(userIdea);
   if (!idea) return idea;
   const lower = idea.toLowerCase();
+  const selfieSignalFromIdea =
+    /\b(selfie|face cam[ée]ra|vlog|se filme|se filmant|filming myself)\b/.test(lower);
+  const enforceSelfiePov =
+    Boolean(options.selfieMode) ||
+    options.globalIntent?.humanPresence === "selfie" ||
+    selfieSignalFromIdea;
 
   const inferEnvironment = () => {
     if (/\bvilla\b/.test(lower)) return "in front of a complete villa";
@@ -1027,10 +1210,12 @@ export function buildHookImageApiPrompt(
     /\b(vide|à partir de rien|depuis rien|terrain nu|pièce nue|sol nu|empty)\b/.test(
       lower
     );
-  const forceInitialStateView =
+  const forceInitialStateViewByRules =
     options.initialStateMode === "from_nothing" ||
     options.revealMode ||
     hasProgressiveTransformationSignal;
+  const forceInitialStateView =
+    options.globalIntent?.hookGoal === "show_finished_result" ? false : forceInitialStateViewByRules;
 
   const baseIdea =
     options.initialStateMode === "from_nothing" || explicitEmptyStart
@@ -1054,6 +1239,14 @@ export function buildHookImageApiPrompt(
   if (options.lockedVideoScriptScene0?.trim()) {
     assembled += `\n\n${freezeVideoScriptForHookStill(options.lockedVideoScriptScene0)}`;
   }
+
+  if (enforceSelfiePov) {
+    assembled +=
+      "\n\nCamera viewpoint constraint: STRICT FIRST-PERSON SELFIE POV from the subject's own front camera while speaking and presenting the pool. No visible selfie stick, rig, pole, or accessory between subject and camera. Do not show the hand holding the camera in frame (the forearm/upper arm can be visible if natural). Never use a third-person/external camera angle, and never show a separate camera filming the subject.";
+  }
+
+  assembled +=
+    "\n\nImage integrity constraint: realistic human anatomy and object geometry only. No deformed fingers/hands/faces, no broken hat or clothing edges, no warped pool lines/margins, no duplicated or missing limbs, no floating/merged objects, no melted textures, no broken seams, and no visual glitches. Keep all objects, clothes, character details, and environment structures clean and physically coherent.";
 
   if (options.cameraAerialAngle === "top_down") {
     assembled +=

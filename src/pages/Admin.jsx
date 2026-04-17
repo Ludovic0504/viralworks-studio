@@ -52,10 +52,22 @@ export default function Admin() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedUser, setSelectedUser] = useState(null);
   const [creditAmount, setCreditAmount] = useState("");
+  const [creditCategory, setCreditCategory] = useState("workflow_video");
   const [reason, setReason] = useState("");
   const [processing, setProcessing] = useState(false);
   const [activeTab, setActiveTab] = useState("users"); // users, payments, transactions, subscriptions, nouveautes
   const [showIconPicker, setShowIconPicker] = useState(false);
+
+  const CREDIT_CATEGORY_OPTIONS = [
+    { value: "workflow_video", label: "Workflow vidéo" },
+    { value: "text_generation", label: "Texte - génération" },
+    { value: "image_generation", label: "Image - génération" },
+    { value: "image_modification", label: "Image - modification" },
+    { value: "video_generation", label: "Vidéo - génération" },
+  ];
+
+  const selectedCreditCategoryLabel =
+    CREDIT_CATEGORY_OPTIONS.find((opt) => opt.value === creditCategory)?.label || "Crédits";
 
   const availableIcons = [
     { name: "Rocket", icon: Rocket },
@@ -281,8 +293,11 @@ export default function Admin() {
         body: {
           target_user_id: targetUserId,
           amount: parsedAmount,
-          reason: reason || "admin_manual",
-          metadata: {},
+          reason: reason || `admin_manual_${creditCategory}`,
+          metadata: {
+            credit_category: creditCategory,
+            credit_category_label: selectedCreditCategoryLabel,
+          },
         },
       });
 
@@ -290,8 +305,9 @@ export default function Admin() {
         throw new Error(error.message);
       }
 
-      alert(`✅ ${creditAmount} vidéo(s) ajoutée(s) avec succès !`);
+      alert(`✅ ${creditAmount} crédit(s) "${selectedCreditCategoryLabel}" ajouté(s) avec succès !`);
       setCreditAmount("");
+      setCreditCategory("workflow_video");
       setReason("");
       setSelectedUser(null);
       loadDashboardData();
@@ -328,8 +344,11 @@ export default function Admin() {
         body: {
           target_user_id: targetUserId,
           amount: -Math.abs(parsedAmount),
-          reason: reason || "admin_manual",
-          metadata: {},
+          reason: reason || `admin_manual_${creditCategory}`,
+          metadata: {
+            credit_category: creditCategory,
+            credit_category_label: selectedCreditCategoryLabel,
+          },
         },
       });
 
@@ -337,8 +356,9 @@ export default function Admin() {
         throw new Error(error.message);
       }
 
-      alert(`✅ ${creditAmount} vidéo(s) retirée(s) avec succès !`);
+      alert(`✅ ${creditAmount} crédit(s) "${selectedCreditCategoryLabel}" retiré(s) avec succès !`);
       setCreditAmount("");
+      setCreditCategory("workflow_video");
       setReason("");
       setSelectedUser(null);
       loadDashboardData();
@@ -629,8 +649,14 @@ export default function Admin() {
                               <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
                                 <span className="flex items-center gap-1">
                                   <Coins className="w-3 h-3" />
-                                  {user.credits || 0} vidéo(s)
+                                  Workflow: {user.credits || 0}
                                 </span>
+                                <span>Texte: {user.credits_text_generation || 0}</span>
+                                <span>Img gen: {user.credits_image_generation || 0}</span>
+                                <span>Img mod: {user.credits_image_modification || 0}</span>
+                                <span>Vidéo gen: {user.credits_video_generation || 0}</span>
+                              </div>
+                              <div className="flex items-center gap-4 mt-1 text-xs text-gray-500">
                                 <span className="flex items-center gap-1">
                                   <Calendar className="w-3 h-3" />
                                   Inscrit: {formatDate(user.created_at_auth || user.created_at)}
@@ -1263,7 +1289,7 @@ export default function Admin() {
           <div className="glass-strong rounded-xl p-6 border border-white/10 sticky top-24">
             <h3 className="text-lg font-semibold text-gray-200 mb-4 flex items-center gap-2">
               <Coins className="w-5 h-5 text-emerald-400" />
-              Gérer les vidéos
+              Gérer les crédits
             </h3>
 
             {selectedUser ? (
@@ -1276,13 +1302,30 @@ export default function Admin() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Nombre de vidéos
+                    Type de crédit
+                  </label>
+                  <select
+                    value={creditCategory}
+                    onChange={(e) => setCreditCategory(e.target.value)}
+                    className="w-full px-4 py-2 rounded-lg border border-white/10 bg-white/5 text-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                  >
+                    {CREDIT_CATEGORY_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value} className="bg-gray-900 text-gray-200">
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Nombre de crédits
                   </label>
                   <input
                     type="number"
                     value={creditAmount}
                     onChange={(e) => setCreditAmount(e.target.value)}
-                    placeholder="Nombre de vidéos (workflows)"
+                    placeholder={`Nombre de crédits (${selectedCreditCategoryLabel})`}
                     className="w-full px-4 py-2 rounded-lg border border-white/10 bg-white/5 text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
                   />
                 </div>
@@ -1307,7 +1350,7 @@ export default function Admin() {
                     className="flex-1 px-4 py-2 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
                   >
                     <Plus className="w-4 h-4" />
-                    Ajouter des vidéos
+                    Ajouter
                   </button>
                   <button
                     onClick={handleRemoveCredits}
@@ -1315,7 +1358,7 @@ export default function Admin() {
                     className="flex-1 px-4 py-2 rounded-lg bg-red-500/20 border border-red-500/30 text-red-300 hover:bg-red-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
                   >
                     <Minus className="w-4 h-4" />
-                    Retirer des vidéos
+                    Retirer
                   </button>
                 </div>
               </div>

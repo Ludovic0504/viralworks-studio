@@ -14,7 +14,11 @@ import {
   buildSoraStyleUserPrompt,
 } from "@/bibliotheque/videoPromptSchema";
 import { refinePrompt } from "@/bibliotheque/vwsPromptEngine";
-import { hasEnoughCredits, getUserCredits, USER_CREDITS_UPDATED_EVENT } from "@/bibliotheque/supabase/credits";
+import {
+  hasEnoughCredits,
+  getUserCredits,
+  USER_CREDITS_UPDATED_EVENT,
+} from "@/bibliotheque/supabase/credits";
 import { getUserSubscription } from "@/bibliotheque/supabase/stripe";
 import {
   canProceedWithScriptGeneration,
@@ -388,8 +392,15 @@ function VEO3Generator({ initialIdea = "" }) {
     }
 
     if (!canProceedWithScriptGeneration(Boolean(session), serverCreditsOk)) {
-      alert("Quota Script gagnant atteint pour ce workflow (1 essai). Passe à la vidéo finale ou démarre un nouveau workflow vidéo.");
-      return;
+      // Quota local parfois désynchronisé (ex. crédits workflow ajoutés côté admin).
+      const bypass =
+        Boolean(session) && (await hasEnoughCredits(PROMPT_GENERATION_COST));
+      if (!bypass) {
+        alert(
+          "Quota Script gagnant atteint pour ce workflow (1 essai). Passe à la vidéo finale ou démarre un nouveau workflow vidéo."
+        );
+        return;
+      }
     }
 
     setLoading(true);
@@ -1168,8 +1179,12 @@ function ScriptPromptGenerator({
     }
 
     if (!canProceedWithScriptGeneration(Boolean(session), serverCreditsOk)) {
-      openQuotaModal("Quota Script gagnant atteint pour ce workflow (1 essai).");
-      return;
+      const bypass =
+        Boolean(session) && (await hasEnoughCredits(PROMPT_GENERATION_COST));
+      if (!bypass) {
+        openQuotaModal("Quota Script gagnant atteint pour ce workflow (1 essai).");
+        return;
+      }
     }
 
     setLoading(true);
@@ -1195,7 +1210,6 @@ function ScriptPromptGenerator({
         throw new Error("Aucun prompt final retourné par refinePrompt.");
       }
       const trimmedRefined = clampGeneratedPrompt(String(finalized).trim());
-
       const scriptResultMeta = {
         refinementRunId: refineResult?.run_id ?? null,
         clarifyMode: campaignData?.clarifyMode ?? campaignData?.gateResult?.mode ?? null,
