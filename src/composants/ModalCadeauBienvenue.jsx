@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useEffect } from "react";
 import {
   Shirt,
   Coffee,
@@ -24,13 +24,17 @@ const GIFT_FALLBACK_EMOJI = {
 };
 
 export default function ModalCadeauBienvenue({ open, onConfirmed, onClose }) {
-  const choices = useMemo(() => getEnabledWelcomeGifts(), []);
+  const choices = getEnabledWelcomeGifts();
   const [selected, setSelected] = useState(() => choices[0]?.id ?? "");
   const [selectedSize, setSelectedSize] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState("");
+  const [imageErrors, setImageErrors] = useState({});
   const selectedGift = choices.find((c) => c.id === selected) || null;
   const selectedGiftSizes = selectedGift?.availableSizes || [];
+
+  const getGiftImageUrl = (gift) =>
+    gift?.gelato?.printFileUrl || gift?.printful?.files?.[0]?.url || "";
 
   useEffect(() => {
     if (!open) return;
@@ -79,7 +83,7 @@ export default function ModalCadeauBienvenue({ open, onConfirmed, onClose }) {
       aria-modal="true"
       aria-labelledby="cadeau-bienvenue-titre"
     >
-      <div className="w-full max-w-lg rounded-2xl border border-violet-500/30 bg-[#14141f] shadow-2xl shadow-violet-900/20 overflow-hidden">
+      <div className="w-full max-w-2xl rounded-2xl border border-violet-500/30 bg-[#14141f] shadow-2xl shadow-violet-900/20 overflow-hidden">
         <div className="px-6 pt-6 pb-4 border-b border-white/10">
           <div className="flex items-start justify-between gap-3 mb-2">
             <button
@@ -107,13 +111,13 @@ export default function ModalCadeauBienvenue({ open, onConfirmed, onClose }) {
           </div>
         </div>
 
-        <div className="p-6 max-h-[min(60vh,420px)] overflow-y-auto">
+        <div className="p-6">
           {choices.length === 0 ? (
             <p className="text-sm text-gray-400 text-center">
               Aucun article disponible pour le moment.
             </p>
           ) : (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-4">
               {choices.map((opt) => {
                 const Icon = GIFT_ICON[opt.id];
                 const emoji = GIFT_FALLBACK_EMOJI[opt.id];
@@ -123,25 +127,30 @@ export default function ModalCadeauBienvenue({ open, onConfirmed, onClose }) {
                     key={opt.id}
                     type="button"
                     onClick={() => setSelected(opt.id)}
-                    className={`flex flex-col items-center text-center rounded-xl border p-4 transition-all ${
+                      className={`flex flex-col items-center text-center rounded-xl border p-5 transition-all ${
                       isSel
                         ? "border-violet-500 bg-violet-500/15 ring-1 ring-violet-500/50"
                         : "border-white/10 bg-white/[0.04] hover:border-white/20"
                     }`}
                   >
-                    <div
-                      className={`w-14 h-14 rounded-xl mb-3 flex items-center justify-center ${
-                        isSel ? "bg-violet-500/25 text-violet-200" : "bg-white/5 text-gray-300"
-                      }`}
-                    >
-                      {Icon ? (
-                        <Icon className="w-7 h-7" strokeWidth={1.75} />
+                    <div className="w-full h-32 mb-3 flex items-center justify-center">
+                      {getGiftImageUrl(opt) && !imageErrors[opt.id] ? (
+                        <img
+                          src={getGiftImageUrl(opt)}
+                          alt={opt.label}
+                          className="max-w-[116px] max-h-[116px] object-contain rounded-lg"
+                          onError={() =>
+                            setImageErrors((prev) => ({ ...prev, [opt.id]: true }))
+                          }
+                        />
+                      ) : Icon ? (
+                        <Icon className="w-12 h-12" strokeWidth={1.75} />
                       ) : emoji ? (
-                        <span className="text-3xl leading-none" aria-hidden>
+                        <span className="text-5xl leading-none" aria-hidden>
                           {emoji}
                         </span>
                       ) : (
-                        <Gift className="w-7 h-7 opacity-60" />
+                        <Gift className="w-12 h-12 opacity-60" />
                       )}
                     </div>
                     <span className="text-sm font-medium text-gray-100 leading-tight">{opt.label}</span>

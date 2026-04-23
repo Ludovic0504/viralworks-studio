@@ -329,7 +329,38 @@ export async function submitWelcomeGiftChoice(
     },
     headers: { Authorization: `Bearer ${accessToken}` },
   });
-  if (error) return { error: error.message || "Erreur réseau" };
+  if (error) {
+    let errorMessage = error.message || "Erreur réseau";
+
+    if (error.context) {
+      if (typeof Response !== "undefined" && error.context instanceof Response) {
+        try {
+          const responseClone = error.context.clone();
+          const rawText = await responseClone.text();
+          if (rawText) {
+            try {
+              const parsed = JSON.parse(rawText);
+              if (parsed?.error) {
+                errorMessage = parsed.error;
+              } else if (parsed?.message) {
+                errorMessage = parsed.message;
+              } else {
+                errorMessage = rawText;
+              }
+            } catch {
+              errorMessage = rawText;
+            }
+          }
+        } catch {
+          // keep fallback message
+        }
+      } else if (error.context.message) {
+        errorMessage = error.context.message;
+      }
+    }
+
+    return { error: errorMessage };
+  }
   if (data?.error) return { error: data.error };
   return {};
 }

@@ -340,6 +340,7 @@ async function fulfillWelcomeGiftRow(
         def.printful?.syncVariantId && def.printful.syncVariantId > 0
           ? def.printful.syncVariantId
           : undefined,
+      productSearchTerms: def.printful?.productSearchTerms,
       files: def.printful?.files,
       externalId: `vws-${sessionRef}`,
     });
@@ -408,6 +409,19 @@ export async function completeWelcomeGiftChoiceForUser(
     .maybeSingle();
 
   if (rowErr || !row) {
+    // Idempotence: si le choix a déjà été validé récemment, ne pas renvoyer d'erreur côté UI.
+    const { data: latest } = await supabaseAdmin
+      .from("welcome_gift_shipments")
+      .select("status")
+      .eq("user_id", userId)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (latest?.status === "submitted" || latest?.status === "pending_manual") {
+      return { ok: true };
+    }
+
     return { ok: false, error: "Aucun cadeau en attente de choix" };
   }
 

@@ -24,6 +24,8 @@ export type WelcomeGiftCatalogEntry = {
   printful?: {
     variantId?: number;
     syncVariantId?: number;
+    /** Optionnel: mots-clés de recherche automatique si les IDs ne sont pas renseignés. */
+    productSearchTerms?: string[];
     files?: { url: string; type?: string }[];
   };
   manual?: {
@@ -40,16 +42,10 @@ export const WELCOME_GIFT_CATALOG: WelcomeGiftCatalogEntry[] = [
     enabled: true,
     availableSizes: ["S", "M", "L", "XL", "XXL"],
     gelato: {
-      productUid: "REMPLACER_PAR_PRODUCT_UID_GELATO_TEE_SHIRT",
-      printFileUrl: "https://example.com/vws/tee-print.png",
+      productUid: "11a38159-31c9-4c37-9b62-65d5c613a758",
+      printFileUrl:
+        "https://wuvtfhletxieocetzppo.supabase.co/storage/v1/object/public/welcome-gifts/photo%20produit%20tee-shirt.jpeg",
       printFileType: "default",
-      sizeProductUids: {
-        S: "REMPLACER_UID_GELATO_TEE_S",
-        M: "REMPLACER_UID_GELATO_TEE_M",
-        L: "REMPLACER_UID_GELATO_TEE_L",
-        XL: "REMPLACER_UID_GELATO_TEE_XL",
-        XXL: "REMPLACER_UID_GELATO_TEE_XXL",
-      },
     },
   },
   {
@@ -60,16 +56,10 @@ export const WELCOME_GIFT_CATALOG: WelcomeGiftCatalogEntry[] = [
     enabled: true,
     availableSizes: ["S", "M", "L", "XL", "XXL"],
     gelato: {
-      productUid: "REMPLACER_PAR_PRODUCT_UID_GELATO_HOODIE",
-      printFileUrl: "https://example.com/vws/hoodie-print.png",
+      productUid: "cb98cead-d758-4ce1-a567-988abf33ec90",
+      printFileUrl:
+        "https://wuvtfhletxieocetzppo.supabase.co/storage/v1/object/public/welcome-gifts/photo%20produit%20sweatshirt.jpeg",
       printFileType: "default",
-      sizeProductUids: {
-        S: "REMPLACER_UID_GELATO_HOODIE_S",
-        M: "REMPLACER_UID_GELATO_HOODIE_M",
-        L: "REMPLACER_UID_GELATO_HOODIE_L",
-        XL: "REMPLACER_UID_GELATO_HOODIE_XL",
-        XXL: "REMPLACER_UID_GELATO_HOODIE_XXL",
-      },
     },
   },
   {
@@ -79,8 +69,9 @@ export const WELCOME_GIFT_CATALOG: WelcomeGiftCatalogEntry[] = [
     sortOrder: 3,
     enabled: true,
     gelato: {
-      productUid: "REMPLACER_PAR_PRODUCT_UID_GELATO_MUG",
-      printFileUrl: "https://example.com/vws/mug-print.png",
+      productUid: "2ba4652d-5213-43f0-a407-d80e6e918def",
+      printFileUrl:
+        "https://wuvtfhletxieocetzppo.supabase.co/storage/v1/object/public/welcome-gifts/photo%20produi%20mug.jpeg",
       printFileType: "default",
     },
   },
@@ -89,10 +80,21 @@ export const WELCOME_GIFT_CATALOG: WelcomeGiftCatalogEntry[] = [
     label: "Tapis de souris",
     provider: "printful",
     sortOrder: 4,
-    enabled: false,
+    enabled: true,
     printful: {
+      // Option 1 (recommandée): renseigne syncVariantId.
+      syncVariantId: 0,
+      // Option 2: renseigne variantId.
       variantId: 0,
-      files: [{ url: "https://example.com/vws/mousepad-print.png", type: "default" }],
+      // Fallback auto: si IDs non remplis, on cherche le produit par nom dans Printful.
+      productSearchTerms: ["mouse pad", "tapis de souris"],
+      // Optionnel: fichier design hébergé (utile surtout avec variantId).
+      files: [
+        {
+          url: "https://wuvtfhletxieocetzppo.supabase.co/storage/v1/object/public/welcome-gifts/mousepad-print.png",
+          type: "default",
+        },
+      ],
     },
   },
   {
@@ -121,8 +123,11 @@ export function validatePrintfulEntry(entry: WelcomeGiftCatalogEntry): string | 
   if (entry.provider !== "printful") return null;
   const v = entry.printful?.variantId ?? 0;
   const s = entry.printful?.syncVariantId ?? 0;
-  if (v <= 0 && s <= 0) {
-    return "Renseigne printful.variantId ou printful.syncVariantId dans welcome-gifts.catalog.ts";
+  const hasSearchTerms = Boolean(
+    entry.printful?.productSearchTerms?.some((t) => t.trim().length > 0)
+  );
+  if (v <= 0 && s <= 0 && !hasSearchTerms) {
+    return "Renseigne printful.variantId, printful.syncVariantId ou printful.productSearchTerms";
   }
   return null;
 }

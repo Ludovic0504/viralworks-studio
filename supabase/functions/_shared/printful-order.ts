@@ -19,6 +19,7 @@ export async function createPrintfulWelcomeOrder(params: {
   recipient: PrintfulRecipient;
   variantId?: number;
   syncVariantId?: number;
+  productSearchTerms?: string[];
   files?: { url: string; type?: string }[];
   externalId: string;
 }): Promise<{ ok: true; orderId: string; raw: unknown } | { ok: false; error: string; raw?: unknown }> {
@@ -30,10 +31,82 @@ export async function createPrintfulWelcomeOrder(params: {
   const storeId = Deno.env.get("PRINTFUL_STORE_ID")?.trim();
   const autoConfirm = (Deno.env.get("PRINTFUL_AUTO_CONFIRM") ?? "1").trim() !== "0";
 
-  const v = params.variantId ?? 0;
-  const s = params.syncVariantId ?? 0;
+  async function printfulApi(
+    url: string,
+    init?: RequestInit
+  ): Promise<{ ok: true; raw: unknown } | { ok: false; error: string; raw?: unknown }> {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    };
+    if (storeId) headers["X-PF-Store-Id"] = storeId;
+
+    const res = await fetch(url, {
+      ...init,
+      headers: {
+        ...headers,
+        ...(init?.headers as Record<string, string> | undefined),
+      },
+    });
+    const text = await res.text();
+    let raw: unknown;
+    try {
+      raw = text ? JSON.parse(text) : null;
+    } catch {
+      raw = text;
+    }
+
+    if (!res.ok) {
+      return { ok: false, error: `Printful HTTP ${res.status}`, raw };
+    }
+    return { ok: true, raw };
+  }
+
+  function pickSyncVariantIdFromRaw(raw: unknown, searchTerms: string[]): number | null {
+    const terms = searchTerms.map((t) => t.trim().toLowerCase()).filter(Boolean);
+    if (!terms.length) return null;
+    if (!raw || typeof raw !== "object") return null;
+    const result = (raw as { result?: unknown }).result;
+    if (!Array.isArray(result)) return null;
+
+    for (const item of result) {
+      if (!item || typeof item !== "object") continue;
+      const rec = item as Record<string, unknown>;
+      const name = String(rec.name ?? "").toLowerCase();
+      const externalId = String(rec.external_id ?? "").toLowerCase();
+      const anyMatch = terms.some((t) => name.includes(t) || externalId.includes(t));
+      if (!anyMatch) continue;
+
+      const syncVariants = Array.isArray(rec.sync_variants) ? rec.sync_variants : [];
+      for (const sv of syncVariants) {
+        if (!sv || typeof sv !== "object") continue;
+        const id = Number((sv as Record<string, unknown>).id);
+        if (Number.isFinite(id) && id > 0) return id;
+      }
+    }
+    return null;
+  }
+
+  let v = params.variantId ?? 0;
+  let s = params.syncVariantId ?? 0;
   if (v <= 0 && s <= 0) {
-    return { ok: false, error: "Printful : variantId ou syncVariantId requis" };
+    const terms = params.productSearchTerms ?? ["mouse pad", "tapis de souris"];
+    const list = await printfulApi("https://api.printful.com/store/products");
+    if (!list.ok) {
+      return { ok: false, error: `Printful: impossible de lister les produits (${list.error})`, raw: list.raw };
+    }
+    const resolved = pickSyncVariantIdFromRaw(list.raw, terms);
+    if (resolved && resolved > 0) {
+      s = resolved;
+      console.log("🎁 Printful : syncVariantId résolu automatiquement", { syncVariantId: s, terms });
+    } else {
+      return {
+        ok: false,
+        error:
+          "Printful : aucun variant trouvé automatiquement (renseigne syncVariantId/variantId ou ajuste productSearchTerms)",
+        raw: list.raw,
+      };
+    }
   }
 
   const item: Record<string, unknown> = { quantity: 1 };
@@ -68,34 +141,25 @@ export async function createPrintfulWelcomeOrder(params: {
   const q = autoConfirm ? "?confirm=1" : "";
   const url = `https://api.printful.com/orders${q}`;
 
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
-  };
-  if (storeId) {
-    headers["X-PF-Store-Id"] = storeId;
-  }
-
-  const res = await fetch(url, {
+  const createRes = await printfulApi(url, {
     method: "POST",
-    headers,
     body: JSON.stringify(body),
   });
-
-  let raw: unknown;
-  const text = await res.text();
-  try {
-    raw = text ? JSON.parse(text) : null;
-  } catch {
-    raw = text;
+  if (!createRes.ok) {
+    const msg =
+      typeof createRes.raw === "object" && createRes.raw !== null && "result" in createRes.raw
+        ? JSON.stringify((createRes.raw as { result: unknown }).result)
+        : createRes.error;
+    return { ok: false, error: msg.slice(0, 500), raw: createRes.raw };
   }
+  const raw = createRes.raw;
 
   const code =
     typeof raw === "object" && raw !== null && "code" in raw
       ? Number((raw as { code: unknown }).code)
       : NaN;
 
-  if (!res.ok || code !== 200) {
+  if (code !== 200) {
     const msg =
       typeof raw === "object" && raw !== null && "result" in raw
         ? JSON.stringify((raw as { result: unknown }).result)
