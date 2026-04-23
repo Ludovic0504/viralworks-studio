@@ -1,8 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { getUserCredits } from "@/bibliotheque/supabase/credits";
-import { redirectToCheckout, getUserSubscription } from "@/bibliotheque/supabase/stripe";
+import {
+  redirectToCheckout,
+  getUserSubscription,
+  fetchWelcomeGiftNeedsChoice,
+} from "@/bibliotheque/supabase/stripe";
+import ModalCadeauBienvenue from "@/composants/ModalCadeauBienvenue";
 import { CreditCard, Check, Crown, Loader2, CheckCircle, XCircle, ShoppingBag } from "lucide-react";
 
 const CREDIT_PACKAGES = [
@@ -42,7 +47,7 @@ const SUBSCRIPTION_PLANS = [
   {
     id: "monthly",
     name: "Abonnement Mensuel",
-    credits: 1000,
+    credits: 30,
     price: 129,
     period: "mois",
     popular: true,
@@ -59,7 +64,7 @@ const SUBSCRIPTION_PLANS = [
   {
     id: "yearly",
     name: "Abonnement Annuel",
-    credits: 12000,
+    credits: 30,
     price: 107 * 12,
     period: "an",
     popular: false,
@@ -83,6 +88,9 @@ export default function Boutique() {
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("credits");
   const [refreshing, setRefreshing] = useState(false);
+  const [showGiftModal, setShowGiftModal] = useState(false);
+  const [giftModalDismissed, setGiftModalDismissed] = useState(false);
+  const giftPollAttempts = useRef(0);
 
   const paymentStatus = searchParams.get("payment");
 
@@ -105,6 +113,48 @@ export default function Boutique() {
       }, 3000);
     }
   }, [paymentStatus, session, navigate]);
+
+  useEffect(() => {
+    if (!session || paymentStatus !== "success") {
+      giftPollAttempts.current = 0;
+      return;
+    }
+
+    const tick = async () => {
+      const need = await fetchWelcomeGiftNeedsChoice();
+      if (need && !giftModalDismissed) {
+        setShowGiftModal(true);
+        return true;
+      }
+      return false;
+    };
+
+    tick();
+
+    const interval = setInterval(async () => {
+      if (giftPollAttempts.current >= 25) {
+        clearInterval(interval);
+        return;
+      }
+      giftPollAttempts.current += 1;
+      const done = await tick();
+      if (done) clearInterval(interval);
+    }, 1200);
+
+    return () => clearInterval(interval);
+  }, [session, paymentStatus, giftModalDismissed]);
+
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    (async () => {
+      const need = await fetchWelcomeGiftNeedsChoice();
+      if (!cancelled && need && !giftModalDismissed) setShowGiftModal(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.user?.id, subscription?.id, giftModalDismissed]);
 
   useEffect(() => {
     const section = searchParams.get("section");
@@ -158,13 +208,26 @@ export default function Boutique() {
     }
   };
 
+  const handleGiftFlowComplete = () => {
+    setGiftModalDismissed(false);
+    setShowGiftModal(false);
+    giftPollAttempts.current = 0;
+    navigate("/boutique", { replace: true });
+    refreshCredits();
+  };
+
+  const handleGiftModalClose = () => {
+    setShowGiftModal(false);
+    setGiftModalDismissed(true);
+  };
+
   const handleSubscribe = async (planId) => {
     const plan = SUBSCRIPTION_PLANS.find((p) => p.id === planId);
     if (!plan) return;
 
     setLoading(true);
     try {
-      await redirectToCheckout(plan.price, plan.credits, "subscription");
+      await redirectToCheckout(plan.price, plan.credits, "subscription", plan.id);
     } catch (err) {
       console.error("Erreur abonnement:", err);
       const errorMessage = err?.message || "Erreur lors de l'abonnement. Veuillez réessayer.";
@@ -392,6 +455,12 @@ export default function Boutique() {
           ))}
         </div>
       )}
+
+      <ModalCadeauBienvenue
+        open={showGiftModal}
+        onConfirmed={handleGiftFlowComplete}
+        onClose={handleGiftModalClose}
+      />
 
       {/* Informations de sécurité */}
       <div className="mt-8 p-4 rounded-lg bg-white/5 border border-white/10">

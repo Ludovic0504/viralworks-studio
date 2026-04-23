@@ -3,7 +3,11 @@
 interface ImportMetaEnv {
   readonly VITE_SUPABASE_URL: string
   readonly VITE_SUPABASE_ANON_KEY: string
+  /** URL complète du callback auth, ex. https://mondomaine.fr/auth/callback (optionnel) */
+  readonly VITE_AUTH_REDIRECT_URL?: string
   readonly VITE_SITE_URL?: string
+  /** Clé publique Stripe : pk_test_… (dev) ou pk_live_… (prod). Fichier .env.local / .env.production uniquement. */
+  readonly VITE_STRIPE_PUBLISHABLE_KEY?: string
   // VITE_OPENAI_API_KEY n'est plus nécessaire côté client
   // La clé est gérée par Supabase Edge Functions
 }

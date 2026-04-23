@@ -1,13 +1,33 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { tryScheduleWelcomeGift } from "../_shared/welcome-gift-flow.ts";
+import {
+  getAnyStripeApiKeyForVerifier,
+  getStripeSecretKeyForEventLivemode,
+  getStripeWebhookSigningSecrets,
+} from "../_shared/stripe-keys.ts";
 
-const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") ?? "", {
-  apiVersion: "2024-11-20.acacia",
-  httpClient: Stripe.createFetchHttpClient(),
-});
+function makeStripe(apiKey: string): Stripe {
+  return new Stripe(apiKey, {
+    apiVersion: "2024-11-20.acacia",
+    httpClient: Stripe.createFetchHttpClient(),
+  });
+}
 
-const webhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET") ?? "";
+function resolveRenewalCreditsFromInvoiceAmount(amountPaidCents: number): number {
+  // Plans actuels:
+  // - Mensuel 129€ -> 30 crédits
+  // - Annuel 107*12€ -> 360 crédits
+  if (amountPaidCents >= 100000) return 360;
+  if (amountPaidCents >= 12000) return 30;
+  return 30;
+}
+
+function resolveSubscriptionCreditsFromPlan(plan: string | null | undefined): number {
+  if ((plan ?? "").trim() === "yearly") return 30;
+  return 30;
+}
 
 serve(async (req) => {
   try {
@@ -34,16 +54,44 @@ serve(async (req) => {
     }
 
     const body = await req.text();
-    let event: Stripe.Event;
 
-    try {
-      // Utiliser constructEventAsync pour l'environnement Deno/Supabase Edge Functions
-      event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret);
-      console.log("✅ Signature Stripe vérifiée avec succès");
-    } catch (err) {
-      console.error("❌ Webhook signature verification failed:", err);
-      return new Response(`Webhook Error: ${err.message}`, { status: 400 });
+    const signingSecrets = getStripeWebhookSigningSecrets();
+    if (signingSecrets.length === 0) {
+      console.error("❌ Aucun STRIPE_WEBHOOK_SECRET_* configuré");
+      return new Response("Webhook signing secrets manquants", { status: 500 });
     }
+
+    const verifier = makeStripe(getAnyStripeApiKeyForVerifier());
+
+    let event: Stripe.Event | undefined;
+    let verifyError: Error | null = null;
+
+    for (const whSecret of signingSecrets) {
+      try {
+        event = await verifier.webhooks.constructEventAsync(body, signature, whSecret);
+        verifyError = null;
+        break;
+      } catch (e) {
+        verifyError = e instanceof Error ? e : new Error(String(e));
+      }
+    }
+
+    if (!event) {
+      console.error("❌ Webhook signature verification failed:", verifyError);
+      return new Response(
+        `Webhook Error: ${verifyError?.message ?? "signature"}`,
+        { status: 400 }
+      );
+    }
+
+    console.log("✅ Signature Stripe vérifiée", { livemode: event.livemode });
+
+    const apiKey = getStripeSecretKeyForEventLivemode(event.livemode);
+    if (!apiKey) {
+      console.error("❌ STRIPE_SECRET_KEY_* manquant pour livemode=", event.livemode);
+      return new Response("Stripe API key manquante pour cet événement", { status: 500 });
+    }
+    const stripe = makeStripe(apiKey);
 
     const serviceRoleKey = Deno.env.get("SERVICE_ROLE_KEY");
     if (!serviceRoleKey) {
@@ -124,8 +172,8 @@ serve(async (req) => {
             cancel_at_period_end: subscription.cancel_at_period_end,
           });
 
-        // Ajouter les crédits mensuels (exemple: 1000 crédits par mois)
-        const monthlyCredits = 1000; // À ajuster selon vos besoins
+        const planKey = (session.metadata?.subscription_plan || "").trim();
+        const monthlyCredits = resolveSubscriptionCreditsFromPlan(planKey);
         
         // Récupérer les crédits actuels
         const { data: creditsData } = await supabaseClient
@@ -176,6 +224,29 @@ serve(async (req) => {
         }
 
         console.log(`✅ Abonnement créé et ${monthlyCredits} crédits ajoutés pour l'utilisateur ${userId}`);
+
+        const cyclePayload = {
+          user_id: userId,
+          stripe_subscription_id: subscriptionId,
+          plan_key: planKey === "yearly" ? "yearly" : "monthly",
+          monthly_credit_amount: 30,
+          granted_months: planKey === "yearly" ? 1 : 0,
+          updated_at: new Date().toISOString(),
+        };
+
+        const { error: cycleError } = await supabaseClient
+          .from("subscription_credit_cycles")
+          .upsert(cyclePayload, { onConflict: "stripe_subscription_id" });
+
+        if (cycleError) {
+          console.error("⚠️ Impossible de mettre à jour subscription_credit_cycles:", cycleError);
+        }
+
+        try {
+          await tryScheduleWelcomeGift(supabaseClient, session, userId);
+        } catch (giftErr) {
+          console.error("🎁 Cadeau bienvenue: exception non gérée", giftErr);
+        }
       } else {
         // Achat de crédits ponctuel
         // Récupérer les crédits actuels (ou créer l'entrée si elle n'existe pas)
@@ -320,9 +391,20 @@ serve(async (req) => {
       }
 
       const userId = subscriptionData.user_id;
-      const monthlyCredits = 1000; // Crédits mensuels
+      const { data: cycleData } = await supabaseClient
+        .from("subscription_credit_cycles")
+        .select("plan_key, monthly_credit_amount")
+        .eq("stripe_subscription_id", subscriptionId)
+        .maybeSingle();
 
-      console.log(`💰 Ajout de ${monthlyCredits} crédits pour le renouvellement (user: ${userId})`);
+      const isYearlyPlan = cycleData?.plan_key === "yearly";
+      const monthlyCredits = isYearlyPlan
+        ? Number(cycleData?.monthly_credit_amount || 30)
+        : resolveRenewalCreditsFromInvoiceAmount(invoice.amount_paid || 0);
+
+      console.log(`💰 Ajout de ${monthlyCredits} crédits pour le renouvellement (user: ${userId})`, {
+        isYearlyPlan,
+      });
 
       // Récupérer les crédits actuels (ou créer l'entrée si elle n'existe pas)
       const { data: creditsData, error: creditsError } = await supabaseClient
@@ -387,6 +469,20 @@ serve(async (req) => {
         console.error("❌ Erreur création transaction renouvellement:", transactionError);
       } else {
         console.log("✅ Transaction de renouvellement créée");
+      }
+
+      if (isYearlyPlan) {
+        const { error: cycleResetError } = await supabaseClient
+          .from("subscription_credit_cycles")
+          .update({
+            granted_months: 1,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("stripe_subscription_id", subscriptionId);
+
+        if (cycleResetError) {
+          console.error("⚠️ Impossible de réinitialiser granted_months pour annuel:", cycleResetError);
+        }
       }
 
       // Mettre à jour la date de fin de période de l'abonnement

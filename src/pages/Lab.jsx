@@ -312,7 +312,7 @@ export default function Lab() {
         </div>
 
         {isAdminUser && (
-          <div className="glass-strong rounded-xl border border-violet-500/30 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="mb-6 glass-strong rounded-xl border border-violet-500/30 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex items-center gap-2 text-violet-200">
               <Shield className="w-5 h-5 shrink-0" />
               <div>
@@ -338,18 +338,20 @@ export default function Lab() {
         )}
 
         {isAdminUser && showNouveauteForm && (
-          <BlocFormulaireNouveaute
-            editingNouveaute={editingNouveaute}
-            onCancel={() => {
-              setShowNouveauteForm(false);
-              setEditingNouveaute(null);
-            }}
-            onSuccess={() => {
-              setShowNouveauteForm(false);
-              setEditingNouveaute(null);
-              loadNouveautes();
-            }}
-          />
+          <div className="mb-6">
+            <BlocFormulaireNouveaute
+              editingNouveaute={editingNouveaute}
+              onCancel={() => {
+                setShowNouveauteForm(false);
+                setEditingNouveaute(null);
+              }}
+              onSuccess={() => {
+                setShowNouveauteForm(false);
+                setEditingNouveaute(null);
+                loadNouveautes();
+              }}
+            />
+          </div>
         )}
 
         <div className="relative">

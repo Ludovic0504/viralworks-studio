@@ -95,7 +95,7 @@ export default function Paiements() {
 
     setLoading(true);
     try {
-      await redirectToCheckout(plan.price, plan.credits, "subscription");
+      await redirectToCheckout(plan.price, plan.credits, "subscription", plan.id);
     } catch (err) {
       console.error("Erreur abonnement:", err);
       const errorMessage = err?.message || "Erreur lors de l'abonnement. Veuillez réessayer.";

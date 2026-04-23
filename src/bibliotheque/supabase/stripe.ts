@@ -25,13 +25,17 @@ export interface StripeSubscription {
   updated_at: string;
 }
 
+/** Identifiant de plan d’abonnement (mensuel / annuel) — utilisé par Stripe et le cadeau Gelato. */
+export type SubscriptionPlanKey = "monthly" | "yearly";
+
 /**
  * Crée une session de checkout Stripe pour acheter des crédits
  */
 export async function createCheckoutSession(
   amount: number,
   credits: number,
-  type: "credits" | "subscription" = "credits"
+  type: "credits" | "subscription" = "credits",
+  subscriptionPlan?: SubscriptionPlanKey
 ): Promise<{ sessionId: string; url: string | null } | { error: string }> {
   const supabase = getBrowserSupabase();
 
@@ -54,6 +58,9 @@ export async function createCheckoutSession(
         credits,
         type,
         origin: window.location.origin,
+        ...(type === "subscription" && subscriptionPlan
+          ? { subscriptionPlan }
+          : {}),
       },
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -150,9 +157,10 @@ export async function createCheckoutSession(
 export async function redirectToCheckout(
   amount: number,
   credits: number,
-  type: "credits" | "subscription" = "credits"
+  type: "credits" | "subscription" = "credits",
+  subscriptionPlan?: SubscriptionPlanKey
 ): Promise<void> {
-  const result = await createCheckoutSession(amount, credits, type);
+  const result = await createCheckoutSession(amount, credits, type, subscriptionPlan);
 
   if ("error" in result) {
     throw new Error(result.error);
@@ -283,4 +291,45 @@ export async function cancelSubscription(): Promise<{ success: boolean; error?: 
     
     return { success: false, error: `Erreur lors de l'annulation: ${errorMessage}` };
   }
+}
+
+/** Indique si l’utilisateur doit encore choisir son cadeau de bienvenue (après paiement). */
+export async function fetchWelcomeGiftNeedsChoice(): Promise<boolean> {
+  const supabase = getBrowserSupabase();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  const accessToken = session?.access_token;
+  if (!accessToken) return false;
+
+  const { data, error } = await supabase.functions.invoke("welcome-gift-choice", {
+    body: {},
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (error || !data || typeof data.needsChoice !== "boolean") return false;
+  return data.needsChoice;
+}
+
+/** Envoie le choix du cadeau et déclenche Gelato / Printful / traitement manuel. */
+export async function submitWelcomeGiftChoice(
+  giftId: string,
+  giftSize?: string
+): Promise<{ error?: string }> {
+  const supabase = getBrowserSupabase();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  const accessToken = session?.access_token;
+  if (!accessToken) return { error: "Session expirée. Reconnecte-toi." };
+
+  const { data, error } = await supabase.functions.invoke("welcome-gift-choice", {
+    body: {
+      giftId,
+      ...(giftSize ? { giftSize } : {}),
+    },
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (error) return { error: error.message || "Erreur réseau" };
+  if (data?.error) return { error: data.error };
+  return {};
 }

@@ -1,24 +1,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getStripeSecretKeyForCheckout } from "../_shared/stripe-keys.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
 };
-
-const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY");
-if (!stripeSecretKey) {
-  console.error("⚠️ STRIPE_SECRET_KEY n'est pas configurée dans les secrets Supabase");
-}
-
-const stripe = stripeSecretKey 
-  ? new Stripe(stripeSecretKey, {
-      apiVersion: "2024-11-20.acacia",
-      httpClient: Stripe.createFetchHttpClient(),
-    })
-  : null;
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -27,10 +16,20 @@ serve(async (req) => {
   }
 
   try {
-    // Vérifier que Stripe est configuré
+    const stripeSecretKey = getStripeSecretKeyForCheckout();
+    const stripe = stripeSecretKey
+      ? new Stripe(stripeSecretKey, {
+          apiVersion: "2024-11-20.acacia",
+          httpClient: Stripe.createFetchHttpClient(),
+        })
+      : null;
+
     if (!stripe) {
       return new Response(
-        JSON.stringify({ error: "Stripe n'est pas configuré. Vérifiez STRIPE_SECRET_KEY dans les secrets Supabase." }),
+        JSON.stringify({
+          error:
+            "Stripe n'est pas configuré. Vérifie STRIPE_MODE + STRIPE_SECRET_KEY_TEST / STRIPE_SECRET_KEY_LIVE (ou STRIPE_SECRET_KEY).",
+        }),
         {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },

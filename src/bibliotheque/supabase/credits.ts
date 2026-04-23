@@ -55,6 +55,14 @@ export async function getUserCredits(): Promise<number> {
     return 0;
   }
 
+  // Rattrape les crédits mensuels de l'abonnement annuel (30/mois) si nécessaire.
+  // On ignore les erreurs pour ne pas bloquer l'affichage des crédits.
+  try {
+    await supabase.functions.invoke("sync-subscription-credits", { body: {} });
+  } catch {
+    // no-op
+  }
+
   const { data: rows, error } = await supabase
     .from("user_credits")
     .select("credits")

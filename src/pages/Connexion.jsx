@@ -228,7 +228,7 @@ export default function Login() {
           if (signUpError && signUpError.status === 400 && signUpError.message?.includes("redirect")) {
             console.warn("⚠️ [SignUp] redirectTo refusé par Supabase (URL non autorisée).");
             setErrorMsg(
-              "Configuration d'authentification incomplète: l'URL de redirection email n'est pas autorisée dans Supabase. Ajoute https://viralworks-studio.netlify.app/auth/callback dans Authentication > URL Configuration."
+              `Configuration d'authentification incomplète: l'URL de redirection email n'est pas autorisée dans Supabase. Ajoute ${getRedirectTo()} dans Authentication > URL Configuration.`
             );
             setLoading(false);
             return;

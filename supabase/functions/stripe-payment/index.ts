@@ -1,24 +1,16 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  getStripeCheckoutMode,
+  getStripeSecretKeyForCheckout,
+} from "../_shared/stripe-keys.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
 };
-
-const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY");
-if (!stripeSecretKey) {
-  console.error("⚠️ STRIPE_SECRET_KEY n'est pas configurée dans les secrets Supabase");
-}
-
-const stripe = stripeSecretKey 
-  ? new Stripe(stripeSecretKey, {
-      apiVersion: "2024-11-20.acacia",
-      httpClient: Stripe.createFetchHttpClient(),
-    })
-  : null;
 
 function resolveBaseUrl(req: Request, requestedOrigin?: unknown): string {
   const fallbackUrl = Deno.env.get("SITE_URL") || "http://localhost:5173";
@@ -51,10 +43,21 @@ serve(async (req) => {
   }
 
   try {
-    // Vérifier que Stripe est configuré
+    const stripeSecretKey = getStripeSecretKeyForCheckout();
+    const stripeMode = getStripeCheckoutMode();
+    const stripe = stripeSecretKey
+      ? new Stripe(stripeSecretKey, {
+          apiVersion: "2024-11-20.acacia",
+          httpClient: Stripe.createFetchHttpClient(),
+        })
+      : null;
+
     if (!stripe) {
       return new Response(
-        JSON.stringify({ error: "Stripe n'est pas configuré. Vérifiez STRIPE_SECRET_KEY dans les secrets Supabase." }),
+        JSON.stringify({
+          error:
+            "Stripe n'est pas configuré. Pour le mode test : STRIPE_MODE=test et STRIPE_SECRET_KEY_TEST. Pour le live : STRIPE_MODE=live et STRIPE_SECRET_KEY_LIVE (ou STRIPE_SECRET_KEY).",
+        }),
         {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -111,7 +114,22 @@ serve(async (req) => {
       );
     }
 
-    const { amount, credits, type, origin } = requestBody;
+    const { amount, credits, type, origin, subscriptionPlan } = requestBody;
+
+    const planKey =
+      typeof subscriptionPlan === "string" ? subscriptionPlan.trim() : "";
+    const giftEligibleSubscription =
+      type === "subscription" &&
+      (planKey === "monthly" || planKey === "yearly");
+    const welcomeGiftMeta =
+      giftEligibleSubscription &&
+      (Number(amount) === 129 || Number(amount) === 107 * 12);
+
+    const boutiqueShippingCountries = [
+      "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR",
+      "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK",
+      "SI", "ES", "SE", "CH", "GB", "US", "CA",
+    ];
 
     console.log("🟦 stripe-payment appelée", {
       userId: user.id,
@@ -119,6 +137,8 @@ serve(async (req) => {
       amount,
       credits,
       type,
+      subscriptionPlan: planKey,
+      stripeMode,
       origin,
       hasStripeKey: Boolean(stripeSecretKey),
       stripeKeyPrefix: stripeSecretKey ? stripeSecretKey.slice(0, 8) : null,
@@ -209,7 +229,7 @@ serve(async (req) => {
               unit_amount: Math.round(amount * 100), // Convertir en centimes
               ...(type === "subscription" && {
                 recurring: {
-                  interval: "month",
+                  interval: planKey === "yearly" ? "year" : "month",
                 },
               }),
             },
@@ -217,12 +237,21 @@ serve(async (req) => {
           },
         ],
         mode: type === "subscription" ? "subscription" : "payment",
-        success_url: `${baseUrl}/boutique?payment=success`,
-        cancel_url: `${baseUrl}/boutique?payment=cancelled`,
+        success_url: `${baseUrl}/boutique?section=subscription&payment=success`,
+        cancel_url: `${baseUrl}/boutique?section=subscription&payment=cancelled`,
+        ...(welcomeGiftMeta && {
+          shipping_address_collection: {
+            allowed_countries: boutiqueShippingCountries,
+          },
+          phone_number_collection: { enabled: true },
+        }),
         metadata: {
           user_id: user.id,
           credits: credits.toString(),
           type: type || "credits",
+          subscription_plan: planKey,
+          welcome_gift: welcomeGiftMeta ? "1" : "",
+          welcome_gift_choice: "",
         },
       });
       console.log("✅ Session Checkout Stripe créée", {

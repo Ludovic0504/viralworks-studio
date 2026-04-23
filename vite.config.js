@@ -10,6 +10,10 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src'),
+      '@welcome-gifts': path.resolve(
+        __dirname,
+        'supabase/functions/_shared/welcome-gifts.catalog.ts'
+      ),
     },
   },
   server: {

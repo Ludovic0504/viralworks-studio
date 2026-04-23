@@ -191,26 +191,21 @@ export default function Accueil() {
           </div>
 
           {/* Vidéos de démonstration VWS */}
-          <div className="mb-10 sm:mb-14 grid grid-cols-3 gap-2 sm:gap-4 lg:gap-6 max-w-5xl mx-auto">
+          <div className="mb-10 sm:mb-14 grid grid-cols-3 gap-3 sm:gap-5 lg:gap-7 max-w-6xl mx-auto">
             {demoVideos.map(({ src, label }) => (
               <div
                 key={label}
-                className="rounded-xl sm:rounded-2xl overflow-hidden border border-white/10 shadow-[0_0_30px_rgba(15,23,42,0.8)] bg-white/5"
+                className="rounded-2xl sm:rounded-3xl overflow-hidden shadow-[0_20px_45px_rgba(0,0,0,0.45)]"
               >
-                <div className="flex items-center justify-center h-[clamp(110px,18vw,240px)]">
-                  <video
-                    src={src}
-                    autoPlay
-                    loop
-                    muted
-                    playsInline
-                    preload="auto"
-                    className="block w-full h-full object-contain"
-                  />
-                </div>
-                <p className="text-center text-[10px] sm:text-xs text-gray-500 py-1.5 sm:py-2 px-1.5 sm:px-2 font-medium">
-                  {label}
-                </p>
+                <video
+                  src={src}
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  preload="auto"
+                  className="block w-full h-[clamp(220px,32vw,420px)] object-contain"
+                />
               </div>
             ))}
           </div>

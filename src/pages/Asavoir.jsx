@@ -347,7 +347,7 @@ function SectionCard({
         </button>
 
         {isAdmin && (
-          <div className="flex flex-wrap items-center gap-1 px-3 py-2 sm:flex-col sm:justify-center sm:border-l border-white/10 bg-white/[0.03]">
+          <div className="flex flex-wrap items-center justify-end gap-2 px-3 py-3 sm:flex-col sm:justify-center sm:border-l border-white/10 bg-white/[0.03]">
             <button
               type="button"
               disabled={adminBusy}
@@ -405,7 +405,7 @@ function SectionCard({
       </div>
 
       {isExpanded && (
-        <div className="px-5 pb-5 space-y-4 animate-fadeIn">
+        <div className="px-5 pt-4 pb-5 space-y-4 border-t border-white/10 animate-fadeIn">
           {section.items.map((item, index) => (
             <div
               key={item.id || `legacy-${section.id}-${index}`}
@@ -684,7 +684,7 @@ export default function Asavoir() {
         </header>
 
         {isAdminUser && (
-          <div className="mb-6 glass-strong rounded-xl border border-violet-500/30 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="mb-8 glass-strong rounded-xl border border-violet-500/30 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex items-center gap-2 text-violet-200">
               <Shield className="w-5 h-5 shrink-0" />
               <div>
@@ -757,7 +757,7 @@ export default function Asavoir() {
           </div>
         )}
 
-        <div className="space-y-4">
+        <div className="space-y-5">
           {visibleSections.map((section) => (
             <SectionCard
               key={section.id}

@@ -54,8 +54,19 @@ export function getBrowserSupabase(opts: { remember?: boolean } = {}): SupabaseC
   return client
 }
 
-export const getRedirectTo = () => {
-  // Canonical production callback used for all email auth links.
-  // This avoids legacy Netlify preview/custom aliases leaking through env configuration.
-  return "https://viralworks-studio.netlify.app/auth/callback";
+/**
+ * URL de callback email / OAuth (Supabase).
+ * - Définir VITE_AUTH_REDIRECT_URL en build si tu veux forcer une URL (ex. https://tondomaine.fr/auth/callback).
+ * - Sinon, en navigateur : origine actuelle (adapté OVH, préprod, etc.).
+ * - Fallback : domaine de production (sans `window`, ex. tests).
+ */
+export const getRedirectTo = (): string => {
+  const explicit = String(import.meta.env.VITE_AUTH_REDIRECT_URL ?? "").trim()
+  if (explicit) return explicit
+
+  if (typeof window !== "undefined" && window.location?.origin) {
+    return `${window.location.origin}/auth/callback`
+  }
+
+  return "https://viralworks-studio.com/auth/callback"
 }
