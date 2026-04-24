@@ -121,9 +121,19 @@ serve(async (req) => {
     const giftEligibleSubscription =
       type === "subscription" &&
       (planKey === "monthly" || planKey === "yearly");
-    const welcomeGiftMeta =
-      giftEligibleSubscription &&
-      (Number(amount) === 129 || Number(amount) === 107 * 12);
+    const welcomeGiftMeta = giftEligibleSubscription;
+    if (giftEligibleSubscription) {
+      const normalizedAmount = Number(amount);
+      const knownPrice =
+        normalizedAmount === 129 || normalizedAmount === 107 * 12;
+      if (!knownPrice) {
+        console.warn("🎁 Prix abonnement inattendu pour un cadeau éligible", {
+          userId: user.id,
+          subscriptionPlan: planKey,
+          amount: normalizedAmount,
+        });
+      }
+    }
 
     const boutiqueShippingCountries = [
       "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR",

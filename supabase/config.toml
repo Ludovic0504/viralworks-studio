@@ -6,6 +6,15 @@
 [functions.stripe-webhook]
 verify_jwt = false
 
+# Webhook fournisseurs (Printful / Gelato) : pas de Bearer JWT,
+# sécurité assurée par secret webhook côté fonction.
+[functions.welcome-gift-provider-webhook]
+verify_jwt = false
+
+# Sync fournisseur: autorise un déclenchement batch sans JWT (cron).
+[functions.welcome-gift-provider-sync]
+verify_jwt = false
+
 # Désactiver la vérification JWT pour le proxy d'images
 # Les balises <img> ne peuvent pas envoyer de headers d'authentification
 # La validation de l'URL (uniquement Hailuo) est suffisante pour sécuriser

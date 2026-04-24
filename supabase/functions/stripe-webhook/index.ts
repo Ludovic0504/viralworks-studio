@@ -29,6 +29,66 @@ function resolveSubscriptionCreditsFromPlan(plan: string | null | undefined): nu
   return 30;
 }
 
+type SubscriptionNotificationPayload = {
+  customerName: string;
+  customerEmail: string;
+  plan: "monthly" | "yearly";
+  amountCents: number;
+  paidAtIso: string;
+  source: "checkout.session.completed" | "invoice.payment_succeeded";
+};
+
+function formatAmountEUR(amountCents: number): string {
+  const amount = Number.isFinite(amountCents) ? amountCents / 100 : 0;
+  return `${amount.toFixed(2)} EUR`;
+}
+
+async function sendSubscriptionNotificationEmail(
+  payload: SubscriptionNotificationPayload,
+): Promise<void> {
+  const resendApiKey = Deno.env.get("RESEND_API_KEY")?.trim();
+  if (!resendApiKey) {
+    console.warn("📧 Notification abonnement ignorée: RESEND_API_KEY manquante");
+    return;
+  }
+
+  const to = Deno.env.get("SUBSCRIPTION_NOTIFICATION_TO")?.trim() || "jean.limonta06@gmail.com";
+  const from = Deno.env.get("SUBSCRIPTION_NOTIFICATION_FROM")?.trim() || "onboarding@resend.dev";
+  const paidAt = new Date(payload.paidAtIso);
+  const paidAtLabel = Number.isNaN(paidAt.getTime()) ? payload.paidAtIso : paidAt.toISOString();
+  const planLabel = payload.plan === "yearly" ? "Annuel" : "Mensuel";
+
+  const text = [
+    "Paiement d'abonnement confirme sur Stripe.",
+    "",
+    `Client: ${payload.customerName}`,
+    `Email client: ${payload.customerEmail}`,
+    `Plan: ${planLabel}`,
+    `Montant: ${formatAmountEUR(payload.amountCents)}`,
+    `Date paiement: ${paidAtLabel}`,
+    `Evenement Stripe: ${payload.source}`,
+  ].join("\n");
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${resendApiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from,
+      to: [to],
+      subject: `Abonnement Stripe confirme - ${payload.customerEmail}`,
+      text,
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Echec envoi email notification: ${response.status} ${body}`);
+  }
+}
+
 serve(async (req) => {
   try {
     // Les webhooks Stripe n'envoient pas de header Authorization
@@ -246,6 +306,24 @@ serve(async (req) => {
           await tryScheduleWelcomeGift(supabaseClient, session, userId);
         } catch (giftErr) {
           console.error("🎁 Cadeau bienvenue: exception non gérée", giftErr);
+        }
+
+        try {
+          const plan = planKey === "yearly" ? "yearly" : "monthly";
+          await sendSubscriptionNotificationEmail({
+            customerName: session.customer_details?.name || "Nom inconnu",
+            customerEmail:
+              session.customer_details?.email ||
+              session.customer_email ||
+              "email-inconnu@unknown.local",
+            plan,
+            amountCents: session.amount_total || 0,
+            paidAtIso: new Date().toISOString(),
+            source: "checkout.session.completed",
+          });
+          console.log("📧 Notification abonnement envoyée (checkout.session.completed)");
+        } catch (mailErr) {
+          console.error("📧 Erreur envoi notification abonnement (checkout):", mailErr);
         }
       } else {
         // Achat de crédits ponctuel
@@ -494,6 +572,21 @@ serve(async (req) => {
             updated_at: new Date().toISOString(),
           })
           .eq("stripe_subscription_id", subscriptionId);
+      }
+
+      try {
+        const plan = cycleData?.plan_key === "yearly" ? "yearly" : "monthly";
+        await sendSubscriptionNotificationEmail({
+          customerName: invoice.customer_name || "Nom inconnu",
+          customerEmail: invoice.customer_email || "email-inconnu@unknown.local",
+          plan,
+          amountCents: invoice.amount_paid || 0,
+          paidAtIso: new Date((invoice.status_transitions?.paid_at || invoice.created) * 1000).toISOString(),
+          source: "invoice.payment_succeeded",
+        });
+        console.log("📧 Notification abonnement envoyée (invoice.payment_succeeded)");
+      } catch (mailErr) {
+        console.error("📧 Erreur envoi notification abonnement (renewal):", mailErr);
       }
     }
 

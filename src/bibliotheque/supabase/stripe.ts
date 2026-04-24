@@ -223,6 +223,18 @@ export async function getUserSubscription(): Promise<StripeSubscription | null> 
     return null;
   }
 
+  if (!data) return null;
+
+  // Sécurité anti-ambiguïté: si l'abonnement est programmé pour s'arrêter
+  // et que sa fin de période est passée, on le considère inactif même
+  // si le webhook Stripe n'a pas encore mis à jour le status en base.
+  if (data.cancel_at_period_end) {
+    const periodEndMs = new Date(data.current_period_end).getTime();
+    if (Number.isFinite(periodEndMs) && Date.now() >= periodEndMs) {
+      return null;
+    }
+  }
+
   return data;
 }
 

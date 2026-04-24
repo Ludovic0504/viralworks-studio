@@ -15,6 +15,21 @@ export type PrintfulRecipient = {
   phone?: string;
 };
 
+function extractProviderMessage(raw: unknown, fallback: string): string {
+  if (!raw || typeof raw !== "object") return fallback;
+  const rec = raw as Record<string, unknown>;
+  if (typeof rec.error === "string" && rec.error.trim()) return rec.error.trim();
+  if (typeof rec.message === "string" && rec.message.trim()) return rec.message.trim();
+  if (typeof rec.result === "string" && rec.result.trim()) return rec.result.trim();
+  if (rec.result && typeof rec.result === "object") {
+    const r = rec.result as Record<string, unknown>;
+    if (typeof r.error === "string" && r.error.trim()) return r.error.trim();
+    if (typeof r.message === "string" && r.message.trim()) return r.message.trim();
+    if (typeof r.reason === "string" && r.reason.trim()) return r.reason.trim();
+  }
+  return fallback;
+}
+
 export async function createPrintfulWelcomeOrder(params: {
   recipient: PrintfulRecipient;
   variantId?: number;
@@ -34,7 +49,10 @@ export async function createPrintfulWelcomeOrder(params: {
   async function printfulApi(
     url: string,
     init?: RequestInit
-  ): Promise<{ ok: true; raw: unknown } | { ok: false; error: string; raw?: unknown }> {
+  ): Promise<
+    | { ok: true; raw: unknown; status: number }
+    | { ok: false; error: string; raw?: unknown; status: number }
+  > {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
@@ -57,61 +75,31 @@ export async function createPrintfulWelcomeOrder(params: {
     }
 
     if (!res.ok) {
-      return { ok: false, error: `Printful HTTP ${res.status}`, raw };
+      const msg = extractProviderMessage(raw, `Printful HTTP ${res.status}`);
+      return { ok: false, error: msg.slice(0, 500), raw, status: res.status };
     }
-    return { ok: true, raw };
-  }
-
-  function pickSyncVariantIdFromRaw(raw: unknown, searchTerms: string[]): number | null {
-    const terms = searchTerms.map((t) => t.trim().toLowerCase()).filter(Boolean);
-    if (!terms.length) return null;
-    if (!raw || typeof raw !== "object") return null;
-    const result = (raw as { result?: unknown }).result;
-    if (!Array.isArray(result)) return null;
-
-    for (const item of result) {
-      if (!item || typeof item !== "object") continue;
-      const rec = item as Record<string, unknown>;
-      const name = String(rec.name ?? "").toLowerCase();
-      const externalId = String(rec.external_id ?? "").toLowerCase();
-      const anyMatch = terms.some((t) => name.includes(t) || externalId.includes(t));
-      if (!anyMatch) continue;
-
-      const syncVariants = Array.isArray(rec.sync_variants) ? rec.sync_variants : [];
-      for (const sv of syncVariants) {
-        if (!sv || typeof sv !== "object") continue;
-        const id = Number((sv as Record<string, unknown>).id);
-        if (Number.isFinite(id) && id > 0) return id;
-      }
-    }
-    return null;
+    return { ok: true, raw, status: res.status };
   }
 
   let v = params.variantId ?? 0;
   let s = params.syncVariantId ?? 0;
   if (v <= 0 && s <= 0) {
-    const terms = params.productSearchTerms ?? ["mouse pad", "tapis de souris"];
-    const list = await printfulApi("https://api.printful.com/store/products");
-    if (!list.ok) {
-      return { ok: false, error: `Printful: impossible de lister les produits (${list.error})`, raw: list.raw };
-    }
-    const resolved = pickSyncVariantIdFromRaw(list.raw, terms);
-    if (resolved && resolved > 0) {
-      s = resolved;
-      console.log("🎁 Printful : syncVariantId résolu automatiquement", { syncVariantId: s, terms });
-    } else {
-      return {
-        ok: false,
-        error:
-          "Printful : aucun variant trouvé automatiquement (renseigne syncVariantId/variantId ou ajuste productSearchTerms)",
-        raw: list.raw,
-      };
-    }
+    const terms = params.productSearchTerms ?? [];
+    return {
+      ok: false,
+      error:
+        `Printful : syncVariantId/variantId requis pour ce cadeau (fallback auto désactivé). Terms actuels: ${terms.join(", ") || "aucun"}`,
+    };
   }
 
   const item: Record<string, unknown> = { quantity: 1 };
-  if (v > 0) item.variant_id = v;
-  if (s > 0) item.sync_variant_id = s;
+  // N'envoyer qu'un seul identifiant variant:
+  // sync_variant_id prioritaire, variant_id en fallback.
+  if (s > 0) {
+    item.sync_variant_id = s;
+  } else if (v > 0) {
+    item.variant_id = v;
+  }
   if (params.files?.length) {
     item.files = params.files.map((f) => {
       const o: Record<string, unknown> = { url: f.url };
@@ -120,7 +108,13 @@ export async function createPrintfulWelcomeOrder(params: {
     });
   }
 
-  const ext = params.externalId.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 80) || "vws-order";
+  // Printful est strict sur external_id selon les comptes/endpoints.
+  // On force un identifiant court, lowercase, alphanum + _- uniquement.
+  const extBase = params.externalId
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, "")
+    .slice(0, 24);
+  const ext = (extBase || "vwsorder") + "-" + Date.now().toString(36).slice(-6);
 
   const body: Record<string, unknown> = {
     external_id: ext,
@@ -146,11 +140,7 @@ export async function createPrintfulWelcomeOrder(params: {
     body: JSON.stringify(body),
   });
   if (!createRes.ok) {
-    const msg =
-      typeof createRes.raw === "object" && createRes.raw !== null && "result" in createRes.raw
-        ? JSON.stringify((createRes.raw as { result: unknown }).result)
-        : createRes.error;
-    return { ok: false, error: msg.slice(0, 500), raw: createRes.raw };
+    return { ok: false, error: createRes.error, raw: createRes.raw };
   }
   const raw = createRes.raw;
 
@@ -160,10 +150,7 @@ export async function createPrintfulWelcomeOrder(params: {
       : NaN;
 
   if (code !== 200) {
-    const msg =
-      typeof raw === "object" && raw !== null && "result" in raw
-        ? JSON.stringify((raw as { result: unknown }).result)
-        : `Printful HTTP ${res.status}`;
+    const msg = extractProviderMessage(raw, `Printful HTTP ${createRes.status}`);
     return { ok: false, error: msg.slice(0, 500), raw };
   }
 

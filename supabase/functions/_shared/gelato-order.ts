@@ -27,6 +27,24 @@ const GELATO_ORDERS_URL =
   Deno.env.get("GELATO_API_BASE_URL")?.trim() ||
   "https://order.gelatoapis.com/v4/orders";
 
+function extractProviderMessage(raw: unknown, fallback: string): string {
+  if (!raw || typeof raw !== "object") return fallback;
+  const rec = raw as Record<string, unknown>;
+  if (typeof rec.error === "string" && rec.error.trim()) return rec.error.trim();
+  if (typeof rec.message === "string" && rec.message.trim()) return rec.message.trim();
+  if (typeof rec.title === "string" && rec.title.trim()) return rec.title.trim();
+  if (rec.errors && Array.isArray(rec.errors) && rec.errors.length > 0) {
+    const first = rec.errors[0];
+    if (typeof first === "string" && first.trim()) return first.trim();
+    if (first && typeof first === "object") {
+      const item = first as Record<string, unknown>;
+      if (typeof item.message === "string" && item.message.trim()) return item.message.trim();
+      if (typeof item.error === "string" && item.error.trim()) return item.error.trim();
+    }
+  }
+  return fallback;
+}
+
 function splitFullName(fullName: string): { firstName: string; lastName: string } {
   const t = fullName.trim();
   if (!t) return { firstName: "Client", lastName: "VWS" };
@@ -142,10 +160,7 @@ export async function createGelatoWelcomeOrder(
   }
 
   if (!res.ok) {
-    const msg =
-      typeof raw === "object" && raw !== null && "message" in raw
-        ? String((raw as { message: unknown }).message)
-        : `Gelato HTTP ${res.status}`;
+    const msg = extractProviderMessage(raw, `Gelato HTTP ${res.status}`);
     return { ok: false, error: msg, raw };
   }
 

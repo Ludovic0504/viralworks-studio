@@ -42,7 +42,16 @@ export const WELCOME_GIFT_CATALOG: WelcomeGiftCatalogEntry[] = [
     enabled: true,
     availableSizes: ["S", "M", "L", "XL", "XXL"],
     gelato: {
-      productUid: "11a38159-31c9-4c37-9b62-65d5c613a758",
+      // UID Gelato "Classic Unisex Crewneck T-shirt", impression face avant.
+      productUid:
+        "apparel_product_gca_t-shirt_gsc_crewneck_gcu_unisex_gqa_classic_gsi_m_gco_white_gpr_4-0",
+      sizeProductUids: {
+        S: "apparel_product_gca_t-shirt_gsc_crewneck_gcu_unisex_gqa_classic_gsi_s_gco_white_gpr_4-0",
+        M: "apparel_product_gca_t-shirt_gsc_crewneck_gcu_unisex_gqa_classic_gsi_m_gco_white_gpr_4-0",
+        L: "apparel_product_gca_t-shirt_gsc_crewneck_gcu_unisex_gqa_classic_gsi_l_gco_white_gpr_4-0",
+        XL: "apparel_product_gca_t-shirt_gsc_crewneck_gcu_unisex_gqa_classic_gsi_xl_gco_white_gpr_4-0",
+        XXL: "apparel_product_gca_t-shirt_gsc_crewneck_gcu_unisex_gqa_classic_gsi_2xl_gco_white_gpr_4-0",
+      },
       printFileUrl:
         "https://wuvtfhletxieocetzppo.supabase.co/storage/v1/object/public/welcome-gifts/photo%20produit%20tee-shirt.jpeg",
       printFileType: "default",
@@ -82,11 +91,11 @@ export const WELCOME_GIFT_CATALOG: WelcomeGiftCatalogEntry[] = [
     sortOrder: 4,
     enabled: true,
     printful: {
-      // Option 1 (recommandée): renseigne syncVariantId.
-      syncVariantId: 0,
-      // Option 2: renseigne variantId.
-      variantId: 0,
-      // Fallback auto: si IDs non remplis, on cherche le produit par nom dans Printful.
+      // Obligatoire en production: renseigne syncVariantId ou variantId (pas de fallback auto).
+      syncVariantId: 5279347435,
+      // Option alternative.
+      variantId: 13097,
+      // Conservé uniquement comme info métier/aide au paramétrage manuel.
       productSearchTerms: ["mouse pad", "tapis de souris"],
       // Optionnel: fichier design hébergé (utile surtout avec variantId).
       files: [
@@ -123,11 +132,8 @@ export function validatePrintfulEntry(entry: WelcomeGiftCatalogEntry): string | 
   if (entry.provider !== "printful") return null;
   const v = entry.printful?.variantId ?? 0;
   const s = entry.printful?.syncVariantId ?? 0;
-  const hasSearchTerms = Boolean(
-    entry.printful?.productSearchTerms?.some((t) => t.trim().length > 0)
-  );
-  if (v <= 0 && s <= 0 && !hasSearchTerms) {
-    return "Renseigne printful.variantId, printful.syncVariantId ou printful.productSearchTerms";
+  if (v <= 0 && s <= 0) {
+    return "Renseigne printful.variantId ou printful.syncVariantId (fallback automatique désactivé)";
   }
   return null;
 }
