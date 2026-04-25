@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import PageTitle from "@/composants/interface/TitrePage";
 import { MessageCircle, Users, Send, Paperclip, Plus, X, MoreVertical } from "lucide-react";
 import { useAuth } from "@/contexte/FournisseurAuth";
+import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import {
   deletePrivateMessage,
   deletePublicMessage,
@@ -227,6 +228,7 @@ function PrivateConversationRow({ conversation: c, isActive, onSelect, menuOpen,
 
 export default function CommunauteVWS() {
   const { session } = useAuth();
+  const { runWithAuth, openAuthModal } = useRequireAuthAction();
   const myUserId = session?.user?.id || "";
   const [tab, setTab] = useState("public");
   const [publicMessages, setPublicMessages] = useState([]);
@@ -320,6 +322,7 @@ export default function CommunauteVWS() {
   };
 
   useEffect(() => {
+    if (!session?.user?.id) return;
     const bootstrap = async () => {
       await ensureSupportConversation();
       await refreshPublic();
@@ -327,13 +330,14 @@ export default function CommunauteVWS() {
       await refreshUsers();
     };
     void bootstrap();
-  }, []);
+  }, [session?.user?.id]);
 
   useEffect(() => {
     void refreshPrivateMessages(activeConversationId);
   }, [activeConversationId]);
 
   useEffect(() => {
+    if (!session?.user?.id) return;
     const id = setInterval(() => {
       if (tab === "public") void refreshPublic();
       if (tab === "private") {
@@ -342,7 +346,7 @@ export default function CommunauteVWS() {
       }
     }, 5000);
     return () => clearInterval(id);
-  }, [tab, activeConversationId]);
+  }, [tab, activeConversationId, session?.user?.id]);
 
   useEffect(() => {
     publicEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -353,8 +357,9 @@ export default function CommunauteVWS() {
   }, [privateMessages.length]);
 
   useEffect(() => {
+    if (!session?.user?.id) return;
     void refreshUsers();
-  }, [searchUser]);
+  }, [searchUser, session?.user?.id]);
 
   useEffect(() => {
     if (msgMenuId === null && convMenuId === null) return;
@@ -450,7 +455,7 @@ export default function CommunauteVWS() {
       <div className="inline-flex rounded-xl border border-white/10 bg-white/[0.03] p-1">
         <button
           type="button"
-          onClick={() => setTab("public")}
+          onClick={() => void runWithAuth(async () => setTab("public"))}
           className={`px-4 py-2 rounded-lg text-sm ${tab === "public" ? "bg-cyan-500/20 text-cyan-100 border border-cyan-400/40" : "text-gray-400"}`}
         >
           <MessageCircle className="w-4 h-4 inline mr-1" />
@@ -458,7 +463,7 @@ export default function CommunauteVWS() {
         </button>
         <button
           type="button"
-          onClick={() => setTab("private")}
+          onClick={() => void runWithAuth(async () => setTab("private"))}
           className={`px-4 py-2 rounded-lg text-sm ${tab === "private" ? "bg-cyan-500/20 text-cyan-100 border border-cyan-400/40" : "text-gray-400"}`}
         >
           <Users className="w-4 h-4 inline mr-1" />
@@ -487,7 +492,7 @@ export default function CommunauteVWS() {
                   <button
                     key={u.userId}
                     type="button"
-                    onClick={() => createConversation(u.userId)}
+                    onClick={() => void runWithAuth(() => createConversation(u.userId))}
                     className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-white/5 text-gray-300"
                   >
                     <Plus className="w-3 h-3 inline mr-1" />
@@ -556,6 +561,9 @@ export default function CommunauteVWS() {
                   <input
                     value={publicInput}
                     onChange={(e) => setPublicInput(e.target.value)}
+                    onFocus={() => {
+                      if (!session) openAuthModal();
+                    }}
                     placeholder="Écrire un message public..."
                     className="flex-1 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-gray-200"
                   />
@@ -573,7 +581,12 @@ export default function CommunauteVWS() {
                   >
                     <Paperclip className="w-4 h-4" />
                   </button>
-                  <button type="button" disabled={busy} onClick={sendToPublic} className="px-4 py-2 rounded-lg bg-cyan-500 text-white">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void runWithAuth(sendToPublic)}
+                    className="px-4 py-2 rounded-lg bg-cyan-500 text-white"
+                  >
                     <Send className="w-4 h-4" />
                   </button>
                 </div>
@@ -619,6 +632,9 @@ export default function CommunauteVWS() {
                   <input
                     value={privateInput}
                     onChange={(e) => setPrivateInput(e.target.value)}
+                    onFocus={() => {
+                      if (!session) openAuthModal();
+                    }}
                     placeholder="Écrire un message privé..."
                     className="flex-1 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-gray-200"
                   />
@@ -639,7 +655,7 @@ export default function CommunauteVWS() {
                   <button
                     type="button"
                     disabled={busy || !activeConversationId}
-                    onClick={sendToPrivate}
+                    onClick={() => void runWithAuth(sendToPrivate)}
                     className="px-4 py-2 rounded-lg bg-cyan-500 text-white disabled:opacity-50"
                   >
                     <Send className="w-4 h-4" />

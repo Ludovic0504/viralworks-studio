@@ -1,0 +1,83 @@
+import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
+import AuthModal from "@/composants/auth/AuthModal";
+import { useAuth } from "@/contexte/FournisseurAuth";
+
+const AuthActionContext = createContext(null);
+
+export function AuthActionProvider({ children }) {
+  const { session } = useAuth();
+  const [modalOpen, setModalOpen] = useState(false);
+  const pendingActionRef = useRef(null);
+
+  const openAuthModal = useCallback(() => {
+    setModalOpen(true);
+  }, []);
+
+  const runWithAuth = useCallback(
+    async (action) => {
+      if (session) {
+        return action ? await action() : true;
+      }
+
+      return await new Promise((resolve, reject) => {
+        pendingActionRef.current = {
+          action: typeof action === "function" ? action : null,
+          resolve,
+          reject,
+        };
+        setModalOpen(true);
+      });
+    },
+    [session]
+  );
+
+  const handleAuthSuccess = useCallback(async () => {
+    setModalOpen(false);
+    const pending = pendingActionRef.current;
+    pendingActionRef.current = null;
+    if (!pending) return;
+
+    if (!pending.action) {
+      pending.resolve(true);
+      return;
+    }
+
+    try {
+      const result = await pending.action();
+      pending.resolve(result);
+    } catch (error) {
+      pending.reject(error);
+    }
+  }, []);
+
+  const handleClose = useCallback(() => {
+    setModalOpen(false);
+    const pending = pendingActionRef.current;
+    pendingActionRef.current = null;
+    pending?.resolve(false);
+  }, []);
+
+  const value = useMemo(
+    () => ({
+      runWithAuth,
+      openAuthModal,
+      isAuthModalOpen: modalOpen,
+    }),
+    [runWithAuth, openAuthModal, modalOpen]
+  );
+
+  return (
+    <AuthActionContext.Provider value={value}>
+      {children}
+      <AuthModal open={modalOpen} onClose={handleClose} onAuthSuccess={handleAuthSuccess} />
+    </AuthActionContext.Provider>
+  );
+}
+
+export function useRequireAuthAction() {
+  const context = useContext(AuthActionContext);
+  if (!context) {
+    throw new Error("useRequireAuthAction must be used within <AuthActionProvider>");
+  }
+  return context;
+}

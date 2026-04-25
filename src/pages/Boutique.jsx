@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexte/FournisseurAuth";
+import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { getUserCredits } from "@/bibliotheque/supabase/credits";
 import {
   redirectToCheckout,
@@ -82,6 +83,7 @@ const SUBSCRIPTION_PLANS = [
 
 export default function Boutique() {
   const { session } = useAuth();
+  const { runWithAuth, openAuthModal } = useRequireAuthAction();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [subscription, setSubscription] = useState(null);
@@ -103,8 +105,7 @@ export default function Boutique() {
   useEffect(() => {
     if (paymentStatus === "success") {
       if (!session) {
-        console.warn("⚠️ Session perdue après paiement, redirection vers login");
-        navigate("/login?next=/boutique?payment=success");
+        openAuthModal();
         return;
       }
 
@@ -112,7 +113,7 @@ export default function Boutique() {
         refreshCredits();
       }, 3000);
     }
-  }, [paymentStatus, session, navigate]);
+  }, [paymentStatus, session, openAuthModal]);
 
   useEffect(() => {
     if (!session || paymentStatus !== "success") {
@@ -237,14 +238,6 @@ export default function Boutique() {
     }
   };
 
-  if (!session) {
-    return (
-      <div className="max-w-4xl mx-auto px-4 py-8 text-center">
-        <p className="text-gray-400">Veuillez vous connecter pour accéder à la boutique.</p>
-      </div>
-    );
-  }
-
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* En-tête */}
@@ -268,7 +261,7 @@ export default function Boutique() {
             </div>
           )}
           <button
-            onClick={refreshCredits}
+            onClick={() => void runWithAuth(refreshCredits)}
             disabled={refreshing}
             className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 text-sm transition-all disabled:opacity-50"
           >
@@ -360,7 +353,7 @@ export default function Boutique() {
                 </div>
               </div>
               <button
-                onClick={() => handlePurchaseCredits(pkg.id)}
+                onClick={() => void runWithAuth(() => handlePurchaseCredits(pkg.id))}
                 disabled={loading}
                 className={`w-full py-3 rounded-lg font-semibold transition-all ${
                   pkg.popular
@@ -426,7 +419,7 @@ export default function Boutique() {
               </ul>
               <div className="space-y-3">
                 <button
-                  onClick={() => handleSubscribe(plan.id)}
+                  onClick={() => void runWithAuth(() => handleSubscribe(plan.id))}
                   disabled={loading || subscription !== null}
                   className={`w-full py-3 rounded-lg font-semibold transition-all ${
                     plan.popular

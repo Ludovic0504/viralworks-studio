@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from "react";
 import PageTitle from "../composants/interface/TitrePage";
 import CampagneVWS from "./CampagneVWS.jsx";
 import PromptAssistant from "./Prompt.jsx";
@@ -23,8 +23,13 @@ import {
   loadViralStudioDraftFromLocal,
 } from "@/bibliotheque/viralWorksStudioStorage";
 import { useAuth } from "@/contexte/FournisseurAuth";
+import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { debitCredits, hasEnoughCredits } from "@/bibliotheque/supabase/credits";
 import { getUserSubscription } from "@/bibliotheque/supabase/stripe";
+import {
+  createDefaultCampaignGenerationSpec,
+  normalizeCampaignGenerationSpec,
+} from "@/bibliotheque/campaignGenerationSpec";
 import { Check, X } from "lucide-react";
 import { useLocation } from "react-router-dom";
 
@@ -268,65 +273,199 @@ function appendVisualSnapshotFromStep(step, setVisualSnapshots) {
   scheduleVisualSnapshotFromStep(step, setVisualSnapshots);
 }
 
-/** Idée principale + options de stabilisation : pas de persistance locale (refresh = état initial). */
-function applyCampagneNonPersistedDefaults(campaign) {
-  const base = campaign && typeof campaign === "object" ? { ...campaign } : {};
-  return {
-    ...base,
-    idea: "",
-    cameraFixed: true,
-    revealMode: false,
-    cinematicMovement: false,
-    selfieMode: false,
-    dialogueEnabled: base.dialogueEnabled !== false,
-    microAnswer: base.microAnswer ?? null,
-    gateResult: base.gateResult ?? null,
-    clarifyAnswer: base.clarifyAnswer ?? null,
-    clarifyMode: base.clarifyMode ?? null,
-    clarifyDiagnostic: base.clarifyDiagnostic ?? null,
-    globalIntentProfile: base.globalIntentProfile ?? null,
-    proceedAnyway: base.proceedAnyway === true,
-    isClarified: base.isClarified === true,
-    clarificationHistory: Array.isArray(base.clarificationHistory) ? base.clarificationHistory : [],
-    clarifyAxesResolved: {
-      modeAgent: base.clarifyAxesResolved?.modeAgent === true,
-      initialT0: base.clarifyAxesResolved?.initialT0 === true,
-    },
-  };
-}
-
 /** Aligné sur les champs Campagne VWS utilisés pour « Préparer ma vidéo ». */
 function normalizeTempoForGate(t) {
   return t === "timelapse" || t === "slow_motion" ? t : "real_time";
 }
 
-function serializeCampaignForPrepareGate(c) {
-  if (!c || typeof c !== "object") return "{}";
+function serializeCampaignSpecForPrepareGate(spec) {
+  const normalized = normalizeCampaignGenerationSpec(spec);
   return JSON.stringify({
-    profession: String(c.profession ?? "").trim(),
-    idea: String(c.idea ?? "").trim(),
-    styleDetails: String(c.styleDetails ?? "").trim(),
-    tempo: normalizeTempoForGate(c.tempo),
-    cameraFixed: Boolean(c.cameraFixed),
-    revealMode: Boolean(c.revealMode),
-    cinematicMovement: Boolean(c.cinematicMovement),
-    selfieMode: Boolean(c.selfieMode),
-    sequenceType: c.sequenceType === "three_x_8s" ? "three_x_8s" : "single_8s",
-    dialogueEnabled: c.dialogueEnabled !== false,
-    microAnswer: c.microAnswer ?? null,
-    gateResult: c.gateResult ?? null,
-    clarifyAnswer: c.clarifyAnswer ?? null,
-    clarifyMode: c.clarifyMode ?? null,
-    clarifyDiagnostic: c.clarifyDiagnostic ?? null,
-    globalIntentProfile: c.globalIntentProfile ?? null,
-    proceedAnyway: c.proceedAnyway === true,
-    isClarified: c.isClarified === true,
-    clarificationHistory: Array.isArray(c.clarificationHistory) ? c.clarificationHistory : [],
+    schema_version: normalized.meta.schema_version,
+    profession: String(normalized.campaign.profession ?? "").trim(),
+    idea: String(normalized.campaign.core_idea ?? "").trim(),
+    styleDetails: String(normalized.campaign.style_details ?? "").trim(),
+    tempo: normalizeTempoForGate(normalized.rendering.tempo),
+    cameraFixed: Boolean(normalized.rendering.camera.fixed),
+    revealMode: Boolean(normalized.rendering.camera.reveal_mode),
+    cinematicMovement: Boolean(normalized.rendering.camera.cinematic_movement),
+    selfieMode: Boolean(normalized.rendering.camera.selfie_mode),
+    sequenceType: normalized.creative.sequence_type === "three_x_8s" ? "three_x_8s" : "single_8s",
+    dialogueEnabled: normalized.rendering.audio.dialogue_enabled !== false,
+    microAnswer: normalized.campaign.clarification.initial_state ?? null,
+    clarifyAnswer: normalized.campaign.clarification.last_user_freeform_answer ?? null,
+    clarifyMode: normalized.campaign.clarification.mode ?? null,
+    clarifyDiagnostic: normalized.campaign.clarification.diagnostic ?? null,
+    globalIntentProfile: normalized.campaign.intent_profile ?? null,
+    proceedAnyway: normalized.campaign.clarification.proceed_anyway === true,
+    isClarified: normalized.campaign.clarification.is_resolved === true,
+    clarificationHistory: Array.isArray(normalized.campaign.clarification.history)
+      ? normalized.campaign.clarification.history
+      : [],
     clarifyAxesResolved: {
-      modeAgent: c.clarifyAxesResolved?.modeAgent === true,
-      initialT0: c.clarifyAxesResolved?.initialT0 === true,
+      modeAgent: normalized.campaign.clarification.resolved_axes.mode_agent === true,
+      initialT0: normalized.campaign.clarification.resolved_axes.initial_t0 === true,
+      causalAgent: normalized.campaign.clarification.resolved_axes.causal_agent === true,
+      cameraAerialAngle: normalized.campaign.clarification.resolved_axes.camera_aerial_angle === true,
     },
   });
+}
+
+function buildLegacyCampaignDataFromSpec(spec) {
+  const s = normalizeCampaignGenerationSpec(spec);
+  return {
+    profession: s.campaign.profession ?? "",
+    idea: s.campaign.core_idea ?? "",
+    styleDetails: s.campaign.style_details ?? "",
+    tempo: normalizeTempoForGate(s.rendering.tempo),
+    cameraFixed: Boolean(s.rendering.camera.fixed),
+    revealMode: Boolean(s.rendering.camera.reveal_mode),
+    cinematicMovement: Boolean(s.rendering.camera.cinematic_movement),
+    selfieMode: Boolean(s.rendering.camera.selfie_mode),
+    sequenceType: s.creative.sequence_type === "three_x_8s" ? "three_x_8s" : "single_8s",
+    dialogueEnabled: s.rendering.audio.dialogue_enabled !== false,
+    microAnswer: s.campaign.clarification.initial_state ?? null,
+    tempoCompressionDecision: s.rendering.tempo_resolution_decision ?? null,
+    causalAgentSelection: s.campaign.clarification.causal_agent ?? null,
+    cameraAerialAngle: s.campaign.clarification.camera_aerial_angle ?? null,
+    initialStateSelection: s.campaign.clarification.initial_state ?? null,
+    gateResult: s.trace.clarify_gate.last_result ?? null,
+    clarifyAnswer: s.campaign.clarification.last_user_freeform_answer ?? null,
+    clarifyMode: s.campaign.clarification.mode ?? null,
+    clarifyDiagnostic: s.campaign.clarification.diagnostic ?? null,
+    proceedAnyway: s.campaign.clarification.proceed_anyway === true,
+    clarificationHistory: Array.isArray(s.campaign.clarification.history) ? s.campaign.clarification.history : [],
+    clarifyAxesResolved: {
+      modeAgent: s.campaign.clarification.resolved_axes.mode_agent === true,
+      initialT0: s.campaign.clarification.resolved_axes.initial_t0 === true,
+      causalAgent: s.campaign.clarification.resolved_axes.causal_agent === true,
+      cameraAerialAngle: s.campaign.clarification.resolved_axes.camera_aerial_angle === true,
+    },
+    globalIntentProfile: s.campaign.intent_profile ?? null,
+    isClarified: s.campaign.clarification.is_resolved === true,
+  };
+}
+
+function applyLegacyCampaignPatchToSpec(prevSpec, patch) {
+  if (patch?.campaignGenerationSpec) {
+    return normalizeCampaignGenerationSpec(patch.campaignGenerationSpec);
+  }
+  const prev = normalizeCampaignGenerationSpec(prevSpec);
+  const next = {
+    ...prev,
+    campaign: {
+      ...prev.campaign,
+      profession: patch?.profession ?? prev.campaign.profession,
+      core_idea: patch?.idea ?? prev.campaign.core_idea,
+      style_details: patch?.styleDetails ?? prev.campaign.style_details,
+      intent_profile:
+        patch?.globalIntentProfile !== undefined ? patch.globalIntentProfile : prev.campaign.intent_profile,
+      clarification: {
+        ...prev.campaign.clarification,
+        initial_state:
+          patch?.microAnswer !== undefined
+            ? patch.microAnswer
+            : prev.campaign.clarification.initial_state,
+        causal_agent:
+          patch?.causalAgentSelection !== undefined
+            ? patch.causalAgentSelection
+            : prev.campaign.clarification.causal_agent,
+        camera_aerial_angle:
+          patch?.cameraAerialAngle !== undefined
+            ? patch.cameraAerialAngle
+            : prev.campaign.clarification.camera_aerial_angle,
+        last_user_freeform_answer:
+          patch?.clarifyAnswer !== undefined
+            ? patch.clarifyAnswer
+            : prev.campaign.clarification.last_user_freeform_answer,
+        mode:
+          patch?.clarifyMode !== undefined
+            ? patch.clarifyMode
+            : prev.campaign.clarification.mode,
+        diagnostic:
+          patch?.clarifyDiagnostic !== undefined
+            ? patch.clarifyDiagnostic
+            : prev.campaign.clarification.diagnostic,
+        proceed_anyway:
+          patch?.proceedAnyway !== undefined
+            ? patch.proceedAnyway === true
+            : prev.campaign.clarification.proceed_anyway,
+        is_resolved:
+          patch?.isClarified !== undefined
+            ? patch.isClarified === true
+            : prev.campaign.clarification.is_resolved,
+        history:
+          patch?.clarificationHistory !== undefined
+            ? (Array.isArray(patch.clarificationHistory) ? patch.clarificationHistory : [])
+            : prev.campaign.clarification.history,
+        resolved_axes: {
+          ...prev.campaign.clarification.resolved_axes,
+          mode_agent:
+            patch?.clarifyAxesResolved?.modeAgent !== undefined
+              ? patch.clarifyAxesResolved.modeAgent === true
+              : prev.campaign.clarification.resolved_axes.mode_agent,
+          initial_t0:
+            patch?.clarifyAxesResolved?.initialT0 !== undefined
+              ? patch.clarifyAxesResolved.initialT0 === true
+              : prev.campaign.clarification.resolved_axes.initial_t0,
+          causal_agent:
+            patch?.clarifyAxesResolved?.causalAgent !== undefined
+              ? patch.clarifyAxesResolved.causalAgent === true
+              : prev.campaign.clarification.resolved_axes.causal_agent,
+          camera_aerial_angle:
+            patch?.clarifyAxesResolved?.cameraAerialAngle !== undefined
+              ? patch.clarifyAxesResolved.cameraAerialAngle === true
+              : prev.campaign.clarification.resolved_axes.camera_aerial_angle,
+        },
+      },
+    },
+    creative: {
+      ...prev.creative,
+      sequence_type:
+        patch?.sequenceType !== undefined
+          ? (patch.sequenceType === "three_x_8s" ? "three_x_8s" : "single_8s")
+          : prev.creative.sequence_type,
+    },
+    rendering: {
+      ...prev.rendering,
+      tempo:
+        patch?.tempo !== undefined
+          ? normalizeTempoForGate(patch.tempo)
+          : prev.rendering.tempo,
+      tempo_resolution_decision:
+        patch?.tempoCompressionDecision !== undefined
+          ? patch.tempoCompressionDecision
+          : prev.rendering.tempo_resolution_decision,
+      camera: {
+        ...prev.rendering.camera,
+        fixed: patch?.cameraFixed !== undefined ? Boolean(patch.cameraFixed) : prev.rendering.camera.fixed,
+        reveal_mode:
+          patch?.revealMode !== undefined ? Boolean(patch.revealMode) : prev.rendering.camera.reveal_mode,
+        cinematic_movement:
+          patch?.cinematicMovement !== undefined
+            ? Boolean(patch.cinematicMovement)
+            : prev.rendering.camera.cinematic_movement,
+        selfie_mode:
+          patch?.selfieMode !== undefined ? Boolean(patch.selfieMode) : prev.rendering.camera.selfie_mode,
+      },
+      audio: {
+        ...prev.rendering.audio,
+        dialogue_enabled:
+          patch?.dialogueEnabled !== undefined
+            ? patch.dialogueEnabled !== false
+            : prev.rendering.audio.dialogue_enabled,
+      },
+    },
+    trace: {
+      ...prev.trace,
+      clarify_gate: {
+        ...prev.trace.clarify_gate,
+        last_result:
+          patch?.gateResult !== undefined ? patch.gateResult : prev.trace.clarify_gate.last_result,
+      },
+    },
+  };
+  return normalizeCampaignGenerationSpec(next);
 }
 
 function normalizeScriptPayload(raw) {
@@ -436,6 +575,7 @@ export default function ViralWorks() {
   const spaInitial = spaUiInitialRef.current;
 
   const { session } = useAuth();
+  const { runWithAuth } = useRequireAuthAction();
   const [showScriptQuotaModal, setShowScriptQuotaModal] = useState(false);
   const [scriptQuotaModalMessage, setScriptQuotaModalMessage] = useState(SCRIPT_STEP_VIDEO_QUOTA_MSG);
   const [hasActiveSubscriptionVw, setHasActiveSubscriptionVw] = useState(false);
@@ -445,17 +585,20 @@ export default function ViralWorks() {
     return Number.isFinite(n) && n >= 1 && n <= 5 ? Math.floor(n) : 1;
   });
   const [validated, setValidated] = useState(() => normalizeValidated(spaInitial?.validated));
-  const [campaignData, setCampaignData] = useState(() => {
-    if (spaInitial?.campaignData && typeof spaInitial.campaignData === "object") {
-      const c = spaInitial.campaignData;
-      return {
-        ...c,
-        dialogueEnabled: c.dialogueEnabled !== false,
-      };
-    }
-    const d = loadViralStudioDraftFromLocal();
-    return applyCampagneNonPersistedDefaults(d?.campaign);
+  const [campaignGenerationSpec, setCampaignGenerationSpec] = useState(() => {
+    const draft = loadViralStudioDraftFromLocal();
+    return normalizeCampaignGenerationSpec(
+      spaInitial?.campaignGenerationSpec ??
+        spaInitial?.campaignData ??
+        draft?.campaignGenerationSpec ??
+        draft?.campaign ??
+        createDefaultCampaignGenerationSpec()
+    );
   });
+  const campaignData = useMemo(
+    () => buildLegacyCampaignDataFromSpec(campaignGenerationSpec),
+    [campaignGenerationSpec]
+  );
   const [scriptPromptForImage, setScriptPromptForImage] = useState(() => {
     if (spaInitial?.scriptPromptForImage !== undefined) {
       return normalizeScriptPayload(spaInitial.scriptPromptForImage);
@@ -499,7 +642,7 @@ export default function ViralWorks() {
 
   useEffect(() => {
     if (preparedCampaignSig === null) return;
-    const sig = serializeCampaignForPrepareGate(campaignData);
+    const sig = serializeCampaignSpecForPrepareGate(campaignGenerationSpec);
     if (sig === preparedCampaignSig) return;
     setStep1BrainLaunched(false);
     setValidated((prev) => ({
@@ -510,7 +653,7 @@ export default function ViralWorks() {
       4: false,
       5: false,
     }));
-  }, [campaignData, preparedCampaignSig]);
+  }, [campaignGenerationSpec, preparedCampaignSig]);
 
   useLayoutEffect(() => {
     const on3 = currentStep === 3;
@@ -608,7 +751,7 @@ export default function ViralWorks() {
       localStorage.setItem(
         LS_VIRAL_STUDIO_DRAFT,
         JSON.stringify({
-          campaign: applyCampagneNonPersistedDefaults(campaignData),
+          campaignGenerationSpec,
           scriptPrompt: scriptPromptForImage,
           imageStep,
         })
@@ -616,7 +759,7 @@ export default function ViralWorks() {
     } catch (err) {
       console.warn("[ViralWorks] Sauvegarde brouillon studio:", err);
     }
-  }, [campaignData, scriptPromptForImage, imageStep]);
+  }, [campaignGenerationSpec, scriptPromptForImage, imageStep, campaignData]);
 
   useEffect(() => {
     try {
@@ -627,7 +770,7 @@ export default function ViralWorks() {
           validated,
           step1BrainLaunched,
           preparedCampaignSig,
-          campaignData,
+          campaignGenerationSpec,
           scriptPromptForImage,
           campagneMountKey,
         })
@@ -640,7 +783,7 @@ export default function ViralWorks() {
     validated,
     step1BrainLaunched,
     preparedCampaignSig,
-    campaignData,
+    campaignGenerationSpec,
     scriptPromptForImage,
     campagneMountKey,
   ]);
@@ -684,35 +827,12 @@ export default function ViralWorks() {
   };
 
   const handleCampaignBrainReady = useCallback((snapshot) => {
-    const next = {
-      profession: snapshot.profession ?? "",
-      idea: snapshot.idea ?? "",
-      styleDetails: snapshot.styleDetails ?? "",
-      tempo: normalizeTempoForGate(snapshot.tempo),
-      cameraFixed: Boolean(snapshot.cameraFixed),
-      revealMode: Boolean(snapshot.revealMode),
-      cinematicMovement: Boolean(snapshot.cinematicMovement),
-      selfieMode: Boolean(snapshot.selfieMode),
-      sequenceType: snapshot.sequenceType === "three_x_8s" ? "three_x_8s" : "single_8s",
-      dialogueEnabled: snapshot.dialogueEnabled !== false,
-      microAnswer: snapshot.microAnswer ?? null,
-      gateResult: snapshot.gateResult ?? null,
-      clarifyAnswer: snapshot.clarifyAnswer ?? null,
-      clarifyMode: snapshot.clarifyMode ?? null,
-      clarifyDiagnostic: snapshot.clarifyDiagnostic ?? null,
-      globalIntentProfile: snapshot.globalIntentProfile ?? null,
-      proceedAnyway: snapshot.proceedAnyway === true,
-      isClarified: snapshot.isClarified === true,
-      clarificationHistory: Array.isArray(snapshot.clarificationHistory)
-        ? snapshot.clarificationHistory
-        : [],
-      clarifyAxesResolved: {
-        modeAgent: snapshot.clarifyAxesResolved?.modeAgent === true,
-        initialT0: snapshot.clarifyAxesResolved?.initialT0 === true,
-      },
-    };
-    setPreparedCampaignSig(serializeCampaignForPrepareGate(next));
-    setCampaignData((prev) => ({ ...prev, ...next }));
+    const next = applyLegacyCampaignPatchToSpec(
+      createDefaultCampaignGenerationSpec(),
+      snapshot || {}
+    );
+    setPreparedCampaignSig(serializeCampaignSpecForPrepareGate(next));
+    setCampaignGenerationSpec(next);
     setStep1BrainLaunched(true);
   }, []);
 
@@ -733,7 +853,7 @@ export default function ViralWorks() {
     setValidated(normalizeValidated({}));
     setCurrentStep(1);
     setScriptPromptForImage(normalizeScriptPayload(""));
-    setCampaignData(applyCampagneNonPersistedDefaults({}));
+    setCampaignGenerationSpec(normalizeCampaignGenerationSpec(createDefaultCampaignGenerationSpec()));
     setCampagneMountKey((k) => k + 1);
     resetImageStep();
   }, [resetImageStep]);
@@ -879,7 +999,7 @@ export default function ViralWorks() {
           <button
             type="button"
             onClick={() => {
-              void handleValidateAndNext();
+              void runWithAuth(handleValidateAndNext);
             }}
             disabled={validateStepBlocked}
             title={
@@ -908,10 +1028,9 @@ export default function ViralWorks() {
             key={campagneMountKey}
             campaignData={campaignData}
             onCampaignChange={(nextCampaignData) =>
-              setCampaignData((prev) => ({
-                ...prev,
-                ...(nextCampaignData || {}),
-              }))
+              setCampaignGenerationSpec((prev) =>
+                applyLegacyCampaignPatchToSpec(prev, nextCampaignData || {})
+              )
             }
             onBrainReady={handleCampaignBrainReady}
             onCampagneFullReset={handleCampagneFullReset}

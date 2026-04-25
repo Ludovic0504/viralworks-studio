@@ -19,6 +19,11 @@ import {
   getSessionAccessTokenForVertexVeo,
   pollVertexVeoUntilComplete,
 } from "@/bibliotheque/supabase/vertexVeoVideo";
+import {
+  createDefaultCampaignGenerationSpec,
+  getSafeScenes,
+  normalizeCampaignGenerationSpec,
+} from "@/bibliotheque/campaignGenerationSpec";
 import PageTitle from "../composants/interface/TitrePage";
 import {
   validateIdeaLength,
@@ -585,6 +590,7 @@ export default function Video({
   studioSequenceType,
   studioScriptPrompt,
   studioImageStep,
+  studioCampaignData,
   dialogueEnabled = true,
   /** false quand l’étape Vidéo studio n’est pas visible (autre route ou autre onglet) — évite effets inutiles. */
   studioStepActive = true,
@@ -646,6 +652,7 @@ export default function Video({
               studioSequenceType={studioSequenceType}
               studioScriptPrompt={studioScriptPrompt}
               studioImageStep={studioImageStep}
+              studioCampaignData={studioCampaignData}
               dialogueEnabled={dialogueEnabled}
               studioStepActive={studioStepActive}
             />
@@ -755,6 +762,7 @@ function VEO3VideoForm({
   studioSequenceType,
   studioScriptPrompt,
   studioImageStep,
+  studioCampaignData,
   dialogueEnabled = true,
   studioStepActive = true,
 }) {
@@ -801,6 +809,16 @@ function VEO3VideoForm({
   const prevHookSyncKey = useRef(null);
 
   const sceneTabLabels = useMemo(() => veo3SceneTabLabels(sceneCount), [sceneCount]);
+  const canonicalSpec = useMemo(
+    () =>
+      normalizeCampaignGenerationSpec(
+        studioCampaignData?.campaignGenerationSpec ??
+          studioCampaignData ??
+          createDefaultCampaignGenerationSpec()
+      ),
+    [studioCampaignData]
+  );
+  const canonicalScenes = useMemo(() => getSafeScenes(canonicalSpec), [canonicalSpec]);
 
   useEffect(() => {
     if (studioStepActive === false) return;
@@ -973,7 +991,8 @@ function VEO3VideoForm({
       return;
     }
 
-    const scriptTrim = (scriptForGeneration || "").trim();
+    const canonicalScriptTrim = String(canonicalScenes?.[sceneIndexForGeneration]?.script_text || "").trim();
+    const scriptTrim = canonicalScriptTrim || String(scriptForGeneration || "").trim();
     if (scriptTrim.length < 8) {
       alert(
         `Le script du moment « ${sceneTabLabels[activeTab] ?? `Partie ${activeTab + 1}`} » est trop court (minimum 8 caractères). Ouvre « Options avancées » pour compléter le texte. Aucun visuel d’accroche n’est nécessaire pour générer.`
@@ -1048,11 +1067,48 @@ function VEO3VideoForm({
       setProgress(25);
       setProgressMessage("Création de la tâche vidéo...");
 
+      const selectedHookImageUrl = String(validatedHookImage?.url || "").trim();
+      const selectedHookPrompt = String(validatedHookImage?.prompt || "").trim();
+      const finalAspectRatio = selectedHookImageUrl
+        ? (derivedFormat === "16:9" ? "16:9" : "9:16")
+        : "9:16";
+      const finalGenerationMode = selectedHookImageUrl ? "image_to_video" : "text_to_video";
+      const generationOwnedSpec = normalizeCampaignGenerationSpec({
+        ...canonicalSpec,
+        creative: {
+          ...canonicalSpec.creative,
+          hook_visual: {
+            ...canonicalSpec.creative.hook_visual,
+            // Owner final at generation time: Video.jsx
+            selected_image_url: selectedHookImageUrl,
+            prompt_text: selectedHookPrompt || canonicalSpec.creative.hook_visual.prompt_text || "",
+          },
+        },
+        rendering: {
+          ...canonicalSpec.rendering,
+          // Owner final unique: Video.jsx
+          aspect_ratio: finalAspectRatio,
+          generation_mode: finalGenerationMode,
+        },
+        provider_overrides: {
+          ...canonicalSpec.provider_overrides,
+          veo3: {
+            ...canonicalSpec.provider_overrides.veo3,
+            aspect_ratio: finalAspectRatio,
+            generation_mode: finalGenerationMode,
+            initial_image_url: selectedHookImageUrl || null,
+            prompt: "",
+            // Intentionally DO NOT set `model` here (owner: vertexVeoVideo.ts)
+            // Intentionally DO NOT set task_id here (owner: vertexVeoVideo.ts)
+          },
+        },
+      });
+
       const fullPrompt = [
         `Idée: ${finalIdea}`,
-        `Format: ${derivedFormat} (aligné sur le visuel d’accroche)`,
+        `Format: ${generationOwnedSpec.rendering.aspect_ratio} (aligné sur le visuel d’accroche)`,
         `Durée: ${duration}`,
-        validatedHookImage?.url
+        generationOwnedSpec.creative.hook_visual.selected_image_url
           ? "Start from the exact selected hook image as the first frame and keep identity, composition and environment continuity from that initial state."
           : "",
         `audio_mode: ${dialogueEnabled ? "dialogue" : "silent"}`,
@@ -1070,20 +1126,24 @@ function VEO3VideoForm({
         {
           prompt: fullPrompt,
           durationSeconds: durationSec,
-          aspectRatio: derivedFormat === "9:16" ? "9:16" : "16:9",
-          initialImageUrl: String(validatedHookImage?.url || "").trim() || undefined,
-          generationMode: validatedHookImage?.url ? "image_to_video" : "text_to_video",
+          aspectRatio: generationOwnedSpec.rendering.aspect_ratio === "16:9" ? "16:9" : "9:16",
+          initialImageUrl: generationOwnedSpec.creative.hook_visual.selected_image_url || undefined,
+          generationMode: generationOwnedSpec.rendering.generation_mode,
         },
         session?.access_token,
         veoClientOpts
       );
 
       const maxPoll = 90;
+      const pollModelCandidate = String(
+        veoModel || canonicalSpec.provider_overrides?.veo3?.status_poll?.model || ""
+      ).trim();
       const { videoUrl } = await pollVertexVeoUntilComplete(taskId, session?.access_token, {
         maxAttempts: maxPoll,
         intervalMs: 4000,
         signal: ctrl.signal,
-        model: veoModel,
+        // Guard: if model absent before first create return, fallback poll without explicit model.
+        model: pollModelCandidate || undefined,
         getAccessToken: getSessionAccessTokenForVertexVeo,
         onTick: (i, max) => {
           // (i+1)/max : avance même au premier tick ; plafond 82 % tant que le poll n’a pas fini.

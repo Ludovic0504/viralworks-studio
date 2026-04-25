@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { saveHistory as saveHistorySupabase } from "@/bibliotheque/supabase/historique";
 import { hasEnoughCredits, getUserCredits } from "@/bibliotheque/supabase/credits";
@@ -16,6 +16,12 @@ import {
   LS_VIRAL_STUDIO_DRAFT,
   SS_CAMPAIGN_IDEA_LIVE_KEY,
 } from "@/bibliotheque/viralWorksStudioStorage";
+import {
+  createDefaultCampaignGenerationSpec,
+  getSafeIntentProfile,
+  getSafeScenes,
+  normalizeCampaignGenerationSpec,
+} from "@/bibliotheque/campaignGenerationSpec";
 import PageTitle from "../composants/interface/TitrePage";
 import {
   modifyImageWithNanoBanana,
@@ -165,6 +171,7 @@ export default function ImagePage({
   campaignMicroAnswer = null,
   visualStepActive = false,
   imageStep,
+  campaignGenerationSpec = null,
   patchImageStep,
   resetImageStep,
   onUseImageAndContinue,
@@ -185,6 +192,111 @@ export default function ImagePage({
     selectedImageIndex,
     modifyInstruction,
   } = imageStep ?? DEFAULT_IMAGE_STEP;
+
+  const canonicalSpec = useMemo(() => {
+    const fallback = createDefaultCampaignGenerationSpec();
+    const fromIncoming = normalizeCampaignGenerationSpec(campaignGenerationSpec ?? imageStep?.campaignGenerationSpec ?? fallback);
+    return normalizeCampaignGenerationSpec({
+      ...fromIncoming,
+      campaign: {
+        ...fromIncoming.campaign,
+        profession: String(campaignJobType || fromIncoming.campaign.profession || ""),
+        core_idea: String(campaignIdea || fromIncoming.campaign.core_idea || ""),
+        style_details: String(campaignModifiers || fromIncoming.campaign.style_details || ""),
+        intent_profile: campaignGlobalIntentProfile ?? fromIncoming.campaign.intent_profile,
+        clarification: {
+          ...fromIncoming.campaign.clarification,
+          mode: campaignClarifyMode ?? fromIncoming.campaign.clarification.mode,
+          last_user_freeform_answer:
+            campaignClarifyAnswer ?? fromIncoming.campaign.clarification.last_user_freeform_answer,
+          camera_aerial_angle:
+            campaignCameraAerialAngle ?? fromIncoming.campaign.clarification.camera_aerial_angle,
+          initial_state: campaignMicroAnswer ?? fromIncoming.campaign.clarification.initial_state,
+        },
+      },
+      creative: {
+        ...fromIncoming.creative,
+        scenes: [
+          {
+            ...getSafeScenes(fromIncoming)[0],
+            script_text: String(scriptScene1Idea || getSafeScenes(fromIncoming)[0]?.script_text || ""),
+          },
+          getSafeScenes(fromIncoming)[1],
+          getSafeScenes(fromIncoming)[2],
+        ],
+        hook_visual: {
+          ...fromIncoming.creative.hook_visual,
+          prompt_text: String(campaignIdeaPrompt || fromIncoming.creative.hook_visual.prompt_text || ""),
+          provider_prompt_raw: String(prompt || fromIncoming.creative.hook_visual.provider_prompt_raw || ""),
+          image_variants: Array.isArray(lastGeneratedImages) ? [...lastGeneratedImages] : [],
+          selected_variant_index: Number.isFinite(Number(selectedImageIndex)) ? Number(selectedImageIndex) : 0,
+          selected_image_url:
+            (Array.isArray(lastGeneratedImages) && lastGeneratedImages[Number(selectedImageIndex)])
+              ? String(lastGeneratedImages[Number(selectedImageIndex)] || "")
+              : String(fromIncoming.creative.hook_visual.selected_image_url || ""),
+          last_generation_prompt:
+            String(lastGeneratedPrompt || fromIncoming.creative.hook_visual.last_generation_prompt || ""),
+          modification_instruction:
+            String(modifyInstruction || fromIncoming.creative.hook_visual.modification_instruction || ""),
+        },
+      },
+      rendering: {
+        ...fromIncoming.rendering,
+        camera: {
+          ...fromIncoming.rendering.camera,
+          reveal_mode: Boolean(campaignRevealMode ?? fromIncoming.rendering.camera.reveal_mode),
+          selfie_mode: Boolean(campaignSelfieMode ?? fromIncoming.rendering.camera.selfie_mode),
+        },
+      },
+    });
+  }, [
+    campaignGenerationSpec,
+    imageStep?.campaignGenerationSpec,
+    campaignJobType,
+    campaignIdea,
+    campaignModifiers,
+    campaignGlobalIntentProfile,
+    campaignClarifyMode,
+    campaignClarifyAnswer,
+    campaignCameraAerialAngle,
+    campaignMicroAnswer,
+    scriptScene1Idea,
+    campaignIdeaPrompt,
+    prompt,
+    lastGeneratedImages,
+    selectedImageIndex,
+    lastGeneratedPrompt,
+    modifyInstruction,
+    campaignRevealMode,
+    campaignSelfieMode,
+  ]);
+
+  const writeHookVisualSpec = useCallback(
+    (updates) => {
+      if (!patchImageStep) return;
+      patchImageStep((prev) => {
+        const prevAsObject = prev && typeof prev === "object" ? prev : {};
+        const baseSpec = normalizeCampaignGenerationSpec(
+          prevAsObject.campaignGenerationSpec ?? canonicalSpec
+        );
+        const next = normalizeCampaignGenerationSpec({
+          ...baseSpec,
+          creative: {
+            ...baseSpec.creative,
+            hook_visual: {
+              ...baseSpec.creative.hook_visual,
+              ...updates,
+            },
+          },
+        });
+        return {
+          ...prevAsObject,
+          campaignGenerationSpec: next,
+        };
+      });
+    },
+    [patchImageStep, canonicalSpec]
+  );
 
   const [model] = useState("Image-01");
   const [busy, setBusy] = useState(false);
@@ -368,27 +480,39 @@ export default function ImagePage({
         body: JSON.stringify({
           prompt: buildHookImageApiPrompt(
             [
-              String(campaignIdeaPrompt || "").trim() || prompt,
-              campaignJobType ? `Métier: ${campaignJobType}` : "",
-              campaignModifiers ? `Style: ${campaignModifiers}` : "",
-              campaignClarifyMode ? `Mode de transformation: ${campaignClarifyMode}` : "",
-              campaignClarifyAnswer ? `Précision utilisateur: ${campaignClarifyAnswer}` : "",
-              campaignCameraAerialAngle ? `Aerial angle: ${campaignCameraAerialAngle}` : "",
+              String(canonicalSpec.creative.hook_visual.prompt_text || "").trim() ||
+                String(canonicalSpec.campaign.core_idea || "").trim(),
+              canonicalSpec.campaign.profession
+                ? `Métier: ${canonicalSpec.campaign.profession}`
+                : "",
+              canonicalSpec.campaign.style_details
+                ? `Style: ${canonicalSpec.campaign.style_details}`
+                : "",
+              canonicalSpec.campaign.clarification.mode
+                ? `Mode de transformation: ${canonicalSpec.campaign.clarification.mode}`
+                : "",
+              canonicalSpec.campaign.clarification.last_user_freeform_answer
+                ? `Précision utilisateur: ${canonicalSpec.campaign.clarification.last_user_freeform_answer}`
+                : "",
+              canonicalSpec.campaign.clarification.camera_aerial_angle
+                ? `Aerial angle: ${canonicalSpec.campaign.clarification.camera_aerial_angle}`
+                : "",
             ]
               .filter(Boolean)
               .join("\n"),
             {
-            revealMode: campaignRevealMode,
-            initialStateMode:
-              campaignMicroAnswer === "from_nothing" ||
-              String(campaignClarifyAnswer || "").toLowerCase().includes("rien")
-                ? "from_nothing"
-                : null,
-            jobTypeLabel: campaignJobType || "",
-            lockedVideoScriptScene0: String(scriptScene1Idea || "").trim() || undefined,
-            cameraAerialAngle: campaignCameraAerialAngle,
-            globalIntent: campaignGlobalIntentProfile,
-            selfieMode: campaignSelfieMode,
+              revealMode: canonicalSpec.rendering.camera.reveal_mode === true,
+              initialStateMode:
+                canonicalSpec.campaign.clarification.initial_state === "from_nothing"
+                  ? "from_nothing"
+                  : null,
+              jobTypeLabel: canonicalSpec.campaign.profession || "",
+              lockedVideoScriptScene0:
+                String(getSafeScenes(canonicalSpec)[0]?.script_text || "").trim() || undefined,
+              cameraAerialAngle: canonicalSpec.campaign.clarification.camera_aerial_angle,
+              // Guard: fallback neutre si intent profile absent/incomplet.
+              globalIntent: getSafeIntentProfile(canonicalSpec),
+              selfieMode: canonicalSpec.rendering.camera.selfie_mode === true,
             }
           ),
           ratio,
@@ -514,6 +638,15 @@ export default function ImagePage({
         lastGeneratedImages: finalUrls,
         lastGeneratedPrompt: String(campaignIdeaPrompt || "").trim() || prompt,
         pairedCampaignIdea: String(campaignIdea || "").trim() || null,
+      });
+      writeHookVisualSpec({
+        prompt_text:
+          String(canonicalSpec.creative.hook_visual.prompt_text || "").trim() ||
+          String(canonicalSpec.campaign.core_idea || "").trim(),
+        image_variants: Array.isArray(finalUrls) ? finalUrls : [],
+        selected_variant_index: 0,
+        selected_image_url: Array.isArray(finalUrls) && finalUrls[0] ? String(finalUrls[0]) : "",
+        last_generation_prompt: String(campaignIdeaPrompt || "").trim() || String(prompt || "").trim(),
       });
       consumeImageGeneration();
       
@@ -649,6 +782,15 @@ export default function ImagePage({
           modifyInstruction: "",
           pairedCampaignIdea: null,
         });
+        writeHookVisualSpec({
+          prompt_text: "",
+          provider_prompt_raw: "",
+          image_variants: [],
+          selected_variant_index: 0,
+          selected_image_url: "",
+          last_generation_prompt: "",
+          modification_instruction: "",
+        });
       }
       window.dispatchEvent(new Event("onetool:history:changed"));
       onSuccess?.();
@@ -671,10 +813,12 @@ export default function ImagePage({
           campaignIdeaPrompt: value,
           pairedCampaignIdea: value,
         });
+        writeHookVisualSpec({ prompt_text: String(value || "") });
         setModifyError("");
         return;
       }
       patchImageStep({ campaignIdeaPrompt: value, pairedCampaignIdea: value });
+      writeHookVisualSpec({ prompt_text: String(value || "") });
     };
     if (fromProp) {
       applyReload(fromProp);
@@ -771,6 +915,12 @@ export default function ImagePage({
             modifyInstruction: "",
           };
         });
+        writeHookVisualSpec({
+          image_variants: [...(canonicalSpec.creative.hook_visual.image_variants || []), newUrl],
+          selected_variant_index: (canonicalSpec.creative.hook_visual.image_variants || []).length,
+          selected_image_url: String(newUrl || ""),
+          modification_instruction: "",
+        });
         consumeImageModification();
       } else {
         const msg =
@@ -799,13 +949,25 @@ export default function ImagePage({
       const next = Math.min(prev.selectedImageIndex, max);
       return next === prev.selectedImageIndex ? prev : { ...prev, selectedImageIndex: next };
     });
-  }, [lastGeneratedImages?.length, patchImageStep]);
+    const safeIdx = Math.min(Number(selectedImageIndex) || 0, len - 1);
+    const safeUrl = String(lastGeneratedImages?.[safeIdx] || "");
+    writeHookVisualSpec({
+      image_variants: Array.isArray(lastGeneratedImages) ? [...lastGeneratedImages] : [],
+      selected_variant_index: safeIdx,
+      selected_image_url: safeUrl,
+    });
+  }, [lastGeneratedImages, selectedImageIndex, patchImageStep, writeHookVisualSpec]);
 
   const hasSessionImages = Boolean(lastGeneratedImages?.length);
   const bottomFieldValue = hasSessionImages ? modifyInstruction : campaignIdeaPrompt;
   const setBottomFieldValue = (v) => {
-    if (hasSessionImages) patchImageStep({ modifyInstruction: v });
-    else patchImageStep({ campaignIdeaPrompt: v });
+    if (hasSessionImages) {
+      patchImageStep({ modifyInstruction: v });
+      writeHookVisualSpec({ modification_instruction: String(v || "") });
+    } else {
+      patchImageStep({ campaignIdeaPrompt: v });
+      writeHookVisualSpec({ prompt_text: String(v || "") });
+    }
   };
   const canBottomSubmit = hasSessionImages
     ? Boolean((modifyInstruction ?? "").trim()) && !modifyLoading && !busy
@@ -1120,7 +1282,13 @@ export default function ImagePage({
               <button
                 key={`${url}-${index}`}
                 type="button"
-                onClick={() => patchImageStep({ selectedImageIndex: index })}
+                onClick={() => {
+                  patchImageStep({ selectedImageIndex: index });
+                  writeHookVisualSpec({
+                    selected_variant_index: index,
+                    selected_image_url: String(url || ""),
+                  });
+                }}
                 className={`relative shrink-0 overflow-hidden rounded-xl border-2 transition-all ${
                   selectedImageIndex === index
                     ? "border-cyan-400 ring-2 ring-cyan-400/30"

@@ -13,6 +13,11 @@ import {
   VWS_METIER_LABELS,
   getVwsMetierProfile,
 } from "@/bibliotheque/vwsMetiersConfig";
+import {
+  createDefaultCampaignGenerationSpec,
+  stampCampaignGenerationMeta,
+} from "@/bibliotheque/campaignGenerationSpec";
+import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { Sparkles, HelpCircle, BookOpen, X } from "lucide-react";
 
 const VALID_TEMPOS = new Set(["real_time", "timelapse", "slow_motion"]);
@@ -65,6 +70,18 @@ function parseClarifyAxesFromHistory(lines) {
   return { ...merged, microFromGate, causalAgentSelectionFromGate, cameraAerialAngleFromGate };
 }
 
+function buildMinimalIntentFallback({ idea, selfieMode }) {
+  const txt = String(idea || "").toLowerCase();
+  const selfieSignal = selfieMode || /\b(selfie|face cam[ée]ra|vlog|se filme)\b/.test(txt);
+  return {
+    intentFamily: selfieSignal ? "presentation" : "other",
+    hookGoal: selfieSignal ? "show_finished_result" : "show_action_in_progress",
+    humanPresence: selfieSignal ? "selfie" : "unknown",
+    confidence: selfieSignal ? 0.6 : 0.5,
+    source: "heuristic",
+  };
+}
+
 function StabilizationOption({ checked, onChange, label, tooltip }) {
   return (
     <label className="flex items-center gap-2 text-xs text-gray-300 group/opt">
@@ -87,6 +104,7 @@ function StabilizationOption({ checked, onChange, label, tooltip }) {
 }
 
 export default function CampagneVWS({ onBrainReady, campaignData, onCampaignChange, onCampagneFullReset }) {
+  const { runWithAuth } = useRequireAuthAction();
   const [profession, setProfessionState] = useState(campaignData?.profession ?? "");
   const [idea, setIdeaState] = useState(campaignData?.idea ?? "");
   const [styleDetails, setStyleDetails] = useState(campaignData?.styleDetails ?? "");
@@ -678,6 +696,67 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         void err;
       }
 
+      const clarificationMode = gate?.status === "VALID" ? gate?.mode ?? null : null;
+      const clarificationDiagnostic =
+        gate?.status === "VALID" ? gate?.diagnostic ?? null : null;
+      const finalPayloadSpec = stampCampaignGenerationMeta({
+        ...createDefaultCampaignGenerationSpec(),
+        campaign: {
+          ...createDefaultCampaignGenerationSpec().campaign,
+          profession: safeProfession,
+          core_idea: safeIdea,
+          style_details: styleDetails.trim() || "",
+          intent_profile: globalIntentProfile ?? buildMinimalIntentFallback({ idea: safeIdea, selfieMode }),
+          clarification: {
+            ...createDefaultCampaignGenerationSpec().campaign.clarification,
+            mode: clarificationMode,
+            diagnostic: clarificationDiagnostic,
+            // Owner unique: microAnswer only. `initialStateSelection` is a read-only legacy alias.
+            initial_state: microForBrain,
+            causal_agent: causalForBrain,
+            camera_aerial_angle: cameraAerialForBrain,
+            last_user_freeform_answer: clarifyAnswer ?? null,
+            proceed_anyway: false,
+            history: historyLines,
+            resolved_axes: {
+              mode_agent: axes.modeAgent === true,
+              initial_t0: axes.initialT0 === true,
+              causal_agent: axes.causalAgent === true,
+              camera_aerial_angle: axes.cameraAerialAngle === true,
+            },
+            is_resolved: true,
+          },
+        },
+        creative: {
+          ...createDefaultCampaignGenerationSpec().creative,
+          sequence_type: sequenceType === "three_x_8s" ? "three_x_8s" : "single_8s",
+        },
+        rendering: {
+          ...createDefaultCampaignGenerationSpec().rendering,
+          tempo: tempo === "timelapse" || tempo === "slow_motion" ? tempo : "real_time",
+          tempo_resolution_decision: tempoCompressionDecision ?? null,
+          camera: {
+            ...createDefaultCampaignGenerationSpec().rendering.camera,
+            fixed: Boolean(cameraFixed),
+            reveal_mode: Boolean(revealMode),
+            cinematic_movement: Boolean(cinematicMovement),
+            selfie_mode: Boolean(selfieMode),
+            aerial_angle: cameraAerialForBrain,
+          },
+          audio: {
+            ...createDefaultCampaignGenerationSpec().rendering.audio,
+            dialogue_enabled: dialogueEnabled !== false,
+            enable_tts: dialogueEnabled !== false,
+          },
+        },
+        trace: {
+          ...createDefaultCampaignGenerationSpec().trace,
+          clarify_gate: {
+            ...createDefaultCampaignGenerationSpec().trace.clarify_gate,
+            last_result: gate ?? null,
+          },
+        },
+      });
       const finalPayload = {
         profession: safeProfession,
         idea: safeIdea,
@@ -696,13 +775,14 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         initialStateSelection: null,
         gateResult: gate,
         clarifyAnswer: clarifyAnswer ?? null,
-        clarifyMode: gate.mode,
-        clarifyDiagnostic: gate.diagnostic,
+        clarifyMode: clarificationMode,
+        clarifyDiagnostic: clarificationDiagnostic,
         proceedAnyway: false,
         clarificationHistory: historyLines,
         clarifyAxesResolved: axes,
         globalIntentProfile,
         isClarified: true,
+        campaignGenerationSpec: finalPayloadSpec,
       };
 
       onCampaignChange?.(buildCampaignSnapshot(finalPayload));
@@ -933,8 +1013,8 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
           </label>
           <button
             type="button"
-            onClick={handleInspire}
-            disabled={inspireLoading || !String(profession ?? "").trim()}
+            onClick={() => void runWithAuth(handleInspire)}
+            disabled={inspireLoading}
             title={
               !String(profession ?? "").trim()
                 ? "Choisis d’abord ton métier pour utiliser cette action."
@@ -1085,7 +1165,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
-          onClick={handleRun}
+          onClick={() => void runWithAuth(handleRun)}
           disabled={loading}
           className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed transition"
         >

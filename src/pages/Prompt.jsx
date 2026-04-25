@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef, useEffect } from "react";
+import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { saveHistory as saveHistorySupabase, listHistory, deleteHistory, deleteAllHistory } from "@/bibliotheque/supabase/historique";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { generateResponse } from "@/bibliotheque/openai/chatgpt-client";
@@ -24,6 +24,11 @@ import {
   canProceedWithScriptGeneration,
   consumeScriptAttempt,
 } from "@/bibliotheque/workflowQuota";
+import {
+  createDefaultCampaignGenerationSpec,
+  getSafeScenes,
+  normalizeCampaignGenerationSpec,
+} from "@/bibliotheque/campaignGenerationSpec";
 import PageTitle from "../composants/interface/TitrePage";
 import {
   FileText,
@@ -1070,6 +1075,52 @@ function ScriptPromptGenerator({
   const [selectedItem, setSelectedItem] = useState(null);
   const prevInitialIdeaRef = useRef(initialIdea);
   const prevSequenceTypeRef = useRef(sequenceType);
+  const canonicalSpec = useMemo(
+    () =>
+      normalizeCampaignGenerationSpec(
+        campaignData?.campaignGenerationSpec ?? campaignData ?? createDefaultCampaignGenerationSpec()
+      ),
+    [campaignData]
+  );
+  const canonicalClarificationMode = canonicalSpec.campaign.clarification.mode ?? null;
+  const canonicalClarificationDiagnostic = canonicalSpec.campaign.clarification.diagnostic ?? null;
+
+  const buildCanonicalScriptSpec = useCallback(
+    ({ scenes, combined, mode, refineResult }) => {
+      const normalizedBase = normalizeCampaignGenerationSpec(canonicalSpec);
+      const safeScenes = getSafeScenes(normalizedBase);
+      const nextScenes = [0, 1, 2].map((idx) => ({
+        ...safeScenes[idx],
+        script_text: String(scenes?.[idx] ?? ""),
+      }));
+      return normalizeCampaignGenerationSpec({
+        ...normalizedBase,
+        creative: {
+          ...normalizedBase.creative,
+          sequence_type: mode === "multi" ? "three_x_8s" : "single_8s",
+          script_bundle: {
+            ...normalizedBase.creative.script_bundle,
+            mode,
+            combined_text: String(combined ?? ""),
+          },
+          scenes: nextScenes,
+        },
+        trace: {
+          ...normalizedBase.trace,
+          prompt_refinement: {
+            ...normalizedBase.trace.prompt_refinement,
+            run_id:
+              typeof refineResult?.run_id === "string" && refineResult.run_id.trim()
+                ? refineResult.run_id
+                : null,
+            input_snapshot: String(idea ?? ""),
+            output_snapshot: String(combined ?? ""),
+          },
+        },
+      });
+    },
+    [canonicalSpec, idea]
+  );
 
   useEffect(() => {
     if (prevSequenceTypeRef.current === sequenceType) return;
@@ -1078,12 +1129,19 @@ function ScriptPromptGenerator({
     setSceneOutputs(["", "", ""]);
     setExportHookText("");
     setExportVideoTexts(["", "", ""]);
+    const nextSpec = buildCanonicalScriptSpec({
+      mode: isMultiScene ? "multi" : "single",
+      combined: "",
+      scenes: ["", "", ""],
+      refineResult: null,
+    });
     onScriptOutput?.({
       mode: isMultiScene ? "multi" : "single",
       combined: "",
       scenes: ["", "", ""],
+      campaignGenerationSpec: nextSpec,
     });
-  }, [sequenceType, isMultiScene, onScriptOutput]);
+  }, [sequenceType, isMultiScene, onScriptOutput, buildCanonicalScriptSpec]);
 
   useEffect(() => {
     if (prevInitialIdeaRef.current === initialIdea) return;
@@ -1093,12 +1151,19 @@ function ScriptPromptGenerator({
     setSceneOutputs(["", "", ""]);
     setExportHookText("");
     setExportVideoTexts(["", "", ""]);
+    const nextSpec = buildCanonicalScriptSpec({
+      mode: isMultiScene ? "multi" : "single",
+      combined: "",
+      scenes: ["", "", ""],
+      refineResult: null,
+    });
     onScriptOutput?.({
       mode: isMultiScene ? "multi" : "single",
       combined: "",
       scenes: ["", "", ""],
+      campaignGenerationSpec: nextSpec,
     });
-  }, [initialIdea, isMultiScene, onScriptOutput]);
+  }, [initialIdea, isMultiScene, onScriptOutput, buildCanonicalScriptSpec]);
 
   useEffect(() => {
     const refresh = async () => {
@@ -1136,10 +1201,17 @@ function ScriptPromptGenerator({
     setSceneOutputs(["", "", ""]);
     setExportHookText("");
     setExportVideoTexts(["", "", ""]);
+    const nextSpec = buildCanonicalScriptSpec({
+      mode: isMultiScene ? "multi" : "single",
+      combined: "",
+      scenes: ["", "", ""],
+      refineResult: null,
+    });
     onScriptOutput?.({
       mode: isMultiScene ? "multi" : "single",
       combined: "",
       scenes: ["", "", ""],
+      campaignGenerationSpec: nextSpec,
     });
   };
 
@@ -1192,17 +1264,20 @@ function ScriptPromptGenerator({
 
     try {
       const refineResult = await refinePrompt({
-        jobType: campaignData?.profession ?? "",
+        jobType: canonicalSpec.campaign.profession ?? campaignData?.profession ?? "",
         mainIdea: idea,
-        modifiers: campaignData?.styleDetails ?? "",
-        tempoSelection: campaignData?.tempo ?? "real_time",
-        revealMode: Boolean(campaignData?.revealMode),
-        cameraLocked: Boolean(campaignData?.cameraFixed),
+        modifiers: canonicalSpec.campaign.style_details ?? campaignData?.styleDetails ?? "",
+        tempoSelection: canonicalSpec.rendering.tempo ?? campaignData?.tempo ?? "real_time",
+        revealMode: Boolean(canonicalSpec.rendering.camera.reveal_mode ?? campaignData?.revealMode),
+        cameraLocked: Boolean(canonicalSpec.rendering.camera.fixed ?? campaignData?.cameraFixed),
         projectFormat:
-          campaignData?.sequenceType === "three_x_8s" ? "three_x_8s" : "single_8s",
-        clarifyMode: campaignData?.clarifyMode ?? campaignData?.gateResult?.mode ?? null,
-        clarifyAnswer: campaignData?.clarifyAnswer ?? null,
-        proceedAnyway: campaignData?.proceedAnyway === true,
+          canonicalSpec.creative.sequence_type === "three_x_8s" ? "three_x_8s" : "single_8s",
+        // Guard explicite: mode/diagnostic peuvent être null en amont, on ne suppose rien.
+        clarifyMode: canonicalClarificationMode,
+        clarifyAnswer:
+          canonicalSpec.campaign.clarification.last_user_freeform_answer ?? campaignData?.clarifyAnswer ?? null,
+        proceedAnyway:
+          canonicalSpec.campaign.clarification.proceed_anyway === true || campaignData?.proceedAnyway === true,
       });
       const finalized =
         refineResult?.phases?.PROMPT_EXECUTION_PHASE?.steps?.PROMPT_FINALIZATION?.output || "";
@@ -1212,9 +1287,9 @@ function ScriptPromptGenerator({
       const trimmedRefined = clampGeneratedPrompt(String(finalized).trim());
       const scriptResultMeta = {
         refinementRunId: refineResult?.run_id ?? null,
-        clarifyMode: campaignData?.clarifyMode ?? campaignData?.gateResult?.mode ?? null,
-        clarifyDiagnostic: campaignData?.clarifyDiagnostic ?? campaignData?.gateResult?.diagnostic ?? null,
-        clarificationHistory: campaignData?.clarificationHistory ?? null,
+        clarifyMode: canonicalClarificationMode,
+        clarifyDiagnostic: canonicalClarificationDiagnostic,
+        clarificationHistory: canonicalSpec.campaign.clarification.history ?? null,
       };
 
       let trimmed = "";
@@ -1223,23 +1298,37 @@ function ScriptPromptGenerator({
         const combined = nextScenes.join("\n\n---\n\n");
         setSceneOutputs(nextScenes);
         setOutput(combined);
+        const nextSpec = buildCanonicalScriptSpec({
+          mode: "multi",
+          combined,
+          scenes: nextScenes,
+          refineResult,
+        });
         onScriptOutput?.({
           mode: "multi",
           combined,
           scenes: nextScenes,
           refinementRunId: typeof refineResult?.run_id === "string" ? refineResult.run_id : undefined,
           scriptResultMeta,
+          campaignGenerationSpec: nextSpec,
         });
         refreshBrainExportPrompts();
       } else {
         trimmed = trimmedRefined;
         setOutput(trimmed);
+        const nextSpec = buildCanonicalScriptSpec({
+          mode: "single",
+          combined: trimmed,
+          scenes: [trimmed, "", ""],
+          refineResult,
+        });
         onScriptOutput?.({
           mode: "single",
           combined: trimmed,
           scenes: [trimmed, "", ""],
           refinementRunId: typeof refineResult?.run_id === "string" ? refineResult.run_id : undefined,
           scriptResultMeta,
+          campaignGenerationSpec: nextSpec,
         });
         refreshBrainExportPrompts();
       }

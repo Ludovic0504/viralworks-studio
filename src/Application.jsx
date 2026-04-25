@@ -143,19 +143,11 @@ export default function App() {
         />
         <Route
           path="/communaute-vws"
-          element={
-            <ProtectedRoute>
-              <CommunauteVWS />
-            </ProtectedRoute>
-          }
+          element={<CommunauteVWS />}
         />
         <Route
           path="/boutique"
-          element={
-            <ProtectedRoute>
-              <Boutique />
-            </ProtectedRoute>
-          }
+          element={<Boutique />}
         />
         <Route
           path="/admin"
