@@ -1,10 +1,8 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from "react";
 import PageTitle from "../composants/interface/TitrePage";
 import CampagneVWS from "./CampagneVWS.jsx";
-import PromptAssistant from "./Prompt.jsx";
 import ImagePage from "./Image.jsx";
 import VideoPage from "./Video.jsx";
-import RecapVWS from "./RecapVWS.jsx";
 import {
   markVideoWorkflowCreditConsumed,
   resetWorkflowUsage,
@@ -30,6 +28,7 @@ import {
   createDefaultCampaignGenerationSpec,
   normalizeCampaignGenerationSpec,
 } from "@/bibliotheque/campaignGenerationSpec";
+import { runStudioScriptRefinement } from "@/bibliotheque/studioScriptRefinement";
 import { Check, X } from "lucide-react";
 import { useLocation } from "react-router-dom";
 
@@ -39,6 +38,11 @@ import { useLocation } from "react-router-dom";
  * alors que l’état mémoire était encore correct avant ce filet.
  */
 let spaImageStepMemory = null;
+
+/** 1 Campagne, 2 Visuel, 3 Vidéo (pas d’étape Script ni Récap). v3 = sans Récap ; v2 = avec Récap. */
+const STUDIO_FLOW_VERSION = 3;
+const STUDIO_V2_WITH_RECAP = 2;
+const STUDIO_STEP_COUNT = 3;
 
 /**
  * Au rechargement complet (F5) : vider la session studio une seule fois par chargement de page.
@@ -120,12 +124,75 @@ function imageStepRichness(s) {
 }
 
 function normalizeValidated(v) {
-  const base = { 1: false, 2: false, 3: false, 4: false, 5: false };
+  const base = { 1: false, 2: false, 3: false };
   if (!v || typeof v !== "object") return base;
-  for (let i = 1; i <= 5; i += 1) {
+  for (let i = 1; i <= STUDIO_STEP_COUNT; i += 1) {
     base[i] = Boolean(v[i]);
   }
   return base;
+}
+
+/** Migre les anciennes sessions (5 étapes, 4 étapes avec Récap) vers 3 étapes. */
+function migrateSpaUiIfNeeded(raw) {
+  if (!raw || typeof raw !== "object") {
+    return { studioFlowVersion: STUDIO_FLOW_VERSION };
+  }
+  if (raw.studioFlowVersion === STUDIO_FLOW_VERSION) {
+    const n = Number(raw.currentStep);
+    let cs = Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1;
+    cs = Math.min(Math.max(cs, 1), STUDIO_STEP_COUNT);
+    return {
+      ...raw,
+      currentStep: cs,
+      validated: normalizeValidated(raw.validated),
+    };
+  }
+  if (raw.studioFlowVersion === STUDIO_V2_WITH_RECAP) {
+    const v = raw.validated;
+    let cs = Number(raw.currentStep);
+    cs = Number.isFinite(cs) && cs >= 1 ? Math.floor(cs) : 1;
+    if (cs >= 4) cs = 3;
+    cs = Math.min(Math.max(cs, 1), STUDIO_STEP_COUNT);
+    const newV = normalizeValidated(null);
+    if (v && typeof v === "object") {
+      newV[1] = Boolean(v[1]);
+      newV[2] = Boolean(v[2]);
+      newV[3] = Boolean(v[3]) || Boolean(v[4]);
+    }
+    return {
+      ...raw,
+      currentStep: cs,
+      validated: newV,
+      studioFlowVersion: STUDIO_FLOW_VERSION,
+    };
+  }
+  const v = raw.validated;
+  let cs = Number(raw.currentStep);
+  cs = Number.isFinite(cs) && cs >= 1 ? Math.floor(cs) : 1;
+  if (cs === 1) {
+    cs = 1;
+  } else if (cs === 2) {
+    cs = 2;
+  } else if (cs === 3) {
+    cs = 2;
+  } else if (cs === 4) {
+    cs = 3;
+  } else {
+    cs = 3;
+  }
+  cs = Math.min(Math.max(cs, 1), STUDIO_STEP_COUNT);
+  const newV = normalizeValidated(null);
+  if (v && typeof v === "object") {
+    newV[1] = Boolean(v[1]);
+    newV[2] = Boolean(v[3]);
+    newV[3] = Boolean(v[4]) || Boolean(v[5]);
+  }
+  return {
+    ...raw,
+    currentStep: cs,
+    validated: newV,
+    studioFlowVersion: STUDIO_FLOW_VERSION,
+  };
 }
 
 /** Choisit l’état le plus « riche » (images > ref > texte) — plus fiable qu’un ordre fixe. */
@@ -502,7 +569,6 @@ function normalizeScriptPayload(raw) {
   };
 }
 
-const SCRIPT_STEP_CREDIT_COST = 1;
 const VIDEO_STEP_CREDIT_COST = 1;
 const SCRIPT_STEP_VIDEO_QUOTA_MSG =
   "limite vidéo atteint pour ce mois, veuillez attendre la fin du mois pour le renouvellement des vidéos ou acheter des packs vidéos pour continuer a créer";
@@ -539,14 +605,14 @@ function ScriptStepQuotaModal({ open, title, message, actionLabel, onClose, onGo
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10 transition-all"
+              className="px-4 py-2 rounded-lg btn-vws-secondary"
             >
               Fermer
             </button>
             <button
               type="button"
               onClick={onGoToShop}
-              className="px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-500 to-teal-500 text-white font-semibold hover:from-cyan-400 hover:to-teal-400 transition-all"
+              className="px-4 py-2 rounded-lg btn-vws-primary font-semibold"
             >
               {actionLabel || "Aller vers Packs vidéos"}
             </button>
@@ -559,30 +625,48 @@ function ScriptStepQuotaModal({ open, title, message, actionLabel, onClose, onGo
 
 const steps = [
   { id: 1, key: "campagne", label: "Campagne VWS" },
-  { id: 2, key: "script", label: "Script gagnant" },
-  { id: 3, key: "visuel", label: "Visuel d'accroche" },
-  { id: 4, key: "video", label: "Vidéo virale" },
-  { id: 5, key: "recap", label: "Étape 5 — Récapitulatif" },
+  { id: 2, key: "visuel", label: "Visuel d'accroche" },
+  { id: 3, key: "video", label: "Vidéo virale" },
 ];
 
 export default function ViralWorks() {
   const location = useLocation();
   const spaUiInitialRef = useRef(undefined);
   if (spaUiInitialRef.current === undefined) {
+    // #region agent log
+    fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'770227'},body:JSON.stringify({sessionId:'770227',runId:'run7',hypothesisId:'H18',location:'src/pages/ViralWorks.jsx:637',message:'viralworks_init_before_restore',data:{pathname:location.pathname,isReloadNavigation:isReloadNavigation(),hasSpaUiInSession:Boolean(sessionStorage.getItem(SS_SPA_UI_KEY)),hasImageStepInSession:Boolean(sessionStorage.getItem(SS_IMAGE_STEP_KEY)),hasDraftInLocal:Boolean(localStorage.getItem(LS_VIRAL_STUDIO_DRAFT))},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     purgeStudioSessionIfFullReload();
-    spaUiInitialRef.current = loadSpaUiStateFromSession();
+    spaUiInitialRef.current = migrateSpaUiIfNeeded(loadSpaUiStateFromSession());
+    // #region agent log
+    fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'770227'},body:JSON.stringify({sessionId:'770227',runId:'run7',hypothesisId:'H18',location:'src/pages/ViralWorks.jsx:641',message:'viralworks_init_after_restore',data:{pathname:location.pathname,isReloadNavigation:isReloadNavigation(),restoredCurrentStep:spaUiInitialRef.current?.currentStep??null,restoredValidated:spaUiInitialRef.current?.validated??null,restoredVersion:spaUiInitialRef.current?.studioFlowVersion??null},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
   }
   const spaInitial = spaUiInitialRef.current;
 
   const { session } = useAuth();
   const { runWithAuth } = useRequireAuthAction();
+  useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'770227'},body:JSON.stringify({sessionId:'770227',runId:'run7',hypothesisId:'H23',location:'src/pages/ViralWorks.jsx:650',message:'viralworks_mounted',data:{pathname:location.pathname},timestamp:Date.now()})}).catch(()=>{});
+    console.warn("[DBG H23] viralworks_mounted", { pathname: location.pathname });
+    return () => {
+      fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'770227'},body:JSON.stringify({sessionId:'770227',runId:'run7',hypothesisId:'H23',location:'src/pages/ViralWorks.jsx:654',message:'viralworks_unmounted',data:{pathname:window.location.pathname},timestamp:Date.now()})}).catch(()=>{});
+      console.warn("[DBG H23] viralworks_unmounted", { pathname: window.location.pathname });
+    };
+    // #endregion
+  }, []);
   const [showScriptQuotaModal, setShowScriptQuotaModal] = useState(false);
   const [scriptQuotaModalMessage, setScriptQuotaModalMessage] = useState(SCRIPT_STEP_VIDEO_QUOTA_MSG);
   const [hasActiveSubscriptionVw, setHasActiveSubscriptionVw] = useState(false);
+  /** idle | running | error — après succès on repasse à idle (navigation auto vers le Visuel). */
+  const [scriptGenStatus, setScriptGenStatus] = useState("idle");
+  const scriptGenInFlightRef = useRef(false);
+  const lastBrainSnapshotRef = useRef(null);
 
   const [currentStep, setCurrentStep] = useState(() => {
     const n = Number(spaInitial?.currentStep);
-    return Number.isFinite(n) && n >= 1 && n <= 5 ? Math.floor(n) : 1;
+    return Number.isFinite(n) && n >= 1 && n <= STUDIO_STEP_COUNT ? Math.floor(n) : 1;
   });
   const [validated, setValidated] = useState(() => normalizeValidated(spaInitial?.validated));
   const [campaignGenerationSpec, setCampaignGenerationSpec] = useState(() => {
@@ -630,7 +714,7 @@ export default function ViralWorks() {
   const lastSnapshottedUrlsRef = useRef(null);
   const imageStepRef = useRef(imageStep);
   imageStepRef.current = imageStep;
-  const wasOn3LayoutRef = useRef(false);
+  const wasOnVisualLayoutRef = useRef(false);
 
   useEffect(() => {
     try {
@@ -650,19 +734,17 @@ export default function ViralWorks() {
       1: false,
       2: false,
       3: false,
-      4: false,
-      5: false,
     }));
   }, [campaignGenerationSpec, preparedCampaignSig]);
 
   useLayoutEffect(() => {
-    const on3 = currentStep === 3;
-    if (!on3) {
-      wasOn3LayoutRef.current = false;
+    const onVisual = currentStep === 2;
+    if (!onVisual) {
+      wasOnVisualLayoutRef.current = false;
       return;
     }
-    const justEntered = !wasOn3LayoutRef.current;
-    wasOn3LayoutRef.current = true;
+    const justEntered = !wasOnVisualLayoutRef.current;
+    wasOnVisualLayoutRef.current = true;
     if (!justEntered) return;
 
     const ideaNow = String(campaignData?.idea ?? "").trim();
@@ -763,9 +845,10 @@ export default function ViralWorks() {
 
   useEffect(() => {
     try {
-      sessionStorage.setItem(
+        sessionStorage.setItem(
         SS_SPA_UI_KEY,
         JSON.stringify({
+          studioFlowVersion: STUDIO_FLOW_VERSION,
           currentStep,
           validated,
           step1BrainLaunched,
@@ -775,6 +858,9 @@ export default function ViralWorks() {
           campagneMountKey,
         })
       );
+      // #region agent log
+      fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'770227'},body:JSON.stringify({sessionId:'770227',runId:'run7',hypothesisId:'H19',location:'src/pages/ViralWorks.jsx:847',message:'viralworks_persist_spa_ui',data:{pathname:location.pathname,currentStep,validated,step1BrainLaunched,hasPreparedSig:Boolean(preparedCampaignSig),campagneMountKey},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
     } catch (err) {
       console.warn("[ViralWorks] Persistance session UI studio:", err);
     }
@@ -786,7 +872,16 @@ export default function ViralWorks() {
     campaignGenerationSpec,
     scriptPromptForImage,
     campagneMountKey,
+    location.pathname,
   ]);
+
+  useEffect(() => {
+    return () => {
+      // #region agent log
+      fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'770227'},body:JSON.stringify({sessionId:'770227',runId:'run7',hypothesisId:'H20',location:'src/pages/ViralWorks.jsx:868',message:'viralworks_unmount',data:{pathname:location.pathname,currentStepOnUnmount:currentStep,validatedOnUnmount:validated,hasSpaUiInSessionOnUnmount:Boolean(sessionStorage.getItem(SS_SPA_UI_KEY))},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+    };
+  }, [location.pathname, currentStep, validated]);
 
   useEffect(() => {
     let active = true;
@@ -834,7 +929,53 @@ export default function ViralWorks() {
     setPreparedCampaignSig(serializeCampaignSpecForPrepareGate(next));
     setCampaignGenerationSpec(next);
     setStep1BrainLaunched(true);
-  }, []);
+    lastBrainSnapshotRef.current = snapshot || null;
+
+    const run = async () => {
+      if (scriptGenInFlightRef.current) return;
+      scriptGenInFlightRef.current = true;
+      setScriptGenStatus("running");
+      try {
+        const result = await runStudioScriptRefinement({
+          idea: String(snapshot?.idea ?? "").trim(),
+          campaignData: snapshot || {},
+          session,
+          persistHistory: true,
+          consumeQuota: true,
+        });
+        if (!result.ok) {
+          if (result.code === "credits") {
+            setScriptQuotaModalMessage(
+              hasActiveSubscriptionVw ? SCRIPT_STEP_VIDEO_QUOTA_MSG : SCRIPT_STEP_NON_SUB_MSG
+            );
+            setShowScriptQuotaModal(true);
+          } else if (result.code === "quota") {
+            setScriptQuotaModalMessage(
+              result.message ||
+                (hasActiveSubscriptionVw ? SCRIPT_STEP_VIDEO_QUOTA_MSG : SCRIPT_STEP_NON_SUB_MSG)
+            );
+            setShowScriptQuotaModal(true);
+          } else if (result.code === "validation") {
+            alert(result.message);
+          } else {
+            alert(result.message || "Impossible de générer le script.");
+          }
+          setScriptGenStatus("error");
+          return;
+        }
+        setScriptPromptForImage(result.payload);
+        setValidated((prev) => ({ ...prev, 1: true }));
+        setCurrentStep(2);
+        setScriptGenStatus("idle");
+      } catch (e) {
+        setScriptGenStatus("error");
+        alert(e?.message || "Erreur inattendue pendant la génération du script.");
+      } finally {
+        scriptGenInFlightRef.current = false;
+      }
+    };
+    void run();
+  }, [session, hasActiveSubscriptionVw]);
 
   const handleCampagneFullReset = useCallback(() => {
     try {
@@ -850,6 +991,9 @@ export default function ViralWorks() {
     resetWorkflowUsage();
     setPreparedCampaignSig(null);
     setStep1BrainLaunched(false);
+    setScriptGenStatus("idle");
+    scriptGenInFlightRef.current = false;
+    lastBrainSnapshotRef.current = null;
     setValidated(normalizeValidated({}));
     setCurrentStep(1);
     setScriptPromptForImage(normalizeScriptPayload(""));
@@ -861,20 +1005,8 @@ export default function ViralWorks() {
   const handleValidateAndNext = async () => {
     if (currentStep === 1 && !step1BrainLaunched) return;
 
-    if (currentStep === 2 && session?.user?.id) {
-      const ok = await hasEnoughCredits(SCRIPT_STEP_CREDIT_COST);
-      if (!ok) {
-        setScriptQuotaModalMessage(
-          hasActiveSubscriptionVw ? SCRIPT_STEP_VIDEO_QUOTA_MSG : SCRIPT_STEP_NON_SUB_MSG
-        );
-        setShowScriptQuotaModal(true);
-        return;
-      }
-    }
-
-    // Dans le flow Studio, l'utilisateur peut valider via le bouton global d'étape.
-    // On débite donc ici au passage de l'étape Vidéo vers le récap (une seule fois par workflow).
-    if (currentStep === 4 && session?.user?.id && shouldDebitVideoCredit()) {
+    // Débit workflow studio une seule fois à la validation de l’étape Vidéo (dernière étape).
+    if (currentStep === 3 && session?.user?.id && shouldDebitVideoCredit()) {
       const ok = await hasEnoughCredits(VIDEO_STEP_CREDIT_COST);
       if (!ok) {
         setScriptQuotaModalMessage(
@@ -886,7 +1018,7 @@ export default function ViralWorks() {
 
       const debitResult = await debitCredits(VIDEO_STEP_CREDIT_COST, "video_generation", {
         model: "workflow_studio",
-        step: "validate_step_4_to_5",
+        step: "validate_step_3_final",
       });
 
       if (!debitResult.success) {
@@ -901,15 +1033,21 @@ export default function ViralWorks() {
     }
 
     setValidated((prev) => ({ ...prev, [currentStep]: true }));
-    if (currentStep < 5) {
+    if (currentStep < STUDIO_STEP_COUNT) {
       setCurrentStep(currentStep + 1);
     }
   };
 
   const validateStepBlocked =
-    currentStep === 1 && !step1BrainLaunched;
+    (currentStep === 1 && !step1BrainLaunched) || scriptGenStatus === "running";
 
-  const studioVideoStepActive = location.pathname === "/viralworks" && currentStep === 4;
+  const studioVideoStepActive = location.pathname === "/viralworks" && currentStep === 3;
+
+  useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'770227'},body:JSON.stringify({sessionId:'770227',runId:'run1',hypothesisId:'H5',location:'src/pages/ViralWorks.jsx:1021',message:'viralworks_route_effect',data:{pathname:location.pathname,currentStep},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+  }, [location.pathname, currentStep]);
 
   const imagePageProps = {
     campaignIdea: campaignData?.idea ?? "",
@@ -923,15 +1061,15 @@ export default function ViralWorks() {
     scriptScene1Idea: String(scriptPromptForImage?.scenes?.[0] ?? scriptPromptForImage?.combined ?? ""),
     campaignRevealMode: Boolean(campaignData?.revealMode),
     campaignMicroAnswer: campaignData?.microAnswer ?? null,
-    visualStepActive: currentStep === 3,
+    visualStepActive: currentStep === 2,
     imageStep,
     patchImageStep,
     resetImageStep,
     visualSnapshots,
     onRestoreVisualSnapshot: restoreVisualSnapshot,
     onUseImageAndContinue: () => {
-      setValidated((prev) => ({ ...prev, 3: true }));
-      setCurrentStep(4);
+      setValidated((prev) => ({ ...prev, 2: true }));
+      setCurrentStep(3);
     },
   };
 
@@ -953,11 +1091,11 @@ export default function ViralWorks() {
       <PageTitle
         green="ViralWorks"
         white="Studio"
-        subtitle="Un seul flux pour orchestrer ta campagne vidéo : cerveau VWS, script gagnant, visuel d'accroche et vidéo."
+        subtitle="Un seul flux pour orchestrer ta campagne vidéo : cerveau VWS, visuel d'accroche et vidéo virale."
       />
 
       <div className="studio-panel px-4 py-3 sm:px-6 sm:py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="flex-1 flex flex-wrap gap-3">
+        <div className="flex-1 flex flex-wrap gap-3 vws-step-connector">
           {steps.map((step) => {
             const isActive = currentStep === step.id;
             const isDone = validated[step.id];
@@ -968,20 +1106,20 @@ export default function ViralWorks() {
                 type="button"
                 onClick={() => handleGoToStep(step.id)}
                 disabled={disabled}
-                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs sm:text-sm border transition-all ${
+                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs sm:text-sm transition-all duration-150 ${
                   isActive
-                    ? "bg-cyan-500/15 border-cyan-400/45 text-cyan-100 shadow-[0_0_20px_rgba(34,211,238,0.12)]"
+                    ? "card-vws-active text-emerald-100 rounded-full"
                     : disabled
-                    ? "bg-white/[0.03] border-white/[0.06] text-gray-500 cursor-not-allowed"
-                    : "bg-white/[0.04] border-white/10 text-gray-300 hover:bg-white/[0.08] hover:border-cyan-500/20"
+                    ? "bg-white/[0.03] border border-white/[0.06] text-gray-500 cursor-not-allowed"
+                    : "card-vws text-gray-300 hover:bg-white/[0.06] rounded-full"
                 }`}
               >
                 <span
-                  className={`w-5 h-5 inline-flex items-center justify-center rounded-full text-[10px] font-semibold ${
+                  className={`w-5 h-5 inline-flex items-center justify-center rounded-full text-[10px] font-semibold transition-all duration-150 ${
                     isDone
-                      ? "bg-gradient-to-br from-cyan-500 to-teal-600 text-white"
+                      ? "bg-gradient-to-br from-[var(--vws-primary-top)] to-[var(--vws-primary-deep)] text-white step-disk-vws-done"
                       : isActive
-                      ? "bg-cyan-400/90 text-gray-950"
+                      ? "bg-[var(--vws-primary)] text-gray-950 step-disk-vws-active"
                       : "bg-white/10 text-gray-200"
                   }`}
                 >
@@ -994,7 +1132,7 @@ export default function ViralWorks() {
         </div>
         <div className="flex items-center gap-2 justify-end">
           <span className="text-xs text-gray-400 hidden sm:inline">
-            Étape {currentStep} sur 5
+            Étape {currentStep} sur 3
           </span>
           <button
             type="button"
@@ -1004,79 +1142,81 @@ export default function ViralWorks() {
             disabled={validateStepBlocked}
             title={
               validateStepBlocked
-                ? "Lance d’abord le cerveau VWS avec le bouton vert dans l’étape Campagne."
+                ? scriptGenStatus === "running"
+                  ? "Génération du script en cours…"
+                  : "Lance d’abord le cerveau VWS avec le bouton vert dans l’étape Campagne."
                 : undefined
             }
             className={`w-full sm:w-auto inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold text-center leading-tight transition ${
               validateStepBlocked
                 ? "bg-white/10 text-gray-500 border border-white/10 cursor-not-allowed opacity-70"
-                : "bg-gradient-to-r from-cyan-500 to-teal-500 text-white shadow-lg shadow-cyan-950/35 hover:from-cyan-400 hover:to-teal-400"
+                : "btn-vws-primary"
             }`}
           >
-            {currentStep < 5 ? "Valider cette étape et passer à la suivante" : "Marquer comme terminé"}
+            {currentStep < STUDIO_STEP_COUNT
+              ? "Valider cette étape et passer à la suivante"
+              : "Marquer comme terminé"}
           </button>
         </div>
       </div>
 
+      {scriptGenStatus === "running" ? (
+        <p className="text-xs text-cyan-200/90 -mt-2 sm:ml-1" role="status" aria-live="polite">
+          Génération du script en cours…
+        </p>
+      ) : null}
+
+      {scriptGenStatus === "error" && currentStep === 1 && step1BrainLaunched ? (
+        <div className="flex flex-wrap items-center gap-2 -mt-2 sm:ml-1">
+          <p className="text-xs text-amber-200/90">La génération du script a échoué.</p>
+          <button
+            type="button"
+            onClick={() => {
+              const snap = lastBrainSnapshotRef.current;
+              if (!snap) return;
+              void handleCampaignBrainReady(snap);
+            }}
+            className="text-xs font-semibold text-cyan-300 hover:text-cyan-200 underline underline-offset-2"
+          >
+            Réessayer la génération du script
+          </button>
+        </div>
+      ) : null}
+
       <div className="space-y-6">
-        <section
-          id="campagne"
-          className={currentStep !== 1 ? "hidden" : ""}
-          aria-hidden={currentStep !== 1}
-        >
-          <CampagneVWS
-            key={campagneMountKey}
-            campaignData={campaignData}
-            onCampaignChange={(nextCampaignData) =>
-              setCampaignGenerationSpec((prev) =>
-                applyLegacyCampaignPatchToSpec(prev, nextCampaignData || {})
-              )
-            }
-            onBrainReady={handleCampaignBrainReady}
-            onCampagneFullReset={handleCampagneFullReset}
-          />
-        </section>
-        <section
-          id="script"
-          className={currentStep !== 2 ? "hidden" : ""}
-          aria-hidden={currentStep !== 2}
-        >
-          <PromptAssistant
-            initialIdea={campaignData?.idea ?? ""}
-            sequenceType={campaignData?.sequenceType}
-            dialogueEnabled={campaignData?.dialogueEnabled !== false}
-            campaignData={campaignData}
-            onScriptOutput={setScriptPromptForImage}
-          />
-        </section>
-        <section
-          id="visuel"
-          className={currentStep !== 3 ? "hidden" : ""}
-          aria-hidden={currentStep !== 3}
-        >
-          <ImagePage {...imagePageProps} />
-        </section>
-        <section
-          id="video"
-          className={currentStep !== 4 ? "hidden" : ""}
-          aria-hidden={currentStep !== 4}
-        >
-          <VideoPage
-            studioSequenceType={campaignData?.sequenceType}
-            studioScriptPrompt={scriptPromptForImage}
-            studioImageStep={imageStep}
-            dialogueEnabled={campaignData?.dialogueEnabled !== false}
-            studioCampaignData={campaignData}
-            studioStepActive={studioVideoStepActive}
-          />
-        </section>
-        <section
-          id="recap"
-          className={currentStep !== 5 ? "hidden" : ""}
-          aria-hidden={currentStep !== 5}
-        >
-          <RecapVWS campaignData={campaignData} onStartNewCampaign={handleCampagneFullReset} />
-        </section>
+        {currentStep === 1 ? (
+          <section id="campagne" aria-hidden={false}>
+            <CampagneVWS
+              key={campagneMountKey}
+              campaignData={campaignData}
+              onCampaignChange={(nextCampaignData) =>
+                setCampaignGenerationSpec((prev) =>
+                  applyLegacyCampaignPatchToSpec(prev, nextCampaignData || {})
+                )
+              }
+              onBrainReady={handleCampaignBrainReady}
+              onCampagneFullReset={handleCampagneFullReset}
+            />
+          </section>
+        ) : null}
+        {currentStep === 2 ? (
+          <section id="visuel" aria-hidden={false} className="w-full">
+            <ImagePage {...imagePageProps} />
+          </section>
+        ) : null}
+        {currentStep === 3 ? (
+          <section id="video" aria-hidden={false}>
+            <VideoPage
+              studioSequenceType={campaignData?.sequenceType}
+              studioScriptPrompt={scriptPromptForImage}
+              studioImageStep={imageStep}
+              dialogueEnabled={campaignData?.dialogueEnabled !== false}
+              studioCampaignData={campaignData}
+              studioStepActive={studioVideoStepActive}
+              studioOnStartNewCampaign={handleCampagneFullReset}
+            />
+          </section>
+        ) : null}
       </div>
     </div>
   );

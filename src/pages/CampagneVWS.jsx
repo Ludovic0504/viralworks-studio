@@ -89,7 +89,7 @@ function StabilizationOption({ checked, onChange, label, tooltip }) {
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className="rounded border-white/20 bg-white/5 text-emerald-500 focus:ring-emerald-500/50"
+        className="rounded border-white/20 bg-white/5 text-emerald-500 input-vws-check"
       />
       <span>{label}</span>
       <span
@@ -973,7 +973,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
           <select
             value={profession}
             onChange={(e) => setProfession(e.target.value)}
-            className="w-full rounded-lg border border-white/10 px-3 py-2 text-sm bg-white/5 text-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+            className="w-full rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none input-vws"
             aria-describedby={metierProfile ? "campagne-metier-hint" : undefined}
           >
             <option value="">Choisir un métier...</option>
@@ -1000,7 +1000,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
               setStyleDetails(e.target.value);
               onCampaignChange?.({ profession, idea, styleDetails: e.target.value, tempo, cameraFixed, revealMode, cinematicMovement, selfieMode, sequenceType, dialogueEnabled, microAnswer, tempoCompressionDecision });
             }}
-            className="w-full rounded-lg border border-white/10 px-3 py-2 text-sm bg-white/5 text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+            className="w-full rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none input-vws"
             placeholder={stylePlaceholder}
           />
         </div>
@@ -1020,7 +1020,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
                 ? "Choisis d’abord ton métier pour utiliser cette action."
                 : undefined
             }
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50 transition"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium btn-vws-primary disabled:opacity-50"
           >
             {inspireLoading ? (
               <span className="inline-block w-3 h-3 border-2 border-emerald-400/30 border-t-emerald-400 rounded-full animate-spin" />
@@ -1033,7 +1033,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         <textarea
           value={idea}
           onChange={(e) => setIdea(e.target.value)}
-          className="w-full rounded-lg border border-white/10 p-3 min-h-[120px] text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 bg-white/5 resize-none"
+          className="w-full rounded-lg p-3 min-h-[120px] text-sm text-gray-200 placeholder-gray-500 focus:outline-none resize-none input-vws"
           placeholder="Ex : un architecte explique son nouveau projet à la caméra dans son studio, tout en dessinant les plans sur une tablette..."
         />
       </div>
@@ -1050,7 +1050,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
               setTempo(v);
               onCampaignChange?.({ profession, idea, styleDetails, tempo: v, cameraFixed, revealMode, cinematicMovement, selfieMode, sequenceType, dialogueEnabled, microAnswer, tempoCompressionDecision });
             }}
-            className="w-full rounded-lg border border-white/10 px-3 py-2 text-xs bg-white/5 text-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+            className="w-full rounded-lg px-3 py-2 text-xs text-gray-200 focus:outline-none input-vws"
           >
             <option value="real_time">Comme dans la vraie vie</option>
             <option value="timelapse">Très rapide : le temps défile</option>
@@ -1068,7 +1068,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
               setSequenceType(v);
               onCampaignChange?.({ profession, idea, styleDetails, tempo, cameraFixed, revealMode, cinematicMovement, selfieMode, sequenceType: v, dialogueEnabled, microAnswer, tempoCompressionDecision });
             }}
-            className="w-full rounded-lg border border-white/10 px-3 py-2 text-xs bg-white/5 text-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+            className="w-full rounded-lg px-3 py-2 text-xs text-gray-200 focus:outline-none input-vws"
           >
             <option value="single_8s">Une courte vidéo (8 secondes)</option>
             <option value="three_x_8s">Une vidéo plus longue (plusieurs moments à la suite)</option>
@@ -1167,7 +1167,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
           type="button"
           onClick={() => void runWithAuth(handleRun)}
           disabled={loading}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed transition"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold btn-vws-primary disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Sparkles className="w-4 h-4" />
           {loading ? "Préparation en cours…" : "Préparer ma vidéo"}
@@ -1176,7 +1176,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
           <button
             type="button"
             onClick={() => onCampagneFullReset()}
-            className="px-4 py-2 rounded-lg font-medium bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 transition-all"
+            className="px-4 py-2 rounded-lg font-medium btn-vws-secondary"
           >
             Réinitialiser
           </button>
@@ -1204,10 +1204,10 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
                 key={opt.id}
                 type="button"
                 onClick={() => handleSelectMicroAnswer(opt.id)}
-                className={`px-3 py-1.5 rounded-full text-xs border transition ${
+                className={`px-3 py-1.5 rounded-full text-xs transition-all duration-150 ${
                   microAnswer === opt.id
-                    ? "bg-emerald-500/20 border-emerald-400 text-emerald-300"
-                    : "bg-white/5 border-white/10 text-gray-300 hover:bg-white/10"
+                    ? "card-vws-active text-emerald-300"
+                    : "card-vws text-gray-300"
                 }`}
               >
                 {opt.label}

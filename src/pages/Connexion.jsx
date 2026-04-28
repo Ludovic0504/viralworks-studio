@@ -4,12 +4,14 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import Header from "@/composants/disposition/EnTete";
 import SidebarShell from "@/composants/disposition/Navbar";
 import AuthFormCard from "@/composants/auth/AuthFormCard";
+import { useAuth } from "@/contexte/FournisseurAuth";
 
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const [params] = useSearchParams();
   const [menuOpen, setMenuOpen] = useState(false);
+  const { session } = useAuth();
 
   const next = useMemo(() => {
     const raw = new URLSearchParams(location.search).get("next") || "/";
@@ -28,6 +30,15 @@ export default function Login() {
 
   const [initialError, setInitialError] = useState("");
   const errorParam = useMemo(() => params.get("error"), [params]);
+
+  useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'770227'},body:JSON.stringify({sessionId:'770227',runId:'run2',hypothesisId:'H9',location:'src/pages/Connexion.jsx:34',message:'login_page_session_guard_check',data:{pathname:location.pathname,next,hasSession:Boolean(session?.user?.id)},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    if (session?.user?.id && next !== location.pathname) {
+      navigate(next, { replace: true });
+    }
+  }, [session?.user?.id, next, navigate, location.pathname]);
 
   useEffect(() => {
     if (errorParam === "session_missing") {

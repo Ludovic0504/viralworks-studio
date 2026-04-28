@@ -1083,7 +1083,7 @@ export default function Galerie() {
                 <div className="glass-strong rounded-xl p-4 border border-white/20 backdrop-blur-xl shadow-2xl space-y-2">
                   <button
                     onClick={() => handleDownloadImage(imageUrl, downloadFormat)}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 text-white font-semibold text-sm transition-all shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 hover:scale-105 active:scale-95"
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-white font-semibold text-sm transition-all btn-vws-primary"
                   >
                     <Download className="w-5 h-5" />
                     Télécharger ({downloadFormat.toUpperCase()})
@@ -1153,7 +1153,7 @@ export default function Galerie() {
                   </div>
                   <button
                     onClick={() => handleDownloadImage(imageUrl, downloadFormat)}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-3.5 rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 text-white font-semibold text-sm transition-all shadow-lg shadow-emerald-500/30 active:scale-95"
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3.5 rounded-lg text-white font-semibold text-sm transition-all btn-vws-primary"
                   >
                     <Download className="w-5 h-5" />
                     Télécharger ({downloadFormat.toUpperCase()})

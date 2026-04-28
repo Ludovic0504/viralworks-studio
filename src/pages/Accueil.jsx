@@ -1,9 +1,10 @@
-import { useState, useMemo } from "react";
-import { Link, NavLink, useLocation } from "react-router-dom";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import { ArrowRight, Menu } from "lucide-react";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import Footer from "@/composants/disposition/PiedDePage";
 import SidebarShell from "@/composants/disposition/Navbar";
+import LienNavSync from "@/composants/disposition/LienNavSync";
 
 const navLinks = [
   { path: "/", label: "Accueil" },
@@ -15,10 +16,12 @@ const navLinks = [
 ];
 
 export default function Accueil() {
-  const { session, signOut } = useAuth();
+  const { session, signOut, loading } = useAuth();
+  const hasSession = Boolean(session?.user?.id);
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const wasConnectedRef = useRef(hasSession);
 
   const demoVideoChantierUrl = (import.meta.env.VITE_DEMO_VIDEO_CHANTIER_URL || "").trim();
   const demoVideoMoteurUrl = (import.meta.env.VITE_DEMO_VIDEO_MOTEUR_URL || "").trim();
@@ -48,6 +51,41 @@ export default function Accueil() {
       setSigningOut(false);
     }
   };
+
+  useEffect(() => {
+    if (hasSession) {
+      wasConnectedRef.current = true;
+      return;
+    }
+    if (!loading && !signingOut) {
+      wasConnectedRef.current = false;
+    }
+  }, [hasSession, loading, signingOut]);
+
+  const showConnectedBranch = hasSession || (loading && wasConnectedRef.current);
+
+  useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'770227'},body:JSON.stringify({sessionId:'770227',runId:'run1',hypothesisId:'H4',location:'src/pages/Accueil.jsx:56',message:'accueil_route_effect',data:{pathname:location.pathname,menuOpen},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+  }, [location.pathname, menuOpen]);
+
+  useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'770227'},body:JSON.stringify({sessionId:'770227',runId:'run6',hypothesisId:'H17',location:'src/pages/Accueil.jsx:82',message:'accueil_header_auth_state_ref_mode',data:{pathname:location.pathname,loading,hasSession,hasEmail:Boolean(session?.user?.email),wasConnectedRef:wasConnectedRef.current,showConnectedBranch},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+  }, [location.pathname, loading, hasSession, session, showConnectedBranch]);
+
+  useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'770227'},body:JSON.stringify({sessionId:'770227',runId:'run7',hypothesisId:'H22',location:'src/pages/Accueil.jsx:82',message:'accueil_mounted',data:{pathname:location.pathname},timestamp:Date.now()})}).catch(()=>{});
+    console.warn("[DBG H22] accueil_mounted", { pathname: location.pathname });
+    return () => {
+      fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'770227'},body:JSON.stringify({sessionId:'770227',runId:'run7',hypothesisId:'H22',location:'src/pages/Accueil.jsx:86',message:'accueil_unmounted',data:{pathname:window.location.pathname},timestamp:Date.now()})}).catch(()=>{});
+      console.warn("[DBG H22] accueil_unmounted", { pathname: window.location.pathname });
+    };
+    // #endregion
+  }, []);
 
   return (
     <div className="relative min-h-screen overflow-hidden">
@@ -91,17 +129,17 @@ export default function Accueil() {
         <div className="absolute inset-0 bg-[#0C1116]/30 backdrop-blur-xl" />
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          <Link to="/" className="group z-10 flex-shrink-0">
+          <LienNavSync to="/" className="group z-10 flex-shrink-0">
             <span className="text-xl font-black bg-gradient-to-r from-cyan-300 via-violet-300 to-yellow-300 bg-clip-text text-transparent group-hover:from-cyan-200 group-hover:via-violet-200 group-hover:to-yellow-200 transition-all">
               ViralWorks Studio
             </span>
-          </Link>
+          </LienNavSync>
 
             <nav className="hidden md:flex items-center justify-center gap-6 lg:gap-8 flex-1">
               {navLinks.map((link) => {
                 const active = isActive(link.path);
                 return (
-                  <NavLink
+                  <LienNavSync
                     key={link.path}
                     to={link.path}
                     className={`relative text-sm font-medium transition-all duration-300 whitespace-nowrap ${
@@ -117,16 +155,16 @@ export default function Accueil() {
                         <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-emerald-400" />
                       </>
                     )}
-                  </NavLink>
+                  </LienNavSync>
                 );
               })}
             </nav>
 
             <div className="flex items-center gap-4 z-10 flex-shrink-0">
-              {session ? (
+              {showConnectedBranch ? (
                 <>
                   {session.user?.email && (
-                    <Link
+                    <LienNavSync
                       to="/profil"
                       className="hidden md:flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 border border-white/10 backdrop-blur-sm hover:bg-white/10 hover:border-white/20 transition-all cursor-pointer group"
                       title="Voir mon profil"
@@ -135,7 +173,7 @@ export default function Accueil() {
                       <span className="text-xs text-gray-300 font-medium truncate max-w-[120px] group-hover:text-gray-200 transition-colors">
                         {session.user.email.split('@')[0]}
                       </span>
-                    </Link>
+                    </LienNavSync>
                   )}
                   <button
                     onClick={handleLogout}
@@ -147,12 +185,12 @@ export default function Accueil() {
                   </button>
                 </>
               ) : (
-                <Link
+                <LienNavSync
                   to="/login"
-                  className="hidden md:flex px-6 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-lg hover:from-emerald-400 hover:to-emerald-300 transition-all shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_30px_rgba(16,185,129,0.4)]"
+                  className="hidden md:flex px-6 py-2.5 text-sm font-semibold rounded-lg btn-vws-primary"
                 >
                   Connexion
-                </Link>
+                </LienNavSync>
               )}
               <button
                 type="button"
@@ -215,13 +253,13 @@ export default function Accueil() {
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link
+            <LienNavSync
               to={session ? "/viralworks" : "/login"}
-              className="group inline-flex items-center gap-3 px-8 py-4 text-lg font-semibold text-white bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-xl hover:from-emerald-400 hover:to-emerald-300 transition-all duration-300 shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_30px_rgba(16,185,129,0.5)] hover:scale-105 active:scale-95"
+              className="group inline-flex items-center gap-3 px-8 py-4 text-lg font-semibold rounded-xl transition-all duration-300 btn-vws-primary"
             >
               <span>{session ? "Créer ma vidéo" : "Se connecter"}</span>
               <ArrowRight className="w-5 h-5 transition-transform duration-300 group-hover:translate-x-2" />
-            </Link>
+            </LienNavSync>
           </div>
         </div>
       </div>

@@ -151,6 +151,8 @@ export interface RefinePromptInput {
   clarifyMode?: "MODE_A" | "MODE_B" | null;
   clarifyAnswer?: string | null;
   proceedAnyway?: boolean;
+  /** Aligné sur campaign.clarification.causal_agent : contrainte explicite dans le prompt final si défini. */
+  causalAgentSelection?: "visible" | "automatic" | null;
 }
 
 export interface InferGlobalIntentInput {
@@ -459,6 +461,11 @@ THEN:
 - ALLOW human/hand/tool presence at t=0.
 - Enforce "primary actor persistence": the actor remains visible and active throughout.
 - Transformation unfolds progressively after the trigger action.
+
+CAUSAL AGENT CONSTRAINTS (read the user payload line that starts with "Causal:"):
+- If that line is exactly "Causal: automatic", section 8 (Important) of the final Veo3 prompt MUST include this exact sentence on its own line: No visible people, hands, tools, or machines at any time
+- If that line is exactly "Causal: visible", section 8 (Important) MUST include this exact sentence on its own line: Show visible people or machines causing the transformation
+- If that line is exactly "Causal: null", do NOT add either sentence above based on causal agent alone; infer visibility of people/machines only from MODE A / MODE B and the idea text as usual.
 
 TEMPORAL NORMALIZATION RULE:
 When an input idea contains instantaneous or explosive concepts, you MUST automatically reinterpret them as progressive, time-distributed transformations.
@@ -1379,6 +1386,10 @@ export async function clarifyIdea(input: ClarifyIdeaInput): Promise<ClarifyIdeaR
 }
 
 export async function refinePrompt(input: RefinePromptInput): Promise<RefinementResult> {
+  const causalPayload =
+    input.causalAgentSelection === "automatic" || input.causalAgentSelection === "visible"
+      ? input.causalAgentSelection
+      : "null";
   const payload = [
     `Job: ${input.jobType}`,
     `User-Idea (FR-Signal): ${input.mainIdea}`,
@@ -1390,6 +1401,7 @@ export async function refinePrompt(input: RefinePromptInput): Promise<Refinement
     `ClarifyMode: ${input.clarifyMode || "none"}`,
     `ClarifyAnswer: ${input.clarifyAnswer || "none"}`,
     `ProceedAnyway: ${Boolean(input.proceedAnyway)}`,
+    `Causal: ${causalPayload}`,
   ].join("\n");
 
   const raw = await generateResponse(payload, REFINEMENT_SYSTEM_INSTRUCTION, {

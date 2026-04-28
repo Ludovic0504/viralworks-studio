@@ -986,7 +986,7 @@ export default function ImagePage({
 
   const interactionPanel = (
     <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-4 sm:px-5 sm:py-5">
-      <div className="mx-auto flex max-w-6xl flex-col gap-3 sm:flex-row sm:items-end">
+      <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-end">
         <div className="min-w-0 flex-1">
           <div className="mb-1.5 flex items-center justify-between gap-3">
             <label className="block text-[10px] font-semibold uppercase tracking-wider text-gray-500">
@@ -1085,7 +1085,7 @@ export default function ImagePage({
   );
 
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-10">
+    <>
       <QuotaBlockedModal
         open={showQuotaModal}
         title={hasActiveSubscription ? "Quota mensuel épuisé" : "Accès abonnement requis"}
@@ -1099,93 +1099,94 @@ export default function ImagePage({
             : "/boutique?section=subscription";
         }}
       />
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
-        <PageTitle
-          green="Visuel"
-          white="d'accroche"
-          subtitle="Choisis l'image qui arrête le scroll avant ta vidéo."
-        />
-        <div className="w-full sm:w-72 space-y-2 shrink-0">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-gray-300">Étape 2 sur 3 · Visuel d'accroche</span>
-          </div>
-          <div className="w-full studio-step-rail">
-            <div className="h-full w-2/3 studio-step-rail-fill" />
-          </div>
-          <div className="relative flex flex-col gap-2" ref={historyPanelRef}>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setShowSystemVideo(true)}
-                className="studio-toolbar-btn flex-1 min-w-0 sm:flex-none"
-              >
-                <BookOpen className="w-3.5 h-3.5 shrink-0 text-cyan-400" />
-                <span className="truncate">Explication du système</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setHistoryOpen((o) => !o)}
-                disabled={!onRestoreVisualSnapshot || visualSnapshots.length === 0}
-                title={
-                  visualSnapshots.length === 0
-                    ? "Aucune grille enregistrée dans cette session (génère ou modifie d’abord des images)"
-                    : "Restaurer une grille ou un état visuel enregistré"
-                }
-                className="studio-toolbar-btn inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium text-gray-400 hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-gray-400 border border-white/10 bg-white/[0.02]"
-              >
-                <History className="h-3.5 w-3.5 text-cyan-500/90" />
-                Historique
-              </button>
+      <div className="studio-panel w-full max-w-none p-5 sm:p-6 space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+          <PageTitle
+            green="Visuel"
+            white="d'accroche"
+            subtitle="Choisis l'image qui arrête le scroll avant ta vidéo."
+          />
+          <div className="w-full sm:w-72 space-y-2 shrink-0">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-gray-300">Étape 2 sur 3 · Visuel d'accroche</span>
             </div>
-            {historyOpen && visualSnapshots.length > 0 && (
-              <div className="absolute right-0 top-full z-30 mt-1 w-[min(100vw-2rem,280px)] rounded-xl border border-white/12 bg-gray-950/95 p-2 shadow-xl shadow-black/50 backdrop-blur-md">
-                <p className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-                  Sessions visuelles
-                </p>
-                <ul className="max-h-64 space-y-1 overflow-y-auto">
-                  {visualSnapshots.map((entry) => {
-                    const thumb = entry.step?.lastGeneratedImages?.[0];
-                    const n = entry.step?.lastGeneratedImages?.length ?? 0;
-                    return (
-                      <li key={entry.id}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            onRestoreVisualSnapshot(entry);
-                            setHistoryOpen(false);
-                          }}
-                          className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition hover:bg-white/[0.06]"
-                        >
-                          {thumb ? (
-                            <img
-                              src={thumb}
-                              alt=""
-                              className="h-10 w-10 shrink-0 rounded-md border border-white/10 object-cover"
-                            />
-                          ) : (
-                            <div className="h-10 w-10 shrink-0 rounded-md border border-white/10 bg-white/5" />
-                          )}
-                          <span className="min-w-0 flex-1">
-                            <span className="block text-xs font-medium text-gray-200">
-                              {formatVisualSnapshotLabel(entry.t)}
-                            </span>
-                            <span className="block text-[10px] text-gray-500">
-                              {n} variante{n > 1 ? "s" : ""}
-                              {typeof entry.step?.selectedImageIndex === "number"
-                                ? ` · sélection #${(entry.step.selectedImageIndex ?? 0) + 1}`
-                                : ""}
-                            </span>
-                          </span>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
+            <div className="w-full studio-step-rail">
+              <div className="h-full w-2/3 studio-step-rail-fill" />
+            </div>
+            <div className="relative flex flex-col gap-2" ref={historyPanelRef}>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowSystemVideo(true)}
+                  className="studio-toolbar-btn flex-1 min-w-0 sm:flex-none"
+                >
+                  <BookOpen className="w-3.5 h-3.5 shrink-0 text-cyan-400" />
+                  <span className="truncate">Explication du système</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHistoryOpen((o) => !o)}
+                  disabled={!onRestoreVisualSnapshot || visualSnapshots.length === 0}
+                  title={
+                    visualSnapshots.length === 0
+                      ? "Aucune grille enregistrée dans cette session (génère ou modifie d’abord des images)"
+                      : "Restaurer une grille ou un état visuel enregistré"
+                  }
+                  className="studio-toolbar-btn inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium text-gray-400 hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-gray-400 border border-white/10 bg-white/[0.02]"
+                >
+                  <History className="h-3.5 w-3.5 text-cyan-500/90" />
+                  Historique
+                </button>
               </div>
-            )}
+              {historyOpen && visualSnapshots.length > 0 && (
+                <div className="absolute right-0 top-full z-30 mt-1 w-[min(100vw-2rem,280px)] rounded-xl border border-white/12 bg-gray-950/95 p-2 shadow-xl shadow-black/50 backdrop-blur-md">
+                  <p className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                    Sessions visuelles
+                  </p>
+                  <ul className="max-h-64 space-y-1 overflow-y-auto">
+                    {visualSnapshots.map((entry) => {
+                      const thumb = entry.step?.lastGeneratedImages?.[0];
+                      const n = entry.step?.lastGeneratedImages?.length ?? 0;
+                      return (
+                        <li key={entry.id}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onRestoreVisualSnapshot(entry);
+                              setHistoryOpen(false);
+                            }}
+                            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition hover:bg-white/[0.06]"
+                          >
+                            {thumb ? (
+                              <img
+                                src={thumb}
+                                alt=""
+                                className="h-10 w-10 shrink-0 rounded-md border border-white/10 object-cover"
+                              />
+                            ) : (
+                              <div className="h-10 w-10 shrink-0 rounded-md border border-white/10 bg-white/5" />
+                            )}
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-xs font-medium text-gray-200">
+                                {formatVisualSnapshotLabel(entry.t)}
+                              </span>
+                              <span className="block text-[10px] text-gray-500">
+                                {n} variante{n > 1 ? "s" : ""}
+                                {typeof entry.step?.selectedImageIndex === "number"
+                                  ? ` · sélection #${(entry.step.selectedImageIndex ?? 0) + 1}`
+                                  : ""}
+                              </span>
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      </div>
 
       {/* 1. Configuration : format + variantes */}
       <div className="mb-6 flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-4 sm:gap-8 rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-3">
@@ -1207,7 +1208,7 @@ export default function ImagePage({
               </button>
             ))}
           </div>
-        </div>
+      </div>
         <div className="flex flex-col gap-1.5">
           <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Variantes</span>
           <div className="inline-flex rounded-xl border border-white/10 bg-black/20 p-1 gap-0.5">
@@ -1227,10 +1228,10 @@ export default function ImagePage({
             ))}
           </div>
         </div>
-      </div>
+        </div>
 
       {/* 2. Introduction (hero) — sans cadre, sur le fond de page */}
-      <section className="mb-8 max-w-2xl mx-auto px-4 text-center">
+      <section className="text-center">
         {ideaReadyBadge && (
           <span className="mb-4 inline-flex rounded-full border border-cyan-400/35 bg-cyan-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-cyan-200">
             Idée prête à être illustrée
@@ -1246,8 +1247,8 @@ export default function ImagePage({
       </section>
 
       {/* 3. Zone images : aperçu principal + variantes à droite */}
-      <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-stretch lg:justify-center">
-        <div className="relative min-h-[280px] flex-1 overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.04] to-black/20 lg:max-w-[min(100%,520px)]">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch">
+        <div className="relative min-h-[280px] min-w-0 flex-1 overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.04] to-black/20">
           {busy && (
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/70 px-6">
               <Sparkles className="mb-3 h-8 w-8 animate-pulse text-cyan-400" />
@@ -1274,10 +1275,10 @@ export default function ImagePage({
               <p className="text-center text-sm text-gray-500">Tes visuels générés s’afficheront ici.</p>
             </div>
           )}
-        </div>
+      </div>
 
         {lastGeneratedImages?.length ? (
-          <div className="flex w-full flex-row gap-2 overflow-x-auto pb-1 lg:w-36 lg:flex-col lg:overflow-y-auto lg:overflow-x-visible lg:pb-0 lg:max-h-[min(72vh,680px)]">
+          <div className="flex w-full flex-row gap-2 overflow-x-auto pb-1 lg:w-44 lg:flex-col lg:overflow-y-auto lg:overflow-x-visible lg:pb-0 lg:max-h-[min(72vh,680px)]">
             {lastGeneratedImages.map((url, index) => (
               <button
                 key={`${url}-${index}`}
@@ -1295,7 +1296,7 @@ export default function ImagePage({
                     : "border-white/10 opacity-90 hover:border-white/25 hover:opacity-100"
                 }`}
               >
-                <div className="aspect-[9/16] w-24 sm:w-28 lg:w-full lg:aspect-square">
+                <div className="aspect-[9/16] w-24 sm:w-28 lg:w-full lg:aspect-[9/16]">
                   <img src={url} alt="" className="h-full w-full object-cover" loading="lazy" />
                 </div>
                 <span
@@ -1312,78 +1313,79 @@ export default function ImagePage({
             ))}
           </div>
         ) : null}
-      </div>
-
-      {/* 4. Zone d’interaction principale */}
-      <div className="mb-8">{interactionPanel}</div>
-
-      {/* 5. Options avancées — en bas, discret */}
-      <div className="mt-2 border-t border-white/[0.06] pt-6">
-        <div className="flex justify-center">
-          <label className="inline-flex cursor-pointer items-center gap-2 text-[11px] text-gray-600 hover:text-gray-500 select-none">
-            <input
-              type="checkbox"
-              className="rounded border-white/15 bg-white/[0.04] text-cyan-600 focus:ring-cyan-500/30"
-              checked={showAdvancedOptions}
-              onChange={(e) => setShowAdvancedOptions(e.target.checked)}
-            />
-            <Settings2 className="w-3 h-3 opacity-60" />
-            Options avancées
-          </label>
         </div>
 
-        {showAdvancedOptions && (
-          <div className="mt-4 space-y-4 rounded-xl border border-amber-500/15 bg-amber-500/[0.03] p-4 sm:p-5">
-            <p className="text-[11px] text-amber-200/70">
-              Réservé aux utilisateurs expérimentés. Le champ principal suffit dans la plupart des cas.
-            </p>
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-300">Prompt complet (envoyé pour la génération)</label>
-              <textarea
-                value={prompt}
-                onChange={(e) => patchImageStep({ prompt: e.target.value })}
-                maxLength={1500}
-                rows={5}
-                className="w-full rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/40"
+      {/* 4. Zone d’interaction principale */}
+      <div>{interactionPanel}</div>
+
+      {/* 5. Options avancées — en bas, discret */}
+      <div className="border-t border-white/[0.06] pt-6">
+          <div className="flex justify-center">
+            <label className="inline-flex cursor-pointer items-center gap-2 text-[11px] text-gray-600 hover:text-gray-500 select-none">
+              <input
+                type="checkbox"
+                className="rounded border-white/15 bg-white/[0.04] text-cyan-600 focus:ring-cyan-500/30"
+                checked={showAdvancedOptions}
+                onChange={(e) => setShowAdvancedOptions(e.target.checked)}
               />
-            </div>
-            <details className="rounded-xl border border-white/10 bg-black/20">
-              <summary className="cursor-pointer list-none px-4 py-3 text-xs font-medium text-gray-400 [&::-webkit-details-marker]:hidden">
-                Paramètres techniques (optionnels)
-              </summary>
-              <div className="space-y-4 border-t border-white/10 px-4 py-4">
-                <p className="text-[11px] leading-relaxed text-amber-200/70">
-                  Modifier ces paramètres peut impacter le résultat (nombre de propositions, cadrage, image de référence).
-                </p>
-                <div>
-                  <span className="text-[10px] uppercase tracking-wider text-gray-500">Image de référence</span>
-                  <div className="mt-2">
-                    {refCharDataUrl ? (
-                      <div className="flex items-center gap-3">
-                        <img src={refCharDataUrl} alt="" className="h-20 w-20 rounded-lg object-cover border border-white/10" />
-                        <button type="button" onClick={resetRef} className="text-xs text-gray-400 underline">
-                          Retirer
+              <Settings2 className="w-3 h-3 opacity-60" />
+              Options avancées
+            </label>
+          </div>
+
+          {showAdvancedOptions && (
+            <div className="mt-4 space-y-4 rounded-xl border border-amber-500/15 bg-amber-500/[0.03] p-4 sm:p-5">
+              <p className="text-[11px] text-amber-200/70">
+                Réservé aux utilisateurs expérimentés. Le champ principal suffit dans la plupart des cas.
+              </p>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-gray-300">Prompt complet (envoyé pour la génération)</label>
+                <textarea
+                  value={prompt}
+                  onChange={(e) => patchImageStep({ prompt: e.target.value })}
+                  maxLength={1500}
+                  rows={5}
+                  className="w-full rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/40"
+                />
+              </div>
+              <details className="rounded-xl border border-white/10 bg-black/20">
+                <summary className="cursor-pointer list-none px-4 py-3 text-xs font-medium text-gray-400 [&::-webkit-details-marker]:hidden">
+                  Paramètres techniques (optionnels)
+                </summary>
+                <div className="space-y-4 border-t border-white/10 px-4 py-4">
+                  <p className="text-[11px] leading-relaxed text-amber-200/70">
+                    Modifier ces paramètres peut impacter le résultat (nombre de propositions, cadrage, image de référence).
+                  </p>
+                  <div>
+                    <span className="text-[10px] uppercase tracking-wider text-gray-500">Image de référence</span>
+                    <div className="mt-2">
+                      {refCharDataUrl ? (
+                        <div className="flex items-center gap-3">
+                          <img src={refCharDataUrl} alt="" className="h-20 w-20 rounded-lg object-cover border border-white/10" />
+                          <button type="button" onClick={resetRef} className="text-xs text-gray-400 underline">
+                            Retirer
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={onPickRefImage}
+                          className="rounded-lg border border-dashed border-white/20 px-4 py-3 text-xs text-gray-400 hover:border-cyan-500/30"
+                        >
+                          Ajouter une image de référence
                         </button>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={onPickRefImage}
-                        className="rounded-lg border border-dashed border-white/20 px-4 py-3 text-xs text-gray-400 hover:border-cyan-500/30"
-                      >
-                        Ajouter une image de référence
-                      </button>
-                    )}
-                    <input ref={fileInputRef} type="file" accept="image/*" onChange={onFileChange} className="hidden" />
+                      )}
+                      <input ref={fileInputRef} type="file" accept="image/*" onChange={onFileChange} className="hidden" />
+                    </div>
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    Modèle : <span className="text-gray-300">{model}</span>
                   </div>
                 </div>
-                <div className="text-xs text-gray-500">
-                  Modèle : <span className="text-gray-300">{model}</span>
-                </div>
-              </div>
-            </details>
-          </div>
-        )}
+              </details>
+            </div>
+          )}
+      </div>
       </div>
 
       {showSystemVideo && (
@@ -1425,6 +1427,6 @@ export default function ImagePage({
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

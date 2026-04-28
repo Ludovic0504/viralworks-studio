@@ -24,6 +24,8 @@ import {
   getSafeScenes,
   normalizeCampaignGenerationSpec,
 } from "@/bibliotheque/campaignGenerationSpec";
+import { buildVeo3Prompt } from "@/bibliotheque/video-translators/veo3";
+import { isHttpUrl, downloadUrlFile } from "@/bibliotheque/downloadRemoteAsset";
 import PageTitle from "../composants/interface/TitrePage";
 import {
   validateIdeaLength,
@@ -46,6 +48,7 @@ import {
   Settings2,
   ChevronDown,
   Upload,
+  Download,
 } from "lucide-react";
 
 const VIDEO_GENERATION_COST = 1;
@@ -99,14 +102,14 @@ function QuotaExhaustedNotice({ open, title, message, actionLabel, onClose, onGo
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10 transition-all"
+              className="px-4 py-2 rounded-lg btn-vws-secondary"
             >
               Fermer
             </button>
             <button
               type="button"
               onClick={onGoToPacks}
-              className="px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-500 to-teal-500 text-white font-semibold hover:from-cyan-400 hover:to-teal-400 transition-all"
+              className="px-4 py-2 rounded-lg btn-vws-primary font-semibold"
             >
               {actionLabel || "Aller vers Packs vidéos"}
             </button>
@@ -490,10 +493,6 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function isHttpUrl(value) {
-  return /^https?:\/\//i.test(String(value || "").trim());
-}
-
 async function callHailuoVideoApi(payload, accessToken) {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
   const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -594,6 +593,8 @@ export default function Video({
   dialogueEnabled = true,
   /** false quand l’étape Vidéo studio n’est pas visible (autre route ou autre onglet) — évite effets inutiles. */
   studioStepActive = true,
+  /** Reset complet du flux ViralWorks (équivalent ancien Récap « Faire une autre vidéo »). */
+  studioOnStartNewCampaign,
 } = {}) {
   const [tab, setTab] = useState("veo3");
   const { session } = useAuth();
@@ -655,6 +656,7 @@ export default function Video({
               studioCampaignData={studioCampaignData}
               dialogueEnabled={dialogueEnabled}
               studioStepActive={studioStepActive}
+              studioOnStartNewCampaign={studioOnStartNewCampaign}
             />
           ) : (
             <HailuoVideoForm onCreditsUpdate={loadCredits} studioImageStep={studioImageStep} dialogueEnabled={dialogueEnabled} />
@@ -666,7 +668,7 @@ export default function Video({
         </div>
       </div>
 
-      <details className="mt-8 rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 sm:px-5 open:border-white/10 open:bg-white/[0.03] transition-colors">
+      <details className="mt-8 rounded-xl card-vws px-4 py-3 sm:px-5 open:border-white/15 transition-colors">
         <summary className="flex cursor-pointer list-none items-center gap-2 text-xs text-gray-500 hover:text-gray-400 select-none [&::-webkit-details-marker]:hidden">
           <Settings2 className="w-3.5 h-3.5 shrink-0 opacity-70" aria-hidden />
           <span>
@@ -733,9 +735,9 @@ function TabButton({ active, onClick, children }) {
   return (
     <button
       onClick={onClick}
-      className={`px-4 py-2 text-sm font-medium transition-all flex items-center gap-2 rounded-lg ${
+      className={`px-4 py-2 text-sm font-medium transition-all duration-150 flex items-center gap-2 rounded-lg ${
         active
-          ? "bg-cyan-500/20 text-cyan-100 border border-cyan-400/45 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+          ? "card-vws-active text-emerald-100"
           : "text-gray-400 hover:text-gray-200 hover:bg-white/[0.06] border border-transparent"
       }`}
     >
@@ -765,6 +767,7 @@ function VEO3VideoForm({
   studioCampaignData,
   dialogueEnabled = true,
   studioStepActive = true,
+  studioOnStartNewCampaign,
 }) {
   const { session } = useAuth();
   const navigate = useNavigate();
@@ -1000,10 +1003,6 @@ function VEO3VideoForm({
       return;
     }
 
-    let finalIdea = scriptTrim;
-    if (sceneIndexForGeneration === 0 && hookVisual.trim()) {
-      finalIdea = `${finalIdea}\n\nVisuel d'accroche :\n${hookVisual.trim()}`;
-    }
     let manualDialogueLine = "";
     if (dialogueEnabled && !dialogueAuto) {
       if (sceneCount > 1 && dialoguePerScene) {
@@ -1011,11 +1010,18 @@ function VEO3VideoForm({
       } else {
         manualDialogueLine = dialogueGlobal.trim();
       }
-      if (manualDialogueLine) {
-        finalIdea = `${finalIdea}\n\nÀ dire à l’écran : ${manualDialogueLine}`;
-      }
     }
-    const lenCheck = validateIdeaLength(finalIdea);
+    const hookPromptForValidation =
+      String(hookVisual || "").trim() ||
+      String(validatedHookImage?.prompt || "").trim();
+    let ideaForValidation = scriptTrim;
+    if (sceneIndexForGeneration === 0 && hookPromptForValidation) {
+      ideaForValidation = `${ideaForValidation}\n\nVisuel d'accroche :\n${hookPromptForValidation}`;
+    }
+    if (manualDialogueLine) {
+      ideaForValidation = `${ideaForValidation}\n\nÀ dire à l’écran : ${manualDialogueLine}`;
+    }
+    const lenCheck = validateIdeaLength(ideaForValidation);
     if (!lenCheck.ok) {
       alert(lenCheck.message);
       return;
@@ -1067,21 +1073,37 @@ function VEO3VideoForm({
       setProgress(25);
       setProgressMessage("Création de la tâche vidéo...");
 
+      const durationSec =
+        duration === "4s" ? 4 : duration === "6s" ? 6 : 8;
+
       const selectedHookImageUrl = String(validatedHookImage?.url || "").trim();
       const selectedHookPrompt = String(validatedHookImage?.prompt || "").trim();
+      const hookPromptLive =
+        String(hookVisual || "").trim() ||
+        selectedHookPrompt ||
+        canonicalSpec.creative.hook_visual.prompt_text ||
+        "";
       const finalAspectRatio = selectedHookImageUrl
         ? (derivedFormat === "16:9" ? "16:9" : "9:16")
         : "9:16";
       const finalGenerationMode = selectedHookImageUrl ? "image_to_video" : "text_to_video";
+      const baseScenes = getSafeScenes(canonicalSpec);
+      const dialogueForActiveScene =
+        dialogueEnabled && !dialogueAuto ? manualDialogueLine : "";
+      const mergedScenes = [0, 1, 2].map((i) => ({
+        ...baseScenes[i],
+        ...(i === sceneIndexForGeneration ? { dialogue_text: dialogueForActiveScene } : {}),
+      }));
       const generationOwnedSpec = normalizeCampaignGenerationSpec({
         ...canonicalSpec,
         creative: {
           ...canonicalSpec.creative,
+          scenes: mergedScenes,
           hook_visual: {
             ...canonicalSpec.creative.hook_visual,
             // Owner final at generation time: Video.jsx
             selected_image_url: selectedHookImageUrl,
-            prompt_text: selectedHookPrompt || canonicalSpec.creative.hook_visual.prompt_text || "",
+            prompt_text: hookPromptLive,
           },
         },
         rendering: {
@@ -1089,6 +1111,12 @@ function VEO3VideoForm({
           // Owner final unique: Video.jsx
           aspect_ratio: finalAspectRatio,
           generation_mode: finalGenerationMode,
+          duration_seconds: durationSec,
+          audio: {
+            ...canonicalSpec.rendering.audio,
+            dialogue_enabled: dialogueEnabled,
+            music_style: audioEnabled ? musicStyle : "none",
+          },
         },
         provider_overrides: {
           ...canonicalSpec.provider_overrides,
@@ -1104,32 +1132,17 @@ function VEO3VideoForm({
         },
       });
 
-      const fullPrompt = [
-        `Idée: ${finalIdea}`,
-        `Format: ${generationOwnedSpec.rendering.aspect_ratio} (aligné sur le visuel d’accroche)`,
-        `Durée: ${duration}`,
-        generationOwnedSpec.creative.hook_visual.selected_image_url
-          ? "Start from the exact selected hook image as the first frame and keep identity, composition and environment continuity from that initial state."
-          : "",
-        `audio_mode: ${dialogueEnabled ? "dialogue" : "silent"}`,
-        !dialogueEnabled
-          ? "Silent constraints: no dialogue, no speech, no voice over, no talking, no lip sync, no TTS, visual-only sequence."
-          : "",
-      ]
-        .filter(Boolean)
-        .join("\n");
-      const durationSec =
-        duration === "4s" ? 4 : duration === "6s" ? 6 : 8;
+      const { prompt: fullPrompt, dialogueText } = buildVeo3Prompt(
+        generationOwnedSpec,
+        sceneIndexForGeneration
+      );
+      console.log('[DEBUG dialogueText]', dialogueText);
+      console.log("[DEBUG fullPrompt]", fullPrompt);
       const veoClientOpts = { getAccessToken: getSessionAccessTokenForVertexVeo };
 
       const { taskId, model: veoModel } = await createVertexVeoVideoTask(
-        {
-          prompt: fullPrompt,
-          durationSeconds: durationSec,
-          aspectRatio: generationOwnedSpec.rendering.aspect_ratio === "16:9" ? "16:9" : "9:16",
-          initialImageUrl: generationOwnedSpec.creative.hook_visual.selected_image_url || undefined,
-          generationMode: generationOwnedSpec.rendering.generation_mode,
-        },
+        generationOwnedSpec,
+        fullPrompt,
         session?.access_token,
         veoClientOpts
       );
@@ -1161,12 +1174,12 @@ function VEO3VideoForm({
         setProgress(90);
         setProgressMessage("Finalisation de la piste sonore…");
         try {
-          const voiceText =
-            dialogueAuto
-              ? scriptForGeneration.trim()
-              : (manualDialogueLine || scriptForGeneration.trim());
+          const voiceText = dialogueAuto
+            ? scriptForGeneration.trim()
+            : dialogueText ?? (manualDialogueLine || scriptForGeneration.trim());
           const postToken =
             (await getSessionAccessTokenForVertexVeo()) || session.access_token;
+          console.log('[DEBUG voiceText]', voiceText);
           const postData = await callVideoPostprocessApi(
             {
               video_url: videoUrl,
@@ -1258,6 +1271,44 @@ function VEO3VideoForm({
     setOutput("");
     setGenerationError("");
     setCopied(false);
+  };
+
+  const downloadPromptVideoExport = () => {
+    const text = recapInputForHistory().trim();
+    if (!text) {
+      alert(
+        "Aucun prompt vidéo enregistré à télécharger. Passe par l’étape Vidéo virale d’abord."
+      );
+      return;
+    }
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `viralworks-prompt-video-${new Date().toISOString().slice(0, 10)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadHookImageExport = async () => {
+    const hookImageUrl = String(validatedHookImage?.url || "").trim();
+    if (!hookImageUrl) {
+      alert("Aucune image validée à télécharger.");
+      return;
+    }
+    await downloadUrlFile(
+      hookImageUrl,
+      `viralworks-image-${new Date().toISOString().slice(0, 10)}.png`
+    );
+  };
+
+  const downloadVideoFileExport = async () => {
+    const url = String(output || "").trim();
+    if (!isHttpUrl(url)) {
+      alert("Aucune vidéo finale téléchargeable pour le moment.");
+      return;
+    }
+    await downloadUrlFile(url, `viralworks-video-${new Date().toISOString().slice(0, 10)}.mp4`);
   };
 
   const handleValidate = async () => {
@@ -1395,9 +1446,9 @@ function VEO3VideoForm({
   };
 
   const tabButtonClass = (selected) =>
-    `px-3 py-2 rounded-md text-xs font-medium border transition-all whitespace-nowrap ${
+    `px-3 py-2 rounded-md text-xs font-medium border transition-all duration-150 whitespace-nowrap ${
       selected
-        ? "bg-emerald-500/25 text-emerald-200 border-emerald-500/50 shadow-[0_0_12px_rgba(16,185,129,0.15)]"
+        ? "card-vws-active text-emerald-200"
         : "bg-transparent text-gray-400 border-transparent hover:text-gray-200 hover:bg-white/5"
     }`;
 
@@ -1419,7 +1470,7 @@ function VEO3VideoForm({
             Chaque partie du parcours devient un clip vidéo. Les vidéos longues enchaînent plusieurs moments
             (début, transformation, résultat). Le format de la vidéo suit automatiquement ton visuel d’accroche.
           </p>
-          <span className="shrink-0 inline-flex items-center text-xs font-medium px-3 py-1.5 rounded-lg bg-white/10 border border-white/15 text-emerald-200/95 whitespace-nowrap self-start">
+          <span className="shrink-0 inline-flex items-center text-xs font-medium px-3 py-1.5 rounded-lg badge-vws text-emerald-200/95 whitespace-nowrap self-start">
             {sceneCount === 1 ? "1 moment" : "3 moments"}
           </span>
         </div>
@@ -1456,7 +1507,7 @@ function VEO3VideoForm({
           {showScene1Dual ? (
             <>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 items-stretch">
-                <div className="flex flex-col min-w-0 min-h-[200px] rounded-lg border border-white/10 bg-white/[0.04] p-4">
+                <div className="flex flex-col min-w-0 min-h-[200px] rounded-xl card-vws p-4">
                   <label className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
                     <BookOpen className="w-4 h-4 text-emerald-400 shrink-0" />
                     Ce que montre la scène
@@ -1539,7 +1590,7 @@ function VEO3VideoForm({
               </p>
             </>
           ) : (
-            <div className="flex flex-col min-w-0 space-y-3 rounded-lg border border-white/10 bg-white/[0.04] p-4">
+            <div className="flex flex-col min-w-0 space-y-3 rounded-xl card-vws p-4">
               <label className="block text-sm font-medium text-gray-300 flex items-center gap-2">
                 <BookOpen className="w-4 h-4 text-emerald-400" />
                 Ce que montre la scène — {sceneTabLabels[activeTab] ?? `Partie ${activeTab + 1}`}
@@ -1577,7 +1628,7 @@ function VEO3VideoForm({
             <p className="text-xs text-amber-300/90 leading-relaxed">Dialogue : Désactivé</p>
           ) : null}
 
-          <details className="rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3 sm:px-5 open:border-white/12 open:bg-white/[0.03] transition-colors">
+          <details className="rounded-xl card-vws px-4 py-3 sm:px-5 open:border-white/15 transition-colors">
             <summary className="flex cursor-pointer list-none items-center gap-2 text-xs text-gray-400 hover:text-gray-300 select-none [&::-webkit-details-marker]:hidden">
               <ChevronDown className="w-3.5 h-3.5 shrink-0 opacity-70" aria-hidden />
               <Settings2 className="w-3.5 h-3.5 shrink-0 opacity-70" aria-hidden />
@@ -1602,7 +1653,7 @@ function VEO3VideoForm({
                     id="veo3-duration"
                     value={duration}
                     onChange={(e) => setDuration(e.target.value)}
-                    className="w-full max-w-xs px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all"
+                    className="w-full max-w-xs px-3 py-2 rounded-lg text-gray-200 text-sm focus:outline-none transition-all input-vws"
                   >
                     {DURATION_OPTIONS.veo3.map((opt) => (
                       <option key={opt} value={opt} className="bg-[#0C1116]">
@@ -1611,7 +1662,7 @@ function VEO3VideoForm({
                     ))}
                   </select>
                 </div>
-                <div className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 text-xs text-gray-400 leading-relaxed">
+                <div className="rounded-xl card-vws px-3 py-2.5 text-xs text-gray-400 leading-relaxed">
                   <span className="font-medium text-gray-300">Format</span> (lecture seule) :{" "}
                   <span className="text-gray-200">
                     {derivedFormat === "9:16" ? "vertical (9:16)" : "paysage (16:9)"}
@@ -1641,7 +1692,7 @@ function VEO3VideoForm({
                 <label className="flex items-start gap-2.5 cursor-pointer text-sm text-gray-300">
                   <input
                     type="checkbox"
-                    className="mt-0.5 rounded border-white/20 bg-white/5 text-emerald-500 focus:ring-emerald-500/40"
+                    className="mt-0.5 rounded border-white/20 bg-white/5 text-emerald-500 input-vws-check"
                     checked={dialogueAuto}
                     disabled={!dialogueEnabled}
                     onChange={(e) => {
@@ -1658,7 +1709,7 @@ function VEO3VideoForm({
                       <label className="flex items-start gap-2.5 cursor-pointer text-sm text-gray-300">
                         <input
                           type="checkbox"
-                          className="mt-0.5 rounded border-white/20 bg-white/5 text-emerald-500 focus:ring-emerald-500/40"
+                          className="mt-0.5 rounded border-white/20 bg-white/5 text-emerald-500 input-vws-check"
                           checked={dialoguePerScene}
                           disabled={!dialogueEnabled}
                           onChange={(e) => setDialoguePerScene(e.target.checked)}
@@ -1677,7 +1728,7 @@ function VEO3VideoForm({
                           value={dialogueGlobal}
                           disabled={!dialogueEnabled}
                           onChange={(e) => setDialogueGlobal(e.target.value)}
-                          className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                          className="w-full px-3 py-2 rounded-lg text-sm text-gray-200 placeholder-gray-500 focus:outline-none input-vws"
                           placeholder="Ex. : Regardez la différence avant et après."
                           autoComplete="off"
                         />
@@ -1699,7 +1750,7 @@ function VEO3VideoForm({
                               value={dialogueByScene[i] ?? ""}
                               disabled={!dialogueEnabled}
                               onChange={(e) => updateDialogueByScene(i, e.target.value)}
-                              className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                              className="w-full px-3 py-2 rounded-lg text-sm text-gray-200 placeholder-gray-500 focus:outline-none input-vws"
                               placeholder="Une courte phrase pour ce moment"
                               autoComplete="off"
                             />
@@ -1735,7 +1786,7 @@ function VEO3VideoForm({
                         value={scripts[i] ?? ""}
                         onChange={(e) => updateSceneScript(i, e.target.value)}
                         rows={6}
-                        className="w-full rounded-lg border border-white/10 p-3 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all resize-y bg-white/5"
+                        className="w-full rounded-lg p-3 text-sm text-gray-200 placeholder-gray-500 focus:outline-none transition-all resize-y input-vws"
                         placeholder="Instructions détaillées pour la génération (scène par scène)."
                       />
                     </div>
@@ -1760,7 +1811,7 @@ function VEO3VideoForm({
                     ? "bg-white/10 text-gray-400 border border-white/15 hover:bg-white/[0.14]"
                     : !scriptReady
                       ? "bg-amber-500/15 text-amber-100 border border-amber-500/35 hover:bg-amber-500/25"
-                      : "bg-gradient-to-r from-emerald-500 to-emerald-400 text-white hover:from-emerald-400 hover:to-emerald-300 shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_25px_rgba(16,185,129,0.4)] active:scale-[0.99]"
+                      : "btn-vws-primary"
               }`}
               title={
                 loading
@@ -1787,7 +1838,7 @@ function VEO3VideoForm({
             <button
               type="button"
               onClick={reset}
-              className="px-5 py-3.5 rounded-lg font-medium bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 transition-all sm:shrink-0"
+              className="px-5 py-3.5 rounded-lg font-medium btn-vws-secondary sm:shrink-0"
             >
               Réinitialiser
             </button>
@@ -1847,8 +1898,8 @@ function VEO3VideoForm({
                 onClick={copy}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
                   copied
-                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                    : "bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10"
+                    ? "card-vws-active text-emerald-300"
+                    : "btn-vws-secondary"
                 }`}
               >
                 {copied ? (
@@ -1864,7 +1915,7 @@ function VEO3VideoForm({
                 )}
               </button>
             </div>
-            <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+            <div className="rounded-xl card-vws p-4">
               <video
                 key={output}
                 src={output}
@@ -1883,15 +1934,52 @@ function VEO3VideoForm({
             ) : null}
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-3 mt-4">
+          <div className="flex flex-col sm:flex-row flex-wrap gap-3 mt-4">
+            <button
+              type="button"
+              onClick={downloadPromptVideoExport}
+              className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-all btn-vws-primary"
+            >
+              <Download className="w-4 h-4 shrink-0" />
+              {sceneCount > 1 ? "Télécharger les prompts vidéo" : "Télécharger le prompt vidéo"}
+            </button>
+            <button
+              type="button"
+              onClick={downloadHookImageExport}
+              className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-all btn-vws-secondary text-gray-200"
+            >
+              <Download className="w-4 h-4 shrink-0" />
+              Télécharger l’image
+            </button>
+            <button
+              type="button"
+              onClick={downloadVideoFileExport}
+              className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-all btn-vws-primary"
+            >
+              <Download className="w-4 h-4 shrink-0" />
+              Télécharger la vidéo
+            </button>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3 mt-3">
             <button
               type="button"
               onClick={prepareAnotherVideoVersion}
-              className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-all bg-white/5 hover:bg-white/10 text-gray-200 border border-white/15"
+              className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-all btn-vws-secondary text-gray-200"
             >
               <RefreshCw className="w-4 h-4 shrink-0" />
               Générer une nouvelle version
             </button>
+            {typeof studioOnStartNewCampaign === "function" ? (
+              <button
+                type="button"
+                onClick={() => studioOnStartNewCampaign()}
+                className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-all btn-vws-secondary text-gray-200"
+              >
+                <RefreshCw className="w-4 h-4 shrink-0" />
+                Faire une autre vidéo
+              </button>
+            ) : null}
           </div>
 
           {/* Message informatif */}
@@ -2103,9 +2191,9 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
       .join("\n\n---\n\n");
 
   const tabButtonClass = (selected) =>
-    `px-3 py-2 rounded-md text-xs font-medium border transition-all whitespace-nowrap ${
+    `px-3 py-2 rounded-md text-xs font-medium border transition-all duration-150 whitespace-nowrap ${
       selected
-        ? "bg-emerald-500/25 text-emerald-200 border-emerald-500/50 shadow-[0_0_12px_rgba(16,185,129,0.15)]"
+        ? "card-vws-active text-emerald-200"
         : "bg-transparent text-gray-400 border-transparent hover:text-gray-200 hover:bg-white/5"
     }`;
 
@@ -2320,6 +2408,46 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
     setCopied(false);
   };
 
+  const hailuoMultiPrompt = scripts.filter((s) => String(s || "").trim()).length > 1;
+
+  const downloadPromptVideoExportHailuo = () => {
+    const text = recapInputForHistory().trim();
+    if (!text) {
+      alert(
+        "Aucun prompt vidéo enregistré à télécharger. Passe par l’étape Vidéo virale d’abord."
+      );
+      return;
+    }
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `viralworks-prompt-video-${new Date().toISOString().slice(0, 10)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadHookImageExportHailuo = async () => {
+    const hookImageUrl = String(validatedHookImage?.url || "").trim();
+    if (!hookImageUrl) {
+      alert("Aucune image validée à télécharger.");
+      return;
+    }
+    await downloadUrlFile(
+      hookImageUrl,
+      `viralworks-image-${new Date().toISOString().slice(0, 10)}.png`
+    );
+  };
+
+  const downloadVideoFileExportHailuo = async () => {
+    const url = String(output || "").trim();
+    if (!isHttpUrl(url)) {
+      alert("Aucune vidéo finale téléchargeable pour le moment.");
+      return;
+    }
+    await downloadUrlFile(url, `viralworks-video-${new Date().toISOString().slice(0, 10)}.mp4`);
+  };
+
   const handleValidate = async () => {
     if (!output?.trim() || !isHttpUrl(output)) return;
     const hookImageUrl = String(validatedHookImage?.url || "").trim();
@@ -2490,7 +2618,7 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
                   <textarea
                     value={scripts[0] ?? ""}
                     onChange={(e) => updateSceneScript(0, e.target.value)}
-                    className="w-full flex-1 min-h-[200px] rounded-lg border border-white/10 p-4 text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all resize-none bg-white/5"
+                    className="w-full flex-1 min-h-[200px] rounded-lg p-4 text-gray-200 placeholder-gray-500 focus:outline-none transition-all resize-none input-vws"
                     placeholder="Texte issu du cerveau VWS pour la scène 1 — tu peux l’ajuster avant génération."
                   />
                 </div>
@@ -2573,7 +2701,7 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
               <textarea
                 value={scripts[activeTab] ?? ""}
                 onChange={(e) => updateSceneScript(activeTab, e.target.value)}
-                className="w-full rounded-lg border border-white/10 p-4 min-h-[220px] text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all resize-none bg-white/5"
+                className="w-full rounded-lg p-4 min-h-[220px] text-gray-200 placeholder-gray-500 focus:outline-none transition-all resize-none input-vws"
                 placeholder="Texte issu du cerveau VWS pour cette scène — tu peux l’ajuster avant génération."
               />
             </div>
@@ -2591,10 +2719,10 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
                 <button
                   key={opt.value}
                   onClick={() => setFormat(opt.value)}
-                  className={`flex-1 min-w-[120px] px-3 py-2.5 rounded-lg text-sm font-medium transition-all border ${
+                  className={`flex-1 min-w-[120px] px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 border ${
                     format === opt.value
-                      ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/50"
-                      : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-gray-300 border-white/10"
+                      ? "card-vws-active text-emerald-300"
+                      : "card-vws text-gray-400 hover:text-gray-300"
                   }`}
                 >
                   <span className="block text-center">{opt.icon}</span>
@@ -2609,7 +2737,7 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
             <select
               value={duration}
               onChange={(e) => setDuration(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all"
+              className="w-full px-3 py-2 rounded-lg text-gray-200 focus:outline-none transition-all input-vws"
             >
               {DURATION_OPTIONS.hailuo.map((opt) => (
                 <option key={opt} value={opt} className="bg-[#0C1116]">
@@ -2620,17 +2748,17 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
           </div>
         </div>
 
-        <div className="rounded-lg border border-white/10 bg-white/[0.04] p-3 space-y-2">
+        <div className="rounded-xl card-vws p-3 space-y-2">
           <div className="flex items-center justify-between gap-3 text-xs text-gray-300">
             <span>Audio auto (voix + ambiance)</span>
-            <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Activé</span>
+            <span className="px-2 py-0.5 rounded badge-vws text-emerald-300">Activé</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-[11px] text-gray-400 uppercase tracking-wide">Ambiance</span>
             <select
               value={musicStyle}
               onChange={(e) => setMusicStyle(e.target.value)}
-              className="flex-1 px-2.5 py-1.5 rounded-md bg-white/5 border border-white/10 text-gray-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+              className="flex-1 px-2.5 py-1.5 rounded-md text-gray-200 text-xs focus:outline-none input-vws"
             >
               <option value="cinematic">Cinématique</option>
               <option value="corporate">Corporate</option>
@@ -2661,7 +2789,7 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
           className={`flex-1 px-6 py-3 rounded-lg font-medium transition-all flex items-center justify-center gap-2 ${
             disabled || loading
               ? "bg-white/5 text-gray-500 cursor-not-allowed border border-white/10"
-              : "bg-gradient-to-r from-emerald-500 to-emerald-400 text-white hover:from-emerald-400 hover:to-emerald-300 shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_25px_rgba(16,185,129,0.4)] active:scale-95"
+              : "btn-vws-primary"
           }`}
           title={!session ? "Connectez-vous pour générer" : scriptForGeneration.trim().length < 8 ? "Saisis le script de la scène active (min 8 caractères)" : ""}
         >
@@ -2679,7 +2807,7 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
         </button>
         <button
           onClick={reset}
-          className="px-4 py-3 rounded-lg font-medium bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 transition-all active:scale-95"
+          className="px-4 py-3 rounded-lg font-medium btn-vws-secondary"
         >
           Réinitialiser
         </button>
@@ -2717,8 +2845,8 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
                 onClick={copy}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
                   copied
-                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                    : "bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10"
+                    ? "card-vws-active text-emerald-300"
+                    : "btn-vws-secondary"
                 }`}
               >
                 {copied ? (
@@ -2734,7 +2862,7 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
                 )}
               </button>
             </div>
-            <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+            <div className="rounded-xl card-vws p-4">
               <video
                 src={output}
                 controls
@@ -2752,11 +2880,38 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
             ) : null}
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-3 mt-4">
+          <div className="flex flex-col sm:flex-row flex-wrap gap-3 mt-4">
+            <button
+              type="button"
+              onClick={downloadPromptVideoExportHailuo}
+              className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-all btn-vws-primary"
+            >
+              <Download className="w-4 h-4 shrink-0" />
+              {hailuoMultiPrompt ? "Télécharger les prompts vidéo" : "Télécharger le prompt vidéo"}
+            </button>
+            <button
+              type="button"
+              onClick={downloadHookImageExportHailuo}
+              className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-all btn-vws-secondary text-gray-200"
+            >
+              <Download className="w-4 h-4 shrink-0" />
+              Télécharger l’image
+            </button>
+            <button
+              type="button"
+              onClick={downloadVideoFileExportHailuo}
+              className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-all btn-vws-primary"
+            >
+              <Download className="w-4 h-4 shrink-0" />
+              Télécharger la vidéo
+            </button>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3 mt-3">
             <button
               type="button"
               onClick={prepareAnotherVideoVersion}
-              className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-all bg-white/5 hover:bg-white/10 text-gray-200 border border-white/15"
+              className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-all btn-vws-secondary text-gray-200"
             >
               <RefreshCw className="w-4 h-4 shrink-0" />
               Générer une nouvelle version
@@ -2905,7 +3060,7 @@ function RightPanel({ model }) {
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Rechercher…"
-              className="w-full pl-10 pr-4 py-2 rounded-lg border border-white/10 bg-white/5 text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all text-sm"
+              className="w-full pl-10 pr-4 py-2 rounded-lg text-gray-200 placeholder-gray-500 focus:outline-none transition-all text-sm input-vws"
             />
             {q && (
               <button
@@ -2936,7 +3091,7 @@ function RightPanel({ model }) {
           {filtered.slice(0, 12).map((item) => (
             <div
               key={item.id}
-              className="group relative overflow-hidden rounded-lg border border-white/10 hover:border-emerald-500/50 transition-all bg-white/5 p-3"
+              className="group relative overflow-hidden rounded-xl card-vws p-3 hover:border-[rgba(0,200,150,0.45)]"
             >
               <button
                 onClick={() => loadIntoEditor(item)}
@@ -2953,7 +3108,7 @@ function RightPanel({ model }) {
                     })}
                   </span>
                   {item.model && (
-                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">
+                    <span className="px-1.5 py-0.5 rounded badge-vws text-emerald-300">
                       {item.model.toUpperCase()}
                     </span>
                   )}

@@ -21,6 +21,9 @@ const corsHeaders = {
   "Access-Control-Max-Age": "86400",
 };
 
+/** Aligné sur CAMPAIGN_GENERATION_SPEC_VERSION côté app (campaignGenerationSpec.ts). */
+const VERTEX_VEO_REQUEST_SCHEMA_VERSIONS = new Set(["1.0.0"]);
+
 type Action = "create" | "status";
 
 interface RequestBody {
@@ -32,6 +35,8 @@ interface RequestBody {
   aspect_ratio?: string;
   initial_image_url?: string;
   generation_mode?: "text_to_video" | "image_to_video";
+  /** Requis pour action create ; versions dans VERTEX_VEO_REQUEST_SCHEMA_VERSIONS. */
+  schema_version?: string;
 }
 
 interface ServiceAccount {
@@ -483,6 +488,28 @@ serve(async (req) => {
         JSON.stringify({ error: "Action invalide. Utilisez create ou status." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
+    }
+
+    if (action === "create") {
+      const schemaVersion = String(body.schema_version ?? "").trim();
+      if (!schemaVersion) {
+        return new Response(
+          JSON.stringify({
+            error:
+              "Le champ schema_version est requis pour créer une vidéo. Indique la version du contrat d’API (ex. 1.0.0).",
+          }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      if (!VERTEX_VEO_REQUEST_SCHEMA_VERSIONS.has(schemaVersion)) {
+        const accepted = [...VERTEX_VEO_REQUEST_SCHEMA_VERSIONS].join(", ");
+        return new Response(
+          JSON.stringify({
+            error: `schema_version non reconnue : « ${schemaVersion} ». Versions acceptées : ${accepted}.`,
+          }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
     }
 
     const modelId = String(body.model || defaultModel).trim() || defaultModel;

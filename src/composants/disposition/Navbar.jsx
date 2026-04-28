@@ -1,8 +1,9 @@
 
 import { useEffect, useRef, useState } from "react";
-import { NavLink, useLocation, Link } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { Home, Sparkles, Info, X, User, LogOut, ShoppingBag, Users } from "lucide-react";
 import { useAuth } from "@/contexte/FournisseurAuth";
+import LienNavSync from "@/composants/disposition/LienNavSync";
 
 const links = [
   { path: "/", label: "Accueil", icon: Home },
@@ -71,16 +72,16 @@ export default function SidebarShell({ children, open, onCloseMenu }) {
       : location.pathname === path || (path !== "/lab" && location.pathname.startsWith(path));
     
     return (
-      <NavLink
+      <LienNavSync
         to={path}
         className={`group flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200
          ${isActive
-           ? "bg-gradient-to-r from-emerald-500/20 to-emerald-400/10 text-emerald-300 border border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.15)]"
+           ? "card-vws-active text-emerald-300"
            : "text-slate-300 hover:bg-white/5 hover:text-white border border-transparent"}`}
       >
         <IconComponent className={`w-5 h-5 transition-transform ${isActive ? "scale-110" : "group-hover:scale-110"}`} />
         <span>{label}</span>
-      </NavLink>
+      </LienNavSync>
     );
   };
 
@@ -115,14 +116,14 @@ export default function SidebarShell({ children, open, onCloseMenu }) {
             {session ? (
               <>
                 {email && (
-                  <Link
+                  <LienNavSync
                     to="/profil"
                     onClick={() => onCloseMenu?.()}
                     className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200 text-slate-300 hover:bg-white/5 hover:text-white border border-transparent"
                   >
                     <User className="w-5 h-5" />
                     <span className="flex-1 truncate">{email.split('@')[0]}</span>
-                  </Link>
+                  </LienNavSync>
                 )}
                 <button
                   onClick={handleLogout}
@@ -134,13 +135,13 @@ export default function SidebarShell({ children, open, onCloseMenu }) {
                 </button>
               </>
             ) : (
-              <Link
+              <LienNavSync
                 to="/login"
                 onClick={() => onCloseMenu?.()}
-                className="w-full flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-white bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 transition-all shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_30px_rgba(16,185,129,0.4)]"
+                className="w-full flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold btn-vws-primary"
               >
                 <span>Se connecter</span>
-              </Link>
+              </LienNavSync>
             )}
           </div>
         </div>

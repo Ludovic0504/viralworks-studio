@@ -13,7 +13,6 @@ import {
   buildSoraStyleSystemPrompt,
   buildSoraStyleUserPrompt,
 } from "@/bibliotheque/videoPromptSchema";
-import { refinePrompt } from "@/bibliotheque/vwsPromptEngine";
 import {
   hasEnoughCredits,
   getUserCredits,
@@ -26,9 +25,12 @@ import {
 } from "@/bibliotheque/workflowQuota";
 import {
   createDefaultCampaignGenerationSpec,
-  getSafeScenes,
   normalizeCampaignGenerationSpec,
 } from "@/bibliotheque/campaignGenerationSpec";
+import {
+  buildCanonicalScriptSpec,
+  runStudioScriptRefinement,
+} from "@/bibliotheque/studioScriptRefinement";
 import PageTitle from "../composants/interface/TitrePage";
 import {
   FileText,
@@ -86,14 +88,14 @@ function QuotaBlockedModal({ open, title, message, actionLabel, onClose, onGoToS
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10 transition-all"
+              className="px-4 py-2 rounded-lg btn-vws-secondary"
             >
               Fermer
             </button>
             <button
               type="button"
               onClick={onGoToShop}
-              className="px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-500 to-teal-500 text-white font-semibold hover:from-cyan-400 hover:to-teal-400 transition-all"
+              className="px-4 py-2 rounded-lg btn-vws-primary font-semibold"
             >
               {actionLabel || "Aller vers Packs vidéos"}
             </button>
@@ -516,7 +518,7 @@ function VEO3Generator({ initialIdea = "" }) {
   value={idea}
   onChange={(e) => setIdea(e.target.value)}
             maxLength={PROMPT_GEN_MAX_IDEA_CHARS}
-            className="w-full rounded-lg border border-white/10 p-4 min-h-[180px] text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all resize-none bg-white/5"
+            className="w-full rounded-lg p-4 min-h-[180px] text-gray-200 placeholder-gray-500 focus:outline-none transition-all resize-none input-vws"
             placeholder="Ex : Un ado rentre sous la pluie, se parle à la caméra façon vlog, ambiance cinématique avec des reflets sur les vitres, musique douce en arrière-plan..."
 />
           <p className="mt-2 text-xs text-gray-400">
@@ -537,7 +539,7 @@ function VEO3Generator({ initialIdea = "" }) {
             className={`w-full sm:flex-1 px-6 py-3 rounded-lg font-medium transition-all flex items-center justify-center gap-2 ${
               disabled || loading || (session && credits !== null && credits < PROMPT_GENERATION_COST)
                 ? "bg-white/5 text-gray-500 cursor-not-allowed border border-white/10"
-                : "bg-gradient-to-r from-emerald-500 to-emerald-400 text-white hover:from-emerald-400 hover:to-emerald-300 shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_25px_rgba(16,185,129,0.4)] active:scale-95"
+                : "btn-vws-primary"
             }`}
         >
             {loading ? (
@@ -554,7 +556,7 @@ function VEO3Generator({ initialIdea = "" }) {
         </button>
         <button
           onClick={reset}
-            className="w-full sm:w-auto px-4 py-3 rounded-lg font-medium bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 transition-all active:scale-95"
+            className="w-full sm:w-auto px-4 py-3 rounded-lg font-medium btn-vws-secondary"
         >
           Réinitialiser
         </button>
@@ -571,8 +573,8 @@ function VEO3Generator({ initialIdea = "" }) {
     onClick={copy}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
                   copied
-                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                    : "bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10"
+                    ? "card-vws-active text-emerald-300"
+                    : "btn-vws-secondary"
                 }`}
               >
                 {copied ? (
@@ -804,7 +806,7 @@ function HistoryModal({ item, onClose, onLoadToEditor }) {
           )}
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10 transition-all"
+            className="px-4 py-2 rounded-lg btn-vws-secondary"
           >
             Fermer
           </button>
@@ -930,7 +932,7 @@ function PromptHistory() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
             placeholder="Rechercher dans l'historique…"
-            className="w-full pl-10 pr-4 py-2 rounded-lg border border-white/10 bg-white/5 text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all"
+            className="w-full pl-10 pr-4 py-2 rounded-lg text-gray-200 placeholder-gray-500 focus:outline-none transition-all input-vws"
           />
           {q && (
             <button
@@ -1082,43 +1084,8 @@ function ScriptPromptGenerator({
       ),
     [campaignData]
   );
-  const canonicalClarificationMode = canonicalSpec.campaign.clarification.mode ?? null;
-  const canonicalClarificationDiagnostic = canonicalSpec.campaign.clarification.diagnostic ?? null;
-
-  const buildCanonicalScriptSpec = useCallback(
-    ({ scenes, combined, mode, refineResult }) => {
-      const normalizedBase = normalizeCampaignGenerationSpec(canonicalSpec);
-      const safeScenes = getSafeScenes(normalizedBase);
-      const nextScenes = [0, 1, 2].map((idx) => ({
-        ...safeScenes[idx],
-        script_text: String(scenes?.[idx] ?? ""),
-      }));
-      return normalizeCampaignGenerationSpec({
-        ...normalizedBase,
-        creative: {
-          ...normalizedBase.creative,
-          sequence_type: mode === "multi" ? "three_x_8s" : "single_8s",
-          script_bundle: {
-            ...normalizedBase.creative.script_bundle,
-            mode,
-            combined_text: String(combined ?? ""),
-          },
-          scenes: nextScenes,
-        },
-        trace: {
-          ...normalizedBase.trace,
-          prompt_refinement: {
-            ...normalizedBase.trace.prompt_refinement,
-            run_id:
-              typeof refineResult?.run_id === "string" && refineResult.run_id.trim()
-                ? refineResult.run_id
-                : null,
-            input_snapshot: String(idea ?? ""),
-            output_snapshot: String(combined ?? ""),
-          },
-        },
-      });
-    },
+  const buildScriptSpecBundle = useCallback(
+    (args) => buildCanonicalScriptSpec(canonicalSpec, idea, args),
     [canonicalSpec, idea]
   );
 
@@ -1129,7 +1096,7 @@ function ScriptPromptGenerator({
     setSceneOutputs(["", "", ""]);
     setExportHookText("");
     setExportVideoTexts(["", "", ""]);
-    const nextSpec = buildCanonicalScriptSpec({
+    const nextSpec = buildScriptSpecBundle({
       mode: isMultiScene ? "multi" : "single",
       combined: "",
       scenes: ["", "", ""],
@@ -1141,7 +1108,7 @@ function ScriptPromptGenerator({
       scenes: ["", "", ""],
       campaignGenerationSpec: nextSpec,
     });
-  }, [sequenceType, isMultiScene, onScriptOutput, buildCanonicalScriptSpec]);
+  }, [sequenceType, isMultiScene, onScriptOutput, buildScriptSpecBundle]);
 
   useEffect(() => {
     if (prevInitialIdeaRef.current === initialIdea) return;
@@ -1151,7 +1118,7 @@ function ScriptPromptGenerator({
     setSceneOutputs(["", "", ""]);
     setExportHookText("");
     setExportVideoTexts(["", "", ""]);
-    const nextSpec = buildCanonicalScriptSpec({
+    const nextSpec = buildScriptSpecBundle({
       mode: isMultiScene ? "multi" : "single",
       combined: "",
       scenes: ["", "", ""],
@@ -1163,7 +1130,7 @@ function ScriptPromptGenerator({
       scenes: ["", "", ""],
       campaignGenerationSpec: nextSpec,
     });
-  }, [initialIdea, isMultiScene, onScriptOutput, buildCanonicalScriptSpec]);
+  }, [initialIdea, isMultiScene, onScriptOutput, buildScriptSpecBundle]);
 
   useEffect(() => {
     const refresh = async () => {
@@ -1201,7 +1168,7 @@ function ScriptPromptGenerator({
     setSceneOutputs(["", "", ""]);
     setExportHookText("");
     setExportVideoTexts(["", "", ""]);
-    const nextSpec = buildCanonicalScriptSpec({
+    const nextSpec = buildScriptSpecBundle({
       mode: isMultiScene ? "multi" : "single",
       combined: "",
       scenes: ["", "", ""],
@@ -1240,122 +1207,72 @@ function ScriptPromptGenerator({
       return;
     }
 
-    let serverCreditsOk = !session;
-    if (session) {
-      const hasCredits = await hasEnoughCredits(PROMPT_GENERATION_COST);
-      if (!hasCredits) {
-        openQuotaModal();
-        return;
-      }
-      serverCreditsOk = true;
-    }
-
-    if (!canProceedWithScriptGeneration(Boolean(session), serverCreditsOk)) {
-      const bypass =
-        Boolean(session) && (await hasEnoughCredits(PROMPT_GENERATION_COST));
-      if (!bypass) {
-        openQuotaModal("Quota Script gagnant atteint pour ce workflow (1 essai).");
-        return;
-      }
-    }
-
     setLoading(true);
     setOutput("");
 
     try {
-      const refineResult = await refinePrompt({
-        jobType: canonicalSpec.campaign.profession ?? campaignData?.profession ?? "",
-        mainIdea: idea,
-        modifiers: canonicalSpec.campaign.style_details ?? campaignData?.styleDetails ?? "",
-        tempoSelection: canonicalSpec.rendering.tempo ?? campaignData?.tempo ?? "real_time",
-        revealMode: Boolean(canonicalSpec.rendering.camera.reveal_mode ?? campaignData?.revealMode),
-        cameraLocked: Boolean(canonicalSpec.rendering.camera.fixed ?? campaignData?.cameraFixed),
-        projectFormat:
-          canonicalSpec.creative.sequence_type === "three_x_8s" ? "three_x_8s" : "single_8s",
-        // Guard explicite: mode/diagnostic peuvent être null en amont, on ne suppose rien.
-        clarifyMode: canonicalClarificationMode,
-        clarifyAnswer:
-          canonicalSpec.campaign.clarification.last_user_freeform_answer ?? campaignData?.clarifyAnswer ?? null,
-        proceedAnyway:
-          canonicalSpec.campaign.clarification.proceed_anyway === true || campaignData?.proceedAnyway === true,
+      const result = await runStudioScriptRefinement({
+        idea,
+        campaignData,
+        session,
+        persistHistory: true,
+        consumeQuota: true,
       });
-      const finalized =
-        refineResult?.phases?.PROMPT_EXECUTION_PHASE?.steps?.PROMPT_FINALIZATION?.output || "";
-      if (!String(finalized).trim()) {
-        throw new Error("Aucun prompt final retourné par refinePrompt.");
-      }
-      const trimmedRefined = clampGeneratedPrompt(String(finalized).trim());
-      const scriptResultMeta = {
-        refinementRunId: refineResult?.run_id ?? null,
-        clarifyMode: canonicalClarificationMode,
-        clarifyDiagnostic: canonicalClarificationDiagnostic,
-        clarificationHistory: canonicalSpec.campaign.clarification.history ?? null,
-      };
 
-      let trimmed = "";
-      if (isMultiScene) {
-        const nextScenes = [trimmedRefined, trimmedRefined, trimmedRefined];
-        const combined = nextScenes.join("\n\n---\n\n");
-        setSceneOutputs(nextScenes);
-        setOutput(combined);
-        const nextSpec = buildCanonicalScriptSpec({
-          mode: "multi",
-          combined,
-          scenes: nextScenes,
-          refineResult,
-        });
-        onScriptOutput?.({
-          mode: "multi",
-          combined,
-          scenes: nextScenes,
-          refinementRunId: typeof refineResult?.run_id === "string" ? refineResult.run_id : undefined,
-          scriptResultMeta,
-          campaignGenerationSpec: nextSpec,
-        });
-        refreshBrainExportPrompts();
-      } else {
-        trimmed = trimmedRefined;
-        setOutput(trimmed);
-        const nextSpec = buildCanonicalScriptSpec({
-          mode: "single",
-          combined: trimmed,
-          scenes: [trimmed, "", ""],
-          refineResult,
-        });
-        onScriptOutput?.({
-          mode: "single",
-          combined: trimmed,
-          scenes: [trimmed, "", ""],
-          refinementRunId: typeof refineResult?.run_id === "string" ? refineResult.run_id : undefined,
-          scriptResultMeta,
-          campaignGenerationSpec: nextSpec,
-        });
-        refreshBrainExportPrompts();
-      }
-
-      if (session?.user?.id) {
-        try {
-          await saveHistorySupabase({
-            kind: "prompt",
-            input: idea,
-            output: trimmed,
-            model: "sora2",
-          });
-        } catch (err) {
-          console.warn("Erreur sauvegarde Supabase (non bloquant):", err);
+      if (!result.ok) {
+        if (result.code === "credits") {
+          openQuotaModal();
+          return;
         }
-      } else {
-        addHistoryEntry({
-          id: crypto.randomUUID?.() || String(Date.now()),
-          kind: "prompt",
-          input: idea,
-          output: trimmed,
-          model: "sora2",
-          createdAt: new Date().toISOString(),
-        });
+        if (result.code === "quota") {
+          openQuotaModal(result.message);
+          return;
+        }
+        if (result.code === "validation") {
+          alert(result.message);
+          return;
+        }
+
+        let errorMessage = result.message || "Erreur lors de la génération";
+        if (
+          result.code === "refine" &&
+          (errorMessage.includes("crédit") || errorMessage.includes("Crédits"))
+        ) {
+          openQuotaModal();
+          return;
+        }
+
+        if (errorMessage.includes("Failed to fetch") || errorMessage.includes("fetch")) {
+          errorMessage =
+            "Impossible de contacter le serveur. Vérifiez votre connexion internet et que la fonction Supabase 'openai-chat' est déployée et accessible.";
+        } else if (errorMessage.includes("connecté") || errorMessage.includes("session")) {
+          errorMessage = "Vous devez être connecté pour générer un prompt. Veuillez vous connecter.";
+        } else if (
+          errorMessage.includes("configuration serveur manquante") ||
+          errorMessage.includes("OPENAI_API_KEY")
+        ) {
+          errorMessage =
+            "Configuration serveur manquante. La clé OPENAI_API_KEY n'est pas configurée dans Supabase. Vérifiez le dashboard Supabase → Edge Functions → Secrets.";
+        } else if (errorMessage.includes("VITE_SUPABASE_URL")) {
+          errorMessage =
+            "Configuration frontend manquante. Vérifiez que le fichier .env.local contient VITE_SUPABASE_URL et VITE_SUPABASE_ANON_KEY.";
+        }
+
+        const fullErrorMessage = `${errorMessage}\n\n💡 Pour plus de détails, ouvrez la console du navigateur (F12) et regardez les logs détaillés.`;
+        alert(fullErrorMessage);
+        return;
       }
+
+      const p = result.payload;
+      if (p.mode === "multi") {
+        setSceneOutputs(p.scenes);
+        setOutput(p.combined);
+      } else {
+        setOutput(p.combined);
+      }
+      onScriptOutput?.(p);
+      refreshBrainExportPrompts();
       setItems(await loadPromptHistoryForSession(session, 100));
-      consumeScriptAttempt();
     } catch (err) {
       console.error("❌ [Prompt Script] Erreur génération prompt:", err);
 
@@ -1369,17 +1286,23 @@ function ScriptPromptGenerator({
         name: err?.name,
       });
       let errorMessage = err?.message || "Erreur lors de la génération";
-      
+
       if (errorMessage.includes("Failed to fetch") || errorMessage.includes("fetch")) {
-        errorMessage = "Impossible de contacter le serveur. Vérifiez votre connexion internet et que la fonction Supabase 'openai-chat' est déployée et accessible.";
+        errorMessage =
+          "Impossible de contacter le serveur. Vérifiez votre connexion internet et que la fonction Supabase 'openai-chat' est déployée et accessible.";
       } else if (errorMessage.includes("connecté") || errorMessage.includes("session")) {
         errorMessage = "Vous devez être connecté pour générer un prompt. Veuillez vous connecter.";
-      } else if (errorMessage.includes("configuration serveur manquante") || errorMessage.includes("OPENAI_API_KEY")) {
-        errorMessage = "Configuration serveur manquante. La clé OPENAI_API_KEY n'est pas configurée dans Supabase. Vérifiez le dashboard Supabase → Edge Functions → Secrets.";
+      } else if (
+        errorMessage.includes("configuration serveur manquante") ||
+        errorMessage.includes("OPENAI_API_KEY")
+      ) {
+        errorMessage =
+          "Configuration serveur manquante. La clé OPENAI_API_KEY n'est pas configurée dans Supabase. Vérifiez le dashboard Supabase → Edge Functions → Secrets.";
       } else if (errorMessage.includes("VITE_SUPABASE_URL")) {
-        errorMessage = "Configuration frontend manquante. Vérifiez que le fichier .env.local contient VITE_SUPABASE_URL et VITE_SUPABASE_ANON_KEY.";
+        errorMessage =
+          "Configuration frontend manquante. Vérifiez que le fichier .env.local contient VITE_SUPABASE_URL et VITE_SUPABASE_ANON_KEY.";
       }
-      
+
       const fullErrorMessage = `${errorMessage}\n\n💡 Pour plus de détails, ouvrez la console du navigateur (F12) et regardez les logs détaillés.`;
       alert(fullErrorMessage);
     } finally {
@@ -1431,7 +1354,7 @@ function ScriptPromptGenerator({
             value={idea}
             onChange={(e) => setIdea(e.target.value)}
             maxLength={PROMPT_GEN_MAX_IDEA_CHARS}
-            className="w-full rounded-lg border border-white/10 p-4 min-h-[180px] text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all resize-none bg-white/5"
+            className="w-full rounded-lg p-4 min-h-[180px] text-gray-200 placeholder-gray-500 focus:outline-none transition-all resize-none input-vws"
             placeholder="Ex : Un plan séquence dans un café parisien, caméra fluide, ambiance chaleureuse, lumière naturelle filtrée, style cinématographique..."
           />
           <p className="mt-2 text-xs text-gray-400">
@@ -1446,7 +1369,7 @@ function ScriptPromptGenerator({
             className={`w-full sm:flex-1 px-6 py-3 rounded-lg font-medium transition-all flex items-center justify-center gap-2 ${
               disabled || loading
                 ? "bg-white/5 text-gray-500 cursor-not-allowed border border-white/10"
-                : "bg-gradient-to-r from-emerald-500 to-emerald-400 text-white hover:from-emerald-400 hover:to-emerald-300 shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_25px_rgba(16,185,129,0.4)] active:scale-95"
+                : "btn-vws-primary"
             }`}
           >
             {loading ? (
@@ -1463,7 +1386,7 @@ function ScriptPromptGenerator({
           </button>
           <button
             onClick={reset}
-            className="w-full sm:w-auto px-4 py-3 rounded-lg font-medium bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 transition-all active:scale-95"
+            className="w-full sm:w-auto px-4 py-3 rounded-lg font-medium btn-vws-secondary"
           >
             Réinitialiser
           </button>

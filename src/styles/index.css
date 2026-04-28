@@ -3,6 +3,17 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --vws-primary: #00c896;
+    --vws-primary-top: #1adfb0;
+    --vws-primary-deep: #009e75;
+    --vws-primary-soft: rgba(0, 200, 150, 0.06);
+    --vws-glow: rgba(0, 200, 150, 0.35);
+    --vws-glow-hover: rgba(0, 200, 150, 0.5);
+    --vws-glow-mild: rgba(0, 200, 150, 0.25);
+    --vws-focus-ring: rgba(0, 200, 150, 0.2);
+  }
+
   html {
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
@@ -16,6 +27,144 @@
 
   * {
     @apply border-white/5;
+  }
+}
+
+@layer components {
+  .btn-vws-primary {
+    @apply text-white font-medium;
+    border: 1px solid transparent;
+    background: linear-gradient(
+      180deg,
+      var(--vws-primary-top) 0%,
+      var(--vws-primary) 45%,
+      var(--vws-primary-deep) 100%
+    );
+    box-shadow: 0 0 20px var(--vws-glow);
+    transition: box-shadow 200ms ease, transform 200ms ease;
+  }
+
+  .btn-vws-primary:hover:not(:disabled) {
+    box-shadow: 0 0 28px var(--vws-glow-hover);
+    transform: translateY(-1px);
+  }
+
+  .btn-vws-primary:focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 28px var(--vws-glow-hover),
+      0 0 0 2px var(--vws-focus-ring);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .btn-vws-primary:hover:not(:disabled) {
+      transform: none;
+    }
+  }
+
+  .btn-vws-secondary {
+    @apply text-gray-300 font-medium;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.04);
+    transition: background 200ms ease, border-color 200ms ease;
+  }
+
+  .btn-vws-secondary:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+
+  .btn-vws-secondary:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--vws-focus-ring);
+  }
+
+  .card-vws {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, transparent 55%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    transition: border-color 150ms ease, box-shadow 150ms ease;
+  }
+
+  .card-vws:hover {
+    border-color: rgba(255, 255, 255, 0.15);
+  }
+
+  .card-vws-active {
+    border-color: var(--vws-primary);
+    background: var(--vws-primary-soft);
+    box-shadow:
+      0 0 0 1px #00c896,
+      0 0 12px var(--vws-glow-mild),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
+  }
+
+  .input-vws {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: border-color 150ms ease, box-shadow 150ms ease;
+  }
+
+  .input-vws:focus,
+  .input-vws:focus-visible {
+    outline: none;
+    border-color: var(--vws-primary);
+    box-shadow: 0 0 0 2px var(--vws-focus-ring);
+  }
+
+  .input-vws-check:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--vws-focus-ring);
+  }
+
+  .badge-vws {
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.06);
+    transition: border-color 150ms ease, background 150ms ease;
+  }
+
+  @supports (backdrop-filter: blur(4px)) {
+    .badge-vws {
+      backdrop-filter: blur(4px);
+    }
+  }
+
+  .step-disk-vws-active {
+    box-shadow: 0 0 12px var(--vws-glow-mild);
+  }
+
+  .step-disk-vws-done {
+    box-shadow: 0 0 10px var(--vws-glow);
+  }
+
+  .vws-step-connector {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .vws-step-connector::before {
+    content: "";
+    position: absolute;
+    left: 0.5rem;
+    right: 0.5rem;
+    top: 50%;
+    height: 2px;
+    transform: translateY(-50%);
+    background: linear-gradient(
+      90deg,
+      rgba(0, 200, 150, 0.5) 0%,
+      rgba(0, 200, 150, 0.15) 45%,
+      rgba(255, 255, 255, 0.06) 100%
+    );
+    pointer-events: none;
+    z-index: 0;
+    border-radius: 9999px;
+  }
+
+  .vws-step-connector > * {
+    position: relative;
+    z-index: 1;
   }
 }
 
@@ -46,26 +195,49 @@
   .studio-panel {
     @apply rounded-2xl backdrop-blur-xl;
     border: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(19, 25, 32, 0.9);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, transparent 50%),
+      rgba(19, 25, 32, 0.9);
     box-shadow:
       0 0 40px rgba(6, 182, 212, 0.07),
-      inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    transition: border-color 150ms ease, box-shadow 150ms ease;
+  }
+
+  .studio-panel:hover {
+    border-color: rgba(255, 255, 255, 0.12);
   }
 
   .studio-inset {
     @apply rounded-xl backdrop-blur-sm;
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    background: rgba(11, 15, 20, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.025) 0%, transparent 50%),
+      rgba(11, 15, 20, 0.92);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: border-color 150ms ease;
+  }
+
+  .studio-inset:hover {
+    border-color: rgba(255, 255, 255, 0.12);
   }
 
   .studio-step-rail {
     @apply h-2 rounded-full overflow-hidden;
     border: 1px solid rgba(255, 255, 255, 0.06);
-    background: rgba(11, 15, 20, 0.9);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(11, 15, 20, 0.95) 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   }
 
   .studio-step-rail-fill {
-    @apply h-full rounded-full bg-gradient-to-r from-cyan-500 to-teal-500 opacity-95;
+    @apply h-full rounded-full;
+    background: linear-gradient(
+      90deg,
+      var(--vws-primary-top) 0%,
+      var(--vws-primary) 40%,
+      var(--vws-primary-deep) 100%
+    );
+    box-shadow: 0 0 12px var(--vws-glow-mild);
   }
 
   .studio-toolbar-btn {
@@ -85,11 +257,11 @@
   }
 
   .shadow-glow {
-    box-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
+    box-shadow: 0 0 20px var(--vws-glow-mild);
   }
 
   .shadow-glow-strong {
-    box-shadow: 0 0 30px rgba(16, 185, 129, 0.4);
+    box-shadow: 0 0 30px var(--vws-glow);
   }
 
   @keyframes progress {

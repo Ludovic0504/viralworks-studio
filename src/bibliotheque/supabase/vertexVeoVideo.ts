@@ -8,6 +8,8 @@
  * Secrets à configurer dans Supabase (Dashboard → Edge Functions → Secrets), voir `.env.example`.
  */
 
+import type { CampaignGenerationSpec } from "../campaignGenerationSpec";
+import { CAMPAIGN_GENERATION_SPEC_VERSION } from "../campaignGenerationSpec";
 import { getBrowserSupabase } from "./client-navigateur";
 
 const EDGE_FUNCTION = "vertex-veo-video";
@@ -43,6 +45,8 @@ export type VertexVeoAction = "create" | "status";
 
 export type VertexVeoCreatePayload = {
   action: "create";
+  /** Contrat attendu par l’Edge Function vertex-veo-video (create uniquement). */
+  schema_version: string;
   prompt: string;
   duration?: number;
   aspect_ratio?: "9:16" | "16:9";
@@ -123,32 +127,61 @@ export async function invokeVertexVeoVideo(
   return data as VertexVeoCreateResponse | VertexVeoStatusResponse;
 }
 
-export type CreateVertexVeoTaskParams = {
-  prompt: string;
-  durationSeconds?: number;
-  aspectRatio?: "9:16" | "16:9";
-  model?: string;
-  initialImageUrl?: string;
-  generationMode?: "text_to_video" | "image_to_video";
-};
+/** Vertex Veo n’accepte que 9:16 et 16:9 ; le spec autorise aussi 1:1 → on retombe sur 9:16. */
+function veoAspectRatioFromSpec(
+  ar: CampaignGenerationSpec["rendering"]["aspect_ratio"],
+): "9:16" | "16:9" {
+  if (ar === "16:9") return "16:9";
+  return "9:16";
+}
+
+function veoDurationSecondsFromSpec(spec: CampaignGenerationSpec): number {
+  const n = Math.floor(Number(spec.rendering.duration_seconds));
+  if (n === 4 || n === 6 || n === 8) return n;
+  return 8;
+}
 
 /**
  * Lance une génération longue (retourne le nom d’opération Vertex / task_id).
+ * Lit `rendering`, `creative.hook_visual.selected_image_url` et `provider_overrides.veo3.model` depuis le spec.
+ * Ne modifie pas le spec (ex. `trace.video_generation.task_id` : responsabilité de l’appelant).
+ *
+ * @param prompt Texte final produit par le traducteur Veo3 (non reconstruit ici).
  */
 export async function createVertexVeoVideoTask(
-  params: CreateVertexVeoTaskParams,
+  spec: CampaignGenerationSpec,
+  prompt: string,
   accessToken: string | undefined | null,
   clientOptions?: VertexVeoClientOptions,
 ): Promise<{ taskId: string; model?: string }> {
+  const trimmedPrompt = String(prompt ?? "").trim();
+  if (!trimmedPrompt) {
+    throw new Error("Prompt vidéo manquant : fournis un prompt non vide pour la génération Veo3.");
+  }
+
+  const generationMode = spec.rendering.generation_mode;
+  const hookUrl = String(spec.creative.hook_visual.selected_image_url ?? "").trim();
+
+  if (generationMode === "image_to_video" && !hookUrl) {
+    throw new Error(
+      "Mode image vers vidéo : une image d’accroche (URL) est requise dans le spec. Sélectionne ou valide un visuel d’accroche puis réessaie.",
+    );
+  }
+
+  const aspectRatio = veoAspectRatioFromSpec(spec.rendering.aspect_ratio);
+  const duration = veoDurationSecondsFromSpec(spec);
+  const modelTrim = String(spec.provider_overrides.veo3.model ?? "").trim();
+
   const data = (await invokeVertexVeoVideo(
     {
       action: "create",
-      prompt: params.prompt,
-      duration: params.durationSeconds,
-      aspect_ratio: params.aspectRatio,
-      model: params.model,
-      initial_image_url: params.initialImageUrl,
-      generation_mode: params.generationMode,
+      schema_version: CAMPAIGN_GENERATION_SPEC_VERSION,
+      prompt: trimmedPrompt,
+      duration,
+      aspect_ratio: aspectRatio,
+      ...(modelTrim ? { model: modelTrim } : {}),
+      ...(hookUrl ? { initial_image_url: hookUrl } : {}),
+      generation_mode: generationMode,
     },
     accessToken,
     clientOptions,

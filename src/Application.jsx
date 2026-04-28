@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from "react-router-dom";
+import { createBrowserRouter, RouterProvider, Outlet, Navigate, useLocation, useNavigationType } from "react-router-dom";
 import { useState, useEffect, Component } from "react";
 import DashboardLayout from "./dispositions/DispositionTableauDeBord.jsx";
 import RappelAuth from "./pages/RappelAuth.jsx";
@@ -14,8 +14,11 @@ import Boutique from "./pages/Boutique.jsx";
 import CommunauteVWS from "./pages/CommunauteVWS.jsx";
 import Admin from "./pages/Admin.jsx";
 import MentionsLegales from "./pages/MentionsLegales.jsx";
+import ViralWorks from "./pages/ViralWorks.jsx";
 import ChargeurInitial from "./composants/interface/ChargeurInitial.jsx";
 import ProtectedRoute from "./composants/auth/RouteProtegee.jsx";
+import { AuthProvider } from "./contexte/FournisseurAuth";
+import { AuthActionProvider } from "./contexte/ActionAuthModalContext";
 
 const LOADER_STORAGE_KEY = "onetool_initial_loader_seen";
 const LOADER_COOLDOWN_HOURS = 1;
@@ -63,20 +66,22 @@ class RouteErrorBoundary extends Component {
   }
 }
 
-export default function App() {
+function AppShell() {
   const [showInitialLoader, setShowInitialLoader] = useState(false);
+  const location = useLocation();
+  const navigationType = useNavigationType();
 
   useEffect(() => {
     try {
       const lastSeen = localStorage.getItem(LOADER_STORAGE_KEY);
-      
+
       if (!lastSeen) {
         setShowInitialLoader(true);
       } else {
         const lastSeenTime = parseInt(lastSeen, 10);
         const now = Date.now();
         const hoursSinceLastSeen = (now - lastSeenTime) / (1000 * 60 * 60);
-        
+
         if (hoursSinceLastSeen >= LOADER_COOLDOWN_HOURS) {
           setShowInitialLoader(true);
         } else {
@@ -98,68 +103,100 @@ export default function App() {
     setShowInitialLoader(false);
   };
 
+  useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'770227'},body:JSON.stringify({sessionId:'770227',runId:'run7',hypothesisId:'H21',location:'src/Application.jsx:110',message:'appshell_route_observed',data:{pathname:location.pathname,navigationType,showInitialLoader},timestamp:Date.now()})}).catch(()=>{});
+    console.warn("[DBG H21] appshell_route_observed", {
+      pathname: location.pathname,
+      navigationType,
+      showInitialLoader,
+    });
+    // #endregion
+  }, [location.pathname, navigationType, showInitialLoader]);
+
+  useEffect(() => {
+    const onWindowError = (event) => {
+      // #region agent log
+      fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'770227'},body:JSON.stringify({sessionId:'770227',runId:'run7',hypothesisId:'H24',location:'src/Application.jsx:122',message:'window_error_captured',data:{message:String(event?.message||""),filename:String(event?.filename||""),lineno:Number(event?.lineno||0)},timestamp:Date.now()})}).catch(()=>{});
+      console.error("[DBG H24] window_error_captured", {
+        message: event?.message,
+        filename: event?.filename,
+        lineno: event?.lineno,
+      });
+      // #endregion
+    };
+    window.addEventListener("error", onWindowError);
+    return () => window.removeEventListener("error", onWindowError);
+  }, []);
 
   if (showInitialLoader) {
     return <ChargeurInitial onEnter={handleEnter} />;
   }
 
-  return (
-    <Routes>
-      <Route path="/login" element={<Connexion />} />
-      <Route path="/logout" element={<RouteDeconnexion />} />
-      <Route path="/auth/callback" element={<RappelAuth />} />
-      <Route path="/reset-password" element={<ReinitialiserMotDePasse />} />
-      <Route path="/" element={<Accueil />} />
+  return <Outlet />;
+}
 
-      <Route element={<DashboardLayout />}>
-        <Route path="/lab" element={<Lab />} />
-        <Route path="/a-savoir" element={<Asavoir />} />
-        <Route path="/mentions-legales" element={<MentionsLegales />} />
-        
-        <Route path="/dashboard" element={<Navigate to="/" replace />} />
+const router = createBrowserRouter([
+  {
+    element: (
+      <AuthProvider>
+        <AuthActionProvider>
+          <AppShell />
+        </AuthActionProvider>
+      </AuthProvider>
+    ),
+    children: [
+      { path: "/login", element: <Connexion /> },
+      { path: "/logout", element: <RouteDeconnexion /> },
+      { path: "/auth/callback", element: <RappelAuth /> },
+      { path: "/reset-password", element: <ReinitialiserMotDePasse /> },
+      { path: "/", element: <Accueil /> },
+      {
+        element: <DashboardLayout />,
+        children: [
+          { path: "/lab", element: <Lab /> },
+          { path: "/a-savoir", element: <Asavoir /> },
+          { path: "/mentions-legales", element: <MentionsLegales /> },
+          { path: "/dashboard", element: <Navigate to="/" replace /> },
+          { path: "/prompt", element: <Navigate to="/viralworks" replace /> },
+          { path: "/viralworks", element: <ViralWorks /> },
+          { path: "/image", element: <Navigate to="/viralworks" replace /> },
+          { path: "/video", element: <Navigate to="/viralworks" replace /> },
+          {
+            path: "/profil",
+            element: (
+              <ProtectedRoute>
+                <Profil />
+              </ProtectedRoute>
+            ),
+          },
+          {
+            path: "/galerie",
+            element: (
+              <ProtectedRoute>
+                <RouteErrorBoundary>
+                  <Galerie />
+                </RouteErrorBoundary>
+              </ProtectedRoute>
+            ),
+          },
+          { path: "/communaute-vws", element: <CommunauteVWS /> },
+          { path: "/boutique", element: <Boutique /> },
+          {
+            path: "/admin",
+            element: (
+              <ProtectedRoute>
+                <Admin />
+              </ProtectedRoute>
+            ),
+          },
+        ],
+      },
+      { path: "*", element: <Navigate to="/" replace /> },
+    ],
+  },
+]);
 
-        <Route path="/prompt" element={<Navigate to="/viralworks" replace />} />
-        {/* ViralWorks est rendu dans DashboardLayout (persistant, masqué hors /viralworks). */}
-        <Route path="/viralworks" element={null} />
-        <Route path="/image" element={<Navigate to="/viralworks" replace />} />
-        <Route path="/video" element={<Navigate to="/viralworks" replace />} />
-        <Route
-          path="/profil"
-          element={
-            <ProtectedRoute>
-              <Profil />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/galerie"
-          element={
-            <ProtectedRoute>
-              <RouteErrorBoundary>
-                <Galerie />
-              </RouteErrorBoundary>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/communaute-vws"
-          element={<CommunauteVWS />}
-        />
-        <Route
-          path="/boutique"
-          element={<Boutique />}
-        />
-        <Route
-          path="/admin"
-          element={
-            <ProtectedRoute>
-              <Admin />
-            </ProtectedRoute>
-          }
-        />
-      </Route>
-
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
-  );
+export default function App() {
+  return <RouterProvider router={router} />;
 }

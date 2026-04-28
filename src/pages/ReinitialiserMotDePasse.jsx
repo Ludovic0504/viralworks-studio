@@ -209,7 +209,7 @@ export default function ResetPassword() {
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 pr-12 text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all"
+                  className="w-full rounded-lg px-4 py-3 pr-12 text-gray-200 placeholder-gray-500 focus:outline-none transition-all input-vws"
                   placeholder="Au moins 6 caractères"
                   required
                   minLength={6}
@@ -235,7 +235,7 @@ export default function ResetPassword() {
                   type={showConfirmPassword ? "text" : "password"}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 pr-12 text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all"
+                  className="w-full rounded-lg px-4 py-3 pr-12 text-gray-200 placeholder-gray-500 focus:outline-none transition-all input-vws"
                   placeholder="Répétez le mot de passe"
                   required
                   minLength={6}
@@ -253,7 +253,7 @@ export default function ResetPassword() {
             <button
               type="submit"
               disabled={loading || !password || !confirmPassword}
-              className="w-full rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-400 text-white font-semibold py-3 hover:from-emerald-400 hover:to-emerald-300 transition-all duration-300 shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_30px_rgba(16,185,129,0.4)] disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full rounded-lg font-semibold py-3 transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 btn-vws-primary"
             >
               {loading ? (
                 <>
