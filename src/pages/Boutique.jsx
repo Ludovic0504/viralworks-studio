@@ -4,10 +4,10 @@ import { useAuth } from "@/contexte/FournisseurAuth";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { getUserCredits } from "@/bibliotheque/supabase/credits";
 import {
-  redirectToCheckout,
   getUserSubscription,
   fetchWelcomeGiftNeedsChoice,
 } from "@/bibliotheque/supabase/stripe";
+import { useStripePayment, payMonthly, payYearly, payVideoPack } from "../hooks/useStripePayment";
 import ModalCadeauBienvenue from "@/composants/ModalCadeauBienvenue";
 import { CreditCard, Check, Crown, Loader2, CheckCircle, XCircle, ShoppingBag } from "lucide-react";
 
@@ -87,7 +87,7 @@ export default function Boutique() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [subscription, setSubscription] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const { loading, error, startPayment } = useStripePayment();
   const [activeTab, setActiveTab] = useState("credits");
   const [refreshing, setRefreshing] = useState(false);
   const [showGiftModal, setShowGiftModal] = useState(false);
@@ -104,6 +104,7 @@ export default function Boutique() {
 
   useEffect(() => {
     if (paymentStatus === "success") {
+      console.log("✅ Paiement réussi !");
       if (!session) {
         openAuthModal();
         return;
@@ -112,6 +113,8 @@ export default function Boutique() {
       setTimeout(() => {
         refreshCredits();
       }, 3000);
+    } else if (paymentStatus === "cancelled") {
+      console.log("ℹ️ Paiement annulé par l'utilisateur");
     }
   }, [paymentStatus, session, openAuthModal]);
 
@@ -193,22 +196,6 @@ export default function Boutique() {
     }
   };
 
-  const handlePurchaseCredits = async (packageId) => {
-    const packageData = CREDIT_PACKAGES.find((p) => p.id === packageId);
-    if (!packageData) return;
-
-    setLoading(true);
-    try {
-      await redirectToCheckout(packageData.price, packageData.credits, "credits");
-    } catch (err) {
-      console.error("Erreur achat crédits:", err);
-      const errorMessage = err?.message || "Erreur lors de l'achat. Veuillez réessayer.";
-      console.error("Détails de l'erreur:", errorMessage);
-      alert(`Erreur lors de l'achat: ${errorMessage}`);
-      setLoading(false);
-    }
-  };
-
   const handleGiftFlowComplete = () => {
     setGiftModalDismissed(false);
     setShowGiftModal(false);
@@ -222,24 +209,23 @@ export default function Boutique() {
     setGiftModalDismissed(true);
   };
 
-  const handleSubscribe = async (planId) => {
-    const plan = SUBSCRIPTION_PLANS.find((p) => p.id === planId);
-    if (!plan) return;
-
-    setLoading(true);
-    try {
-      await redirectToCheckout(plan.price, plan.credits, "subscription", plan.id);
-    } catch (err) {
-      console.error("Erreur abonnement:", err);
-      const errorMessage = err?.message || "Erreur lors de l'abonnement. Veuillez réessayer.";
-      console.error("Détails de l'erreur:", errorMessage);
-      alert(`Erreur lors de l'abonnement: ${errorMessage}`);
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {loading && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center">
+          <div className="rounded-xl p-8 text-center border border-white/10" style={{ background: "#1a1a2e" }}>
+            <div className="animate-spin w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full mx-auto mb-4" />
+            <p className="text-white text-sm">Redirection vers le paiement sécurisé…</p>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-red-500/10 border border-red-500/40 text-red-400 rounded-lg px-4 py-3 text-sm z-50">
+          {error}
+        </div>
+      )}
+
       {/* En-tête */}
       <div className="mb-8">
         <div className="flex items-center gap-3 mb-4">
@@ -353,7 +339,11 @@ export default function Boutique() {
                 </div>
               </div>
               <button
-                onClick={() => void runWithAuth(() => handlePurchaseCredits(pkg.id))}
+                onClick={() =>
+                  void runWithAuth(() =>
+                    startPayment(payVideoPack({ videos: pkg.credits, amount: pkg.price }))
+                  )
+                }
                 disabled={loading}
                 className={`w-full py-3 rounded-lg font-semibold transition-all ${
                   pkg.popular
@@ -419,7 +409,11 @@ export default function Boutique() {
               </ul>
               <div className="space-y-3">
                 <button
-                  onClick={() => void runWithAuth(() => handleSubscribe(plan.id))}
+                  onClick={() =>
+                    void runWithAuth(() =>
+                      startPayment(plan.id === "monthly" ? payMonthly() : payYearly())
+                    )
+                  }
                   disabled={loading || subscription !== null}
                   className={`w-full py-3 rounded-lg font-semibold transition-all ${
                     plan.popular

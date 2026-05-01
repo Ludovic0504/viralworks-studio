@@ -985,8 +985,8 @@ export default function ImagePage({
   ];
 
   const interactionPanel = (
-    <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-4 sm:px-5 sm:py-5">
-      <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-end">
+    <div className="min-w-0 w-full rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-4 sm:px-5 sm:py-5">
+      <div className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-end">
         <div className="min-w-0 flex-1">
           <div className="mb-1.5 flex items-center justify-between gap-3">
             <label className="block text-[10px] font-semibold uppercase tracking-wider text-gray-500">
@@ -1052,19 +1052,25 @@ export default function ImagePage({
             </p>
           ) : null}
         </div>
-        <div className="flex shrink-0 flex-col gap-2 sm:w-64">
+        <div className="flex w-full shrink-0 flex-col gap-2 sm:w-64">
           <button
             type="button"
             onClick={() => void handleUseThisImage()}
             disabled={!lastGeneratedImages?.length || busy || modifyLoading}
-            className={`rounded-xl px-4 py-3 text-center text-sm font-semibold transition ${
+            className={`rounded-xl border px-4 py-3.5 text-center text-sm font-semibold transition ${
               lastGeneratedImages?.length && !busy && !modifyLoading
-                ? "bg-gradient-to-r from-cyan-600 to-cyan-500 text-white shadow-lg shadow-cyan-950/40 hover:from-cyan-500 hover:to-cyan-400"
-                : "cursor-not-allowed border border-white/10 bg-white/5 text-gray-500"
+                ? "border-white/12 bg-white/[0.06] text-white shadow-none hover:border-cyan-400/30 hover:bg-white/[0.09]"
+                : "cursor-not-allowed border-white/10 bg-white/[0.03] text-gray-500"
             }`}
           >
             Utiliser cette image
-            <span className="mt-0.5 block text-[10px] font-normal uppercase tracking-wide text-white/70">
+            <span
+              className={`mt-1 block text-[10px] font-normal uppercase tracking-wide ${
+                lastGeneratedImages?.length && !busy && !modifyLoading
+                  ? "text-cyan-300/90"
+                  : "text-gray-600"
+              }`}
+            >
               Étape 3 : vidéo →
             </span>
           </button>
@@ -1099,26 +1105,30 @@ export default function ImagePage({
             : "/boutique?section=subscription";
         }}
       />
-      <div className="studio-panel w-full max-w-none p-5 sm:p-6 space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-          <PageTitle
-            green="Visuel"
-            white="d'accroche"
-            subtitle="Choisis l'image qui arrête le scroll avant ta vidéo."
-          />
-          <div className="w-full sm:w-72 space-y-2 shrink-0">
+      <div className="studio-panel box-border w-full min-w-0 max-w-full p-5 sm:p-6 space-y-4">
+        <div className="flex min-w-0 w-full flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0 flex-1 [&_header]:mb-3">
+            <PageTitle
+              green="Visuel"
+              white="d'accroche"
+              subtitle="Choisis l'image qui arrête le scroll avant ta vidéo."
+            />
+          </div>
+          <div className="w-full lg:w-72 shrink-0 space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-gray-300">Étape 2 sur 3 · Visuel d'accroche</span>
+              <span className="text-xs font-medium text-gray-300">
+                Étape 2 sur 3 - Visuel d&apos;accroche
+              </span>
             </div>
             <div className="w-full studio-step-rail">
               <div className="h-full w-2/3 studio-step-rail-fill" />
             </div>
             <div className="relative flex flex-col gap-2" ref={historyPanelRef}>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-col gap-2">
                 <button
                   type="button"
                   onClick={() => setShowSystemVideo(true)}
-                  className="studio-toolbar-btn flex-1 min-w-0 sm:flex-none"
+                  className="studio-toolbar-btn w-full justify-center"
                 >
                   <BookOpen className="w-3.5 h-3.5 shrink-0 text-cyan-400" />
                   <span className="truncate">Explication du système</span>
@@ -1132,14 +1142,14 @@ export default function ImagePage({
                       ? "Aucune grille enregistrée dans cette session (génère ou modifie d’abord des images)"
                       : "Restaurer une grille ou un état visuel enregistré"
                   }
-                  className="studio-toolbar-btn inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium text-gray-400 hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-gray-400 border border-white/10 bg-white/[0.02]"
+                  className="studio-toolbar-btn inline-flex w-full items-center justify-center gap-1.5 px-2.5 py-2.5 text-[11px] font-medium text-gray-400 hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-gray-400"
                 >
                   <History className="h-3.5 w-3.5 text-cyan-500/90" />
                   Historique
                 </button>
               </div>
               {historyOpen && visualSnapshots.length > 0 && (
-                <div className="absolute right-0 top-full z-30 mt-1 w-[min(100vw-2rem,280px)] rounded-xl border border-white/12 bg-gray-950/95 p-2 shadow-xl shadow-black/50 backdrop-blur-md">
+                <div className="absolute right-0 top-full z-30 mt-1 w-full max-w-[280px] rounded-xl border border-white/12 bg-gray-950/95 p-2 shadow-xl shadow-black/50 backdrop-blur-md">
                   <p className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
                     Sessions visuelles
                   </p>
@@ -1189,8 +1199,8 @@ export default function ImagePage({
         </div>
 
       {/* 1. Configuration : format + variantes */}
-      <div className="mb-6 flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-4 sm:gap-8 rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-3">
-        <div className="flex flex-col gap-1.5">
+      <div className="mb-2 flex w-full flex-col items-center gap-4 rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-4 sm:flex-row sm:flex-wrap sm:justify-center sm:gap-x-6 sm:gap-y-3 sm:px-5">
+        <div className="flex flex-col items-center gap-1.5 sm:items-start">
           <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Format</span>
           <div className="inline-flex rounded-xl border border-white/10 bg-black/20 p-1">
             {ratioOptions.map((opt) => (
@@ -1208,8 +1218,8 @@ export default function ImagePage({
               </button>
             ))}
           </div>
-      </div>
-        <div className="flex flex-col gap-1.5">
+        </div>
+        <div className="flex flex-col items-center gap-1.5 sm:items-start">
           <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Variantes</span>
           <div className="inline-flex rounded-xl border border-white/10 bg-black/20 p-1 gap-0.5">
             {[1, 2, 3, 4].map((n) => (
@@ -1228,27 +1238,33 @@ export default function ImagePage({
             ))}
           </div>
         </div>
-        </div>
+      </div>
 
       {/* 2. Introduction (hero) — sans cadre, sur le fond de page */}
-      <section className="text-center">
+      <section className="space-y-4 text-center sm:space-y-5">
         {ideaReadyBadge && (
-          <span className="mb-4 inline-flex rounded-full border border-cyan-400/35 bg-cyan-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-cyan-200">
+          <span className="inline-flex rounded-full border border-cyan-400/35 bg-cyan-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-cyan-200">
             Idée prête à être illustrée
           </span>
         )}
-        <h2 className="text-2xl font-bold text-white sm:text-3xl">
+        <h2 className="text-2xl font-bold text-white sm:text-3xl lg:text-4xl">
           Crée le visuel qui <span className="border-b-2 border-cyan-400 text-cyan-300">accroche</span>.
         </h2>
-        <p className="mt-4 text-sm leading-relaxed text-gray-400">
+        <p className="mx-auto max-w-2xl text-sm leading-relaxed text-gray-400 sm:text-base">
           Décris ce que tu veux voir en premier dans ta vidéo (la toute première image). Ensuite tu pourras affiner
           image par image.
         </p>
       </section>
 
-      {/* 3. Zone images : aperçu principal + variantes à droite */}
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch">
-        <div className="relative min-h-[280px] min-w-0 flex-1 overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.04] to-black/20">
+      {/* 3. Zone images : aperçu principal + variantes à droite (groupées et centrées pour éviter l’écart à droite) */}
+      <div className="flex w-full min-w-0 flex-col items-center gap-4 lg:flex-row lg:items-center lg:justify-center lg:gap-5">
+        <div
+          className={`relative min-w-0 overflow-hidden rounded-xl ${
+            lastGeneratedImages?.length
+              ? "shrink-0 bg-transparent"
+              : "min-h-[220px] border border-white/[0.08] bg-gradient-to-b from-white/[0.04] to-black/20 lg:min-h-[260px] mx-auto w-1/2 max-w-full shrink-0"
+          }`}
+        >
           {busy && (
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/70 px-6">
               <Sparkles className="mb-3 h-8 w-8 animate-pulse text-cyan-400" />
@@ -1263,22 +1279,24 @@ export default function ImagePage({
             </div>
           )}
           {lastGeneratedImages?.length ? (
-            <div className="flex h-full min-h-[320px] items-center justify-center p-4 sm:p-6">
+            <div className="flex min-h-[200px] items-center justify-center px-2 py-3 sm:px-4 sm:py-4">
               <img
                 src={lastGeneratedImages[selectedImageIndex]}
                 alt="Visuel sélectionné"
-                className="max-h-[min(72vh,680px)] w-full max-w-full object-contain shadow-2xl shadow-black/50"
+                className="max-h-[min(42vh,380px)] w-auto max-w-full object-contain"
               />
             </div>
           ) : (
-            <div className="flex min-h-[320px] items-center justify-center px-6 py-12">
-              <p className="text-center text-sm text-gray-500">Tes visuels générés s’afficheront ici.</p>
+            <div className="absolute inset-0 flex items-center justify-center px-6 py-10">
+              <p className="text-center text-sm leading-relaxed text-gray-500">
+                Tes visuels générés s’afficheront ici.
+              </p>
             </div>
           )}
       </div>
 
         {lastGeneratedImages?.length ? (
-          <div className="flex w-full flex-row gap-2 overflow-x-auto pb-1 lg:w-44 lg:flex-col lg:overflow-y-auto lg:overflow-x-visible lg:pb-0 lg:max-h-[min(72vh,680px)]">
+          <div className="flex w-full max-w-full flex-shrink-0 flex-row justify-center gap-2 overflow-x-auto pb-1 sm:justify-start lg:w-auto lg:flex-col lg:justify-center lg:gap-2.5 lg:overflow-visible lg:pb-0">
             {lastGeneratedImages.map((url, index) => (
               <button
                 key={`${url}-${index}`}
@@ -1290,24 +1308,25 @@ export default function ImagePage({
                     selected_image_url: String(url || ""),
                   });
                 }}
-                className={`relative shrink-0 overflow-hidden rounded-xl border-2 transition-all ${
+                className={`relative shrink-0 overflow-hidden rounded-lg border transition-all ${
                   selectedImageIndex === index
-                    ? "border-cyan-400 ring-2 ring-cyan-400/30"
-                    : "border-white/10 opacity-90 hover:border-white/25 hover:opacity-100"
+                    ? "border-cyan-400"
+                    : "border-white/15 opacity-90 hover:border-white/30 hover:opacity-100"
                 }`}
               >
-                <div className="aspect-[9/16] w-24 sm:w-28 lg:w-full lg:aspect-[9/16]">
+                {/* ~100px de haut × ratio 9:16 → 4 vignettes ≈ 400px + interlignes : sans scroll sur une fenêtre typique */}
+                <div className="h-[5.5rem] w-[3.1rem] sm:h-[6rem] sm:w-[3.375rem]">
                   <img src={url} alt="" className="h-full w-full object-cover" loading="lazy" />
                 </div>
                 <span
-                  className={`absolute right-1 top-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                  className={`absolute right-0.5 top-0.5 rounded-full px-1 py-px text-[9px] font-bold sm:text-[10px] ${
                     selectedImageIndex === index ? "bg-cyan-500 text-gray-950" : "bg-black/60 text-gray-200"
                   }`}
                 >
                   V{index + 1}
                 </span>
                 {selectedImageIndex === index && (
-                  <Check className="absolute left-1 top-1 h-4 w-4 text-cyan-400 drop-shadow-md" aria-hidden />
+                  <Check className="absolute left-0.5 top-0.5 h-3.5 w-3.5 text-cyan-400 sm:h-4 sm:w-4" aria-hidden />
                 )}
               </button>
             ))}

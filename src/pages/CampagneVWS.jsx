@@ -103,7 +103,14 @@ function StabilizationOption({ checked, onChange, label, tooltip }) {
   );
 }
 
-export default function CampagneVWS({ onBrainReady, campaignData, onCampaignChange, onCampagneFullReset }) {
+export default function CampagneVWS({
+  onBrainReady,
+  campaignData,
+  onCampaignChange,
+  onCampagneFullReset,
+  scriptGenerationPending = false,
+  awaitingStep1Validation = false,
+}) {
   const { runWithAuth } = useRequireAuthAction();
   const [profession, setProfessionState] = useState(campaignData?.profession ?? "");
   const [idea, setIdeaState] = useState(campaignData?.idea ?? "");
@@ -482,7 +489,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
     };
   };
 
-  const handleRun = async (clarificationHistoryOverride = null) => {
+  const handleRun = async (clarificationHistoryOverride = null, runOverrides = null) => {
     setError("");
     setLoading(true);
     try {
@@ -496,6 +503,17 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         clarificationHistoryOverride ??
         (Array.isArray(campaignData?.clarificationHistory) ? campaignData.clarificationHistory : []);
 
+      const effectiveTempo =
+        runOverrides?.tempo !== undefined ? normalizeTempo(runOverrides.tempo) : tempo;
+      const effectiveSequenceType =
+        runOverrides?.sequenceType !== undefined ? runOverrides.sequenceType : sequenceType;
+      const effectiveMicroAnswer =
+        runOverrides?.microAnswer !== undefined ? runOverrides.microAnswer : microAnswer;
+      const effectiveTempoCompressionDecision =
+        runOverrides?.tempoCompressionDecision !== undefined
+          ? runOverrides.tempoCompressionDecision
+          : tempoCompressionDecision;
+
       const histParsed = parseClarifyAxesFromHistory(historyLines);
       let axes = {
         modeAgent:
@@ -507,7 +525,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         cameraAerialAngle:
           campaignData?.clarifyAxesResolved?.cameraAerialAngle === true || histParsed.cameraAerialAngle,
       };
-      const microForBrain = microAnswer ?? histParsed.microFromGate ?? null;
+      const microForBrain = effectiveMicroAnswer ?? histParsed.microFromGate ?? null;
       const causalForBrain =
         causalAgentSelection ?? histParsed.causalAgentSelectionFromGate ?? null;
       const cameraAerialForBrain =
@@ -521,8 +539,8 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         selfieMode,
         cameraFixed,
         cinematicMovement,
-        tempo,
-        sequenceType,
+        tempo: effectiveTempo,
+        sequenceType: effectiveSequenceType,
       });
       const isPresentationSelfie =
         preIntent.intentFamily === "presentation" &&
@@ -545,7 +563,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
             jobType: safeProfession,
             mainIdea: safeIdea,
             modifiers: styleDetails.trim(),
-            tempoSelection: tempo,
+            tempoSelection: effectiveTempo,
             clarificationHistory: histJoined,
             gatePhase: "none",
           });
@@ -563,7 +581,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
           jobType: safeProfession,
           mainIdea: safeIdea,
           modifiers: styleDetails.trim(),
-          tempoSelection: tempo,
+          tempoSelection: effectiveTempo,
           clarificationHistory: histJoined,
           gatePhase: phase,
         });
@@ -605,8 +623,8 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
 
       if (
         preIntent.intentFamily === "presentation" &&
-        sequenceType !== "three_x_8s" &&
-        !tempoCompressionDecision
+        effectiveSequenceType !== "three_x_8s" &&
+        !effectiveTempoCompressionDecision
       ) {
         setMicroQuestion({
           question: "Cette présentation semble assez courte. Veux-tu partir sur une vidéo plus longue de 24 secondes ?",
@@ -623,8 +641,8 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
       }
 
       if (
-        tempo !== "timelapse" &&
-        !tempoCompressionDecision &&
+        effectiveTempo !== "timelapse" &&
+        !effectiveTempoCompressionDecision &&
         isIdeaTooDenseForRealtime(safeIdea)
       ) {
         setMicroQuestion({
@@ -644,12 +662,12 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         profession: safeProfession,
         idea: safeIdea,
         styleDetails: styleDetails.trim() || undefined,
-        tempo,
+        tempo: effectiveTempo,
         cameraFixed,
         revealMode,
         cinematicMovement,
         selfieMode,
-        sequenceType,
+        sequenceType: effectiveSequenceType,
         dialogueEnabled,
         microAnswerId: microForBrain,
         causalAgentSelection: causalForBrain,
@@ -679,15 +697,15 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
               profession: safeProfession,
               idea: safeIdea,
               styleDetails: styleDetails.trim() || "",
-              tempo,
+              tempo: effectiveTempo,
               cameraFixed,
               revealMode,
               cinematicMovement,
               selfieMode,
-              sequenceType,
+              sequenceType: effectiveSequenceType,
               dialogueEnabled,
               microAnswer: microForBrain,
-              tempoCompressionDecision,
+              tempoCompressionDecision: effectiveTempoCompressionDecision,
             },
             brain,
           })
@@ -729,12 +747,15 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         },
         creative: {
           ...createDefaultCampaignGenerationSpec().creative,
-          sequence_type: sequenceType === "three_x_8s" ? "three_x_8s" : "single_8s",
+          sequence_type: effectiveSequenceType === "three_x_8s" ? "three_x_8s" : "single_8s",
         },
         rendering: {
           ...createDefaultCampaignGenerationSpec().rendering,
-          tempo: tempo === "timelapse" || tempo === "slow_motion" ? tempo : "real_time",
-          tempo_resolution_decision: tempoCompressionDecision ?? null,
+          tempo:
+            effectiveTempo === "timelapse" || effectiveTempo === "slow_motion"
+              ? effectiveTempo
+              : "real_time",
+          tempo_resolution_decision: effectiveTempoCompressionDecision ?? null,
           camera: {
             ...createDefaultCampaignGenerationSpec().rendering.camera,
             fixed: Boolean(cameraFixed),
@@ -761,15 +782,15 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         profession: safeProfession,
         idea: safeIdea,
         styleDetails: styleDetails.trim() || "",
-        tempo,
+        tempo: effectiveTempo,
         cameraFixed,
         revealMode,
         cinematicMovement,
         selfieMode,
-        sequenceType,
+        sequenceType: effectiveSequenceType,
         dialogueEnabled,
         microAnswer: microForBrain,
-        tempoCompressionDecision,
+        tempoCompressionDecision: effectiveTempoCompressionDecision,
         causalAgentSelection: causalForBrain,
         cameraAerialAngle: cameraAerialForBrain,
         initialStateSelection: null,
@@ -899,6 +920,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         })
       );
       setError("");
+      void handleRun(null, { tempo: nextTempo, tempoCompressionDecision: optionId });
       return;
     }
     if (optionId === "switch_24s" || optionId === "keep_8s") {
@@ -915,16 +937,21 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         })
       );
       setError("");
+      void handleRun(null, {
+        sequenceType: nextSequenceType,
+        tempoCompressionDecision: optionId,
+      });
       return;
     }
     setMicroAnswer(optionId);
     onCampaignChange?.(buildCampaignSnapshot({ microAnswer: optionId }));
     setError("");
+    void handleRun(null, { microAnswer: optionId });
   };
 
   return (
     <>
-    <div className="studio-panel p-5 sm:p-6 space-y-4">
+    <div className="studio-panel box-border w-full min-w-0 max-w-full p-5 sm:p-6 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-sm font-semibold text-gray-200 flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-cyan-400" />
@@ -1166,11 +1193,22 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         <button
           type="button"
           onClick={() => void runWithAuth(handleRun)}
-          disabled={loading}
+          disabled={loading || scriptGenerationPending || awaitingStep1Validation}
+          title={
+            awaitingStep1Validation && !loading && !scriptGenerationPending
+              ? "Valide l’étape Campagne avec le bouton en haut de page pour continuer."
+              : undefined
+          }
           className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold btn-vws-primary disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Sparkles className="w-4 h-4" />
-          {loading ? "Préparation en cours…" : "Préparer ma vidéo"}
+          {loading
+            ? "Préparation en cours…"
+            : scriptGenerationPending
+              ? "Génération du script…"
+              : awaitingStep1Validation
+                ? "Étape prête — valide ci-dessus"
+                : "Préparer ma vidéo"}
         </button>
         {typeof onCampagneFullReset === "function" ? (
           <button

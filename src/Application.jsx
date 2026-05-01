@@ -1,4 +1,4 @@
-import { createBrowserRouter, RouterProvider, Outlet, Navigate, useLocation, useNavigationType } from "react-router-dom";
+import { createBrowserRouter, RouterProvider, Outlet, Navigate } from "react-router-dom";
 import { useState, useEffect, Component } from "react";
 import DashboardLayout from "./dispositions/DispositionTableauDeBord.jsx";
 import RappelAuth from "./pages/RappelAuth.jsx";
@@ -68,8 +68,6 @@ class RouteErrorBoundary extends Component {
 
 function AppShell() {
   const [showInitialLoader, setShowInitialLoader] = useState(false);
-  const location = useLocation();
-  const navigationType = useNavigationType();
 
   useEffect(() => {
     try {
@@ -102,32 +100,6 @@ function AppShell() {
     }
     setShowInitialLoader(false);
   };
-
-  useEffect(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'770227'},body:JSON.stringify({sessionId:'770227',runId:'run7',hypothesisId:'H21',location:'src/Application.jsx:110',message:'appshell_route_observed',data:{pathname:location.pathname,navigationType,showInitialLoader},timestamp:Date.now()})}).catch(()=>{});
-    console.warn("[DBG H21] appshell_route_observed", {
-      pathname: location.pathname,
-      navigationType,
-      showInitialLoader,
-    });
-    // #endregion
-  }, [location.pathname, navigationType, showInitialLoader]);
-
-  useEffect(() => {
-    const onWindowError = (event) => {
-      // #region agent log
-      fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'770227'},body:JSON.stringify({sessionId:'770227',runId:'run7',hypothesisId:'H24',location:'src/Application.jsx:122',message:'window_error_captured',data:{message:String(event?.message||""),filename:String(event?.filename||""),lineno:Number(event?.lineno||0)},timestamp:Date.now()})}).catch(()=>{});
-      console.error("[DBG H24] window_error_captured", {
-        message: event?.message,
-        filename: event?.filename,
-        lineno: event?.lineno,
-      });
-      // #endregion
-    };
-    window.addEventListener("error", onWindowError);
-    return () => window.removeEventListener("error", onWindowError);
-  }, []);
 
   if (showInitialLoader) {
     return <ChargeurInitial onEnter={handleEnter} />;

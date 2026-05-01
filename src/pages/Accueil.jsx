@@ -5,6 +5,7 @@ import { useAuth } from "@/contexte/FournisseurAuth";
 import Footer from "@/composants/disposition/PiedDePage";
 import SidebarShell from "@/composants/disposition/Navbar";
 import LienNavSync from "@/composants/disposition/LienNavSync";
+import MenuProfilConnecte from "@/composants/disposition/MenuProfilConnecte";
 
 const navLinks = [
   { path: "/", label: "Accueil" },
@@ -12,7 +13,7 @@ const navLinks = [
   { path: "/viralworks", label: "ViralWorks" },
   { path: "/communaute-vws", label: "Communauté VWS" },
   { path: "/boutique", label: "Boutique" },
-  { path: "/a-savoir", label: "Informations utiles" },
+  { path: "/a-savoir", label: "Playbook" },
 ];
 
 export default function Accueil() {
@@ -63,29 +64,6 @@ export default function Accueil() {
   }, [hasSession, loading, signingOut]);
 
   const showConnectedBranch = hasSession || (loading && wasConnectedRef.current);
-
-  useEffect(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'770227'},body:JSON.stringify({sessionId:'770227',runId:'run1',hypothesisId:'H4',location:'src/pages/Accueil.jsx:56',message:'accueil_route_effect',data:{pathname:location.pathname,menuOpen},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-  }, [location.pathname, menuOpen]);
-
-  useEffect(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'770227'},body:JSON.stringify({sessionId:'770227',runId:'run6',hypothesisId:'H17',location:'src/pages/Accueil.jsx:82',message:'accueil_header_auth_state_ref_mode',data:{pathname:location.pathname,loading,hasSession,hasEmail:Boolean(session?.user?.email),wasConnectedRef:wasConnectedRef.current,showConnectedBranch},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-  }, [location.pathname, loading, hasSession, session, showConnectedBranch]);
-
-  useEffect(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'770227'},body:JSON.stringify({sessionId:'770227',runId:'run7',hypothesisId:'H22',location:'src/pages/Accueil.jsx:82',message:'accueil_mounted',data:{pathname:location.pathname},timestamp:Date.now()})}).catch(()=>{});
-    console.warn("[DBG H22] accueil_mounted", { pathname: location.pathname });
-    return () => {
-      fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'770227'},body:JSON.stringify({sessionId:'770227',runId:'run7',hypothesisId:'H22',location:'src/pages/Accueil.jsx:86',message:'accueil_unmounted',data:{pathname:window.location.pathname},timestamp:Date.now()})}).catch(()=>{});
-      console.warn("[DBG H22] accueil_unmounted", { pathname: window.location.pathname });
-    };
-    // #endregion
-  }, []);
 
   return (
     <div className="relative min-h-screen overflow-hidden">
@@ -162,28 +140,7 @@ export default function Accueil() {
 
             <div className="flex items-center gap-4 z-10 flex-shrink-0">
               {showConnectedBranch ? (
-                <>
-                  {session.user?.email && (
-                    <LienNavSync
-                      to="/profil"
-                      className="hidden md:flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 border border-white/10 backdrop-blur-sm hover:bg-white/10 hover:border-white/20 transition-all cursor-pointer group"
-                      title="Voir mon profil"
-                    >
-                      <div className="w-2 h-2 rounded-full bg-emerald-400 group-hover:bg-emerald-300 transition-colors" />
-                      <span className="text-xs text-gray-300 font-medium truncate max-w-[120px] group-hover:text-gray-200 transition-colors">
-                        {session.user.email.split('@')[0]}
-                      </span>
-                    </LienNavSync>
-                  )}
-                  <button
-                    onClick={handleLogout}
-                    disabled={signingOut}
-                    className="hidden md:flex text-sm font-medium text-gray-400 hover:text-gray-200 transition-colors disabled:opacity-50"
-                    title="Se déconnecter"
-                  >
-                    {signingOut ? "Déconnexion…" : "Déconnexion"}
-                  </button>
-                </>
+                <MenuProfilConnecte onLogout={handleLogout} signingOut={signingOut} />
               ) : (
                 <LienNavSync
                   to="/login"

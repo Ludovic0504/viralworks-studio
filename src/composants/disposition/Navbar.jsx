@@ -11,7 +11,7 @@ const links = [
   { path: "/viralworks", label: "ViralWorks", icon: Sparkles },
   { path: "/communaute-vws", label: "Communauté VWS", icon: Users },
   { path: "/boutique", label: "Boutique", icon: ShoppingBag },
-  { path: "/a-savoir", label: "Informations utiles", icon: Info },
+  { path: "/a-savoir", label: "Playbook", icon: Info },
 ];
 
 export default function SidebarShell({ children, open, onCloseMenu }) {
@@ -147,7 +147,7 @@ export default function SidebarShell({ children, open, onCloseMenu }) {
         </div>
       </aside>
 
-      <main className="flex-1 w-full overflow-y-auto">
+      <main className="min-w-0 flex-1 w-full overflow-y-auto">
         {children}
       </main>
     </div>

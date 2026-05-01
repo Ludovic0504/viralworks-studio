@@ -12,6 +12,29 @@
     --vws-glow-hover: rgba(0, 200, 150, 0.5);
     --vws-glow-mild: rgba(0, 200, 150, 0.25);
     --vws-focus-ring: rgba(0, 200, 150, 0.2);
+
+    /* Tokens partagés (Playbook / contenu riche) — alignés sur la palette slate + sémantique Tailwind */
+    --font-sans: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol",
+      "Noto Color Emoji";
+    --color-text-primary: rgb(248 250 252);
+    --color-text-secondary: rgb(203 213 225);
+    --color-text-tertiary: rgb(148 163 184);
+    --color-text-success: rgb(110 231 183);
+    --color-text-info: rgb(103 232 249);
+    --color-text-warning: rgb(253 224 71);
+    --color-text-error: rgb(252 165 165);
+    --color-background-primary: rgb(15 23 42 / 0.92);
+    --color-background-secondary: rgb(30 41 59 / 0.55);
+    --color-background-success: rgb(16 185 129 / 0.18);
+    --color-background-info: rgb(6 182 212 / 0.18);
+    --color-background-warning: rgb(234 179 8 / 0.15);
+    --color-background-error: rgb(239 68 68 / 0.18);
+    --color-border-primary: rgb(148 163 184 / 0.35);
+    --color-border-secondary: rgb(148 163 184 / 0.22);
+    --color-border-tertiary: rgb(148 163 184 / 0.12);
+    --border-radius-sm: 0.25rem;
+    --border-radius-md: 0.375rem;
+    --border-radius-lg: 0.5rem;
   }
 
   html {
@@ -136,35 +159,6 @@
 
   .step-disk-vws-done {
     box-shadow: 0 0 10px var(--vws-glow);
-  }
-
-  .vws-step-connector {
-    position: relative;
-    isolation: isolate;
-  }
-
-  .vws-step-connector::before {
-    content: "";
-    position: absolute;
-    left: 0.5rem;
-    right: 0.5rem;
-    top: 50%;
-    height: 2px;
-    transform: translateY(-50%);
-    background: linear-gradient(
-      90deg,
-      rgba(0, 200, 150, 0.5) 0%,
-      rgba(0, 200, 150, 0.15) 45%,
-      rgba(255, 255, 255, 0.06) 100%
-    );
-    pointer-events: none;
-    z-index: 0;
-    border-radius: 9999px;
-  }
-
-  .vws-step-connector > * {
-    position: relative;
-    z-index: 1;
   }
 }
 

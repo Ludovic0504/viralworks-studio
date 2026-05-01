@@ -273,7 +273,7 @@ export default function BlocFormulaireNouveaute({ editingNouveaute, onCancel, on
                 Nouveautés
               </option>
               <option value="/a-savoir" className="bg-gray-900 text-gray-100">
-                Informations utiles
+                Playbook
               </option>
             </select>
           </div>

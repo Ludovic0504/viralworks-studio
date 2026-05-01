@@ -1,81 +1,49 @@
-/**
- * Deux jeux de clés Stripe (test / live) sur Supabase + bascule via STRIPE_MODE.
- *
- * Secrets recommandés :
- * - STRIPE_MODE = "test" | "live" (défaut : live) — à aligner avec ce que tu utilises dans le dashboard
- * - STRIPE_SECRET_KEY_TEST, STRIPE_WEBHOOK_SECRET_TEST
- * - STRIPE_SECRET_KEY_LIVE, STRIPE_WEBHOOK_SECRET_LIVE
- *
- * Rétrocompat : STRIPE_SECRET_KEY + STRIPE_WEBHOOK_SECRET utilisés si les *_LIVE / génériques manquent.
- */
+export type StripeMode = "test" | "live";
 
-export type StripeCheckoutMode = "test" | "live";
-
-export function getStripeCheckoutMode(): StripeCheckoutMode {
-  const m = (Deno.env.get("STRIPE_MODE") ?? "live").toLowerCase().trim();
-  return m === "test" ? "test" : "live";
+export function getStripeCheckoutMode(): StripeMode {
+  const mode = Deno.env.get("STRIPE_MODE")?.toLowerCase().trim();
+  return mode === "live" ? "live" : "test";
 }
 
-/** Clé API pour checkout / annulation : suit STRIPE_MODE. */
-export function getStripeSecretKeyForCheckout(): string {
+export function getStripeSecretKeyForCheckout(): string | null {
   const mode = getStripeCheckoutMode();
-  if (mode === "test") {
+  if (mode === "live") {
     return (
-      Deno.env.get("STRIPE_SECRET_KEY_TEST")?.trim() ||
-      Deno.env.get("STRIPE_SECRET_KEY")?.trim() ||
-      ""
+      Deno.env.get("STRIPE_SECRET_KEY_LIVE") ||
+      Deno.env.get("STRIPE_SECRET_KEY") ||
+      null
     );
   }
-  return (
-    Deno.env.get("STRIPE_SECRET_KEY_LIVE")?.trim() ||
-    Deno.env.get("STRIPE_SECRET_KEY")?.trim() ||
-    ""
-  );
+  return Deno.env.get("STRIPE_SECRET_KEY_TEST") || null;
 }
 
-/** Clé API après réception d’un webhook (selon event.livemode). */
-export function getStripeSecretKeyForEventLivemode(livemode: boolean): string {
+export function getStripeSecretKeyForEventLivemode(livemode: boolean): string | null {
   if (livemode) {
     return (
-      Deno.env.get("STRIPE_SECRET_KEY_LIVE")?.trim() ||
-      Deno.env.get("STRIPE_SECRET_KEY")?.trim() ||
-      ""
+      Deno.env.get("STRIPE_SECRET_KEY_LIVE") ||
+      Deno.env.get("STRIPE_SECRET_KEY") ||
+      null
     );
   }
-  return (
-    Deno.env.get("STRIPE_SECRET_KEY_TEST")?.trim() ||
-    Deno.env.get("STRIPE_SECRET_KEY")?.trim() ||
-    ""
-  );
+  return Deno.env.get("STRIPE_SECRET_KEY_TEST") || null;
 }
 
-/**
- * Secrets de signature webhook à essayer dans l’ordre (test puis live puis legacy).
- * Permet une seule URL de webhook pour les deux environnements Stripe.
- */
 export function getStripeWebhookSigningSecrets(): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const k of [
-    Deno.env.get("STRIPE_WEBHOOK_SECRET_TEST"),
-    Deno.env.get("STRIPE_WEBHOOK_SECRET_LIVE"),
-    Deno.env.get("STRIPE_WEBHOOK_SECRET"),
-  ]) {
-    const s = k?.trim();
-    if (s && !seen.has(s)) {
-      seen.add(s);
-      out.push(s);
-    }
-  }
-  return out;
+  const secrets: string[] = [];
+  const testSecret  = Deno.env.get("STRIPE_WEBHOOK_SECRET_TEST")?.trim();
+  const liveSecret  = Deno.env.get("STRIPE_WEBHOOK_SECRET_LIVE")?.trim();
+  const genericSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET")?.trim();
+  if (testSecret)  secrets.push(testSecret);
+  if (liveSecret)  secrets.push(liveSecret);
+  if (genericSecret && !secrets.includes(genericSecret)) secrets.push(genericSecret);
+  return secrets;
 }
 
-/** N’importe quelle clé API non vide (pour instancier Stripe avant verify ; la vérif n’utilise que le signing secret). */
 export function getAnyStripeApiKeyForVerifier(): string {
   return (
-    Deno.env.get("STRIPE_SECRET_KEY_TEST")?.trim() ||
-    Deno.env.get("STRIPE_SECRET_KEY_LIVE")?.trim() ||
-    Deno.env.get("STRIPE_SECRET_KEY")?.trim() ||
+    Deno.env.get("STRIPE_SECRET_KEY_TEST") ||
+    Deno.env.get("STRIPE_SECRET_KEY_LIVE") ||
+    Deno.env.get("STRIPE_SECRET_KEY") ||
     "sk_test_placeholder"
   );
 }

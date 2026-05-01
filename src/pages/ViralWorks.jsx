@@ -633,29 +633,13 @@ export default function ViralWorks() {
   const location = useLocation();
   const spaUiInitialRef = useRef(undefined);
   if (spaUiInitialRef.current === undefined) {
-    // #region agent log
-    fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'770227'},body:JSON.stringify({sessionId:'770227',runId:'run7',hypothesisId:'H18',location:'src/pages/ViralWorks.jsx:637',message:'viralworks_init_before_restore',data:{pathname:location.pathname,isReloadNavigation:isReloadNavigation(),hasSpaUiInSession:Boolean(sessionStorage.getItem(SS_SPA_UI_KEY)),hasImageStepInSession:Boolean(sessionStorage.getItem(SS_IMAGE_STEP_KEY)),hasDraftInLocal:Boolean(localStorage.getItem(LS_VIRAL_STUDIO_DRAFT))},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     purgeStudioSessionIfFullReload();
     spaUiInitialRef.current = migrateSpaUiIfNeeded(loadSpaUiStateFromSession());
-    // #region agent log
-    fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'770227'},body:JSON.stringify({sessionId:'770227',runId:'run7',hypothesisId:'H18',location:'src/pages/ViralWorks.jsx:641',message:'viralworks_init_after_restore',data:{pathname:location.pathname,isReloadNavigation:isReloadNavigation(),restoredCurrentStep:spaUiInitialRef.current?.currentStep??null,restoredValidated:spaUiInitialRef.current?.validated??null,restoredVersion:spaUiInitialRef.current?.studioFlowVersion??null},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
   }
   const spaInitial = spaUiInitialRef.current;
 
   const { session } = useAuth();
   const { runWithAuth } = useRequireAuthAction();
-  useEffect(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'770227'},body:JSON.stringify({sessionId:'770227',runId:'run7',hypothesisId:'H23',location:'src/pages/ViralWorks.jsx:650',message:'viralworks_mounted',data:{pathname:location.pathname},timestamp:Date.now()})}).catch(()=>{});
-    console.warn("[DBG H23] viralworks_mounted", { pathname: location.pathname });
-    return () => {
-      fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'770227'},body:JSON.stringify({sessionId:'770227',runId:'run7',hypothesisId:'H23',location:'src/pages/ViralWorks.jsx:654',message:'viralworks_unmounted',data:{pathname:window.location.pathname},timestamp:Date.now()})}).catch(()=>{});
-      console.warn("[DBG H23] viralworks_unmounted", { pathname: window.location.pathname });
-    };
-    // #endregion
-  }, []);
   const [showScriptQuotaModal, setShowScriptQuotaModal] = useState(false);
   const [scriptQuotaModalMessage, setScriptQuotaModalMessage] = useState(SCRIPT_STEP_VIDEO_QUOTA_MSG);
   const [hasActiveSubscriptionVw, setHasActiveSubscriptionVw] = useState(false);
@@ -715,6 +699,11 @@ export default function ViralWorks() {
   const imageStepRef = useRef(imageStep);
   imageStepRef.current = imageStep;
   const wasOnVisualLayoutRef = useRef(false);
+  const studioScrollAnchorRef = useRef(null);
+
+  useLayoutEffect(() => {
+    studioScrollAnchorRef.current?.scrollIntoView({ block: "start", behavior: "instant" });
+  }, [currentStep]);
 
   useEffect(() => {
     try {
@@ -858,9 +847,6 @@ export default function ViralWorks() {
           campagneMountKey,
         })
       );
-      // #region agent log
-      fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'770227'},body:JSON.stringify({sessionId:'770227',runId:'run7',hypothesisId:'H19',location:'src/pages/ViralWorks.jsx:847',message:'viralworks_persist_spa_ui',data:{pathname:location.pathname,currentStep,validated,step1BrainLaunched,hasPreparedSig:Boolean(preparedCampaignSig),campagneMountKey},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
     } catch (err) {
       console.warn("[ViralWorks] Persistance session UI studio:", err);
     }
@@ -874,14 +860,6 @@ export default function ViralWorks() {
     campagneMountKey,
     location.pathname,
   ]);
-
-  useEffect(() => {
-    return () => {
-      // #region agent log
-      fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'770227'},body:JSON.stringify({sessionId:'770227',runId:'run7',hypothesisId:'H20',location:'src/pages/ViralWorks.jsx:868',message:'viralworks_unmount',data:{pathname:location.pathname,currentStepOnUnmount:currentStep,validatedOnUnmount:validated,hasSpaUiInSessionOnUnmount:Boolean(sessionStorage.getItem(SS_SPA_UI_KEY))},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-    };
-  }, [location.pathname, currentStep, validated]);
 
   useEffect(() => {
     let active = true;
@@ -964,8 +942,6 @@ export default function ViralWorks() {
           return;
         }
         setScriptPromptForImage(result.payload);
-        setValidated((prev) => ({ ...prev, 1: true }));
-        setCurrentStep(2);
         setScriptGenStatus("idle");
       } catch (e) {
         setScriptGenStatus("error");
@@ -1004,6 +980,7 @@ export default function ViralWorks() {
 
   const handleValidateAndNext = async () => {
     if (currentStep === 1 && !step1BrainLaunched) return;
+    if (currentStep === 1 && scriptGenStatus === "running") return;
 
     // Débit workflow studio une seule fois à la validation de l’étape Vidéo (dernière étape).
     if (currentStep === 3 && session?.user?.id && shouldDebitVideoCredit()) {
@@ -1041,13 +1018,13 @@ export default function ViralWorks() {
   const validateStepBlocked =
     (currentStep === 1 && !step1BrainLaunched) || scriptGenStatus === "running";
 
-  const studioVideoStepActive = location.pathname === "/viralworks" && currentStep === 3;
+  const validateStepPromptLoading = scriptGenStatus === "running";
 
-  useEffect(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'770227'},body:JSON.stringify({sessionId:'770227',runId:'run1',hypothesisId:'H5',location:'src/pages/ViralWorks.jsx:1021',message:'viralworks_route_effect',data:{pathname:location.pathname,currentStep},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-  }, [location.pathname, currentStep]);
+  /** Dès que le cerveau a fini, tant que l’étape 1 n’est pas validée : griser Préparer (y compris pendant le script). */
+  const awaitingStep1Validation =
+    currentStep === 1 && step1BrainLaunched && !validated[1];
+
+  const studioVideoStepActive = location.pathname === "/viralworks" && currentStep === 3;
 
   const imagePageProps = {
     campaignIdea: campaignData?.idea ?? "",
@@ -1074,7 +1051,10 @@ export default function ViralWorks() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+    <div
+      ref={studioScrollAnchorRef}
+      className="mx-auto w-full min-w-0 max-w-7xl px-4 sm:px-6 lg:px-8 py-6 space-y-6"
+    >
       <ScriptStepQuotaModal
         open={showScriptQuotaModal}
         title={hasActiveSubscriptionVw ? "Quota mensuel épuisé" : "Accès abonnement requis"}
@@ -1095,7 +1075,7 @@ export default function ViralWorks() {
       />
 
       <div className="studio-panel px-4 py-3 sm:px-6 sm:py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="flex-1 flex flex-wrap gap-3 vws-step-connector">
+        <div className="flex-1 flex flex-wrap gap-3">
           {steps.map((step) => {
             const isActive = currentStep === step.id;
             const isDone = validated[step.id];
@@ -1140,6 +1120,7 @@ export default function ViralWorks() {
               void runWithAuth(handleValidateAndNext);
             }}
             disabled={validateStepBlocked}
+            aria-busy={validateStepPromptLoading}
             title={
               validateStepBlocked
                 ? scriptGenStatus === "running"
@@ -1147,15 +1128,23 @@ export default function ViralWorks() {
                   : "Lance d’abord le cerveau VWS avec le bouton vert dans l’étape Campagne."
                 : undefined
             }
-            className={`w-full sm:w-auto inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold text-center leading-tight transition ${
+            className={`w-full sm:w-auto inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold text-center leading-tight transition-colors duration-150 ${
               validateStepBlocked
                 ? "bg-white/10 text-gray-500 border border-white/10 cursor-not-allowed opacity-70"
                 : "btn-vws-primary"
             }`}
           >
-            {currentStep < STUDIO_STEP_COUNT
-              ? "Valider cette étape et passer à la suivante"
-              : "Marquer comme terminé"}
+            {validateStepPromptLoading ? (
+              <span
+                className="h-3.5 w-3.5 shrink-0 rounded-full border-2 border-white/20 border-t-white/95 motion-safe:animate-[spin_0.8s_linear_infinite]"
+                aria-hidden
+              />
+            ) : null}
+            <span className="min-w-0">
+              {currentStep < STUDIO_STEP_COUNT
+                ? "Valider cette étape et passer à la suivante"
+                : "Marquer comme terminé"}
+            </span>
           </button>
         </div>
       </div>
@@ -1183,7 +1172,7 @@ export default function ViralWorks() {
         </div>
       ) : null}
 
-      <div className="space-y-6">
+      <div className="w-full min-w-0 space-y-6">
         {currentStep === 1 ? (
           <section id="campagne" aria-hidden={false}>
             <CampagneVWS
@@ -1196,11 +1185,13 @@ export default function ViralWorks() {
               }
               onBrainReady={handleCampaignBrainReady}
               onCampagneFullReset={handleCampagneFullReset}
+              scriptGenerationPending={scriptGenStatus === "running"}
+              awaitingStep1Validation={awaitingStep1Validation}
             />
           </section>
         ) : null}
         {currentStep === 2 ? (
-          <section id="visuel" aria-hidden={false} className="w-full">
+          <section id="visuel" aria-hidden={false}>
             <ImagePage {...imagePageProps} />
           </section>
         ) : null}

@@ -1,0 +1,50 @@
+import { useState } from "react";
+import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
+
+export const SUBSCRIPTION_PLANS = {
+  monthly: { amount: 129,       credits: 30, label: "Mensuel" },
+  yearly:  { amount: 107 * 12, credits: 30, label: "Annuel"  },
+};
+
+export const VIDEO_PACKS = [
+  { videos: 3,  amount: 14.99  },
+  { videos: 10, amount: 49.99  },
+  { videos: 30, amount: 149.99 },
+];
+
+export function useStripePayment() {
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState(null);
+
+  const startPayment = async (payload) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const supabase = getBrowserSupabase();
+      const session = await supabase.auth.getSession();
+      const accessToken = session.data.session?.access_token;
+      const headers = accessToken
+        ? { Authorization: `Bearer ${accessToken}` }
+        : undefined;
+
+      const { data, error: fnError } = await supabase.functions.invoke("stripe-payment", {
+        body: { ...payload, origin: window.location.origin },
+        ...(headers ? { headers } : {}),
+      });
+      if (fnError) throw new Error(fnError.message || "Erreur lors du paiement");
+      if (!data?.url) throw new Error("URL de paiement manquante dans la réponse");
+      window.location.href = data.url;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Une erreur est survenue");
+      console.error("❌ Erreur Stripe:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return { loading, error, startPayment };
+}
+
+export const payMonthly    = () => ({ type: "subscription", subscriptionPlan: "monthly", amount: 129,       credits: 30 });
+export const payYearly     = () => ({ type: "subscription", subscriptionPlan: "yearly",  amount: 107 * 12, credits: 30 });
+export const payVideoPack  = (pack) => ({ type: "credits", credits: pack.videos, amount: pack.amount });
