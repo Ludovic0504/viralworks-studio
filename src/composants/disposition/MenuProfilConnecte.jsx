@@ -189,7 +189,7 @@ export default function MenuProfilConnecte({ onLogout, signingOut }) {
 
   return (
     <>
-      <div ref={rootRef} className="relative hidden md:block">
+      <div ref={rootRef} className="relative block">
         {/* Conteneur 40×40 : même centre géométrique pour l’SVG et le disque jaune (mockup). */}
         <button
           type="button"

@@ -1,7 +1,7 @@
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
-import { Home, Sparkles, Info, X, User, LogOut, ShoppingBag, Users } from "lucide-react";
+import { Home, Sparkles, Info, X, ShoppingBag, Users } from "lucide-react";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import LienNavSync from "@/composants/disposition/LienNavSync";
 
@@ -18,22 +18,7 @@ export default function SidebarShell({ children, open, onCloseMenu }) {
   const panelRef = useRef(null);
   const location = useLocation();
   const previousPathRef = useRef(location.pathname);
-  const { session, signOut } = useAuth();
-  const email = session?.user?.email;
-  const [signingOut, setSigningOut] = useState(false);
-
-  const handleLogout = async () => {
-    try {
-      setSigningOut(true);
-      await signOut?.();
-      onCloseMenu?.(); // Fermer le menu après déconnexion
-    } catch (err) {
-      console.error("Erreur déconnexion:", err);
-    } finally {
-      setSigningOut(false);
-    }
-  };
-
+  const { session } = useAuth();
 
   useEffect(() => {
     // Close only after a real route change (not when `open` flips to true).
@@ -110,31 +95,9 @@ export default function SidebarShell({ children, open, onCloseMenu }) {
               <Item key={link.path} {...link} />
             ))}
           </nav>
-          
-          {/* Section authentification en bas du menu */}
-          <div className="border-t border-white/10 p-4 space-y-2">
-            {session ? (
-              <>
-                {email && (
-                  <LienNavSync
-                    to="/profil"
-                    onClick={() => onCloseMenu?.()}
-                    className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200 text-slate-300 hover:bg-white/5 hover:text-white border border-transparent"
-                  >
-                    <User className="w-5 h-5" />
-                    <span className="flex-1 truncate">{email.split('@')[0]}</span>
-                  </LienNavSync>
-                )}
-                <button
-                  onClick={handleLogout}
-                  disabled={signingOut}
-                  className="w-full flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200 text-red-400 hover:bg-red-500/10 hover:text-red-300 border border-transparent disabled:opacity-50"
-                >
-                  <LogOut className="w-5 h-5" />
-                  <span>{signingOut ? "Déconnexion…" : "Se déconnecter"}</span>
-                </button>
-              </>
-            ) : (
+
+          {!session && (
+            <div className="border-t border-white/10 p-4">
               <LienNavSync
                 to="/login"
                 onClick={() => onCloseMenu?.()}
@@ -142,8 +105,8 @@ export default function SidebarShell({ children, open, onCloseMenu }) {
               >
                 <span>Se connecter</span>
               </LienNavSync>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </aside>
 
