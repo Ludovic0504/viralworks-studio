@@ -94,8 +94,13 @@ prisma/migrations/
 # Netlify
 .netlify/
 
+# Vercel
+.vercel/
+
 # Médias lourds locaux
 src/ressources/*.mp4
 src/ressources/*.MP4
 src/ressources/*.mov
 src/ressources/*.MOV
+
+.vercel

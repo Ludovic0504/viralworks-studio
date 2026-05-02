@@ -10,7 +10,7 @@ interface ImportMetaEnv {
   readonly VITE_STRIPE_PUBLISHABLE_KEY?: string
   /** Clé API Pexels (aperçus cartes format Campagne VWS). https://www.pexels.com/api/ */
   readonly VITE_PEXELS_API_KEY?: string
-  /** Si "1", appels prod vers `/api/pexels-search` (clé serveur PEXELS_API_KEY sur Netlify). */
+  /** Si "1", appels prod vers `/api/pexels-search` (clé serveur PEXELS_API_KEY ou VITE_PEXELS_API_KEY sur Vercel). */
   readonly VITE_PEXELS_SERVER?: string
   // VITE_OPENAI_API_KEY n'est plus nécessaire côté client
   // La clé est gérée par Supabase Edge Functions

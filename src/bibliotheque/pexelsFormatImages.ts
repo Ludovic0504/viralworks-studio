@@ -4,7 +4,7 @@
  * - **Dev (Vite)** : appels vers `/__pexels/v1/...` — la clé est injectée par le proxy Node
  *   (même valeur que `.env.local`, sans passer par le bundle client → évite des 401 fantômes).
  * - **Prod** : soit appel direct avec `VITE_PEXELS_API_KEY`, soit `/api/pexels-search` si
- *   `VITE_PEXELS_SERVER=1` et `PEXELS_API_KEY` (ou VITE_) côté Netlify uniquement.
+ *   `VITE_PEXELS_SERVER=1` et `PEXELS_API_KEY` (ou VITE_) côté Vercel uniquement.
  */
 
 const urlByQuery = new Map<string, string>();
@@ -35,15 +35,15 @@ function getApiKey(): string {
   return k;
 }
 
-/** Prod : images via Netlify `pexels-search` sans clé dans le bundle (`VITE_PEXELS_SERVER=1`). */
-function useNetlifyPexelsProxy(): boolean {
+/** Prod : images via la route serveur `/api/pexels-search` sans clé dans le bundle (`VITE_PEXELS_SERVER=1`). */
+function useServerPexelsProxy(): boolean {
   return import.meta.env.VITE_PEXELS_SERVER === "1";
 }
 
-/** True si on peut tenter un fetch (clé dans le bundle, proxy Netlify, ou dev : proxy Vite peut avoir la clé sans `import.meta.env`). */
+/** True si on peut tenter un fetch (clé dans le bundle, proxy serveur Vercel, ou dev : proxy Vite peut avoir la clé sans `import.meta.env`). */
 function canAttemptPexelsFetch(): boolean {
   if (getApiKey()) return true;
-  if (useNetlifyPexelsProxy()) return true;
+  if (useServerPexelsProxy()) return true;
   if (import.meta.env.DEV) return true;
   return false;
 }
@@ -51,8 +51,8 @@ function canAttemptPexelsFetch(): boolean {
 function entryKey(apiKey: string, query: string): string {
   const mode = import.meta.env.DEV
     ? "dev-proxy"
-    : useNetlifyPexelsProxy()
-      ? "netlify"
+    : useServerPexelsProxy()
+      ? "server-proxy"
       : "direct";
   return `${mode}\n${apiKey}\n${query.trim()}`;
 }
@@ -67,7 +67,7 @@ function searchUrlAndHeaders(params: URLSearchParams): { url: string; headers: H
     };
   }
 
-  if (import.meta.env.PROD && useNetlifyPexelsProxy()) {
+  if (import.meta.env.PROD && useServerPexelsProxy()) {
     return {
       url: `/api/pexels-search?${qs}`,
       headers: {},
@@ -85,7 +85,7 @@ async function fetchMediumUrlForQuery(query: string): Promise<string | null> {
   if (!query.trim()) return null;
   if (!canAttemptPexelsFetch()) return null;
 
-  const keyForCache = getApiKey() || (useNetlifyPexelsProxy() ? "netlify" : "");
+  const keyForCache = getApiKey() || (useServerPexelsProxy() ? "server-proxy" : "");
   const eKey = entryKey(keyForCache, query);
   const cached = urlByQuery.get(eKey);
   if (cached !== undefined) return cached === "" ? null : cached;
@@ -105,7 +105,7 @@ async function fetchMediumUrlForQuery(query: string): Promise<string | null> {
       if (res.status === 401) {
         if (import.meta.env.DEV) {
           console.warn(
-            "[Pexels] 401 — vérifie VITE_PEXELS_API_KEY dans .env.local, redémarre npm run dev. En prod, configure PEXELS_API_KEY + VITE_PEXELS_SERVER=1 ou la clé VITE côté build."
+            "[Pexels] 401 — vérifie VITE_PEXELS_API_KEY dans .env.local, redémarre npm run dev. En prod, configure PEXELS_API_KEY / VITE_PEXELS_API_KEY + VITE_PEXELS_SERVER=1 sur Vercel ou la clé VITE côté build."
           );
         }
         urlByQuery.set(eKey, "");
@@ -144,7 +144,7 @@ export function prefetchPexelsQueries(queries: readonly string[]): void {
   if (!canAttemptPexelsFetch()) {
     if (import.meta.env.DEV) {
       console.warn(
-        "[Pexels] prefetch ignoré : ni clé client, ni mode dev/proxy Netlify (impossible)."
+        "[Pexels] prefetch ignoré : ni clé client, ni mode dev/proxy serveur (impossible)."
       );
     }
     return;
