@@ -980,20 +980,20 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
                 </div>
               ) : (
                 <button
-                  type="button"
-                  onClick={() => setShowFormatModal(true)}
-                  className="btn-vws-primary inline-flex self-start items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold min-h-[40px]"
-                >
-                  <Clapperboard className="h-3.5 w-3.5 shrink-0" />
-                  Choisir un format
-                </button>
+                    type="button"
+                    onClick={() => setShowFormatModal(true)}
+                    className="vws-campagne-format-choose btn-vws-primary flex w-full min-h-[48px] items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold md:inline-flex md:w-auto md:min-h-[40px] md:self-start md:text-xs"
+                  >
+                    <Clapperboard className="h-3.5 w-3.5 shrink-0" />
+                    Choisir un format
+                  </button>
               )}
             </div>
           </div>
 
           {/* Bloc 2 — Métier + Durée */}
           <div className="vws-campagne-block">
-            <div className="grid grid-cols-1 md:grid-cols-2 md:gap-x-8 md:gap-y-6 gap-6">
+            <div className="grid grid-cols-2 gap-x-3 md:grid-cols-2 md:gap-x-8 md:gap-y-6">
               <div className="min-w-0">
                 <label className="vws-campagne-label" htmlFor="campagne-metier">
                   Ton métier
@@ -1057,12 +1057,15 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
 
           {/* Bloc 3 — Idée principale */}
           <div className="vws-campagne-block vws-campagne-block--idea">
-            <div className="vws-campagne-idea-heading-row flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+            <div className="vws-campagne-idea-heading-row flex flex-row items-center justify-between gap-2 md:items-start md:gap-4">
               <label
-                className="vws-campagne-label vws-campagne-label--idea mb-0 sm:pt-0.5"
+                className="vws-campagne-label vws-campagne-label--idea mb-0 min-w-0 flex-1 pr-2 md:flex-none md:pr-0 md:pt-0.5"
                 htmlFor="campagne-idee"
               >
-                Idée principale de la scène (sujet + action)
+                <span className="md:hidden">Ta scène</span>
+                <span className="hidden md:inline">
+                  Idée principale de la scène (sujet + action)
+                </span>
               </label>
               <button
                 type="button"
@@ -1075,7 +1078,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
                       ? "Choisis d’abord un format vidéo."
                       : undefined
                 }
-                className="vws-campagne-inspire-btn inline-flex items-center gap-2 btn-vws-primary disabled:opacity-50 min-h-[44px] shrink-0 self-start sm:self-auto"
+                className="vws-campagne-inspire-btn inline-flex shrink-0 items-center gap-2 btn-vws-primary disabled:opacity-50 self-center md:min-h-[44px] md:self-auto"
               >
                 {inspireLoading ? (
                   <span className="inline-block w-4 h-4 border-2 border-emerald-400/30 border-t-emerald-400 rounded-full animate-spin" />
@@ -1095,10 +1098,13 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
           </div>
 
           {/* Bloc 4 — Précisions + Dialogue */}
-          <div className="vws-campagne-block space-y-6">
+          <div className="vws-campagne-block space-y-6 max-md:space-y-7">
             <div>
               <label className="vws-campagne-label" htmlFor="campagne-precisions">
-                Précisions (ambiance, lumière, style…)
+                <span className="md:hidden">Précisions</span>
+                <span className="hidden md:inline">
+                  Précisions (ambiance, lumière, style…)
+                </span>
               </label>
               <input
                 id="campagne-precisions"
