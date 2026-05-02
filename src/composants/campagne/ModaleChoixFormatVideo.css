@@ -1,0 +1,52 @@
+/* Modale choix format — scoped animations (respect prefers-reduced-motion en CSS global si besoin) */
+
+.vws-format-overlay {
+  animation: vws-format-overlay-in 220ms ease-out forwards;
+}
+
+@keyframes vws-format-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.vws-format-panel-desktop {
+  animation: vws-format-panel-desktop-in 260ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes vws-format-panel-desktop-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.vws-format-sheet-mobile {
+  animation: vws-format-sheet-mobile-in 280ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes vws-format-sheet-mobile-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vws-format-overlay,
+  .vws-format-panel-desktop,
+  .vws-format-sheet-mobile {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}

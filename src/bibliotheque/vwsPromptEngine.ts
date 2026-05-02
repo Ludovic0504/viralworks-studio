@@ -37,6 +37,8 @@ export interface UserIdeaInput {
   cameraAerialAngle?: "top_down" | "angled" | null;
   /** Selfie POV inferred from global intent understanding (even without explicit "selfie" keyword). */
   inferredSelfiePov?: boolean;
+  /** Contexte format vidéo choisi (catalogue Campagne VWS), injecté dans la scène sans modifier style_details stocké. */
+  videoFormatHint?: string;
 }
 
 export interface GlobalScene {
@@ -165,6 +167,8 @@ export interface InferGlobalIntentInput {
   cinematicMovement: boolean;
   tempo: Tempo;
   sequenceType: SequenceType;
+  /** Aligné sur UserIdeaInput.videoFormatHint */
+  videoFormatHint?: string;
 }
 
 export interface ExecutionStep {
@@ -678,13 +682,16 @@ export async function inferGlobalIntent(input: InferGlobalIntentInput): Promise<
     `Profession: ${clean(input.profession)}`,
     `Idea: ${clean(input.idea)}`,
     `StyleDetails: ${clean(input.styleDetails)}`,
+    input.videoFormatHint ? `VideoFormatHint: ${clean(input.videoFormatHint)}` : "",
     `RevealMode: ${Boolean(input.revealMode)}`,
     `SelfieMode: ${Boolean(input.selfieMode)}`,
     `CameraFixed: ${Boolean(input.cameraFixed)}`,
     `CinematicMovement: ${Boolean(input.cinematicMovement)}`,
     `Tempo: ${input.tempo}`,
     `SequenceType: ${input.sequenceType}`,
-  ].join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   try {
     const raw = await generateResponse(payload, GLOBAL_INTENT_SYSTEM_INSTRUCTION, {
@@ -822,8 +829,10 @@ function routingGuidance(routing: "demonstration" | "transformation" | "construc
 function buildGlobalScene(input: UserIdeaInput): GlobalScene {
   const norm = normalizeIdea(input.idea);
   const style = clean(input.styleDetails);
+  const formatHint = clean(input.videoFormatHint);
   const metierEnv = getVwsEnvironmentHint(clean(input.profession));
   const envPieces: string[] = [];
+  if (formatHint) envPieces.push(formatHint);
   if (style) envPieces.push(style);
   if (metierEnv) envPieces.push(metierEnv);
   const environment =

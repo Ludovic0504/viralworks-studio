@@ -12,11 +12,14 @@ export type VwsMetierProfile = {
   stylePlaceholder: string;
   /** Court contexte ajouté au prompt « M’inspirer » (GPT) pour coller au terrain */
   inspireContext?: string;
+  /** Format vidéo suggéré dans la modale Campagne VWS (`vwsVideoFormatsCatalog`) */
+  recommendedVideoFormatId: string;
 };
 
 export const VWS_METIER_PROFILES: VwsMetierProfile[] = [
   {
     label: "Agent immobilier",
+    recommendedVideoFormatId: "story_lifestyle",
     environmentHint:
       "bien réel en vente (appartement, maison, studio), entrée, pièce de vie, cuisine, salle d’eau, extérieur ou balcon selon le bien",
     stylePlaceholder: "Ex. : T3 rénové, style haussmannien, vue dégagée, quartier résidentiel, lumière naturelle…",
@@ -25,6 +28,7 @@ export const VWS_METIER_PROFILES: VwsMetierProfile[] = [
   },
   {
     label: "Restaurateur",
+    recommendedVideoFormatId: "produit_demo",
     environmentHint:
       "cuisine en service, plan de travail, dressage, salle ou terrasse, équipe en mouvement, plats prêts à servir",
     stylePlaceholder: "Ex. : service du midi, cuisine bistronomique, burger maison, four à pizza, ambiance du soir…",
@@ -32,6 +36,7 @@ export const VWS_METIER_PROFILES: VwsMetierProfile[] = [
   },
   {
     label: "Coiffeur / barbier",
+    recommendedVideoFormatId: "process_avant_apres",
     environmentHint:
       "salon identifiable avec fauteuil, miroir, poste de travail, tondeuse, ciseaux, produits coiffants, lumière de miroir",
     stylePlaceholder: "Ex. : dégradé à blanc, taille de barbe, brushing, coloration, salon premium ou urbain…",
@@ -39,6 +44,7 @@ export const VWS_METIER_PROFILES: VwsMetierProfile[] = [
   },
   {
     label: "Garagiste / mécanicien",
+    recommendedVideoFormatId: "process_demo_geste",
     environmentHint:
       "atelier auto avec pont, valise diagnostic, outils, pièces démontées, véhicule client en intervention",
     stylePlaceholder: "Ex. : révision complète, freinage, distribution, diagnostic moteur, garage multimarque…",
@@ -46,6 +52,7 @@ export const VWS_METIER_PROFILES: VwsMetierProfile[] = [
   },
   {
     label: "Plombier",
+    recommendedVideoFormatId: "process_avant_apres",
     environmentHint:
       "intervention en salle de bain, cuisine ou local technique, fuite localisée, raccords, vannes, outillage plomberie",
     stylePlaceholder: "Ex. : fuite sous évier, remplacement robinet, débouchage, rénovation réseau eau chaude…",
@@ -53,6 +60,7 @@ export const VWS_METIER_PROFILES: VwsMetierProfile[] = [
   },
   {
     label: "Électricien",
+    recommendedVideoFormatId: "process_avant_apres",
     environmentHint:
       "tableau électrique, prises, éclairages, câblage apparent en chantier, EPI et gestes de sécurité visibles",
     stylePlaceholder: "Ex. : mise aux normes NFC 15-100, ajout de prises, éclairage LED, domotique maison…",
@@ -60,6 +68,7 @@ export const VWS_METIER_PROFILES: VwsMetierProfile[] = [
   },
   {
     label: "Chauffagiste / climatisation",
+    recommendedVideoFormatId: "humain_face_expert",
     environmentHint:
       "chaudière, pompe à chaleur, unité intérieure/extérieure, radiateurs ou plancher chauffant, instruments de mesure",
     stylePlaceholder: "Ex. : entretien chaudière gaz, dépannage PAC, installation clim split, optimisation consommation…",
@@ -67,6 +76,7 @@ export const VWS_METIER_PROFILES: VwsMetierProfile[] = [
   },
   {
     label: "Pisciniste",
+    recommendedVideoFormatId: "process_avant_apres",
     environmentHint:
       "bassin résidentiel, local technique, filtration, margelles, robot ou accessoires entretien, eau en condition réelle",
     stylePlaceholder: "Ex. : remise en route saison, traitement eau verte, installation pompe, entretien hebdomadaire…",
@@ -74,6 +84,7 @@ export const VWS_METIER_PROFILES: VwsMetierProfile[] = [
   },
   {
     label: "Paysagiste / jardinier",
+    recommendedVideoFormatId: "process_avant_apres",
     environmentHint:
       "jardin privé ou copropriété, haies, pelouse, massifs, terrasse, outils d’entretien et déchets verts",
     stylePlaceholder: "Ex. : taille de haie, création massif, pose gazon, arrosage automatique, entretien saisonnier…",
@@ -81,6 +92,7 @@ export const VWS_METIER_PROFILES: VwsMetierProfile[] = [
   },
   {
     label: "Menuisier",
+    recommendedVideoFormatId: "process_demo_geste",
     environmentHint:
       "atelier bois ou pose sur chantier, établi, panneaux, machines de coupe, quincaillerie, éléments sur mesure",
     stylePlaceholder: "Ex. : placard sur mesure, escalier bois, pose porte intérieure, habillage mural…",
@@ -88,6 +100,7 @@ export const VWS_METIER_PROFILES: VwsMetierProfile[] = [
   },
   {
     label: "Couvreur",
+    recommendedVideoFormatId: "process_demo_geste",
     environmentHint:
       "toiture en intervention, tuiles/ardoises/zinc, échafaudage, harnais, gouttières, conditions extérieures réalistes",
     stylePlaceholder: "Ex. : réparation fuite toiture, remplacement tuiles cassées, zinguerie, nettoyage toiture…",
@@ -95,6 +108,7 @@ export const VWS_METIER_PROFILES: VwsMetierProfile[] = [
   },
   {
     label: "Maçon",
+    recommendedVideoFormatId: "process_timelapse",
     environmentHint:
       "chantier gros œuvre ou rénovation, parpaings/briques, mortier, coffrage, ferraillage, niveaux et repères",
     stylePlaceholder: "Ex. : dalle béton, mur de clôture, ouverture de mur porteur, enduit de façade…",
@@ -102,6 +116,7 @@ export const VWS_METIER_PROFILES: VwsMetierProfile[] = [
   },
   {
     label: "Architecte / architecte d'intérieur",
+    recommendedVideoFormatId: "story_probleme_solution",
     environmentHint:
       "plan 2D/3D, échantillons matériaux, chantier suivi ou intérieur finalisé, échanges client autour des choix",
     stylePlaceholder: "Ex. : rénovation appartement ancien, optimisation petit espace, conception cuisine, ambiance haut de gamme…",
@@ -109,6 +124,7 @@ export const VWS_METIER_PROFILES: VwsMetierProfile[] = [
   },
   {
     label: "Magasin de meubles / décoration",
+    recommendedVideoFormatId: "produit_demo",
     environmentHint:
       "showroom organisé par univers, meubles en situation, accessoires déco, client qui compare matières et dimensions",
     stylePlaceholder: "Ex. : salon complet, chambre moderne, style scandinave, offre promotionnelle en magasin…",
@@ -116,6 +132,7 @@ export const VWS_METIER_PROFILES: VwsMetierProfile[] = [
   },
   {
     label: "Coach sportif / salle de sport",
+    recommendedVideoFormatId: "social_hook_educatif",
     environmentHint:
       "salle de sport active (musculation, cardio, functional), matériel utilisé, coach et pratiquant en séance réelle",
     stylePlaceholder: "Ex. : programme perte de poids, coaching force, remise en forme débutant, séance HIIT 30 min…",

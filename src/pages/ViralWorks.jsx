@@ -351,6 +351,7 @@ function serializeCampaignSpecForPrepareGate(spec) {
     schema_version: normalized.meta.schema_version,
     profession: String(normalized.campaign.profession ?? "").trim(),
     idea: String(normalized.campaign.core_idea ?? "").trim(),
+    video_format_id: normalized.campaign.video_format_id ?? null,
     styleDetails: String(normalized.campaign.style_details ?? "").trim(),
     tempo: normalizeTempoForGate(normalized.rendering.tempo),
     cameraFixed: Boolean(normalized.rendering.camera.fixed),
@@ -383,6 +384,7 @@ function buildLegacyCampaignDataFromSpec(spec) {
   return {
     profession: s.campaign.profession ?? "",
     idea: s.campaign.core_idea ?? "",
+    videoFormatId: s.campaign.video_format_id ?? null,
     styleDetails: s.campaign.style_details ?? "",
     tempo: normalizeTempoForGate(s.rendering.tempo),
     cameraFixed: Boolean(s.rendering.camera.fixed),
@@ -424,6 +426,12 @@ function applyLegacyCampaignPatchToSpec(prevSpec, patch) {
       ...prev.campaign,
       profession: patch?.profession ?? prev.campaign.profession,
       core_idea: patch?.idea ?? prev.campaign.core_idea,
+      video_format_id:
+        patch?.videoFormatId !== undefined
+          ? patch.videoFormatId && String(patch.videoFormatId).trim()
+            ? String(patch.videoFormatId).trim()
+            : null
+          : prev.campaign.video_format_id,
       style_details: patch?.styleDetails ?? prev.campaign.style_details,
       intent_profile:
         patch?.globalIntentProfile !== undefined ? patch.globalIntentProfile : prev.campaign.intent_profile,
@@ -1173,23 +1181,26 @@ export default function ViralWorks() {
       ) : null}
 
       <div className="w-full min-w-0 space-y-6">
-        {currentStep === 1 ? (
-          <section id="campagne" aria-hidden={false}>
-            <CampagneVWS
-              key={campagneMountKey}
-              campaignData={campaignData}
-              onCampaignChange={(nextCampaignData) =>
-                setCampaignGenerationSpec((prev) =>
-                  applyLegacyCampaignPatchToSpec(prev, nextCampaignData || {})
-                )
-              }
-              onBrainReady={handleCampaignBrainReady}
-              onCampagneFullReset={handleCampagneFullReset}
-              scriptGenerationPending={scriptGenStatus === "running"}
-              awaitingStep1Validation={awaitingStep1Validation}
-            />
-          </section>
-        ) : null}
+        {/* Campagne reste montée quand on change d’étape : évite de perdre les champs non persistés dans le state local */}
+        <section
+          id="campagne"
+          className={currentStep === 1 ? "block w-full min-w-0" : "hidden"}
+          aria-hidden={currentStep !== 1}
+        >
+          <CampagneVWS
+            key={campagneMountKey}
+            campaignData={campaignData}
+            onCampaignChange={(nextCampaignData) =>
+              setCampaignGenerationSpec((prev) =>
+                applyLegacyCampaignPatchToSpec(prev, nextCampaignData || {})
+              )
+            }
+            onBrainReady={handleCampaignBrainReady}
+            onCampagneFullReset={handleCampagneFullReset}
+            scriptGenerationPending={scriptGenStatus === "running"}
+            awaitingStep1Validation={awaitingStep1Validation}
+          />
+        </section>
         {currentStep === 2 ? (
           <section id="visuel" aria-hidden={false}>
             <ImagePage {...imagePageProps} />

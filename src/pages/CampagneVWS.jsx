@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import "./CampagneVWS.css";
 import {
   clarifyIdea,
   clarifyGateNeedsInitialT0,
@@ -18,7 +19,12 @@ import {
   stampCampaignGenerationMeta,
 } from "@/bibliotheque/campaignGenerationSpec";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
-import { Sparkles, HelpCircle, BookOpen, X } from "lucide-react";
+import { Sparkles, BookOpen, X, Clapperboard } from "lucide-react";
+import ModaleChoixFormatVideo from "../composants/campagne/ModaleChoixFormatVideo.jsx";
+import {
+  getFormatById,
+  getFormatHintForEngine,
+} from "../bibliotheque/vwsVideoFormatsCatalog";
 
 const VALID_TEMPOS = new Set(["real_time", "timelapse", "slow_motion"]);
 
@@ -82,27 +88,6 @@ function buildMinimalIntentFallback({ idea, selfieMode }) {
   };
 }
 
-function StabilizationOption({ checked, onChange, label, tooltip }) {
-  return (
-    <label className="flex items-center gap-2 text-xs text-gray-300 group/opt">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        className="rounded border-white/20 bg-white/5 text-emerald-500 input-vws-check"
-      />
-      <span>{label}</span>
-      <span
-        className="text-gray-500 hover:text-gray-300 cursor-help inline-flex"
-        title={tooltip}
-        aria-label={tooltip}
-      >
-        <HelpCircle className="w-3.5 h-3.5" />
-      </span>
-    </label>
-  );
-}
-
 export default function CampagneVWS({
   onBrainReady,
   campaignData,
@@ -145,11 +130,17 @@ export default function CampagneVWS({
     campaignData?.tempoCompressionDecision ?? null
   );
   const [showSystemVideo, setShowSystemVideo] = useState(false);
+  const [showFormatModal, setShowFormatModal] = useState(false);
+  const [videoFormatId, setVideoFormatId] = useState(campaignData?.videoFormatId ?? null);
 
   // Vidéo explicative non versionnée dans certains clones.
   const explicationCampagneVwsVideo = "";
 
   const metierProfile = useMemo(() => getVwsMetierProfile(profession), [profession]);
+  const selectedFormatDef = useMemo(() => getFormatById(videoFormatId), [videoFormatId]);
+  const ideaPlaceholder =
+    selectedFormatDef?.placeholderIdea ??
+    "Ex : un architecte explique son nouveau projet à la caméra dans son studio, tout en dessinant les plans sur une tablette…";
   const stylePlaceholder =
     metierProfile?.stylePlaceholder ??
     "Ex. : ambiance, lumière, style visuel, matériaux…";
@@ -183,6 +174,7 @@ export default function CampagneVWS({
     },
     globalIntentProfile: campaignData?.globalIntentProfile ?? null,
     isClarified: false,
+    videoFormatId,
     ...overrides,
   });
 
@@ -232,6 +224,7 @@ export default function CampagneVWS({
     if (updates.initialStateSelection !== undefined) setInitialStateSelection(updates.initialStateSelection);
     if (updates.gateResult !== undefined) setGateResult(updates.gateResult);
     if (updates.clarifyAnswer !== undefined) setClarifyAnswer(updates.clarifyAnswer);
+    if (updates.videoFormatId !== undefined) setVideoFormatId(updates.videoFormatId);
     onCampaignChange?.(
       buildCampaignSnapshot({
         profession: updates.profession ?? profession,
@@ -256,8 +249,24 @@ export default function CampagneVWS({
         gateResult: updates.gateResult ?? gateResult,
         clarifyAnswer: updates.clarifyAnswer ?? clarifyAnswer,
         isClarified: updates.isClarified ?? false,
+        videoFormatId: updates.videoFormatId !== undefined ? updates.videoFormatId : videoFormatId,
       })
     );
+  };
+
+  const applyVideoFormatChoice = (formatId) => {
+    const fmt = getFormatById(formatId);
+    if (!fmt) return;
+    const r = fmt.rendering;
+    syncState({
+      videoFormatId: formatId,
+      tempo: normalizeTempo(r.tempo),
+      sequenceType: r.sequenceType,
+      cameraFixed: r.cameraFixed,
+      revealMode: r.revealMode,
+      cinematicMovement: r.cinematicMovement,
+      selfieMode: r.selfieMode,
+    });
   };
 
   const isIdeaTooDenseForRealtime = (text) => {
@@ -276,44 +285,15 @@ export default function CampagneVWS({
     return words.length >= 32 || (words.length >= 24 && actionSignals >= 3) || structureSignals >= 5;
   };
 
-  const applyPackVlog = () => {
-    syncState({
-      tempo: "real_time",
-      sequenceType: "single_8s",
-      cameraFixed: false,
-      revealMode: false,
-      cinematicMovement: false,
-      selfieMode: true,
-    });
-  };
-
-  const applyPackDemo = () => {
-    syncState({
-      tempo: "real_time",
-      sequenceType: "single_8s",
-      cameraFixed: false,
-      revealMode: false,
-      cinematicMovement: true,
-      selfieMode: false,
-    });
-  };
-
-  const applyPackAvantApres = () => {
-    syncState({
-      tempo: "timelapse",
-      sequenceType: "single_8s",
-      cameraFixed: false,
-      revealMode: true,
-      cinematicMovement: false,
-      selfieMode: false,
-    });
-  };
-
   const handleInspire = async () => {
     if (!String(profession ?? "").trim()) {
       alert(
         "Sélectionne d’abord ton métier dans la liste « Ton métier » pour utiliser « M'inspirer »."
       );
+      return;
+    }
+    if (!videoFormatId || !getFormatById(videoFormatId)) {
+      alert("Choisis d’abord un format vidéo avec « Choisir un format ».");
       return;
     }
     const metier = profession.trim();
@@ -498,6 +478,10 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
       if (!safeIdea || safeIdea.length < 8) {
         throw new Error("Décris au moins une idée claire pour la vidéo (8 caractères minimum).");
       }
+      if (!videoFormatId || !getFormatById(videoFormatId)) {
+        throw new Error("Choisis un format vidéo avant de lancer la préparation.");
+      }
+      const formatHint = getFormatHintForEngine(getFormatById(videoFormatId));
 
       const historyLines =
         clarificationHistoryOverride ??
@@ -535,6 +519,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         profession: safeProfession,
         idea: safeIdea,
         styleDetails: styleDetails.trim() || "",
+        videoFormatHint: formatHint || undefined,
         revealMode,
         selfieMode,
         cameraFixed,
@@ -662,6 +647,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         profession: safeProfession,
         idea: safeIdea,
         styleDetails: styleDetails.trim() || undefined,
+        videoFormatHint: formatHint || undefined,
         tempo: effectiveTempo,
         cameraFixed,
         revealMode,
@@ -722,6 +708,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         campaign: {
           ...createDefaultCampaignGenerationSpec().campaign,
           profession: safeProfession,
+          video_format_id: videoFormatId,
           core_idea: safeIdea,
           style_details: styleDetails.trim() || "",
           intent_profile: globalIntentProfile ?? buildMinimalIntentFallback({ idea: safeIdea, selfieMode }),
@@ -782,6 +769,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         profession: safeProfession,
         idea: safeIdea,
         styleDetails: styleDetails.trim() || "",
+        videoFormatId,
         tempo: effectiveTempo,
         cameraFixed,
         revealMode,
@@ -951,280 +939,326 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
 
   return (
     <>
-    <div className="studio-panel box-border w-full min-w-0 max-w-full p-5 sm:p-6 space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold text-gray-200 flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-cyan-400" />
+    <div className="studio-panel box-border w-full min-w-0 max-w-full p-4 sm:p-6">
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-8 md:mb-10">
+        <h2 className="text-sm font-semibold text-gray-200 flex items-center gap-2 sm:text-base">
+          <Sparkles className="w-4 h-4 text-cyan-400 shrink-0" />
           Étape 1 – Votre campagne vidéo
         </h2>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex flex-wrap gap-2">
           <button
             type="button"
             onClick={() => setShowSystemVideo(true)}
-            className="studio-toolbar-btn !py-1.5 !px-3"
+            className="studio-toolbar-btn !py-1.5 !px-3 text-sm min-h-[44px] sm:min-h-0"
           >
             <BookOpen className="w-3.5 h-3.5 text-cyan-400" />
             Explication du système
           </button>
+        </div>
+      </div>
+
+      <div className="vws-campagne-form max-md:pb-28">
+        <div className="vws-campagne-form-scroll space-y-0">
+          {/* Bloc 1 — Format */}
+          <div className="vws-campagne-block">
+            <div className="vws-campagne-format-card">
+              {selectedFormatDef ? (
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                  <p className="text-sm text-gray-300 sm:text-[15px]">
+                    <span className="text-base mr-1" aria-hidden>
+                      🎬
+                    </span>
+                    <span className="vws-campagne-format-name">{selectedFormatDef.name}</span>
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setShowFormatModal(true)}
+                    className="vws-campagne-format-btn shrink-0"
+                  >
+                    Changer
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowFormatModal(true)}
+                  className="btn-vws-primary inline-flex self-start items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold min-h-[40px]"
+                >
+                  <Clapperboard className="h-3.5 w-3.5 shrink-0" />
+                  Choisir un format
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Bloc 2 — Métier + Durée */}
+          <div className="vws-campagne-block">
+            <div className="grid grid-cols-1 md:grid-cols-2 md:gap-x-8 md:gap-y-6 gap-6">
+              <div className="min-w-0">
+                <label className="vws-campagne-label" htmlFor="campagne-metier">
+                  Ton métier
+                </label>
+                <select
+                  id="campagne-metier"
+                  value={profession}
+                  onChange={(e) => setProfession(e.target.value)}
+                  className="vws-campagne-field vws-campagne-select vws-campagne-field--touch"
+                  aria-describedby={metierProfile ? "campagne-metier-hint" : undefined}
+                >
+                  <option value="">Choisir un métier...</option>
+                  {VWS_METIER_LABELS.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+                {metierProfile ? (
+                  <p className="vws-campagne-metier-hint" id="campagne-metier-hint">
+                    Ambiance typique pour ce métier (pour aider à imaginer la scène) :{" "}
+                    {metierProfile.environmentHint}
+                  </p>
+                ) : null}
+              </div>
+              <div className="min-w-0">
+                <label className="vws-campagne-label" htmlFor="campagne-duree">
+                  Durée de la vidéo
+                </label>
+                <select
+                  id="campagne-duree"
+                  value={sequenceType}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setSequenceType(v);
+                    onCampaignChange?.({
+                      profession,
+                      idea,
+                      styleDetails,
+                      tempo,
+                      cameraFixed,
+                      revealMode,
+                      cinematicMovement,
+                      selfieMode,
+                      sequenceType: v,
+                      dialogueEnabled,
+                      microAnswer,
+                      tempoCompressionDecision,
+                    });
+                  }}
+                  className="vws-campagne-field vws-campagne-select vws-campagne-field--touch"
+                >
+                  <option value="single_8s">Une courte vidéo (8 secondes)</option>
+                  <option value="three_x_8s">
+                    Une vidéo plus longue (plusieurs moments à la suite)
+                  </option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Bloc 3 — Idée principale */}
+          <div className="vws-campagne-block vws-campagne-block--idea">
+            <div className="vws-campagne-idea-heading-row flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+              <label
+                className="vws-campagne-label vws-campagne-label--idea mb-0 sm:pt-0.5"
+                htmlFor="campagne-idee"
+              >
+                Idée principale de la scène (sujet + action)
+              </label>
+              <button
+                type="button"
+                onClick={() => void runWithAuth(handleInspire)}
+                disabled={inspireLoading || !videoFormatId}
+                title={
+                  !String(profession ?? "").trim()
+                    ? "Choisis d’abord ton métier pour utiliser cette action."
+                    : !videoFormatId
+                      ? "Choisis d’abord un format vidéo."
+                      : undefined
+                }
+                className="vws-campagne-inspire-btn inline-flex items-center gap-2 btn-vws-primary disabled:opacity-50 min-h-[44px] shrink-0 self-start sm:self-auto"
+              >
+                {inspireLoading ? (
+                  <span className="inline-block w-4 h-4 border-2 border-emerald-400/30 border-t-emerald-400 rounded-full animate-spin" />
+                ) : (
+                  <Sparkles className="w-4 h-4" />
+                )}
+                M&apos;inspirer →
+              </button>
+            </div>
+            <textarea
+              id="campagne-idee"
+              value={idea}
+              onChange={(e) => setIdea(e.target.value)}
+              className="vws-campagne-field vws-campagne-textarea vws-campagne-textarea-mobile vws-campagne-idea-textarea mt-1.5 w-full"
+              placeholder={ideaPlaceholder}
+            />
+          </div>
+
+          {/* Bloc 4 — Précisions + Dialogue */}
+          <div className="vws-campagne-block space-y-6">
+            <div>
+              <label className="vws-campagne-label" htmlFor="campagne-precisions">
+                Précisions (ambiance, lumière, style…)
+              </label>
+              <input
+                id="campagne-precisions"
+                type="text"
+                value={styleDetails}
+                onChange={(e) => {
+                  setStyleDetails(e.target.value);
+                  onCampaignChange?.({
+                    profession,
+                    idea,
+                    styleDetails: e.target.value,
+                    tempo,
+                    cameraFixed,
+                    revealMode,
+                    cinematicMovement,
+                    selfieMode,
+                    sequenceType,
+                    dialogueEnabled,
+                    microAnswer,
+                    tempoCompressionDecision,
+                  });
+                }}
+                className="vws-campagne-field vws-campagne-field--touch"
+                placeholder={stylePlaceholder}
+              />
+            </div>
+            <div className="vws-campagne-dialogue-row border border-[#222] rounded-xl bg-[#111]">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-gray-200">Dialogue activé</p>
+                <p className="text-sm text-gray-500 mt-0.5">(modifiable dans Vidéo virale)</p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={dialogueEnabled}
+                onClick={() => {
+                  const next = !dialogueEnabled;
+                  setDialogueEnabled(next);
+                  onCampaignChange?.({
+                    profession,
+                    idea,
+                    styleDetails,
+                    tempo,
+                    cameraFixed,
+                    revealMode,
+                    cinematicMovement,
+                    selfieMode,
+                    sequenceType,
+                    dialogueEnabled: next,
+                    microAnswer,
+                    tempoCompressionDecision,
+                  });
+                }}
+                className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors ${
+                  dialogueEnabled ? "bg-emerald-500/80" : "bg-white/20"
+                }`}
+              >
+                <span
+                  className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                    dialogueEnabled ? "translate-x-6" : "translate-x-1"
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+
+          {error && (
+            <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 mb-6">
+              {error}
+            </p>
+          )}
+        </div>
+
+        {/* Bloc 5 — CTA (desktop) */}
+        <div className="vws-campagne-cta-row hidden md:flex md:flex-row md:flex-wrap md:items-center md:gap-3 md:mt-10 md:justify-start">
           <button
             type="button"
-            onClick={applyPackVlog}
-            className="studio-toolbar-btn !py-1.5 !px-3"
+            onClick={() => void runWithAuth(handleRun)}
+            disabled={
+              loading || scriptGenerationPending || awaitingStep1Validation || !videoFormatId
+            }
+            title={
+              awaitingStep1Validation && !loading && !scriptGenerationPending
+                ? "Valide l’étape Campagne avec le bouton en haut de page pour continuer."
+                : !videoFormatId
+                  ? "Choisis d’abord un format vidéo."
+                  : undefined
+            }
+            className="vws-campagne-cta-primary inline-flex items-center justify-center gap-2 btn-vws-primary disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Pack Vlog 🤳
+            <span className="text-cyan-200/90" aria-hidden>
+              ✦
+            </span>
+            <Sparkles className="w-4 h-4 shrink-0" />
+            {loading
+              ? "Préparation en cours…"
+              : scriptGenerationPending
+                ? "Génération du script…"
+                : awaitingStep1Validation
+                  ? "Étape prête — valide ci-dessus"
+                  : "Préparer ma vidéo"}
           </button>
-          <button
-            type="button"
-            onClick={applyPackDemo}
-            className="studio-toolbar-btn !py-1.5 !px-3"
-          >
-            Pack Démo Produit 📦
-          </button>
-          <button
-            type="button"
-            onClick={applyPackAvantApres}
-            className="studio-toolbar-btn !py-1.5 !px-3"
-          >
-            Pack Avant/Après ✨
-          </button>
+          {typeof onCampagneFullReset === "function" ? (
+            <button
+              type="button"
+              onClick={() => onCampagneFullReset()}
+              className="vws-campagne-reset vws-campagne-cta-secondary rounded-xl btn-vws-secondary"
+            >
+              Réinitialiser
+            </button>
+          ) : null}
+        </div>
+
+        {/* Bloc 5 — CTA (mobile sticky) */}
+        <div className="vws-campagne-sticky-bar md:hidden fixed bottom-0 left-0 right-0 z-20">
+          <div className="vws-campagne-sticky-bar-inner vws-campagne-cta-row flex flex-row flex-wrap items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => void runWithAuth(handleRun)}
+              disabled={
+                loading || scriptGenerationPending || awaitingStep1Validation || !videoFormatId
+              }
+              title={
+                awaitingStep1Validation && !loading && !scriptGenerationPending
+                  ? "Valide l’étape Campagne avec le bouton en haut de page pour continuer."
+                  : !videoFormatId
+                    ? "Choisis d’abord un format vidéo."
+                    : undefined
+              }
+              className="vws-campagne-cta-primary inline-flex items-center justify-center gap-2 btn-vws-primary disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span className="text-cyan-200/90" aria-hidden>
+                ✦
+              </span>
+              <Sparkles className="w-4 h-4 shrink-0" />
+              {loading
+                ? "Préparation en cours…"
+                : scriptGenerationPending
+                  ? "Génération du script…"
+                  : awaitingStep1Validation
+                    ? "Étape prête — valide ci-dessus"
+                    : "Préparer ma vidéo"}
+            </button>
+            {typeof onCampagneFullReset === "function" ? (
+              <button
+                type="button"
+                onClick={() => onCampagneFullReset()}
+                className="vws-campagne-reset vws-campagne-cta-secondary rounded-xl btn-vws-secondary"
+              >
+                Réinitialiser
+              </button>
+            ) : null}
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-xs font-medium text-gray-300 mb-1">
-            Ton métier
-          </label>
-          <select
-            value={profession}
-            onChange={(e) => setProfession(e.target.value)}
-            className="w-full rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none input-vws"
-            aria-describedby={metierProfile ? "campagne-metier-hint" : undefined}
-          >
-            <option value="">Choisir un métier...</option>
-            {VWS_METIER_LABELS.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
-          {metierProfile ? (
-            <p className="mt-1.5 text-[11px] text-gray-500 leading-snug" id="campagne-metier-hint">
-              Ambiance typique pour ce métier (pour aider à imaginer la scène) : {metierProfile.environmentHint}
-            </p>
-          ) : null}
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-300 mb-1">
-            Précisions (ambiance, lumière, style…)
-          </label>
-          <input
-            type="text"
-            value={styleDetails}
-            onChange={(e) => {
-              setStyleDetails(e.target.value);
-              onCampaignChange?.({ profession, idea, styleDetails: e.target.value, tempo, cameraFixed, revealMode, cinematicMovement, selfieMode, sequenceType, dialogueEnabled, microAnswer, tempoCompressionDecision });
-            }}
-            className="w-full rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none input-vws"
-            placeholder={stylePlaceholder}
-          />
-        </div>
-      </div>
-
-      <div>
-        <div className="flex items-center justify-between gap-2 mb-1">
-          <label className="block text-xs font-medium text-gray-300">
-            Idée principale de la scène (sujet + action)
-          </label>
-          <button
-            type="button"
-            onClick={() => void runWithAuth(handleInspire)}
-            disabled={inspireLoading}
-            title={
-              !String(profession ?? "").trim()
-                ? "Choisis d’abord ton métier pour utiliser cette action."
-                : undefined
-            }
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium btn-vws-primary disabled:opacity-50"
-          >
-            {inspireLoading ? (
-              <span className="inline-block w-3 h-3 border-2 border-emerald-400/30 border-t-emerald-400 rounded-full animate-spin" />
-            ) : (
-              <Sparkles className="w-3.5 h-3.5" />
-            )}
-            M'inspirer ✨
-          </button>
-        </div>
-        <textarea
-          value={idea}
-          onChange={(e) => setIdea(e.target.value)}
-          className="w-full rounded-lg p-3 min-h-[120px] text-sm text-gray-200 placeholder-gray-500 focus:outline-none resize-none input-vws"
-          placeholder="Ex : un architecte explique son nouveau projet à la caméra dans son studio, tout en dessinant les plans sur une tablette..."
-        />
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div>
-          <label className="block text-xs font-medium text-gray-300 mb-1">
-            Vitesse à l’écran
-          </label>
-          <select
-            value={tempo}
-            onChange={(e) => {
-              const v = normalizeTempo(e.target.value);
-              setTempo(v);
-              onCampaignChange?.({ profession, idea, styleDetails, tempo: v, cameraFixed, revealMode, cinematicMovement, selfieMode, sequenceType, dialogueEnabled, microAnswer, tempoCompressionDecision });
-            }}
-            className="w-full rounded-lg px-3 py-2 text-xs text-gray-200 focus:outline-none input-vws"
-          >
-            <option value="real_time">Comme dans la vraie vie</option>
-            <option value="timelapse">Très rapide : le temps défile</option>
-            <option value="slow_motion">Au ralenti</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-300 mb-1">
-            Durée de la vidéo
-          </label>
-          <select
-            value={sequenceType}
-            onChange={(e) => {
-              const v = e.target.value;
-              setSequenceType(v);
-              onCampaignChange?.({ profession, idea, styleDetails, tempo, cameraFixed, revealMode, cinematicMovement, selfieMode, sequenceType: v, dialogueEnabled, microAnswer, tempoCompressionDecision });
-            }}
-            className="w-full rounded-lg px-3 py-2 text-xs text-gray-200 focus:outline-none input-vws"
-          >
-            <option value="single_8s">Une courte vidéo (8 secondes)</option>
-            <option value="three_x_8s">Une vidéo plus longue (plusieurs moments à la suite)</option>
-          </select>
-        </div>
-        <div className="space-y-2">
-          <label className="block text-xs font-medium text-gray-300 mb-1">
-            Ce qu’on voit dans l’image
-          </label>
-          <StabilizationOption
-            checked={cameraFixed}
-            onChange={(v) => {
-              setCameraFixed(v);
-              onCampaignChange?.({ profession, idea, styleDetails, tempo, cameraFixed: v, revealMode, cinematicMovement, selfieMode, sequenceType, dialogueEnabled, microAnswer, tempoCompressionDecision });
-            }}
-            label="Caméra fixe"
-            tooltip="Le cadre ne bouge pas : on a l’impression que le téléphone reste posé. Idéal pour montrer un produit, une démo ou une présentation posée."
-          />
-          <StabilizationOption
-            checked={revealMode}
-            onChange={(v) => {
-              setRevealMode(v);
-              onCampaignChange?.({ profession, idea, styleDetails, tempo, cameraFixed, revealMode: v, cinematicMovement, selfieMode, sequenceType, dialogueEnabled, microAnswer, tempoCompressionDecision });
-            }}
-            label="Avant / après visible"
-            tooltip="D’abord on voit un état, puis le résultat : la différence saute aux yeux, parfait pour un chantier, une réparation ou une transformation."
-          />
-          <StabilizationOption
-            checked={cinematicMovement}
-            onChange={(v) => {
-              setCinematicMovement(v);
-              onCampaignChange?.({ profession, idea, styleDetails, tempo, cameraFixed, revealMode, cinematicMovement: v, selfieMode, sequenceType, dialogueEnabled, microAnswer, tempoCompressionDecision });
-            }}
-            label="Mouvement doux"
-            tooltip="L’image avance lentement ou zoome un peu : rendu plus soigné, comme une petite pub ou une présentation premium."
-          />
-          <StabilizationOption
-            checked={selfieMode}
-            onChange={(v) => {
-              setSelfieMode(v);
-              onCampaignChange?.({ profession, idea, styleDetails, tempo, cameraFixed, revealMode, cinematicMovement, selfieMode: v, sequenceType, dialogueEnabled, microAnswer, tempoCompressionDecision });
-            }}
-            label="Face caméra (selfie)"
-            tooltip="C’est vous (ou la personne) face à la caméra, comme un selfie : on parle ou on montre en se filmant soi-même."
-          />
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/5 px-3 py-2.5">
-        <div className="min-w-0">
-          <p className="text-xs font-medium text-gray-200">Dialogue activé</p>
-          <p className="text-[11px] text-gray-500">(modifiable dans Vidéo virale)</p>
-        </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={dialogueEnabled}
-          onClick={() => {
-            const next = !dialogueEnabled;
-            setDialogueEnabled(next);
-            onCampaignChange?.({
-              profession,
-              idea,
-              styleDetails,
-              tempo,
-              cameraFixed,
-              revealMode,
-              cinematicMovement,
-              selfieMode,
-              sequenceType,
-              dialogueEnabled: next,
-              microAnswer,
-              tempoCompressionDecision,
-            });
-          }}
-          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-            dialogueEnabled ? "bg-emerald-500/80" : "bg-white/20"
-          }`}
-        >
-          <span
-            className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
-              dialogueEnabled ? "translate-x-5" : "translate-x-1"
-            }`}
-          />
-        </button>
-      </div>
-
-      {error && (
-        <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">
-          {error}
-        </p>
-      )}
-
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => void runWithAuth(handleRun)}
-          disabled={loading || scriptGenerationPending || awaitingStep1Validation}
-          title={
-            awaitingStep1Validation && !loading && !scriptGenerationPending
-              ? "Valide l’étape Campagne avec le bouton en haut de page pour continuer."
-              : undefined
-          }
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold btn-vws-primary disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <Sparkles className="w-4 h-4" />
-          {loading
-            ? "Préparation en cours…"
-            : scriptGenerationPending
-              ? "Génération du script…"
-              : awaitingStep1Validation
-                ? "Étape prête — valide ci-dessus"
-                : "Préparer ma vidéo"}
-        </button>
-        {typeof onCampagneFullReset === "function" ? (
-          <button
-            type="button"
-            onClick={() => onCampagneFullReset()}
-            className="px-4 py-2 rounded-lg font-medium btn-vws-secondary"
-          >
-            Réinitialiser
-          </button>
-        ) : null}
-      </div>
-
       {microQuestion && (
-        <div className="mt-4 border-t border-white/10 pt-3 space-y-2">
+        <div className="mt-8 border-t border-white/10 pt-6 space-y-3">
           <div className="flex items-start gap-2">
-            <p className="text-xs text-gray-300">{microQuestion.question}</p>
+            <p className="text-sm text-gray-300">{microQuestion.question}</p>
             {microQuestion.info ? (
               <span className="relative inline-flex items-center group shrink-0 mt-0.5">
                 <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-cyan-500/35 bg-cyan-500/10 text-[10px] font-semibold text-cyan-200 cursor-help">
@@ -1255,6 +1289,13 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         </div>
       )}
     </div>
+
+    <ModaleChoixFormatVideo
+      open={showFormatModal}
+      onClose={() => setShowFormatModal(false)}
+      professionLabel={profession}
+      onConfirm={applyVideoFormatChoice}
+    />
 
     {showSystemVideo && (
       <div

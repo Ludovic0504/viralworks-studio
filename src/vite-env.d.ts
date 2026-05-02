@@ -8,6 +8,10 @@ interface ImportMetaEnv {
   readonly VITE_SITE_URL?: string
   /** Clé publique Stripe : pk_test_… (dev) ou pk_live_… (prod). Fichier .env.local / .env.production uniquement. */
   readonly VITE_STRIPE_PUBLISHABLE_KEY?: string
+  /** Clé API Pexels (aperçus cartes format Campagne VWS). https://www.pexels.com/api/ */
+  readonly VITE_PEXELS_API_KEY?: string
+  /** Si "1", appels prod vers `/api/pexels-search` (clé serveur PEXELS_API_KEY sur Netlify). */
+  readonly VITE_PEXELS_SERVER?: string
   // VITE_OPENAI_API_KEY n'est plus nécessaire côté client
   // La clé est gérée par Supabase Edge Functions
 }

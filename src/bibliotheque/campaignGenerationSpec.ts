@@ -41,6 +41,8 @@ export interface CampaignClarification {
 export interface CampaignSection {
   profession: string;
   objective: string | null;
+  /** Identifiant du format vidéo choisi à l’étape Campagne VWS (catalogue `vwsVideoFormatsCatalog`). */
+  video_format_id: string | null;
   core_idea: string;
   style_details: string;
   intent_profile: GlobalIntentProfile | null;
@@ -195,6 +197,7 @@ export function createDefaultCampaignGenerationSpec(): CampaignGenerationSpec {
     campaign: {
       profession: "",
       objective: null,
+      video_format_id: null,
       core_idea: "",
       style_details: "",
       intent_profile: null,
@@ -438,6 +441,9 @@ export function normalizeCampaignGenerationSpec(raw: unknown): CampaignGeneratio
     campaign: {
       profession: asString(campaign.profession),
       objective: asNullableString(campaign.objective),
+      video_format_id: asNullableString(
+        (campaign as Record<string, unknown>).video_format_id ?? (campaign as Record<string, unknown>).videoFormatId
+      ),
       core_idea: asString(campaign.core_idea, asString(campaign.idea)),
       style_details: asString(campaign.style_details, asString(campaign.styleDetails)),
       intent_profile: normalizeIntentProfile(campaign.intent_profile ?? campaign.globalIntentProfile),

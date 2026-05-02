@@ -1,11 +1,18 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '')
+  let pexelsKey = (env.VITE_PEXELS_API_KEY || '').trim().replace(/^\uFEFF/, '')
+  if (pexelsKey.toLowerCase().startsWith('bearer ')) {
+    pexelsKey = pexelsKey.slice(7).trim()
+  }
+
+  return {
   plugins: [react()],
   resolve: {
     alias: {
@@ -19,6 +26,18 @@ export default defineConfig({
   server: {
     port: 5173, // pour npm run dev
     proxy: {
+      // Pexels : la clé est ajoutée par Node (évite 401 / encodage différent du bundle client)
+      '/__pexels': {
+        target: 'https://api.pexels.com',
+        changeOrigin: true,
+        secure: true,
+        rewrite: (p) => p.replace(/^\/__pexels/, ''),
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            if (pexelsKey) proxyReq.setHeader('Authorization', pexelsKey)
+          })
+        },
+      },
       // Proxy pour les fonctions Netlify en développement
       '/api': {
         target: 'http://localhost:8888',
@@ -52,5 +71,5 @@ export default defineConfig({
     // Augmenter la limite d'avertissement à 600 kB (optionnel)
     chunkSizeWarningLimit: 600,
   },
+  }
 })
-// test

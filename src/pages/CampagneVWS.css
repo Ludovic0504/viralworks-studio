@@ -1,0 +1,274 @@
+/* Scoped form styles — Campagne VWS étape 1 */
+.vws-campagne-form {
+  --vws-field-bg: #111111;
+  --vws-field-border: #222222;
+  --vws-field-focus: #2ecc9a33;
+  --vws-accent: #2ecc9a;
+  --vws-format-bg: #141414;
+  --vws-format-border: #1e1e1e;
+}
+
+.vws-campagne-form-scroll {
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+}
+
+@media (min-width: 768px) {
+  .vws-campagne-form-scroll {
+    padding-left: 0;
+    padding-right: 0;
+  }
+}
+
+/* Blocs — respiration */
+.vws-campagne-block {
+  margin-bottom: 2rem;
+}
+
+@media (min-width: 768px) {
+  .vws-campagne-block {
+    margin-bottom: 2.25rem;
+  }
+}
+
+.vws-campagne-block:last-of-type {
+  margin-bottom: 0;
+}
+
+/* Idée principale — détacher du bloc Métier/Durée ; label serré avec la textarea */
+.vws-campagne-block--idea {
+  padding-top: 2rem;
+}
+
+@media (min-width: 768px) {
+  .vws-campagne-block--idea {
+    padding-top: 2.75rem;
+  }
+}
+
+.vws-campagne-label--idea {
+  margin-bottom: 0.3125rem;
+}
+
+@media (min-width: 768px) {
+  .vws-campagne-label--idea {
+    margin-bottom: 0.375rem;
+  }
+}
+
+.vws-campagne-idea-heading-row {
+  margin-bottom: 0.125rem;
+}
+
+/* Labels petites caps */
+.vws-campagne-label {
+  display: block;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgb(156 163 175);
+  margin-bottom: 0.5rem;
+}
+
+@media (min-width: 768px) {
+  .vws-campagne-label {
+    margin-bottom: 0.625rem;
+  }
+}
+
+/* Bloc format sélectionné */
+.vws-campagne-format-card {
+  background: var(--vws-format-bg);
+  border: 1px solid var(--vws-format-border);
+  border-radius: 12px;
+  padding: 1rem 1.125rem;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.35),
+    0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.vws-campagne-format-name {
+  color: var(--vws-accent);
+  font-weight: 600;
+}
+
+.vws-campagne-format-btn {
+  min-height: 48px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--vws-accent);
+  border-radius: 10px;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.vws-campagne-format-btn:hover {
+  background: rgba(46, 204, 154, 0.08);
+}
+
+@media (min-width: 640px) {
+  .vws-campagne-format-btn {
+    min-height: 0;
+  }
+}
+
+/* Champs */
+.vws-campagne-field {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: rgb(229 231 235);
+  background: var(--vws-field-bg);
+  border: 1px solid var(--vws-field-border);
+  border-radius: 12px;
+  padding: 0.75rem 1rem;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.vws-campagne-field::placeholder {
+  color: rgb(107 114 128);
+}
+
+.vws-campagne-field:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.vws-campagne-field:focus,
+.vws-campagne-field:focus-visible {
+  outline: none;
+  border-color: rgba(46, 204, 154, 0.45);
+  box-shadow: 0 0 0 3px var(--vws-field-focus);
+}
+
+/* Select — flèche custom verte */
+.vws-campagne-select {
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  padding-right: 2.75rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%232ecc9a' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.875rem center;
+  background-size: 1rem 1rem;
+}
+
+@media (max-width: 767px) {
+  .vws-campagne-field--touch {
+    min-height: 52px;
+  }
+
+  .vws-campagne-textarea-mobile {
+    min-height: 120px;
+  }
+}
+
+/* Textarea idée */
+.vws-campagne-textarea {
+  resize: vertical;
+  min-height: 120px;
+}
+
+/* Infos métier */
+.vws-campagne-metier-hint {
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: rgb(107 114 128);
+}
+
+/* Bouton M'inspirer */
+.vws-campagne-inspire-btn {
+  font-size: 0.875rem;
+  font-weight: 600;
+  padding: 0.5rem 0.75rem;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+/* Dialogue — ligne tactile */
+.vws-campagne-dialogue-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 44px;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+}
+
+/* Rangée CTA — même ligne, proportions proches du bouton M'inspirer */
+.vws-campagne-cta-row {
+  gap: 0.75rem;
+}
+
+.vws-campagne-form .vws-campagne-cta-primary.btn-vws-primary {
+  width: auto;
+  justify-content: center;
+  min-height: 44px;
+  border-radius: 10px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  padding: 0.5rem 1rem;
+  transition:
+    box-shadow 0.22s ease,
+    transform 0.22s ease;
+}
+
+.vws-campagne-form .vws-campagne-cta-secondary.btn-vws-secondary {
+  min-height: 44px;
+  border-radius: 10px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  padding: 0.5rem 1rem;
+}
+
+.vws-campagne-form .vws-campagne-cta-primary.btn-vws-primary:hover:not(:disabled) {
+  box-shadow:
+    0 0 28px rgba(0, 200, 150, 0.45),
+    0 8px 24px rgba(0, 0, 0, 0.35);
+  transform: translateY(-2px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vws-campagne-form .vws-campagne-cta-primary.btn-vws-primary:hover:not(:disabled) {
+    transform: none;
+  }
+}
+
+/* Barre sticky mobile */
+.vws-campagne-sticky-bar-inner {
+  padding-top: 2rem;
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  background: linear-gradient(
+    to top,
+    rgba(5, 8, 16, 0) 0%,
+    rgba(5, 8, 16, 0.55) 28%,
+    rgba(5, 8, 16, 0.94) 72%,
+    rgba(5, 8, 16, 1) 100%
+  );
+}
+
+@media (min-width: 768px) {
+  .vws-campagne-sticky-bar {
+    position: static !important;
+    inset: auto !important;
+    pointer-events: auto;
+  }
+
+  .vws-campagne-sticky-bar-inner {
+    padding: 0;
+    background: transparent;
+  }
+}
+
+/* Réinitialiser (legacy helper si utilisé sans --cta-secondary) */
+.vws-campagne-reset {
+  flex-shrink: 0;
+}
