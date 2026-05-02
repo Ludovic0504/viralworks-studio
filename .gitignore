@@ -94,13 +94,12 @@ prisma/migrations/
 # Netlify
 .netlify/
 
-# Vercel
-.vercel/
+# Vercel (project.json versionné pour lier le bon projet au dépôt)
+.vercel/*
+!.vercel/project.json
 
 # Médias lourds locaux
 src/ressources/*.mp4
 src/ressources/*.MP4
 src/ressources/*.mov
 src/ressources/*.MOV
-
-.vercel
