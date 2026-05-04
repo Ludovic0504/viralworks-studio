@@ -101,6 +101,18 @@ export default function CampagneVWS({
   formatPickerPresentation = "portal",
 }) {
   const { runWithAuth } = useRequireAuthAction();
+
+  const [isDesktop, setIsDesktop] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(min-width: 641px)").matches
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 641px)");
+    const onChange = () => setIsDesktop(mq.matches);
+    onChange();
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+
   const [profession, setProfessionState] = useState(campaignData?.profession ?? "");
   const [idea, setIdeaState] = useState(campaignData?.idea ?? "");
   const [styleDetails, setStyleDetails] = useState(campaignData?.styleDetails ?? "");
@@ -1255,43 +1267,12 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
             </div>
           </div>
 
-          {/* ≤640px : question puis erreur. ≥641px : question + réponses puis message rouge puis CTA (erreur déplacé sous les réponses) */}
+          {/* Question/réponses sous Dialogue — mobile : plus d’air sous Dialogue ; desktop : rapproché, sans ligne grise */}
           {microQuestion ? (
-            <div className="vws-campagne-micro-question min-[641px]:hidden mt-2 space-y-3">
-              <div className="flex items-start gap-2">
-                <p className="text-sm text-gray-300">{microQuestion.question}</p>
-                {microQuestion.info ? (
-                  <span className="relative inline-flex items-center group shrink-0 mt-0.5">
-                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-cyan-500/35 bg-cyan-500/10 text-[10px] font-semibold text-cyan-200 cursor-help">
-                      i
-                    </span>
-                    <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 hidden w-72 -translate-x-1/2 rounded-lg border border-cyan-500/25 bg-[#0d1a22] px-2.5 py-2 text-[11px] leading-snug text-cyan-100 shadow-lg group-hover:block">
-                      {microQuestion.info}
-                    </span>
-                  </span>
-                ) : null}
-              </div>
-              <div className="flex flex-wrap gap-2 mt-1">
-                {microQuestion.options.map((opt) => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => handleSelectMicroAnswer(opt.id)}
-                    className={`px-3 py-1.5 rounded-full text-xs transition-all duration-150 ${
-                      microAnswer === opt.id
-                        ? "card-vws-active text-emerald-300"
-                        : "card-vws text-gray-300"
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          {microQuestion ? (
-            <div className="vws-campagne-micro-question max-[640px]:hidden min-[641px]:block border-t border-white/10 pt-6 mt-8 space-y-3">
+            <div
+              className="vws-campagne-micro-question space-y-3 max-[640px]:mt-12"
+              style={isDesktop ? { marginTop: "24px" } : {}}
+            >
               <div className="flex items-start gap-2">
                 <p className="text-sm text-gray-300">{microQuestion.question}</p>
                 {microQuestion.info ? (
@@ -1325,14 +1306,24 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
           ) : null}
 
           {error ? (
-            <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 max-[640px]:mt-1.5 max-[640px]:mb-0 min-[641px]:mb-6">
+            <p
+              className="text-sm text-red-400 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 max-[640px]:mt-8 max-[640px]:mb-6"
+              style={isDesktop ? { marginTop: "16px", marginBottom: "16px" } : {}}
+            >
               {error}
             </p>
           ) : null}
         </div>
 
-        {/* Bloc 5 — CTA : même ligne ; sur mobile le primaire prend plus de largeur (flex-1) */}
-        <div className="vws-campagne-cta-row vws-campagne-cta-row--inline mt-8 flex flex-row flex-wrap items-center gap-3 max-[640px]:mt-8 min-[641px]:mt-10 min-[641px]:justify-start">
+        {/* Bloc 5 — CTA : marge réduite si erreur déjà présente (mb-5) pour éviter double vide */}
+        <div
+          className={`vws-campagne-cta-row vws-campagne-cta-row--inline flex flex-row flex-wrap items-center gap-3 min-[641px]:justify-start ${
+            error
+              ? "mt-0 max-[640px]:mt-0"
+              : "mt-8 max-[640px]:mt-8 min-[641px]:mt-10"
+          }`}
+          style={isDesktop && error ? { marginTop: "8px" } : {}}
+        >
           <button
             type="button"
             onClick={() => void runWithAuth(handleRun)}
