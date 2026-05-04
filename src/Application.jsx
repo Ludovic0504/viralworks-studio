@@ -19,6 +19,7 @@ import ChargeurInitial from "./composants/interface/ChargeurInitial.jsx";
 import ProtectedRoute from "./composants/auth/RouteProtegee.jsx";
 import { AuthProvider } from "./contexte/FournisseurAuth";
 import { AuthActionProvider } from "./contexte/ActionAuthModalContext";
+import { FournisseurCommunauteVWSNotif } from "./contexte/FournisseurCommunauteVWSNotif.jsx";
 
 const LOADER_STORAGE_KEY = "onetool_initial_loader_seen";
 const LOADER_COOLDOWN_HOURS = 1;
@@ -113,7 +114,9 @@ const router = createBrowserRouter([
     element: (
       <AuthProvider>
         <AuthActionProvider>
-          <AppShell />
+          <FournisseurCommunauteVWSNotif>
+            <AppShell />
+          </FournisseurCommunauteVWSNotif>
         </AuthActionProvider>
       </AuthProvider>
     ),

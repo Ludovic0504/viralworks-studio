@@ -492,6 +492,58 @@ export async function deletePrivateMessage(messageId: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+/** Compte les messages privés reçus (auteur ≠ moi) non couverts par last_read_at du participant. */
+export async function countUnreadPrivateMessages(): Promise<number> {
+  const { supabase } = await ensureAuthUser();
+  const { data, error } = await supabase.rpc("community_unread_private_message_count");
+  if (error) throw new Error(error.message);
+  const n = typeof data === "number" ? data : Number(data ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Met à jour last_read_at pour la conversation active (marquer comme lu jusqu’à maintenant). */
+export async function markConversationRead(conversationId: string): Promise<void> {
+  const { supabase, user } = await ensureAuthUser();
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("community_private_participants")
+    .update({ last_read_at: now })
+    .eq("conversation_id", conversationId)
+    .eq("user_id", user.id);
+  if (error) throw new Error(error.message);
+}
+
+/** Marque toutes les conversations privées comme lues (onglet privé ouvert). */
+export async function markAllPrivateConversationsRead(): Promise<void> {
+  const { supabase, user } = await ensureAuthUser();
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("community_private_participants")
+    .update({ last_read_at: now })
+    .eq("user_id", user.id);
+  if (error) throw new Error(error.message);
+}
+
+/** Indique s’il existe au moins un message public postérieur au timestamp (ISO). Si sinceIso est null, tout message existant compte comme « nouveau ». */
+export async function hasNewPublicMessageSince(sinceIso: string | null): Promise<boolean> {
+  const { supabase } = await ensureAuthUser();
+  if (!sinceIso?.trim()) {
+    const { count, error } = await supabase
+      .from("community_public_messages")
+      .select("id", { count: "exact", head: true });
+    if (error) throw new Error(error.message);
+    return (count ?? 0) > 0;
+  }
+  const { data, error } = await supabase
+    .from("community_public_messages")
+    .select("id")
+    .gt("created_at", sinceIso.trim())
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return Boolean(data?.id);
+}
+
 export async function hideConversationForMe(conversationId: string): Promise<void> {
   const { supabase, user } = await ensureAuthUser();
   const { data: conv, error: convErr } = await supabase

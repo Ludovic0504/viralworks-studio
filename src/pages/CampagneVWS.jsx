@@ -113,6 +113,17 @@ export default function CampagneVWS({
     return () => mq.removeEventListener("change", onChange);
   }, []);
 
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(max-width: 640px)").matches
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 640px)");
+    const onChange = () => setIsMobile(mq.matches);
+    onChange();
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+
   const [profession, setProfessionState] = useState(campaignData?.profession ?? "");
   const [idea, setIdeaState] = useState(campaignData?.idea ?? "");
   const [styleDetails, setStyleDetails] = useState(campaignData?.styleDetails ?? "");
@@ -1140,7 +1151,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
               </div>
             </div>
             {metierProfile ? (
-              <div className="mt-1.5 hidden max-[640px]:block rounded-xl border border-[#1e2845] bg-[#161d2e] px-[9px] py-[7px]">
+              <div className="mt-1.5 hidden rounded-xl border border-[#1e2845] bg-[#161d2e] px-[9px] py-[7px]">
                 <span className="mb-0.5 block text-[9px] font-semibold uppercase tracking-wide text-[#3e4870]">
                   Ambiance typique
                 </span>
@@ -1150,8 +1161,14 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
           </div>
 
           {/* Bloc 3 — Idée principale */}
-          <div className="vws-campagne-block vws-campagne-block--idea">
-            <div className="vws-campagne-idea-heading-row flex flex-row items-center justify-between gap-2 md:items-start md:gap-4">
+          <div
+            className="vws-campagne-block vws-campagne-block--idea"
+            style={isMobile ? { marginTop: "16px" } : {}}
+          >
+            <div
+              className="vws-campagne-idea-heading-row flex flex-row items-center justify-between gap-2 md:items-start md:gap-4"
+              style={isMobile ? { marginTop: "16px" } : {}}
+            >
               <label
                 className="vws-campagne-label vws-campagne-label--idea mb-0 min-w-0 flex-1 pr-2 md:flex-none md:pr-0 md:pt-0.5"
                 htmlFor="campagne-idee"
@@ -1195,7 +1212,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
 
           {/* Bloc 4 — Précisions + Dialogue */}
           <div className="vws-campagne-block space-y-6 max-[640px]:space-y-2 max-md:space-y-7">
-            <div>
+            <div style={isMobile ? { marginTop: "16px" } : {}}>
               <label className="vws-campagne-label" htmlFor="campagne-precisions">
                 <span className="md:hidden">Précisions</span>
                 <span className="hidden md:inline">
@@ -1267,11 +1284,11 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
             </div>
           </div>
 
-          {/* Question/réponses sous Dialogue — mobile : plus d’air sous Dialogue ; desktop : rapproché, sans ligne grise */}
+          {/* Question/réponses sous Dialogue — marginTop inline : 24px desktop / 16px mobile */}
           {microQuestion ? (
             <div
-              className="vws-campagne-micro-question space-y-3 max-[640px]:mt-12"
-              style={isDesktop ? { marginTop: "24px" } : {}}
+              className="vws-campagne-micro-question space-y-3"
+              style={{ marginTop: isDesktop ? "24px" : "16px" }}
             >
               <div className="flex items-start gap-2">
                 <p className="text-sm text-gray-300">{microQuestion.question}</p>
@@ -1307,8 +1324,8 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
 
           {error ? (
             <p
-              className="text-sm text-red-400 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 max-[640px]:mt-8 max-[640px]:mb-6"
-              style={isDesktop ? { marginTop: "16px", marginBottom: "16px" } : {}}
+              className="text-sm text-red-400 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3"
+              style={{ marginTop: "12px", marginBottom: "12px" }}
             >
               {error}
             </p>
@@ -1322,7 +1339,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
               ? "mt-0 max-[640px]:mt-0"
               : "mt-8 max-[640px]:mt-8 min-[641px]:mt-10"
           }`}
-          style={isDesktop && error ? { marginTop: "8px" } : {}}
+          style={error ? { marginTop: "8px" } : {}}
         >
           <button
             type="button"

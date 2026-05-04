@@ -1,9 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useSearchParams } from "react-router-dom";
 import PageTitle from "@/composants/interface/TitrePage";
 import { MessageCircle, Users, Send, Paperclip, Plus, X, MoreVertical } from "lucide-react";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
+import { useCommunauteVWSNotif } from "@/contexte/FournisseurCommunauteVWSNotif.jsx";
 import {
   deletePrivateMessage,
   deletePublicMessage,
@@ -14,6 +16,8 @@ import {
   listPrivateMessages,
   listPublicMessages,
   listCommunityUsers,
+  markAllPrivateConversationsRead,
+  markConversationRead,
   sendPrivateMessage,
   sendPublicMessage,
   startPrivateConversation,
@@ -229,8 +233,16 @@ function PrivateConversationRow({ conversation: c, isActive, onSelect, menuOpen,
 export default function CommunauteVWS() {
   const { session } = useAuth();
   const { runWithAuth, openAuthModal } = useRequireAuthAction();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const {
+    unreadPrivateCount,
+    hasNewPublicSinceLastVisit,
+    refreshUnreadPrivate,
+    markPublicTabVisited,
+  } = useCommunauteVWSNotif();
   const myUserId = session?.user?.id || "";
   const [tab, setTab] = useState("public");
+  const tabQueryHandledRef = useRef(false);
   const [publicMessages, setPublicMessages] = useState([]);
   const [privateConversations, setPrivateConversations] = useState([]);
   const [activeConversationId, setActiveConversationId] = useState("");
@@ -372,6 +384,58 @@ export default function CommunauteVWS() {
     return () => document.removeEventListener("mousedown", onDoc);
   }, [msgMenuId, convMenuId]);
 
+  useEffect(() => {
+    if (tabQueryHandledRef.current) return;
+    if (searchParams.get("tab") !== "private") return;
+    tabQueryHandledRef.current = true;
+    setTab("private");
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("tab");
+        return next;
+      },
+      { replace: true }
+    );
+  }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (tab !== "public" || !session?.user?.id) return;
+    markPublicTabVisited();
+  }, [tab, session?.user?.id, markPublicTabVisited]);
+
+  useEffect(() => {
+    if (tab !== "private" || !session?.user?.id) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        await markAllPrivateConversationsRead();
+        if (!cancelled) await refreshUnreadPrivate();
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, session?.user?.id, refreshUnreadPrivate]);
+
+  useEffect(() => {
+    if (tab !== "private" || !session?.user?.id || !activeConversationId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        await markConversationRead(activeConversationId);
+        if (!cancelled) await refreshUnreadPrivate();
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, activeConversationId, session?.user?.id, refreshUnreadPrivate]);
+
   const sendToPublic = async () => {
     try {
       setBusy(true);
@@ -381,6 +445,7 @@ export default function CommunauteVWS() {
       setPublicFile(null);
       if (publicFileRef.current) publicFileRef.current.value = "";
       await refreshPublic();
+      markPublicTabVisited();
     } catch (e) {
       setError(e?.message || "Impossible d'envoyer le message public.");
     } finally {
@@ -458,16 +523,28 @@ export default function CommunauteVWS() {
           onClick={() => void runWithAuth(async () => setTab("public"))}
           className={`px-4 py-2 rounded-lg text-sm ${tab === "public" ? "bg-cyan-500/20 text-cyan-100 border border-cyan-400/40" : "text-gray-400"}`}
         >
-          <MessageCircle className="w-4 h-4 inline mr-1" />
-          Discussion publique
+          <span className="inline-flex items-center gap-1.5">
+            <MessageCircle className="w-4 h-4 shrink-0" />
+            <span>Discussion publique</span>
+            {hasNewPublicSinceLastVisit ? (
+              <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" aria-hidden />
+            ) : null}
+          </span>
         </button>
         <button
           type="button"
           onClick={() => void runWithAuth(async () => setTab("private"))}
           className={`px-4 py-2 rounded-lg text-sm ${tab === "private" ? "bg-cyan-500/20 text-cyan-100 border border-cyan-400/40" : "text-gray-400"}`}
         >
-          <Users className="w-4 h-4 inline mr-1" />
-          Conversations privées
+          <span className="inline-flex items-center gap-1.5">
+            <Users className="w-4 h-4 shrink-0" />
+            <span>Conversations privées</span>
+            {unreadPrivateCount > 0 ? (
+              <span className="min-w-[1.25rem] rounded-full bg-[#BA7517] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
+                {unreadPrivateCount > 99 ? "99+" : unreadPrivateCount}
+              </span>
+            ) : null}
+          </span>
         </button>
       </div>
 

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { Menu } from "lucide-react";
 import { useAuth } from "@/contexte/FournisseurAuth";
+import { useCommunauteVWSNotif } from "@/contexte/FournisseurCommunauteVWSNotif.jsx";
 import LienNavSync from "@/composants/disposition/LienNavSync";
 import MenuProfilConnecte from "@/composants/disposition/MenuProfilConnecte";
 
@@ -14,9 +15,25 @@ const navLinks = [
   { path: "/a-savoir", label: "Playbook" },
 ];
 
+function MessageBubbleIcon({ className }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={22}
+      height={22}
+      className={className}
+      fill="currentColor"
+      aria-hidden
+    >
+      <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17L4 17.17V4h16v12z" />
+    </svg>
+  );
+}
+
 export default function Header({ onOpenMenu }) {
   const { session, signOut, loading } = useAuth();
   const hasSession = Boolean(session?.user?.id);
+  const { unreadPrivateCount } = useCommunauteVWSNotif();
   const location = useLocation();
 
   const [signingOut, setSigningOut] = useState(false);
@@ -112,7 +129,27 @@ export default function Header({ onOpenMenu }) {
 
           <nav className="hidden flex-1 items-center justify-center gap-6 md:flex lg:gap-8">{navItems}</nav>
 
-          <div className="flex shrink-0 items-center justify-end">{authSlot}</div>
+          <div className="nav-right flex shrink-0 items-center justify-end gap-2">
+            {hasSession ? (
+              <LienNavSync
+                to="/communaute-vws?tab=private"
+                className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-300 transition-colors hover:bg-white/10 hover:text-white"
+                aria-label={
+                  unreadPrivateCount > 0
+                    ? `Messages privés, ${unreadPrivateCount} non lus`
+                    : "Messages privés"
+                }
+              >
+                <MessageBubbleIcon className="text-gray-300" />
+                {unreadPrivateCount > 0 ? (
+                  <span className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-semibold leading-none text-white">
+                    {unreadPrivateCount > 99 ? "99+" : unreadPrivateCount}
+                  </span>
+                ) : null}
+              </LienNavSync>
+            ) : null}
+            {authSlot}
+          </div>
         </div>
       </div>
     </header>
