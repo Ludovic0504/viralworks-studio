@@ -5,7 +5,8 @@ import { VWS_VIDEO_FORMATS, VWS_VIDEO_FORMAT_CATEGORIES } from "@/bibliotheque/v
 import { prefetchPexelsQueries } from "@/bibliotheque/pexelsFormatImages";
 import "./ModaleChoixFormatVideo.css";
 
-const MD_QUERY = "(max-width: 767px)";
+/** Feuille mobile + footer « Choisir ce format » : aligné sur la zone « mobile » large (tablettes étroites incluses) */
+const MD_QUERY = "(max-width: 1023px)";
 
 function useIsMobileSheet() {
   const [narrow, setNarrow] = useState(() =>
@@ -115,7 +116,7 @@ export default function ModaleChoixFormatVideo({
     return (
       <div
         ref={panelRef}
-        className="absolute inset-0 z-20 flex min-h-0 flex-col overflow-hidden bg-[#0f1420]"
+        className="absolute inset-0 z-20 flex h-full min-h-0 flex-col overflow-hidden bg-[#0f1420]"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -128,7 +129,7 @@ export default function ModaleChoixFormatVideo({
   if (typeof document === "undefined") return null;
 
   const sheetOrPanelClass = isMobile
-    ? "vws-format-sheet-mobile fixed inset-x-0 bottom-0 top-0 z-[101] flex flex-col rounded-t-2xl border border-[#1e1e1e] bg-[#0d0d0d] shadow-2xl"
+    ? "vws-format-sheet-mobile fixed inset-x-0 bottom-0 top-0 z-[101] flex min-h-[100dvh] flex-col overflow-hidden rounded-t-2xl border border-[#1e1e1e] bg-[#0d0d0d] shadow-2xl"
     : "vws-format-panel-desktop relative z-[101] flex max-h-[85vh] w-[90vw] max-w-[900px] flex-col overflow-hidden rounded-2xl border border-[#1e1e1e] bg-[#0d0d0d] shadow-2xl";
 
   return createPortal(

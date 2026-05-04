@@ -31,13 +31,18 @@ export function PanneauChoixFormatVideo({
   onClose,
   titleId: titleIdProp,
   showHeader = true,
-  scrollClassName = "min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-4 md:px-5 md:py-5",
+  scrollClassName,
   showMobileFooter = true,
   gridClassName = "grid grid-cols-2 gap-4 md:grid-cols-3 md:gap-5",
 }) {
   const autoTitleId = useId();
   const titleId = titleIdProp ?? autoTitleId;
   const formats = getFormatsByCategory(categoryId);
+  const resolvedScrollClassName =
+    scrollClassName ??
+    (isMobilePicker
+      ? "min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-[11px] py-[9px]"
+      : "min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-4 md:px-5 md:py-5");
 
   const metierReco = useMemo(() => {
     const p = (professionLabel || "").trim();
@@ -63,7 +68,13 @@ export function PanneauChoixFormatVideo({
   }, [professionLabel, metierReco]);
 
   return (
-    <>
+    <div
+      className={
+        isMobilePicker
+          ? "flex h-full min-h-0 flex-1 flex-col overflow-hidden"
+          : "contents"
+      }
+    >
       {showHeader ? (
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[#1e1e1e] px-4 py-3 md:px-5 md:py-4 safe-padded">
           <div>
@@ -110,7 +121,7 @@ export function PanneauChoixFormatVideo({
         </div>
       </div>
 
-      <div className={scrollClassName}>
+      <div className={resolvedScrollClassName}>
         <div className={gridClassName}>
           {formats.map((f) => {
             const selectedMobile = isMobilePicker && mobilePickId === f.id;
@@ -160,7 +171,7 @@ export function PanneauChoixFormatVideo({
       </div>
 
       {isMobilePicker && showMobileFooter ? (
-        <div className="shrink-0 border-t border-[#1e1e1e] bg-[#0d0d0d] p-4 safe-padded">
+        <div className="shrink-0 border-t border-[#171e30] bg-[#0f1420] px-[11px] pb-4 pt-[10px] safe-padded">
           <button
             type="button"
             disabled={!mobilePickId}
@@ -171,6 +182,6 @@ export function PanneauChoixFormatVideo({
           </button>
         </div>
       ) : null}
-    </>
+    </div>
   );
 }

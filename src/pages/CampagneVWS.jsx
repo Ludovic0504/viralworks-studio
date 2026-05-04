@@ -974,7 +974,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
     <div
       className={`studio-panel box-border w-full min-w-0 max-w-full p-4 max-[640px]:p-2 sm:p-6 ${
         showFormatModal && formatPickerPresentation === "studioOverlay"
-          ? "relative z-0 min-h-[75dvh]"
+          ? "relative z-0 isolate min-h-[100dvh]"
           : ""
       }`}
     >
@@ -1369,15 +1369,15 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
           </div>
         </div>
       )}
-    </div>
 
-    <ModaleChoixFormatVideo
-      open={showFormatModal}
-      onClose={() => setShowFormatModal(false)}
-      professionLabel={profession}
-      onConfirm={applyVideoFormatChoice}
-      presentation={formatPickerPresentation === "studioOverlay" ? "studioOverlay" : "portal"}
-    />
+      <ModaleChoixFormatVideo
+        open={showFormatModal}
+        onClose={() => setShowFormatModal(false)}
+        professionLabel={profession}
+        onConfirm={applyVideoFormatChoice}
+        presentation={formatPickerPresentation === "studioOverlay" ? "studioOverlay" : "portal"}
+      />
+    </div>
 
     {showSystemVideo && (
       <div
