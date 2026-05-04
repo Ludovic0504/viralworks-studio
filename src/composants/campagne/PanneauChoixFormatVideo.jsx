@@ -33,6 +33,8 @@ export function PanneauChoixFormatVideo({
   showHeader = true,
   scrollClassName,
   showMobileFooter = true,
+  /** max-width 640px — styles inline colonne + footer sticky */
+  narrowMobileOverlay = false,
   gridClassName = "grid grid-cols-2 gap-4 md:grid-cols-3 md:gap-5",
 }) {
   const autoTitleId = useId();
@@ -43,6 +45,38 @@ export function PanneauChoixFormatVideo({
     (isMobilePicker
       ? "min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-[11px] py-[9px]"
       : "min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-4 md:px-5 md:py-5");
+
+  const stickyNarrow = Boolean(narrowMobileOverlay && isMobilePicker);
+
+  const narrowScrollStyle = stickyNarrow
+    ? {
+        flex: 1,
+        minHeight: 0,
+        overflowY: "auto",
+        WebkitOverflowScrolling: "touch",
+        padding: "9px 11px",
+      }
+    : undefined;
+
+  const narrowFooterStyle = stickyNarrow
+    ? {
+        flexShrink: 0,
+        padding: "10px 11px 20px",
+        borderTop: "1px solid #1e2845",
+        background: "#0f1420",
+      }
+    : undefined;
+
+  const narrowRootStyle = stickyNarrow
+    ? {
+        display: "flex",
+        flexDirection: "column",
+        flex: 1,
+        minHeight: 0,
+        height: "100%",
+        overflow: "hidden",
+      }
+    : undefined;
 
   const metierReco = useMemo(() => {
     const p = (professionLabel || "").trim();
@@ -70,13 +104,17 @@ export function PanneauChoixFormatVideo({
   return (
     <div
       className={
-        isMobilePicker
+        stickyNarrow ? undefined : isMobilePicker
           ? "flex h-full min-h-0 flex-1 flex-col overflow-hidden"
           : "contents"
       }
+      style={narrowRootStyle}
     >
       {showHeader ? (
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[#1e1e1e] px-4 py-3 md:px-5 md:py-4 safe-padded">
+        <div
+          className="flex shrink-0 items-center justify-between gap-3 border-b border-[#1e1e1e] px-4 py-3 md:px-5 md:py-4 safe-padded"
+          style={stickyNarrow ? { flexShrink: 0 } : undefined}
+        >
           <div>
             <h2 id={titleId} className="text-base font-semibold text-slate-100">
               Choisir un format vidéo
@@ -94,7 +132,10 @@ export function PanneauChoixFormatVideo({
         </div>
       ) : null}
 
-      <div className="shrink-0 border-b border-[#1e1e1e] px-2 md:px-4">
+      <div
+        className="shrink-0 border-b border-[#1e1e1e] px-2 md:px-4"
+        style={stickyNarrow ? { flexShrink: 0 } : undefined}
+      >
         <div className="vws-format-catbar flex gap-1 overflow-x-auto py-2 scrollbar-thin [-webkit-overflow-scrolling:touch]">
           {VWS_VIDEO_FORMAT_CATEGORIES.map((c) => {
             const active = c.id === categoryId;
@@ -121,10 +162,14 @@ export function PanneauChoixFormatVideo({
         </div>
       </div>
 
-      <div className={resolvedScrollClassName}>
+      <div
+        className={stickyNarrow ? "min-h-0 flex-1 overflow-x-hidden" : resolvedScrollClassName}
+        style={narrowScrollStyle}
+      >
         <div className={gridClassName}>
           {formats.map((f) => {
-            const selectedMobile = isMobilePicker && mobilePickId === f.id;
+            const selectedMobile =
+              isMobilePicker && !narrowMobileOverlay && mobilePickId === f.id;
             return (
               <button
                 key={f.id}
@@ -171,12 +216,15 @@ export function PanneauChoixFormatVideo({
       </div>
 
       {isMobilePicker && showMobileFooter ? (
-        <div className="shrink-0 border-t border-[#171e30] bg-[#0f1420] px-[11px] pb-4 pt-[10px] safe-padded">
+        <div
+          className="shrink-0 border-t border-[#171e30] bg-[#0f1420] px-[11px] pb-4 pt-[10px] safe-padded max-[640px]:hidden"
+          style={narrowFooterStyle}
+        >
           <button
             type="button"
             disabled={!mobilePickId}
             onClick={() => mobilePickId && onPickFormat?.(mobilePickId)}
-            className="btn-vws-primary w-full min-h-[48px] rounded-xl px-4 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
+            className="btn-vws-primary max-[640px]:hidden w-full min-h-[48px] rounded-xl px-4 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
           >
             Choisir ce format
           </button>

@@ -8,6 +8,22 @@ import "./ModaleChoixFormatVideo.css";
 /** Feuille mobile + footer « Choisir ce format » : aligné sur la zone « mobile » large (tablettes étroites incluses) */
 const MD_QUERY = "(max-width: 1023px)";
 
+const NARROW_OVERLAY_QUERY = "(max-width: 640px)";
+
+function useMatchMedia(query) {
+  const [matches, setMatches] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia(query).matches : false
+  );
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const fn = () => setMatches(mq.matches);
+    fn();
+    mq.addEventListener("change", fn);
+    return () => mq.removeEventListener("change", fn);
+  }, [query]);
+  return matches;
+}
+
 function useIsMobileSheet() {
   const [narrow, setNarrow] = useState(() =>
     typeof window !== "undefined" ? window.matchMedia(MD_QUERY).matches : false
@@ -33,6 +49,7 @@ export default function ModaleChoixFormatVideo({
 }) {
   const titleId = useId();
   const isMobile = useIsMobileSheet();
+  const isNarrowOverlay = useMatchMedia(NARROW_OVERLAY_QUERY);
   const [categoryId, setCategoryId] = useState(VWS_VIDEO_FORMAT_CATEGORIES[0]?.id ?? "produit");
   const [mobilePickId, setMobilePickId] = useState(null);
   const panelRef = useRef(null);
@@ -74,15 +91,16 @@ export default function ModaleChoixFormatVideo({
     [onConfirm, onClose]
   );
 
+  /** ≤640px : un tap sur une carte confirme et ferme (pas de bouton pied). 641px–1023px : sélection + bouton. */
   const handleCardActivate = useCallback(
     (formatId) => {
-      if (isMobilePicker) {
+      if (isMobilePicker && !isNarrowOverlay) {
         setMobilePickId(formatId);
       } else {
         pickFormat(formatId);
       }
     },
-    [isMobilePicker, pickFormat]
+    [isMobilePicker, isNarrowOverlay, pickFormat]
   );
 
   const handleBackdrop = useCallback(
@@ -109,14 +127,36 @@ export default function ModaleChoixFormatVideo({
       gridClassName={
         presentation === "studioOverlay" ? "grid grid-cols-2 gap-3" : "grid grid-cols-2 gap-4 md:grid-cols-3 md:gap-5"
       }
+      narrowMobileOverlay={isNarrowOverlay}
     />
   );
+
+  /** Mobile ≤640px : hauteur contrainte via inset + colonne flex (évite footer hors viewport) */
+  const studioOverlayInlineStyle = isNarrowOverlay
+    ? {
+        position: "absolute",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        display: "flex",
+        flexDirection: "column",
+        background: "#0f1420",
+        zIndex: 20,
+        overflow: "hidden",
+      }
+    : undefined;
 
   if (presentation === "studioOverlay") {
     return (
       <div
         ref={panelRef}
-        className="absolute inset-0 z-20 flex h-full min-h-0 flex-col overflow-hidden bg-[#0f1420]"
+        className={
+          isNarrowOverlay
+            ? undefined
+            : "absolute inset-0 z-20 flex h-full min-h-0 flex-col overflow-hidden bg-[#0f1420]"
+        }
+        style={studioOverlayInlineStyle}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -128,9 +168,28 @@ export default function ModaleChoixFormatVideo({
 
   if (typeof document === "undefined") return null;
 
-  const sheetOrPanelClass = isMobile
-    ? "vws-format-sheet-mobile fixed inset-x-0 bottom-0 top-0 z-[101] flex min-h-[100dvh] flex-col overflow-hidden rounded-t-2xl border border-[#1e1e1e] bg-[#0d0d0d] shadow-2xl"
-    : "vws-format-panel-desktop relative z-[101] flex max-h-[85vh] w-[90vw] max-w-[900px] flex-col overflow-hidden rounded-2xl border border-[#1e1e1e] bg-[#0d0d0d] shadow-2xl";
+  const sheetOrPanelClass =
+    isMobile && !isNarrowOverlay
+      ? "vws-format-sheet-mobile fixed inset-x-0 bottom-0 top-0 z-[101] flex min-h-[100dvh] flex-col overflow-hidden rounded-t-2xl border border-[#1e1e1e] bg-[#0d0d0d] shadow-2xl"
+      : !isMobile
+        ? "vws-format-panel-desktop relative z-[101] flex max-h-[85vh] w-[90vw] max-w-[900px] flex-col overflow-hidden rounded-2xl border border-[#1e1e1e] bg-[#0d0d0d] shadow-2xl"
+        : "";
+
+  const portalNarrowSheetStyle =
+    isMobile && isNarrowOverlay
+      ? {
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          display: "flex",
+          flexDirection: "column",
+          background: "#0f1420",
+          zIndex: 101,
+          overflow: "hidden",
+        }
+      : undefined;
 
   return createPortal(
     <div
@@ -140,7 +199,8 @@ export default function ModaleChoixFormatVideo({
     >
       <div
         ref={panelRef}
-        className={sheetOrPanelClass}
+        className={isMobile && isNarrowOverlay ? undefined : sheetOrPanelClass}
+        style={portalNarrowSheetStyle}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
