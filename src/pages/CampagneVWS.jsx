@@ -25,6 +25,10 @@ import {
   getFormatById,
   getFormatHintForEngine,
 } from "../bibliotheque/vwsVideoFormatsCatalog";
+import {
+  formatVideoFormatParamsPromptAppendix,
+  getVideoFormatConfigForCatalogId,
+} from "@/config/videoFormats";
 
 const VALID_TEMPOS = new Set(["real_time", "timelapse", "slow_motion"]);
 
@@ -446,6 +450,19 @@ Autres repères (inventer une variante ; une seule logique ; détail marquant ; 
 - Type 1, jardin : fosse bleue, liner lisse et lames bois chaud d’une piscine semi-enterrée s’emboîtent en flux continu accéléré.
 - Type 1, îlot urbain : façade vitrée et noyau béton d’une tour étroite montent en timelapse, grue fixe, rythme d’étages symétrique vue aérienne.
 - Type 2, appartement : la caméra avance dans les volumes vides pendant que mobilier bas blanc et touches vert émeraude se posent en rangées nettes pièce par pièce.`;
+      const inspireFormatConfig = getVideoFormatConfigForCatalogId(videoFormatId);
+      if (inspireFormatConfig) {
+        userPrompt += `
+
+Contraintes du format vidéo choisi (à respecter pour l'idée) :
+Format vidéo sélectionné : ${inspireFormatConfig.label}
+Type d'accroche attendu : ${inspireFormatConfig.accroche_type}
+Style visuel : ${inspireFormatConfig.mots_cles_prompt.join(", ")}
+Vitesse : ${inspireFormatConfig.vitesse}
+Caméra : ${inspireFormatConfig.camera.join(", ")}
+
+L'idée générée doit être cohérente avec ces contraintes (ex. un format type avis / face caméra ne doit pas imposer un timelapse de chantier si ce n'est pas le cas ici).`;
+      }
       if (profile?.inspireContext) {
         userPrompt += ` Indices de contexte réaliste (ne pas citer tel quel si ce sont des labels ; en extraire seulement lieux/objets visuels) : ${profile.inspireContext}.`;
       }
@@ -524,7 +541,13 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
       if (!videoFormatId || !getFormatById(videoFormatId)) {
         throw new Error("Choisis un format vidéo avant de lancer la préparation.");
       }
-      const formatHint = getFormatHintForEngine(getFormatById(videoFormatId));
+      const catalogFormatDef = getFormatById(videoFormatId);
+      const formatParamsConfig = getVideoFormatConfigForCatalogId(videoFormatId);
+      const formatParamsAppendix = formatParamsConfig
+        ? formatVideoFormatParamsPromptAppendix(formatParamsConfig)
+        : "";
+      const baseCatalogHint = getFormatHintForEngine(catalogFormatDef);
+      const formatHint = [baseCatalogHint, formatParamsAppendix].filter(Boolean).join("\n\n");
 
       const historyLines =
         clarificationHistoryOverride ??
@@ -558,18 +581,21 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
       const cameraAerialForBrain =
         cameraAerialAngle ?? histParsed.cameraAerialAngleFromGate ?? null;
       const histJoined = historyLines.length ? historyLines.join("\n\n") : undefined;
-      const preIntent = await inferGlobalIntent({
+      const payload = {
         profession: safeProfession,
         idea: safeIdea,
         styleDetails: styleDetails.trim() || "",
-        videoFormatHint: formatHint || undefined,
+        videoFormatHint: formatHint.trim() || undefined,
         revealMode,
         selfieMode,
         cameraFixed,
         cinematicMovement,
         tempo: effectiveTempo,
         sequenceType: effectiveSequenceType,
-      });
+      };
+      console.log("=== FORMAT CONFIG INJECTÉ ===", formatHint);
+      console.log("=== PAYLOAD API ===", payload);
+      const preIntent = await inferGlobalIntent(payload);
       const isPresentationSelfie =
         preIntent.intentFamily === "presentation" &&
         (preIntent.humanPresence === "selfie" || selfieMode === true);
@@ -594,6 +620,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
             tempoSelection: effectiveTempo,
             clarificationHistory: histJoined,
             gatePhase: "none",
+            formatContextAppendix: formatParamsAppendix || null,
           });
           break;
         }
@@ -612,6 +639,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
           tempoSelection: effectiveTempo,
           clarificationHistory: histJoined,
           gatePhase: phase,
+          formatContextAppendix: formatParamsAppendix || null,
         });
 
         if (gate.status === "NEEDS_CLARIFICATION") {
@@ -690,7 +718,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         profession: safeProfession,
         idea: safeIdea,
         styleDetails: styleDetails.trim() || undefined,
-        videoFormatHint: formatHint || undefined,
+        videoFormatHint: formatHint.trim() || undefined,
         tempo: effectiveTempo,
         cameraFixed,
         revealMode,

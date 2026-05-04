@@ -1,6 +1,10 @@
 /**
  * Traducteur pur CampaignGenerationSpec → prompt texte Veo3 (aucun I/O, pas de mutation du spec).
  */
+import {
+  formatVideoFormatParamsPromptAppendix,
+  getVideoFormatConfigForCatalogId,
+} from "@/config/videoFormats";
 import type { CampaignGenerationSpec } from "../campaignGenerationSpec";
 import { getSafeScenes } from "../campaignGenerationSpec";
 
@@ -110,6 +114,11 @@ export function buildVeo3Prompt(spec: CampaignGenerationSpec, sceneIndex: number
     blocks.push(
       "Camera: locked-off static framing for the full shot; no camera movement — no pan, tilt, dolly, zoom, orbit, crane, or handheld drift.",
     );
+  }
+
+  const formatParamsFromCatalog = getVideoFormatConfigForCatalogId(spec.campaign.video_format_id);
+  if (formatParamsFromCatalog) {
+    blocks.push(formatVideoFormatParamsPromptAppendix(formatParamsFromCatalog));
   }
 
   blocks.push(

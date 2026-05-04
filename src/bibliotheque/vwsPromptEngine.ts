@@ -118,6 +118,8 @@ export interface ClarifyIdeaInput {
   clarificationHistory?: string | null;
   /** Phase courante du gate (obligatoire côté Campagne VWS). */
   gatePhase?: ClarifyGatePhase;
+  /** Bloc additif (payload user uniquement) : paramètres format vidéo depuis la config statique. */
+  formatContextAppendix?: string | null;
 }
 
 export interface ClarifyDiagnostic {
@@ -1314,6 +1316,10 @@ export async function clarifyIdea(input: ClarifyIdeaInput): Promise<ClarifyIdeaR
   const lines = [`Métier: ${input.jobType}`, `Idée: ${input.mainIdea}`, `Paramètres: ${input.modifiers || ""}`];
   if (input.clarificationHistory?.trim()) {
     lines.push(`Historique de clarification (chronologique):\n${input.clarificationHistory.trim()}`);
+  }
+  const fmtAppendix = input.formatContextAppendix?.trim();
+  if (fmtAppendix) {
+    lines.push(fmtAppendix);
   }
   const payload = lines.join("\n");
   const system =
