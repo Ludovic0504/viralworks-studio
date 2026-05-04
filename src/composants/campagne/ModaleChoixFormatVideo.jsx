@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { PanneauChoixFormatVideo } from "./PanneauChoixFormatVideo.jsx";
 import { VWS_VIDEO_FORMATS, VWS_VIDEO_FORMAT_CATEGORIES } from "@/bibliotheque/vwsVideoFormatsCatalog";
@@ -55,6 +55,7 @@ export default function ModaleChoixFormatVideo({
   const panelRef = useRef(null);
 
   const isMobilePicker = presentation === "studioOverlay" ? true : isMobile;
+  const bottomSheetNarrow = Boolean(isNarrowOverlay && isMobilePicker);
 
   useEffect(() => {
     if (open) setMobilePickId(null);
@@ -72,16 +73,18 @@ export default function ModaleChoixFormatVideo({
     };
     window.addEventListener("keydown", onKey);
     const prev = document.body.style.overflow;
-    if (presentation === "portal") {
+    const lockBody =
+      presentation === "portal" || (presentation === "studioOverlay" && isNarrowOverlay);
+    if (lockBody) {
       document.body.style.overflow = "hidden";
     }
     return () => {
       window.removeEventListener("keydown", onKey);
-      if (presentation === "portal") {
+      if (lockBody) {
         document.body.style.overflow = prev;
       }
     };
-  }, [open, onClose, presentation]);
+  }, [open, onClose, presentation, isNarrowOverlay]);
 
   const pickFormat = useCallback(
     (formatId) => {
@@ -128,35 +131,41 @@ export default function ModaleChoixFormatVideo({
         presentation === "studioOverlay" ? "grid grid-cols-2 gap-3" : "grid grid-cols-2 gap-4 md:grid-cols-3 md:gap-5"
       }
       narrowMobileOverlay={isNarrowOverlay}
+      bottomSheetNarrow={bottomSheetNarrow}
     />
   );
 
-  /** Mobile ≤640px : hauteur contrainte via inset + colonne flex (évite footer hors viewport) */
-  const studioOverlayInlineStyle = isNarrowOverlay
-    ? {
-        position: "absolute",
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        display: "flex",
-        flexDirection: "column",
-        background: "#0f1420",
-        zIndex: 20,
-        overflow: "hidden",
-      }
-    : undefined;
+  /** ≤640px : backdrop + bottom sheet (78dvh), porté sur document.body en studio pour z-index viewport */
+  const narrowBottomSheetChrome = (
+    <>
+      <div
+        className="vws-format-bottom-backdrop fixed inset-0 z-[40]"
+        style={{ background: "rgba(0,0,0,0.6)" }}
+        onMouseDown={handleBackdrop}
+        role="presentation"
+      />
+      <div
+        ref={panelRef}
+        className="vws-format-bottom-sheet-panel fixed bottom-0 left-0 right-0 z-[41] flex h-[78dvh] flex-col overflow-hidden rounded-t-[20px] border-t border-[#1e2845] bg-[#0f1420]"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        {panneau}
+      </div>
+    </>
+  );
 
   if (presentation === "studioOverlay") {
+    if (isNarrowOverlay) {
+      if (typeof document === "undefined") return null;
+      return createPortal(narrowBottomSheetChrome, document.body);
+    }
     return (
       <div
         ref={panelRef}
-        className={
-          isNarrowOverlay
-            ? undefined
-            : "absolute inset-0 z-20 flex h-full min-h-0 flex-col overflow-hidden bg-[#0f1420]"
-        }
-        style={studioOverlayInlineStyle}
+        className="absolute inset-0 z-20 flex h-full min-h-0 flex-col overflow-hidden bg-[#0f1420]"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -175,21 +184,9 @@ export default function ModaleChoixFormatVideo({
         ? "vws-format-panel-desktop relative z-[101] flex max-h-[85vh] w-[90vw] max-w-[900px] flex-col overflow-hidden rounded-2xl border border-[#1e1e1e] bg-[#0d0d0d] shadow-2xl"
         : "";
 
-  const portalNarrowSheetStyle =
-    isMobile && isNarrowOverlay
-      ? {
-          position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          display: "flex",
-          flexDirection: "column",
-          background: "#0f1420",
-          zIndex: 101,
-          overflow: "hidden",
-        }
-      : undefined;
+  if (isMobile && isNarrowOverlay) {
+    return createPortal(narrowBottomSheetChrome, document.body);
+  }
 
   return createPortal(
     <div
@@ -199,8 +196,7 @@ export default function ModaleChoixFormatVideo({
     >
       <div
         ref={panelRef}
-        className={isMobile && isNarrowOverlay ? undefined : sheetOrPanelClass}
-        style={portalNarrowSheetStyle}
+        className={sheetOrPanelClass}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

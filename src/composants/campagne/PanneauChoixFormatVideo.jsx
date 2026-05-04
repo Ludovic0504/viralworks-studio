@@ -33,8 +33,10 @@ export function PanneauChoixFormatVideo({
   showHeader = true,
   scrollClassName,
   showMobileFooter = true,
-  /** max-width 640px — styles inline colonne + footer sticky */
+  /** max-width 640px — ancienne colonne plein écran si bottomSheetNarrow absent */
   narrowMobileOverlay = false,
+  /** max-width 640px bottom sheet : poignée, header, cat bar, zone scroll dédiée */
+  bottomSheetNarrow = false,
   gridClassName = "grid grid-cols-2 gap-4 md:grid-cols-3 md:gap-5",
 }) {
   const autoTitleId = useId();
@@ -46,7 +48,7 @@ export function PanneauChoixFormatVideo({
       ? "min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-[11px] py-[9px]"
       : "min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-4 md:px-5 md:py-5");
 
-  const stickyNarrow = Boolean(narrowMobileOverlay && isMobilePicker);
+  const stickyNarrow = Boolean(narrowMobileOverlay && isMobilePicker && !bottomSheetNarrow);
 
   const narrowScrollStyle = stickyNarrow
     ? {
@@ -101,18 +103,27 @@ export function PanneauChoixFormatVideo({
     );
   }, [professionLabel, metierReco]);
 
+  const rootClassName = bottomSheetNarrow
+    ? "flex h-full min-h-0 flex-1 flex-col overflow-hidden"
+    : stickyNarrow
+      ? undefined
+      : isMobilePicker
+        ? "flex h-full min-h-0 flex-1 flex-col overflow-hidden"
+        : "contents";
+
   return (
-    <div
-      className={
-        stickyNarrow ? undefined : isMobilePicker
-          ? "flex h-full min-h-0 flex-1 flex-col overflow-hidden"
-          : "contents"
-      }
-      style={narrowRootStyle}
-    >
+    <div className={rootClassName} style={bottomSheetNarrow ? undefined : narrowRootStyle}>
+      {bottomSheetNarrow ? (
+        <div className="mx-auto mb-[6px] mt-[10px] h-1 w-9 shrink-0 rounded-[2px] bg-[#2a3560]" aria-hidden />
+      ) : null}
+
       {showHeader ? (
         <div
-          className="flex shrink-0 items-center justify-between gap-3 border-b border-[#1e1e1e] px-4 py-3 md:px-5 md:py-4 safe-padded"
+          className={
+            bottomSheetNarrow
+              ? "flex shrink-0 items-center justify-between gap-3 px-[14px] pb-2"
+              : "flex shrink-0 items-center justify-between gap-3 border-b border-[#1e1e1e] px-4 py-3 md:px-5 md:py-4 safe-padded"
+          }
           style={stickyNarrow ? { flexShrink: 0 } : undefined}
         >
           <div>
@@ -133,10 +144,20 @@ export function PanneauChoixFormatVideo({
       ) : null}
 
       <div
-        className="shrink-0 border-b border-[#1e1e1e] px-2 md:px-4"
+        className={
+          bottomSheetNarrow
+            ? "vws-format-bottom-sheet-catbar shrink-0 border-b border-[#1e2845] px-2"
+            : "shrink-0 border-b border-[#1e1e1e] px-2 md:px-4"
+        }
         style={stickyNarrow ? { flexShrink: 0 } : undefined}
       >
-        <div className="vws-format-catbar flex gap-1 overflow-x-auto py-2 scrollbar-thin [-webkit-overflow-scrolling:touch]">
+        <div
+          className={
+            bottomSheetNarrow
+              ? "vws-format-catbar flex gap-1 overflow-x-auto overflow-y-hidden whitespace-nowrap py-2 [-webkit-overflow-scrolling:touch]"
+              : "vws-format-catbar flex gap-1 overflow-x-auto py-2 scrollbar-thin [-webkit-overflow-scrolling:touch]"
+          }
+        >
           {VWS_VIDEO_FORMAT_CATEGORIES.map((c) => {
             const active = c.id === categoryId;
             const TabIcon = TAB_ICONS[c.id] ?? Package;
@@ -163,8 +184,14 @@ export function PanneauChoixFormatVideo({
       </div>
 
       <div
-        className={stickyNarrow ? "min-h-0 flex-1 overflow-x-hidden" : resolvedScrollClassName}
-        style={narrowScrollStyle}
+        className={
+          bottomSheetNarrow
+            ? "min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-[12px] pb-5 pt-[10px] [-webkit-overflow-scrolling:touch]"
+            : stickyNarrow
+              ? "min-h-0 flex-1 overflow-x-hidden"
+              : resolvedScrollClassName
+        }
+        style={bottomSheetNarrow ? undefined : narrowScrollStyle}
       >
         <div className={gridClassName}>
           {formats.map((f) => {

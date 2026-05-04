@@ -41,10 +41,49 @@
   }
 }
 
+/* Bottom sheet ≤640px — backdrop + panneau */
+.vws-format-bottom-backdrop {
+  animation: vws-format-bottom-backdrop-in 220ms ease-out forwards;
+}
+
+@keyframes vws-format-bottom-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.vws-format-bottom-sheet-panel {
+  animation: vws-format-bottom-sheet-panel-in 300ms ease forwards;
+}
+
+@keyframes vws-format-bottom-sheet-panel-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+/* Barre catégories bottom sheet : scrollbar masquée */
+.vws-format-bottom-sheet-catbar .vws-format-catbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.vws-format-bottom-sheet-catbar .vws-format-catbar::-webkit-scrollbar {
+  display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .vws-format-overlay,
   .vws-format-panel-desktop,
-  .vws-format-sheet-mobile {
+  .vws-format-sheet-mobile,
+  .vws-format-bottom-backdrop,
+  .vws-format-bottom-sheet-panel {
     animation: none !important;
     opacity: 1 !important;
     transform: none !important;
