@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import "./CampagneVWS.css";
 import {
   clarifyIdea,
@@ -95,6 +95,10 @@ export default function CampagneVWS({
   onCampagneFullReset,
   scriptGenerationPending = false,
   awaitingStep1Validation = false,
+  /** Ref pour le CTA mobile unifié (parent) : `{ runPrepare: () => void }` */
+  step1PrimaryRef = null,
+  /** `studioOverlay` : panneau format in-tree (ViralWorks ≤640px) au lieu du portal plein écran */
+  formatPickerPresentation = "portal",
 }) {
   const { runWithAuth } = useRequireAuthAction();
   const [profession, setProfessionState] = useState(campaignData?.profession ?? "");
@@ -132,6 +136,22 @@ export default function CampagneVWS({
   const [showSystemVideo, setShowSystemVideo] = useState(false);
   const [showFormatModal, setShowFormatModal] = useState(false);
   const [videoFormatId, setVideoFormatId] = useState(campaignData?.videoFormatId ?? null);
+
+  const ideaTextareaRef = useRef(null);
+  const adjustIdeaTextareaHeightMobile = () => {
+    const el = ideaTextareaRef.current;
+    if (!el || typeof window === "undefined") return;
+    if (!window.matchMedia("(max-width: 640px)").matches) {
+      el.style.height = "";
+      return;
+    }
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  };
+
+  useLayoutEffect(() => {
+    adjustIdeaTextareaHeightMobile();
+  }, [idea]);
 
   // Vidéo explicative non versionnée dans certains clones.
   const explicationCampagneVwsVideo = "";
@@ -937,10 +957,28 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
     void handleRun(null, { microAnswer: optionId });
   };
 
+  useEffect(() => {
+    if (!step1PrimaryRef) return undefined;
+    step1PrimaryRef.current = {
+      runPrepare: () => {
+        void runWithAuth(handleRun);
+      },
+    };
+    return () => {
+      step1PrimaryRef.current = null;
+    };
+  }, [step1PrimaryRef, runWithAuth, handleRun]);
+
   return (
     <>
-    <div className="studio-panel box-border w-full min-w-0 max-w-full p-4 sm:p-6">
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-8 md:mb-10">
+    <div
+      className={`studio-panel box-border w-full min-w-0 max-w-full p-4 max-[640px]:p-2 sm:p-6 ${
+        showFormatModal && formatPickerPresentation === "studioOverlay"
+          ? "relative z-0 min-h-[75dvh]"
+          : ""
+      }`}
+    >
+      <div className="hidden min-[641px]:flex flex-wrap items-center justify-between gap-4 mb-8 md:mb-10">
         <h2 className="text-sm font-semibold text-gray-200 flex items-center gap-2 sm:text-base">
           <Sparkles className="w-4 h-4 text-cyan-400 shrink-0" />
           Étape 1 – Votre campagne vidéo
@@ -957,10 +995,10 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         </div>
       </div>
 
-      <div className="vws-campagne-form max-md:pb-28">
+      <div className="vws-campagne-form max-[640px]:pb-4">
         <div className="vws-campagne-form-scroll space-y-0">
-          {/* Bloc 1 — Format */}
-          <div className="vws-campagne-block">
+          {/* Bloc 1 — Format (desktop) */}
+          <div className="vws-campagne-block hidden min-[641px]:block">
             <div className="vws-campagne-format-card">
               {selectedFormatDef ? (
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
@@ -991,9 +1029,45 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
             </div>
           </div>
 
+          {/* Bloc 1 — Format compact (mobile ≤640px) */}
+          <div className="vws-campagne-block max-[640px]:block min-[641px]:hidden">
+            <span className="vws-campagne-label vws-campagne-label--fmt-mobile block uppercase tracking-wide text-[#3e4870]">
+              Format de vidéo
+            </span>
+            {selectedFormatDef ? (
+              <button
+                type="button"
+                onClick={() => setShowFormatModal(true)}
+                className="vws-campagne-fmtbtn-mobile mt-1 flex w-full items-center justify-between gap-2 rounded-xl border border-[#1e2845] bg-[#161d2e] px-2.5 py-2 text-left"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="text-[12px] font-semibold leading-tight text-[#00d4a0]">
+                    <span className="mr-1" aria-hidden>
+                      🎬
+                    </span>
+                    {selectedFormatDef.name}
+                  </div>
+                  <div className="mt-0.5 text-[9px] leading-snug text-[#3e4870]">
+                    {selectedFormatDef.description}
+                  </div>
+                </div>
+                <span className="shrink-0 text-[10px] font-semibold text-[#00d4a0]">Changer</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowFormatModal(true)}
+                className="vws-mobile-flat-green-cta mt-1 flex w-full items-center justify-center gap-2 text-center"
+              >
+                <span aria-hidden>🎬</span>
+                Choisir un format
+              </button>
+            )}
+          </div>
+
           {/* Bloc 2 — Métier + Durée */}
           <div className="vws-campagne-block">
-            <div className="grid grid-cols-2 gap-x-3 md:grid-cols-2 md:gap-x-8 md:gap-y-6">
+            <div className="mt-0 grid grid-cols-2 max-[640px]:mt-3 max-[640px]:gap-[6px] gap-x-3 md:grid-cols-2 md:gap-x-8 md:gap-y-6">
               <div className="min-w-0">
                 <label className="vws-campagne-label" htmlFor="campagne-metier">
                   Ton métier
@@ -1002,7 +1076,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
                   id="campagne-metier"
                   value={profession}
                   onChange={(e) => setProfession(e.target.value)}
-                  className="vws-campagne-field vws-campagne-select vws-campagne-field--touch"
+                  className="vws-campagne-field vws-campagne-select vws-campagne-field--touch vws-campagne-select-grid-mobile"
                   aria-describedby={metierProfile ? "campagne-metier-hint" : undefined}
                 >
                   <option value="">Choisir un métier...</option>
@@ -1013,7 +1087,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
                   ))}
                 </select>
                 {metierProfile ? (
-                  <p className="vws-campagne-metier-hint" id="campagne-metier-hint">
+                  <p className="vws-campagne-metier-hint min-[641px]:block max-[640px]:hidden" id="campagne-metier-hint">
                     Ambiance typique pour ce métier (pour aider à imaginer la scène) :{" "}
                     {metierProfile.environmentHint}
                   </p>
@@ -1044,7 +1118,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
                       tempoCompressionDecision,
                     });
                   }}
-                  className="vws-campagne-field vws-campagne-select vws-campagne-field--touch"
+                  className="vws-campagne-field vws-campagne-select vws-campagne-field--touch vws-campagne-select-grid-mobile"
                 >
                   <option value="single_8s">Une courte vidéo (8 secondes)</option>
                   <option value="three_x_8s">
@@ -1053,6 +1127,14 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
                 </select>
               </div>
             </div>
+            {metierProfile ? (
+              <div className="mt-1.5 hidden max-[640px]:block rounded-xl border border-[#1e2845] bg-[#161d2e] px-[9px] py-[7px]">
+                <span className="mb-0.5 block text-[9px] font-semibold uppercase tracking-wide text-[#3e4870]">
+                  Ambiance typique
+                </span>
+                <p className="m-0 text-[9px] leading-[1.4] text-[#3e4870]">{metierProfile.environmentHint}</p>
+              </div>
+            ) : null}
           </div>
 
           {/* Bloc 3 — Idée principale */}
@@ -1078,10 +1160,10 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
                       ? "Choisis d’abord un format vidéo."
                       : undefined
                 }
-                className="vws-campagne-inspire-btn inline-flex shrink-0 items-center gap-2 btn-vws-primary disabled:opacity-50 self-center md:min-h-[44px] md:self-auto"
+                className="vws-campagne-inspire-btn vws-mobile-flat-green-cta inline-flex shrink-0 items-center gap-2 btn-vws-primary text-white max-[640px]:text-white disabled:opacity-50 self-center md:min-h-[44px] md:self-auto"
               >
                 {inspireLoading ? (
-                  <span className="inline-block w-4 h-4 border-2 border-emerald-400/30 border-t-emerald-400 rounded-full animate-spin" />
+                  <span className="inline-block w-4 h-4 border-2 border-white/25 border-t-white rounded-full animate-spin" />
                 ) : (
                   <Sparkles className="w-4 h-4" />
                 )}
@@ -1089,16 +1171,18 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
               </button>
             </div>
             <textarea
+              ref={ideaTextareaRef}
               id="campagne-idee"
               value={idea}
               onChange={(e) => setIdea(e.target.value)}
-              className="vws-campagne-field vws-campagne-textarea vws-campagne-textarea-mobile vws-campagne-idea-textarea mt-1.5 w-full"
+              onInput={adjustIdeaTextareaHeightMobile}
+              className="vws-campagne-field vws-campagne-textarea vws-campagne-textarea-mobile vws-campagne-idea-textarea vws-campagne-idea-textarea--auto-mobile mt-1.5 w-full"
               placeholder={ideaPlaceholder}
             />
           </div>
 
           {/* Bloc 4 — Précisions + Dialogue */}
-          <div className="vws-campagne-block space-y-6 max-md:space-y-7">
+          <div className="vws-campagne-block space-y-6 max-[640px]:space-y-2 max-md:space-y-7">
             <div>
               <label className="vws-campagne-label" htmlFor="campagne-precisions">
                 <span className="md:hidden">Précisions</span>
@@ -1171,15 +1255,50 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
             </div>
           </div>
 
-          {error && (
-            <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 mb-6">
+          {/* Mobile (≤640px) : après Dialogue — 8px — question ; puis 6px — erreur (desktop : question sous le formulaire) */}
+          {microQuestion ? (
+            <div className="vws-campagne-micro-question min-[641px]:hidden mt-2 space-y-3">
+              <div className="flex items-start gap-2">
+                <p className="text-sm text-gray-300">{microQuestion.question}</p>
+                {microQuestion.info ? (
+                  <span className="relative inline-flex items-center group shrink-0 mt-0.5">
+                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-cyan-500/35 bg-cyan-500/10 text-[10px] font-semibold text-cyan-200 cursor-help">
+                      i
+                    </span>
+                    <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 hidden w-72 -translate-x-1/2 rounded-lg border border-cyan-500/25 bg-[#0d1a22] px-2.5 py-2 text-[11px] leading-snug text-cyan-100 shadow-lg group-hover:block">
+                      {microQuestion.info}
+                    </span>
+                  </span>
+                ) : null}
+              </div>
+              <div className="flex flex-wrap gap-2 mt-1">
+                {microQuestion.options.map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => handleSelectMicroAnswer(opt.id)}
+                    className={`px-3 py-1.5 rounded-full text-xs transition-all duration-150 ${
+                      microAnswer === opt.id
+                        ? "card-vws-active text-emerald-300"
+                        : "card-vws text-gray-300"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {error ? (
+            <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 max-[640px]:mt-1.5 max-[640px]:mb-0 min-[641px]:mb-6">
               {error}
             </p>
-          )}
+          ) : null}
         </div>
 
-        {/* Bloc 5 — CTA (desktop) */}
-        <div className="vws-campagne-cta-row hidden md:flex md:flex-row md:flex-wrap md:items-center md:gap-3 md:mt-10 md:justify-start">
+        {/* Bloc 5 — CTA : même ligne ; sur mobile le primaire prend plus de largeur (flex-1) */}
+        <div className="vws-campagne-cta-row vws-campagne-cta-row--inline mt-8 flex flex-row flex-wrap items-center gap-3 max-[640px]:mt-8 min-[641px]:mt-10 min-[641px]:justify-start">
           <button
             type="button"
             onClick={() => void runWithAuth(handleRun)}
@@ -1193,11 +1312,8 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
                   ? "Choisis d’abord un format vidéo."
                   : undefined
             }
-            className="vws-campagne-cta-primary inline-flex items-center justify-center gap-2 btn-vws-primary disabled:opacity-50 disabled:cursor-not-allowed"
+            className="vws-campagne-cta-primary max-[640px]:min-w-0 max-[640px]:flex-1 inline-flex items-center justify-center gap-2 btn-vws-primary disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <span className="text-cyan-200/90" aria-hidden>
-              ✦
-            </span>
             <Sparkles className="w-4 h-4 shrink-0" />
             {loading
               ? "Préparation en cours…"
@@ -1211,58 +1327,17 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
             <button
               type="button"
               onClick={() => onCampagneFullReset()}
-              className="vws-campagne-reset vws-campagne-cta-secondary rounded-xl btn-vws-secondary"
+              className="vws-campagne-reset vws-campagne-cta-secondary shrink-0 rounded-xl btn-vws-secondary"
             >
               Réinitialiser
             </button>
           ) : null}
         </div>
 
-        {/* Bloc 5 — CTA (mobile sticky) */}
-        <div className="vws-campagne-sticky-bar md:hidden fixed bottom-0 left-0 right-0 z-20">
-          <div className="vws-campagne-sticky-bar-inner vws-campagne-cta-row flex flex-row flex-wrap items-center justify-center gap-3">
-            <button
-              type="button"
-              onClick={() => void runWithAuth(handleRun)}
-              disabled={
-                loading || scriptGenerationPending || awaitingStep1Validation || !videoFormatId
-              }
-              title={
-                awaitingStep1Validation && !loading && !scriptGenerationPending
-                  ? "Valide l’étape Campagne avec le bouton en haut de page pour continuer."
-                  : !videoFormatId
-                    ? "Choisis d’abord un format vidéo."
-                    : undefined
-              }
-              className="vws-campagne-cta-primary inline-flex items-center justify-center gap-2 btn-vws-primary disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <span className="text-cyan-200/90" aria-hidden>
-                ✦
-              </span>
-              <Sparkles className="w-4 h-4 shrink-0" />
-              {loading
-                ? "Préparation en cours…"
-                : scriptGenerationPending
-                  ? "Génération du script…"
-                  : awaitingStep1Validation
-                    ? "Étape prête — valide ci-dessus"
-                    : "Préparer ma vidéo"}
-            </button>
-            {typeof onCampagneFullReset === "function" ? (
-              <button
-                type="button"
-                onClick={() => onCampagneFullReset()}
-                className="vws-campagne-reset vws-campagne-cta-secondary rounded-xl btn-vws-secondary"
-              >
-                Réinitialiser
-              </button>
-            ) : null}
-          </div>
-        </div>
       </div>
 
       {microQuestion && (
-        <div className="mt-8 border-t border-white/10 pt-6 space-y-3">
+        <div className="vws-campagne-micro-question max-[640px]:hidden min-[641px]:block border-t border-white/10 pt-6 mt-8 space-y-3">
           <div className="flex items-start gap-2">
             <p className="text-sm text-gray-300">{microQuestion.question}</p>
             {microQuestion.info ? (
@@ -1301,6 +1376,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
       onClose={() => setShowFormatModal(false)}
       professionLabel={profession}
       onConfirm={applyVideoFormatChoice}
+      presentation={formatPickerPresentation === "studioOverlay" ? "studioOverlay" : "portal"}
     />
 
     {showSystemVideo && (

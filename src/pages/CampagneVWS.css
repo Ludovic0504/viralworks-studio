@@ -220,6 +220,30 @@
   gap: 0.75rem;
 }
 
+@media (max-width: 640px) {
+  .vws-campagne-form .vws-campagne-cta-row--inline {
+    flex-direction: row;
+    align-items: stretch;
+    flex-wrap: nowrap;
+  }
+
+  /* Primaire plus large (flex) ; même typo et hauteur que Réinitialiser */
+  .vws-campagne-form .vws-campagne-cta-row--inline .vws-campagne-cta-primary.btn-vws-primary {
+    flex: 1 1 0%;
+    min-height: 44px;
+    font-size: 13px;
+    padding: 0.5rem 1rem;
+  }
+
+  .vws-campagne-form .vws-campagne-cta-row--inline .vws-campagne-cta-secondary.btn-vws-secondary {
+    flex: 0 0 auto;
+    min-height: 44px;
+    font-size: 13px;
+    padding: 0.5rem 1rem;
+    align-self: center;
+  }
+}
+
 .vws-campagne-form .vws-campagne-cta-primary.btn-vws-primary {
   width: auto;
   justify-content: center;
@@ -329,4 +353,51 @@
 /* Réinitialiser (legacy helper si utilisé sans --cta-secondary) */
 .vws-campagne-reset {
   flex-shrink: 0;
+}
+
+/* Carte format compacte — label FORMAT DE VIDÉO (≤640px, mockup) */
+@media (max-width: 640px) {
+  .vws-campagne-label--fmt-mobile {
+    font-size: 9px;
+    margin-bottom: 2px;
+    letter-spacing: 0.04em;
+  }
+
+  .vws-campagne-block {
+    margin-bottom: 0.5rem;
+  }
+
+  .vws-campagne-block--idea {
+    padding-top: 0.5rem;
+  }
+
+  .vws-campagne-form .vws-campagne-textarea-mobile.vws-campagne-idea-textarea.vws-campagne-idea-textarea--auto-mobile {
+    min-height: 72px;
+    overflow: hidden;
+    resize: none;
+  }
+
+  /* Complète index.css (.vws-mobile-flat-green-cta) si surcharge mobile md–767px sur inspire */
+  .vws-campagne-form .vws-campagne-inspire-btn.vws-mobile-flat-green-cta.btn-vws-primary {
+    min-height: unset;
+  }
+
+  /* Grille métier / durée : même taille de police et ellipsis sur le métier */
+  .vws-campagne-form select.vws-campagne-select-grid-mobile {
+    font-size: 12px !important;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+
+  .vws-campagne-micro-question {
+    max-height: none;
+    overflow-y: visible;
+    border-radius: 0.75rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(15, 20, 32, 0.85);
+    padding: 0.5rem 0.5rem 0.5rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+  }
 }

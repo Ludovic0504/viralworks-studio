@@ -1,7 +1,7 @@
 
 import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
-import { Home, Sparkles, Info, X, ShoppingBag, Users } from "lucide-react";
+import { Home, Sparkles, Info, X, ShoppingBag, Users, FileText } from "lucide-react";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import LienNavSync from "@/composants/disposition/LienNavSync";
 
@@ -95,6 +95,17 @@ export default function SidebarShell({ children, open, onCloseMenu }) {
               <Item key={link.path} {...link} />
             ))}
           </nav>
+
+          <div className="border-t border-white/10 px-4 py-3">
+            <LienNavSync
+              to="/mentions-legales"
+              onClick={() => onCloseMenu?.()}
+              className="group flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium text-slate-300 transition-all duration-200 hover:bg-white/5 hover:text-white border border-transparent"
+            >
+              <FileText className="w-5 h-5 opacity-80" />
+              <span>Mentions légales</span>
+            </LienNavSync>
+          </div>
 
           {!session && (
             <div className="border-t border-white/10 p-4">

@@ -85,6 +85,44 @@
     }
   }
 
+  /* Studio mobile : CTA vert plat (Campagne M’inspirer + footer ViralWorks), sans dégradé ni glow */
+  @media (max-width: 640px) {
+    .vws-campagne-form .vws-campagne-inspire-btn.vws-mobile-flat-green-cta.btn-vws-primary {
+      background: #00d4a0 !important;
+      color: #ffffff !important;
+      border-color: transparent !important;
+      box-shadow: none !important;
+      font-weight: 700;
+      font-size: 13px;
+      padding: 11px;
+      border-radius: 22px;
+    }
+
+    .vws-campagne-form .vws-campagne-inspire-btn.vws-mobile-flat-green-cta.btn-vws-primary:hover:not(:disabled) {
+      box-shadow: none !important;
+      transform: none;
+    }
+
+    .vws-campagne-form .vws-campagne-inspire-btn.vws-mobile-flat-green-cta.btn-vws-primary:focus-visible {
+      box-shadow: 0 0 0 2px var(--vws-focus-ring) !important;
+    }
+
+    .vws-mobile-flat-green-cta:not(.btn-vws-primary) {
+      background: #00d4a0;
+      color: #ffffff !important;
+      font-weight: 700;
+      font-size: 13px;
+      padding: 11px;
+      border-radius: 22px;
+      box-shadow: none;
+    }
+
+    .vws-mobile-flat-green-cta:not(.btn-vws-primary):hover:not(:disabled) {
+      box-shadow: none;
+      transform: none;
+    }
+  }
+
   .btn-vws-secondary {
     @apply text-gray-300 font-medium;
     border: 1px solid rgba(255, 255, 255, 0.12);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { saveHistory as saveHistorySupabase } from "@/bibliotheque/supabase/historique";
 import { hasEnoughCredits, getUserCredits } from "@/bibliotheque/supabase/credits";
@@ -36,6 +36,9 @@ import {
   Settings2,
   ChevronRight,
   History,
+  RectangleHorizontal,
+  Smartphone,
+  Square,
 } from "lucide-react";
 
 const IMAGE_GENERATION_COST = 1;
@@ -316,6 +319,37 @@ export default function ImagePage({
   const bottomFieldInputRef = useRef(null);
   /** ImagePage reste montée sur les autres étapes : ne pas recopier l’idée à chaque frappe (sinon prompt = 1ère lettre bloquée). */
   const wasVisualStepActiveRef = useRef(false);
+
+  /** ≤640px : marges inline des blocs visuel + textarea auto-hauteur studio */
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 640px)");
+    const fn = () => setIsMobile(mq.matches);
+    fn();
+    mq.addEventListener("change", fn);
+    return () => mq.removeEventListener("change", fn);
+  }, []);
+
+  /** Mobile studio (≤640px) : textarea auto-hauteur sans scrollbar interne */
+  const [narrowVisualStudio, setNarrowVisualStudio] = useState(false);
+  useEffect(() => {
+    if (!visualStepActive) {
+      setNarrowVisualStudio(false);
+      return;
+    }
+    const mq = window.matchMedia("(max-width: 640px)");
+    const fn = () => setNarrowVisualStudio(mq.matches);
+    fn();
+    mq.addEventListener("change", fn);
+    return () => mq.removeEventListener("change", fn);
+  }, [visualStepActive]);
+
+  const adjustBottomTextareaHeight = useCallback(() => {
+    const el = bottomFieldInputRef.current;
+    if (!el || !narrowVisualStudio) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [narrowVisualStudio]);
 
   useEffect(() => {
     if (!historyOpen) return;
@@ -978,38 +1012,77 @@ export default function ImagePage({
   };
   const ideaReadyBadge = Boolean(String(campaignIdeaPrompt || "").trim()) && !hasSessionImages;
 
+  useLayoutEffect(() => {
+    adjustBottomTextareaHeight();
+  }, [
+    adjustBottomTextareaHeight,
+    bottomFieldValue,
+    busy,
+    modifyLoading,
+    hasSessionImages,
+    narrowVisualStudio,
+  ]);
+
   const ratioOptions = [
     { value: "16:9", label: "YouTube" },
     { value: "9:16", label: "TikTok" },
     { value: "1:1", label: "Carré" },
   ];
 
+  const ratioIcon = (v) => {
+    if (v === "16:9")
+      return <RectangleHorizontal className="h-4 w-4 text-[#00d4a0]" aria-hidden />;
+    if (v === "1:1") return <Square className="h-4 w-4 text-[#00d4a0]" aria-hidden />;
+    return <Smartphone className="h-4 w-4 text-[#00d4a0]" aria-hidden />;
+  };
+
   const interactionPanel = (
-    <div className="min-w-0 w-full rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-4 sm:px-5 sm:py-5">
+    <div
+      className={`min-w-0 w-full rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-4 sm:px-5 sm:py-5 ${
+        visualStepActive ? "max-[640px]:px-3 max-[640px]:py-3" : ""
+      }`}
+    >
       <div className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-end">
         <div className="min-w-0 flex-1">
           <div className="mb-1.5 flex items-center justify-between gap-3">
             <label className="block text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-              {hasSessionImages
-                ? "Modifier l'image sélectionnée"
-                : "Décrire le visuel d'accroche (première image)"}
+              {hasSessionImages ? (
+                "Modifier l'image sélectionnée"
+              ) : visualStepActive ? (
+                <>
+                  <span className="max-[640px]:hidden">Décrire le visuel d&apos;accroche (première image)</span>
+                  <span className="hidden max-[640px]:inline">Décrire le visuel d&apos;accroche</span>
+                </>
+              ) : (
+                "Décrire le visuel d'accroche (première image)"
+              )}
             </label>
             <button
               type="button"
               onClick={reloadIdeaFromCampaign}
-              className="text-[10px] uppercase tracking-wider text-gray-500 hover:text-gray-300 border border-white/10 rounded-md px-2 py-1 bg-white/[0.03] hover:bg-white/[0.06] transition-colors"
+              className="text-[10px] uppercase tracking-wider text-gray-500 hover:text-gray-300 border border-white/10 rounded-md px-2 py-1 bg-white/[0.03] hover:bg-white/[0.06] transition-colors shrink-0"
             >
-              Recharger l’idée de la campagne
+              {visualStepActive ? (
+                <>
+                  <span className="max-[640px]:hidden">Recharger l&apos;idée de la campagne</span>
+                  <span className="hidden max-[640px]:inline">Recharger l&apos;idée</span>
+                </>
+              ) : (
+                "Recharger l'idée de la campagne"
+              )}
             </button>
           </div>
           <div className="relative flex rounded-2xl border border-white/10 bg-white/[0.04] focus-within:ring-2 focus-within:ring-cyan-500/35">
             <textarea
               ref={bottomFieldInputRef}
-              rows={2}
+              rows={narrowVisualStudio ? 1 : 2}
               value={bottomFieldValue}
               onChange={(e) => {
                 setModifyError("");
                 setBottomFieldValue(e.target.value);
+              }}
+              onInput={() => {
+                requestAnimationFrame(() => adjustBottomTextareaHeight());
               }}
               maxLength={hasSessionImages ? 500 : 1500}
               disabled={busy || modifyLoading}
@@ -1018,7 +1091,11 @@ export default function ImagePage({
                   ? "Ex. : ajoute un détail au premier plan, change l'arrière-plan…"
                   : "Ex. : gros plan sur une personne surprise qui regarde la caméra…"
               }
-              className="min-h-[3.5rem] flex-1 resize-none rounded-2xl bg-transparent px-4 py-3 pr-14 text-sm text-gray-200 placeholder-gray-500 focus:outline-none"
+              className={`flex-1 resize-none rounded-2xl bg-transparent px-4 py-3 pr-14 text-sm text-gray-200 placeholder-gray-500 focus:outline-none ${
+                narrowVisualStudio
+                  ? "min-h-[60px] overflow-hidden overflow-y-hidden"
+                  : "min-h-[3.5rem]"
+              }`}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
@@ -1052,7 +1129,11 @@ export default function ImagePage({
             </p>
           ) : null}
         </div>
-        <div className="flex w-full shrink-0 flex-col gap-2 sm:w-64">
+        <div
+          className={`flex w-full shrink-0 flex-col gap-2 sm:w-64 ${
+            visualStepActive ? "max-[640px]:flex-row max-[640px]:gap-1.5 max-[640px]:w-full" : ""
+          }`}
+        >
           <button
             type="button"
             onClick={() => void handleUseThisImage()}
@@ -1061,6 +1142,10 @@ export default function ImagePage({
               lastGeneratedImages?.length && !busy && !modifyLoading
                 ? "border-white/12 bg-white/[0.06] text-white shadow-none hover:border-cyan-400/30 hover:bg-white/[0.09]"
                 : "cursor-not-allowed border-white/10 bg-white/[0.03] text-gray-500"
+            } ${
+              visualStepActive
+                ? "max-[640px]:flex-[2] max-[640px]:rounded-[10px] max-[640px]:border max-[640px]:border-[#2a3560] max-[640px]:bg-[#1e2845] max-[640px]:px-2.5 max-[640px]:py-[7px] max-[640px]:text-[11px] max-[640px]:font-semibold max-[640px]:leading-tight max-[640px]:text-[#00d4a0] max-[640px]:shadow-none"
+                : ""
             }`}
           >
             Utiliser cette image
@@ -1069,7 +1154,7 @@ export default function ImagePage({
                 lastGeneratedImages?.length && !busy && !modifyLoading
                   ? "text-cyan-300/90"
                   : "text-gray-600"
-              }`}
+              } ${visualStepActive ? "max-[640px]:hidden" : ""}`}
             >
               Étape 3 : vidéo →
             </span>
@@ -1081,9 +1166,20 @@ export default function ImagePage({
               if (!confirm("Repartir de zéro sur cette étape ? Les images non enregistrées seront perdues.")) return;
               resetImageStep();
             }}
-            className="text-center text-[10px] uppercase tracking-wider text-gray-600 underline decoration-gray-700 underline-offset-2 hover:text-gray-500"
+            className={`text-center text-[10px] uppercase tracking-wider text-gray-600 underline decoration-gray-700 underline-offset-2 hover:text-gray-500 ${
+              visualStepActive
+                ? "max-[640px]:flex-1 max-[640px]:rounded-[10px] max-[640px]:border max-[640px]:border-[#1e2845] max-[640px]:bg-transparent max-[640px]:px-2 max-[640px]:py-[7px] max-[640px]:normal-case max-[640px]:no-underline max-[640px]:text-[10px] max-[640px]:font-normal max-[640px]:leading-tight max-[640px]:text-[#3e4870]"
+                : ""
+            }`}
           >
-            Réinitialiser cette étape
+            {visualStepActive ? (
+              <>
+                <span className="max-[640px]:hidden">Réinitialiser cette étape</span>
+                <span className="hidden max-[640px]:inline">Réinitialiser</span>
+              </>
+            ) : (
+              "Réinitialiser cette étape"
+            )}
           </button>
         </div>
       </div>
@@ -1105,9 +1201,26 @@ export default function ImagePage({
             : "/boutique?section=subscription";
         }}
       />
-      <div className="studio-panel box-border w-full min-w-0 max-w-full p-5 sm:p-6 space-y-4">
-        <div className="flex min-w-0 w-full flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0 flex-1 [&_header]:mb-3">
+      <div
+        className={`studio-panel box-border w-full min-w-0 max-w-full p-5 sm:p-6 space-y-4 ${
+          visualStepActive ? "max-[640px]:space-y-0 max-[640px]:p-3" : ""
+        }`}
+      >
+        <div
+          className={`flex min-w-0 w-full flex-col gap-6 lg:flex-row lg:items-start lg:justify-between ${
+            visualStepActive ? "max-[640px]:gap-3" : ""
+          }`}
+        >
+          {visualStepActive ? (
+            <div className="hidden max-[640px]:block min-w-0 flex-1 space-y-1">
+              <h1 className="text-lg font-semibold text-white">
+                Visuel · <span className="text-[#00d4a0]">Visuel</span>
+              </h1>
+            </div>
+          ) : null}
+          <div
+            className={`min-w-0 flex-1 [&_header]:mb-3 ${visualStepActive ? "max-[640px]:hidden" : ""}`}
+          >
             <PageTitle
               green="Visuel"
               white="d'accroche"
@@ -1120,18 +1233,46 @@ export default function ImagePage({
                 Étape 2 sur 3 - Visuel d&apos;accroche
               </span>
             </div>
-            <div className="w-full studio-step-rail">
+            {visualStepActive ? (
+              <div
+                className="hidden max-[640px]:block h-[3px] w-full overflow-hidden rounded-full"
+                style={{ backgroundColor: "#1e2845" }}
+              >
+                <div
+                  className="h-full w-2/3 rounded-full"
+                  style={{ backgroundColor: "#00d4a0" }}
+                />
+              </div>
+            ) : null}
+            <div
+              className={`w-full studio-step-rail ${visualStepActive ? "max-[640px]:hidden" : ""}`}
+            >
               <div className="h-full w-2/3 studio-step-rail-fill" />
             </div>
             <div className="relative flex flex-col gap-2" ref={historyPanelRef}>
-              <div className="flex flex-col gap-2">
+              <div
+                className={`flex flex-col gap-2 ${
+                  visualStepActive ? "max-[640px]:flex-row max-[640px]:gap-1.5" : ""
+                }`}
+              >
                 <button
                   type="button"
                   onClick={() => setShowSystemVideo(true)}
-                  className="studio-toolbar-btn w-full justify-center"
+                  className={`studio-toolbar-btn w-full justify-center ${
+                    visualStepActive
+                      ? "max-[640px]:flex-1 max-[640px]:py-1.5 max-[640px]:text-[10px] max-[640px]:font-normal max-[640px]:leading-tight"
+                      : ""
+                  }`}
                 >
-                  <BookOpen className="w-3.5 h-3.5 shrink-0 text-cyan-400" />
-                  <span className="truncate">Explication du système</span>
+                  <BookOpen
+                    className={`w-3.5 h-3.5 shrink-0 text-cyan-400 ${visualStepActive ? "max-[640px]:hidden" : ""}`}
+                  />
+                  <span className="truncate">
+                    <span className={visualStepActive ? "hidden max-[640px]:inline" : ""}>
+                      📖 Explication du système
+                    </span>
+                    <span className={visualStepActive ? "max-[640px]:hidden" : ""}>Explication du système</span>
+                  </span>
                 </button>
                 <button
                   type="button"
@@ -1142,10 +1283,19 @@ export default function ImagePage({
                       ? "Aucune grille enregistrée dans cette session (génère ou modifie d’abord des images)"
                       : "Restaurer une grille ou un état visuel enregistré"
                   }
-                  className="studio-toolbar-btn inline-flex w-full items-center justify-center gap-1.5 px-2.5 py-2.5 text-[11px] font-medium text-gray-400 hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-gray-400"
+                  className={`studio-toolbar-btn inline-flex w-full items-center justify-center gap-1.5 px-2.5 py-2.5 text-[11px] font-medium text-gray-400 hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-gray-400 ${
+                    visualStepActive
+                      ? "max-[640px]:flex-1 max-[640px]:py-1.5 max-[640px]:text-[10px] max-[640px]:font-normal max-[640px]:leading-tight"
+                      : ""
+                  }`}
                 >
-                  <History className="h-3.5 w-3.5 text-cyan-500/90" />
-                  Historique
+                  <History
+                    className={`h-3.5 w-3.5 text-cyan-500/90 ${visualStepActive ? "max-[640px]:hidden" : ""}`}
+                  />
+                  <span>
+                    <span className={visualStepActive ? "hidden max-[640px]:inline" : ""}>🕐 Historique</span>
+                    <span className={visualStepActive ? "max-[640px]:hidden" : ""}>Historique</span>
+                  </span>
                 </button>
               </div>
               {historyOpen && visualSnapshots.length > 0 && (
@@ -1199,7 +1349,60 @@ export default function ImagePage({
         </div>
 
       {/* 1. Configuration : format + variantes */}
-      <div className="mb-2 flex w-full flex-col items-center gap-4 rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-4 sm:flex-row sm:flex-wrap sm:justify-center sm:gap-x-6 sm:gap-y-3 sm:px-5">
+      {visualStepActive ? (
+        <div
+          className="mb-2 hidden max-[640px]:grid w-full grid-cols-2 gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.03] px-3 py-2"
+          style={isMobile ? { marginTop: "20px" } : undefined}
+        >
+          <div className="min-w-0">
+            <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+              Format
+            </span>
+            <div className="relative">
+              <select
+                value={ratio}
+                onChange={(e) => patchImageStep({ ratio: e.target.value })}
+                className="w-full appearance-none rounded-xl border border-white/10 bg-black/30 py-2.5 pl-3 pr-10 text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#00d4a0]/35"
+                aria-label="Format d'image"
+              >
+                {ratioOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value} className="bg-[#0C1116]">
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <span
+                className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2"
+                aria-hidden
+              >
+                {ratioIcon(ratio)}
+              </span>
+            </div>
+          </div>
+          <div className="min-w-0">
+            <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+              Variantes
+            </span>
+            <select
+              value={String(quantity)}
+              onChange={(e) => patchImageStep({ quantity: Number(e.target.value) })}
+              className="w-full rounded-xl border border-white/10 bg-black/30 py-2.5 px-3 text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#00d4a0]/35"
+              aria-label="Nombre de variantes"
+            >
+              {[1, 2, 3, 4].map((n) => (
+                <option key={n} value={n} className="bg-[#0C1116]">
+                  {n}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      ) : null}
+      <div
+        className={`mb-2 flex w-full flex-col items-center gap-4 rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-4 sm:flex-row sm:flex-wrap sm:justify-center sm:gap-x-6 sm:gap-y-3 sm:px-5 ${
+          visualStepActive ? "max-[640px]:hidden" : ""
+        }`}
+      >
         <div className="flex flex-col items-center gap-1.5 sm:items-start">
           <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Format</span>
           <div className="inline-flex rounded-xl border border-white/10 bg-black/20 p-1">
@@ -1241,38 +1444,73 @@ export default function ImagePage({
       </div>
 
       {/* 2. Introduction (hero) — sans cadre, sur le fond de page */}
-      <section className="space-y-4 text-center sm:space-y-5">
+      <section
+        className={`space-y-4 text-center sm:space-y-5 ${
+          visualStepActive ? "max-[640px]:space-y-0" : ""
+        }`}
+        style={isMobile ? { marginTop: "20px" } : undefined}
+      >
         {ideaReadyBadge && (
-          <span className="inline-flex rounded-full border border-cyan-400/35 bg-cyan-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-cyan-200">
+          <span
+            className={`inline-flex rounded-full border border-cyan-400/35 bg-cyan-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-cyan-200 ${
+              visualStepActive ? "max-[640px]:hidden" : ""
+            }`}
+          >
             Idée prête à être illustrée
           </span>
         )}
-        <h2 className="text-2xl font-bold text-white sm:text-3xl lg:text-4xl">
+        <h2
+          className={`text-2xl font-bold text-white sm:text-3xl lg:text-4xl ${
+            visualStepActive ? "max-[640px]:mb-1.5 max-[640px]:text-base max-[640px]:font-bold max-[640px]:leading-snug" : ""
+          }`}
+        >
           Crée le visuel qui <span className="border-b-2 border-cyan-400 text-cyan-300">accroche</span>.
         </h2>
-        <p className="mx-auto max-w-2xl text-sm leading-relaxed text-gray-400 sm:text-base">
+        <p
+          className={`mx-auto max-w-2xl text-sm leading-relaxed text-gray-400 sm:text-base ${
+            visualStepActive ? "max-[640px]:hidden" : ""
+          }`}
+        >
           Décris ce que tu veux voir en premier dans ta vidéo (la toute première image). Ensuite tu pourras affiner
           image par image.
         </p>
       </section>
 
       {/* 3. Zone images : aperçu principal + variantes à droite (groupées et centrées pour éviter l’écart à droite) */}
-      <div className="flex w-full min-w-0 flex-col items-center gap-4 lg:flex-row lg:items-center lg:justify-center lg:gap-5">
+      <div
+        className="flex w-full min-w-0 flex-col items-center gap-4 lg:flex-row lg:items-center lg:justify-center lg:gap-5"
+        style={isMobile ? { marginTop: "16px" } : undefined}
+      >
         <div
           className={`relative min-w-0 overflow-hidden rounded-xl ${
             lastGeneratedImages?.length
               ? "shrink-0 bg-transparent"
-              : "min-h-[220px] border border-white/[0.08] bg-gradient-to-b from-white/[0.04] to-black/20 lg:min-h-[260px] mx-auto w-1/2 max-w-full shrink-0"
+              : `min-h-[220px] border border-white/[0.08] bg-gradient-to-b from-white/[0.04] to-black/20 lg:min-h-[260px] mx-auto w-1/2 max-w-full shrink-0 ${
+                  visualStepActive
+                    ? "max-[640px]:mx-auto max-[640px]:min-h-0 max-[640px]:w-auto max-[640px]:max-w-none max-[640px]:overflow-visible max-[640px]:rounded-none max-[640px]:border-0 max-[640px]:bg-transparent"
+                    : ""
+                }`
           }`}
         >
           {busy && (
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/70 px-6">
               <Sparkles className="mb-3 h-8 w-8 animate-pulse text-cyan-400" />
               <p className="text-sm font-medium text-gray-200">{progressMessage || "Génération…"}</p>
-              <div className="mt-4 h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-white/10">
+              <div
+                className={`mt-4 w-full max-w-xs overflow-hidden rounded-full ${
+                  visualStepActive ? "h-[3px]" : "h-1.5 bg-white/10"
+                }`}
+                style={visualStepActive ? { backgroundColor: "#1e2845" } : undefined}
+              >
                 <div
-                  className="h-full rounded-full bg-cyan-500 transition-all duration-300"
-                  style={{ width: `${progress}%` }}
+                  className={`h-full rounded-full transition-all duration-300 ${
+                    visualStepActive ? "" : "bg-cyan-500"
+                  }`}
+                  style={
+                    visualStepActive
+                      ? { width: `${progress}%`, backgroundColor: "#00d4a0" }
+                      : { width: `${progress}%` }
+                  }
                 />
               </div>
               <p className="mt-2 text-xs text-gray-400">{progress}%</p>
@@ -1287,11 +1525,30 @@ export default function ImagePage({
               />
             </div>
           ) : (
-            <div className="absolute inset-0 flex items-center justify-center px-6 py-10">
-              <p className="text-center text-sm leading-relaxed text-gray-500">
-                Tes visuels générés s’afficheront ici.
-              </p>
-            </div>
+            <>
+              {visualStepActive ? (
+                <div
+                  className="mx-auto my-2 hidden h-[90px] w-[120px] flex-shrink-0 items-center justify-center rounded-[11px] border border-[#1e2845] bg-[#161d2e] max-[640px]:flex"
+                  role="status"
+                >
+                  <p
+                    className="px-1 text-center text-[9px] leading-tight"
+                    style={{ color: "#3e4870" }}
+                  >
+                    Tes visuels générés s’afficheront ici.
+                  </p>
+                </div>
+              ) : null}
+              <div
+                className={`absolute inset-0 flex items-center justify-center px-6 py-10 ${
+                  visualStepActive ? "max-[640px]:hidden" : ""
+                }`}
+              >
+                <p className="text-center text-sm leading-relaxed text-gray-500">
+                  Tes visuels générés s’afficheront ici.
+                </p>
+              </div>
+            </>
           )}
       </div>
 
@@ -1335,10 +1592,13 @@ export default function ImagePage({
         </div>
 
       {/* 4. Zone d’interaction principale */}
-      <div>{interactionPanel}</div>
+      <div style={isMobile ? { marginTop: "20px" } : undefined}>{interactionPanel}</div>
 
       {/* 5. Options avancées — en bas, discret */}
-      <div className="border-t border-white/[0.06] pt-6">
+      <div
+        className="border-t border-white/[0.06] pt-6"
+        style={isMobile ? { marginTop: "16px" } : undefined}
+      >
           <div className="flex justify-center">
             <label className="inline-flex cursor-pointer items-center gap-2 text-[11px] text-gray-600 hover:text-gray-500 select-none">
               <input

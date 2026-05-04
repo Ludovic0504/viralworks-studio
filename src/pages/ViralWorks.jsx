@@ -22,6 +22,7 @@ import {
 } from "@/bibliotheque/viralWorksStudioStorage";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
+import { useStudioLayoutOptions } from "@/contexte/StudioLayoutOptionsContext";
 import { debitCredits, hasEnoughCredits } from "@/bibliotheque/supabase/credits";
 import { getUserSubscription } from "@/bibliotheque/supabase/stripe";
 import {
@@ -632,9 +633,9 @@ function ScriptStepQuotaModal({ open, title, message, actionLabel, onClose, onGo
 }
 
 const steps = [
-  { id: 1, key: "campagne", label: "Campagne VWS" },
-  { id: 2, key: "visuel", label: "Visuel d'accroche" },
-  { id: 3, key: "video", label: "Vidéo virale" },
+  { id: 1, key: "campagne", label: "Campagne VWS", shortLabel: "Campagne" },
+  { id: 2, key: "visuel", label: "Visuel d'accroche", shortLabel: "Visuel" },
+  { id: 3, key: "video", label: "Vidéo virale", shortLabel: "Vidéo" },
 ];
 
 export default function ViralWorks() {
@@ -648,6 +649,7 @@ export default function ViralWorks() {
 
   const { session } = useAuth();
   const { runWithAuth } = useRequireAuthAction();
+  const { setStudioLayout } = useStudioLayoutOptions();
   const [showScriptQuotaModal, setShowScriptQuotaModal] = useState(false);
   const [scriptQuotaModalMessage, setScriptQuotaModalMessage] = useState(SCRIPT_STEP_VIDEO_QUOTA_MSG);
   const [hasActiveSubscriptionVw, setHasActiveSubscriptionVw] = useState(false);
@@ -708,6 +710,25 @@ export default function ViralWorks() {
   imageStepRef.current = imageStep;
   const wasOnVisualLayoutRef = useRef(false);
   const studioScrollAnchorRef = useRef(null);
+  /** Mobile : CTA « Préparer » délégué à CampagneVWS */
+  const step1PrimaryRef = useRef(null);
+  /** Branchement CTA mobile « Générer la vidéo » → VEO3VideoForm */
+  const videoGenerateRef = useRef(null);
+
+  const [isMobileStudio, setIsMobileStudio] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(max-width: 640px)").matches : false
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 640px)");
+    const fn = () => setIsMobileStudio(mq.matches);
+    mq.addEventListener("change", fn);
+    return () => mq.removeEventListener("change", fn);
+  }, []);
+
+  useEffect(() => {
+    setStudioLayout({ hideGlobalFooterOnMobile: currentStep === 3 });
+    return () => setStudioLayout(null);
+  }, [currentStep, setStudioLayout]);
 
   useLayoutEffect(() => {
     studioScrollAnchorRef.current?.scrollIntoView({ block: "start", behavior: "instant" });
@@ -894,6 +915,7 @@ export default function ViralWorks() {
    * courante, toutes les étapes précédentes doivent être marquées validées (bouton global ou raccourci visuel).
    */
   const canGoToStep = (stepId) => {
+    if (isMobileStudio) return true;
     if (stepId <= currentStep) return true;
     for (let i = 1; i < stepId; i += 1) {
       if (!validated[i]) return false;
@@ -1061,7 +1083,7 @@ export default function ViralWorks() {
   return (
     <div
       ref={studioScrollAnchorRef}
-      className="mx-auto w-full min-w-0 max-w-7xl px-4 sm:px-6 lg:px-8 py-6 space-y-6"
+      className="mx-auto w-full min-w-0 max-w-7xl px-4 sm:px-6 lg:px-8 py-6 space-y-6 max-[640px]:flex max-[640px]:min-h-0 max-[640px]:flex-1 max-[640px]:flex-col max-[640px]:overflow-hidden max-[640px]:space-y-3"
     >
       <ScriptStepQuotaModal
         open={showScriptQuotaModal}
@@ -1076,148 +1098,228 @@ export default function ViralWorks() {
             : "/boutique?section=subscription";
         }}
       />
-      <PageTitle
-        green="ViralWorks"
-        white="Studio"
-        subtitle="Un seul flux pour orchestrer ta campagne vidéo : cerveau VWS, visuel d'accroche et vidéo virale."
-      />
-
-      <div className="studio-panel px-4 py-3 sm:px-6 sm:py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="flex-1 flex flex-wrap gap-3">
-          {steps.map((step) => {
-            const isActive = currentStep === step.id;
-            const isDone = validated[step.id];
-            const disabled = !canGoToStep(step.id);
-            return (
-              <button
-                key={step.id}
-                type="button"
-                onClick={() => handleGoToStep(step.id)}
-                disabled={disabled}
-                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs sm:text-sm transition-all duration-150 ${
-                  isActive
-                    ? "card-vws-active text-emerald-100 rounded-full"
-                    : disabled
-                    ? "bg-white/[0.03] border border-white/[0.06] text-gray-500 cursor-not-allowed"
-                    : "card-vws text-gray-300 hover:bg-white/[0.06] rounded-full"
-                }`}
-              >
-                <span
-                  className={`w-5 h-5 inline-flex items-center justify-center rounded-full text-[10px] font-semibold transition-all duration-150 ${
-                    isDone
-                      ? "bg-gradient-to-br from-[var(--vws-primary-top)] to-[var(--vws-primary-deep)] text-white step-disk-vws-done"
-                      : isActive
-                      ? "bg-[var(--vws-primary)] text-gray-950 step-disk-vws-active"
-                      : "bg-white/10 text-gray-200"
-                  }`}
-                >
-                  {isDone ? <Check className="w-3 h-3" /> : step.id}
-                </span>
-                <span>{step.label}</span>
-              </button>
-            );
-          })}
-        </div>
-        <div className="flex items-center gap-2 justify-end">
-          <span className="text-xs text-gray-400 hidden sm:inline">
-            Étape {currentStep} sur 3
-          </span>
-          <button
-            type="button"
-            onClick={() => {
-              void runWithAuth(handleValidateAndNext);
-            }}
-            disabled={validateStepBlocked}
-            aria-busy={validateStepPromptLoading}
-            title={
-              validateStepBlocked
-                ? scriptGenStatus === "running"
-                  ? "Génération du script en cours…"
-                  : "Lance d’abord le cerveau VWS avec le bouton vert dans l’étape Campagne."
-                : undefined
-            }
-            className={`w-full sm:w-auto inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold text-center leading-tight transition-colors duration-150 ${
-              validateStepBlocked
-                ? "bg-white/10 text-gray-500 border border-white/10 cursor-not-allowed opacity-70"
-                : "btn-vws-primary"
-            }`}
-          >
-            {validateStepPromptLoading ? (
-              <span
-                className="h-3.5 w-3.5 shrink-0 rounded-full border-2 border-white/20 border-t-white/95 motion-safe:animate-[spin_0.8s_linear_infinite]"
-                aria-hidden
-              />
-            ) : null}
-            <span className="min-w-0">
-              {currentStep < STUDIO_STEP_COUNT
-                ? "Valider cette étape et passer à la suivante"
-                : "Marquer comme terminé"}
-            </span>
-          </button>
-        </div>
+      <div className="max-[640px]:shrink-0">
+        <PageTitle
+          green="ViralWorks"
+          white="Studio"
+          subtitle="Un seul flux pour orchestrer ta campagne vidéo : cerveau VWS, visuel d'accroche et vidéo virale."
+        />
       </div>
 
-      {scriptGenStatus === "running" ? (
-        <p className="text-xs text-cyan-200/90 -mt-2 sm:ml-1" role="status" aria-live="polite">
-          Génération du script en cours…
-        </p>
-      ) : null}
+      <div className="max-[640px]:relative max-[640px]:flex max-[640px]:min-h-0 max-[640px]:flex-1 max-[640px]:flex-col max-[640px]:overflow-hidden min-[641px]:min-h-0">
+        <div className="min-h-0 flex-1 space-y-6 overflow-y-auto max-[640px]:space-y-3 min-[641px]:overflow-visible">
+          {/* Navigation étapes — mêmes patrons desktop / mobile (libellés courts sous breakpoint sm) */}
+          <div className="studio-panel max-[640px]:shrink-0 px-4 py-3 sm:px-6 sm:py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex-1 flex flex-wrap gap-3">
+              {steps.map((step) => {
+                const isActive = currentStep === step.id;
+                const isDone = validated[step.id];
+                const disabled = !canGoToStep(step.id);
+                return (
+                  <button
+                    key={step.id}
+                    type="button"
+                    onClick={() => handleGoToStep(step.id)}
+                    disabled={disabled}
+                    className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs sm:text-sm transition-all duration-150 ${
+                      isActive
+                        ? "card-vws-active text-emerald-100 rounded-full"
+                        : disabled
+                          ? "bg-white/[0.03] border border-white/[0.06] text-gray-500 cursor-not-allowed"
+                          : "card-vws text-gray-300 hover:bg-white/[0.06] rounded-full"
+                    }`}
+                  >
+                    <span
+                      className={`w-5 h-5 inline-flex items-center justify-center rounded-full text-[10px] font-semibold transition-all duration-150 ${
+                        isDone
+                          ? "bg-gradient-to-br from-[var(--vws-primary-top)] to-[var(--vws-primary-deep)] text-white step-disk-vws-done"
+                          : isActive
+                            ? "bg-[var(--vws-primary)] text-gray-950 step-disk-vws-active"
+                            : "bg-white/10 text-gray-200"
+                      }`}
+                    >
+                      {isDone ? <Check className="w-3 h-3" /> : step.id}
+                    </span>
+                    <span className="sm:hidden">{step.shortLabel}</span>
+                    <span className="hidden sm:inline">{step.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex w-full max-[640px]:flex-col max-[640px]:items-stretch sm:w-auto sm:flex-row sm:items-center gap-2 sm:justify-end">
+              <span className="text-xs text-gray-400 max-[640px]:text-center sm:text-left">
+                Étape {currentStep} sur 3
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  void runWithAuth(handleValidateAndNext);
+                }}
+                disabled={validateStepBlocked}
+                aria-busy={validateStepPromptLoading}
+                title={
+                  validateStepBlocked
+                    ? scriptGenStatus === "running"
+                      ? "Génération du script en cours…"
+                      : "Lance d’abord le cerveau VWS avec le bouton vert dans l’étape Campagne."
+                    : undefined
+                }
+                className={`w-full sm:w-auto inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold text-center leading-tight transition-colors duration-150 ${
+                  validateStepBlocked
+                    ? "bg-white/10 text-gray-500 border border-white/10 cursor-not-allowed opacity-70"
+                    : "btn-vws-primary"
+                }`}
+              >
+                {validateStepPromptLoading ? (
+                  <span
+                    className="h-3.5 w-3.5 shrink-0 rounded-full border-2 border-white/20 border-t-white/95 motion-safe:animate-[spin_0.8s_linear_infinite]"
+                    aria-hidden
+                  />
+                ) : null}
+                <span className="min-w-0">
+                  {currentStep < STUDIO_STEP_COUNT
+                    ? "Valider cette étape et passer à la suivante"
+                    : "Marquer comme terminé"}
+                </span>
+              </button>
+            </div>
+          </div>
 
-      {scriptGenStatus === "error" && currentStep === 1 && step1BrainLaunched ? (
-        <div className="flex flex-wrap items-center gap-2 -mt-2 sm:ml-1">
-          <p className="text-xs text-amber-200/90">La génération du script a échoué.</p>
-          <button
-            type="button"
-            onClick={() => {
-              const snap = lastBrainSnapshotRef.current;
-              if (!snap) return;
-              void handleCampaignBrainReady(snap);
-            }}
-            className="text-xs font-semibold text-cyan-300 hover:text-cyan-200 underline underline-offset-2"
-          >
-            Réessayer la génération du script
-          </button>
+          {scriptGenStatus === "running" ? (
+            <p
+              className="text-xs text-cyan-200/90 -mt-2 max-[640px]:mx-0 sm:ml-1"
+              role="status"
+              aria-live="polite"
+            >
+              Génération du script en cours…
+            </p>
+          ) : null}
+
+          {scriptGenStatus === "error" && currentStep === 1 && step1BrainLaunched ? (
+            <div className="flex flex-wrap items-center gap-2 -mt-2 max-[640px]:mx-0 sm:ml-1">
+              <p className="text-xs text-amber-200/90">La génération du script a échoué.</p>
+              <button
+                type="button"
+                onClick={() => {
+                  const snap = lastBrainSnapshotRef.current;
+                  if (!snap) return;
+                  void handleCampaignBrainReady(snap);
+                }}
+                className="text-xs font-semibold text-cyan-300 hover:text-cyan-200 underline underline-offset-2"
+              >
+                Réessayer la génération du script
+              </button>
+            </div>
+          ) : null}
+
+          <div className="w-full min-w-0 space-y-6 max-[640px]:space-y-3">
+            {isMobileStudio ? (
+              <>
+                <section
+                  id="campagne"
+                  className={currentStep === 1 ? "block w-full min-w-0" : "hidden"}
+                  aria-hidden={currentStep !== 1}
+                >
+                  <CampagneVWS
+                    key={campagneMountKey}
+                    campaignData={campaignData}
+                    onCampaignChange={(nextCampaignData) =>
+                      setCampaignGenerationSpec((prev) =>
+                        applyLegacyCampaignPatchToSpec(prev, nextCampaignData || {})
+                      )
+                    }
+                    onBrainReady={handleCampaignBrainReady}
+                    onCampagneFullReset={handleCampagneFullReset}
+                    scriptGenerationPending={scriptGenStatus === "running"}
+                    awaitingStep1Validation={awaitingStep1Validation}
+                    step1PrimaryRef={step1PrimaryRef}
+                    formatPickerPresentation="studioOverlay"
+                  />
+                </section>
+                <section
+                  id="visuel"
+                  className={currentStep === 2 ? "block w-full min-w-0" : "hidden"}
+                  aria-hidden={currentStep !== 2}
+                >
+                  <ImagePage {...imagePageProps} />
+                </section>
+                <section
+                  id="video"
+                  className={currentStep === 3 ? "block w-full min-w-0" : "hidden"}
+                  aria-hidden={currentStep !== 3}
+                >
+                  <VideoPage
+                    ref={videoGenerateRef}
+                    studioSequenceType={campaignData?.sequenceType}
+                    studioScriptPrompt={scriptPromptForImage}
+                    studioImageStep={imageStep}
+                    dialogueEnabled={campaignData?.dialogueEnabled !== false}
+                    studioCampaignData={campaignData}
+                    studioStepActive={studioVideoStepActive}
+                    studioOnStartNewCampaign={handleCampagneFullReset}
+                  />
+                </section>
+              </>
+            ) : (
+              <>
+                <section
+                  id="campagne"
+                  className={currentStep === 1 ? "block w-full min-w-0" : "hidden"}
+                  aria-hidden={currentStep !== 1}
+                >
+                  <CampagneVWS
+                    key={campagneMountKey}
+                    campaignData={campaignData}
+                    onCampaignChange={(nextCampaignData) =>
+                      setCampaignGenerationSpec((prev) =>
+                        applyLegacyCampaignPatchToSpec(prev, nextCampaignData || {})
+                      )
+                    }
+                    onBrainReady={handleCampaignBrainReady}
+                    onCampagneFullReset={handleCampagneFullReset}
+                    scriptGenerationPending={scriptGenStatus === "running"}
+                    awaitingStep1Validation={awaitingStep1Validation}
+                  />
+                </section>
+                {currentStep === 2 ? (
+                  <section id="visuel" aria-hidden={false}>
+                    <ImagePage {...imagePageProps} />
+                  </section>
+                ) : null}
+                {currentStep === 3 ? (
+                  <section id="video" aria-hidden={false}>
+                    <VideoPage
+                      ref={videoGenerateRef}
+                      studioSequenceType={campaignData?.sequenceType}
+                      studioScriptPrompt={scriptPromptForImage}
+                      studioImageStep={imageStep}
+                      dialogueEnabled={campaignData?.dialogueEnabled !== false}
+                      studioCampaignData={campaignData}
+                      studioStepActive={studioVideoStepActive}
+                      studioOnStartNewCampaign={handleCampagneFullReset}
+                    />
+                  </section>
+                ) : null}
+              </>
+            )}
+          </div>
         </div>
-      ) : null}
 
-      <div className="w-full min-w-0 space-y-6">
-        {/* Campagne reste montée quand on change d’étape : évite de perdre les champs non persistés dans le state local */}
-        <section
-          id="campagne"
-          className={currentStep === 1 ? "block w-full min-w-0" : "hidden"}
-          aria-hidden={currentStep !== 1}
-        >
-          <CampagneVWS
-            key={campagneMountKey}
-            campaignData={campaignData}
-            onCampaignChange={(nextCampaignData) =>
-              setCampaignGenerationSpec((prev) =>
-                applyLegacyCampaignPatchToSpec(prev, nextCampaignData || {})
-              )
-            }
-            onBrainReady={handleCampaignBrainReady}
-            onCampagneFullReset={handleCampagneFullReset}
-            scriptGenerationPending={scriptGenStatus === "running"}
-            awaitingStep1Validation={awaitingStep1Validation}
-          />
-        </section>
-        {currentStep === 2 ? (
-          <section id="visuel" aria-hidden={false}>
-            <ImagePage {...imagePageProps} />
-          </section>
-        ) : null}
+        {/* CTA mobile unifié — étape 3 vidéo (étape 2 Visuel : pas de doublon avec « Utiliser cette image » / toolbar) */}
         {currentStep === 3 ? (
-          <section id="video" aria-hidden={false}>
-            <VideoPage
-              studioSequenceType={campaignData?.sequenceType}
-              studioScriptPrompt={scriptPromptForImage}
-              studioImageStep={imageStep}
-              dialogueEnabled={campaignData?.dialogueEnabled !== false}
-              studioCampaignData={campaignData}
-              studioStepActive={studioVideoStepActive}
-              studioOnStartNewCampaign={handleCampagneFullReset}
-            />
-          </section>
+          <div className="hidden max-[640px]:block shrink-0 border-t border-[#171e30] bg-[#0f1420] px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+            <button
+              type="button"
+              onClick={() => {
+                void runWithAuth(async () => {
+                  videoGenerateRef.current?.generate?.();
+                });
+              }}
+              className="vws-mobile-flat-green-cta flex w-full items-center justify-center gap-2 text-center text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <span>✦ Générer la vidéo</span>
+            </button>
+          </div>
         ) : null}
       </div>
     </div>
