@@ -1255,9 +1255,43 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
             </div>
           </div>
 
-          {/* Mobile (≤640px) : après Dialogue — 8px — question ; puis 6px — erreur (desktop : question sous le formulaire) */}
+          {/* ≤640px : question puis erreur. ≥641px : question + réponses puis message rouge puis CTA (erreur déplacé sous les réponses) */}
           {microQuestion ? (
             <div className="vws-campagne-micro-question min-[641px]:hidden mt-2 space-y-3">
+              <div className="flex items-start gap-2">
+                <p className="text-sm text-gray-300">{microQuestion.question}</p>
+                {microQuestion.info ? (
+                  <span className="relative inline-flex items-center group shrink-0 mt-0.5">
+                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-cyan-500/35 bg-cyan-500/10 text-[10px] font-semibold text-cyan-200 cursor-help">
+                      i
+                    </span>
+                    <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 hidden w-72 -translate-x-1/2 rounded-lg border border-cyan-500/25 bg-[#0d1a22] px-2.5 py-2 text-[11px] leading-snug text-cyan-100 shadow-lg group-hover:block">
+                      {microQuestion.info}
+                    </span>
+                  </span>
+                ) : null}
+              </div>
+              <div className="flex flex-wrap gap-2 mt-1">
+                {microQuestion.options.map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => handleSelectMicroAnswer(opt.id)}
+                    className={`px-3 py-1.5 rounded-full text-xs transition-all duration-150 ${
+                      microAnswer === opt.id
+                        ? "card-vws-active text-emerald-300"
+                        : "card-vws text-gray-300"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {microQuestion ? (
+            <div className="vws-campagne-micro-question max-[640px]:hidden min-[641px]:block border-t border-white/10 pt-6 mt-8 space-y-3">
               <div className="flex items-start gap-2">
                 <p className="text-sm text-gray-300">{microQuestion.question}</p>
                 {microQuestion.info ? (
@@ -1335,40 +1369,6 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         </div>
 
       </div>
-
-      {microQuestion && (
-        <div className="vws-campagne-micro-question max-[640px]:hidden min-[641px]:block border-t border-white/10 pt-6 mt-8 space-y-3">
-          <div className="flex items-start gap-2">
-            <p className="text-sm text-gray-300">{microQuestion.question}</p>
-            {microQuestion.info ? (
-              <span className="relative inline-flex items-center group shrink-0 mt-0.5">
-                <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-cyan-500/35 bg-cyan-500/10 text-[10px] font-semibold text-cyan-200 cursor-help">
-                  i
-                </span>
-                <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 hidden w-72 -translate-x-1/2 rounded-lg border border-cyan-500/25 bg-[#0d1a22] px-2.5 py-2 text-[11px] leading-snug text-cyan-100 shadow-lg group-hover:block">
-                  {microQuestion.info}
-                </span>
-              </span>
-            ) : null}
-          </div>
-          <div className="flex flex-wrap gap-2 mt-1">
-            {microQuestion.options.map((opt) => (
-              <button
-                key={opt.id}
-                type="button"
-                onClick={() => handleSelectMicroAnswer(opt.id)}
-                className={`px-3 py-1.5 rounded-full text-xs transition-all duration-150 ${
-                  microAnswer === opt.id
-                    ? "card-vws-active text-emerald-300"
-                    : "card-vws text-gray-300"
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
 
       <ModaleChoixFormatVideo
         open={showFormatModal}
