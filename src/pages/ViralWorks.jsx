@@ -19,7 +19,18 @@ import {
   clearViralWorksTransientSessionKeys,
   loadSpaUiStateFromSession,
   loadViralStudioDraftFromLocal,
+  loadViralWorksWorkflowStateFromLocal,
+  saveViralWorksWorkflowStateToLocal,
+  clearViralWorksWorkflowStateFromLocal,
 } from "@/bibliotheque/viralWorksStudioStorage";
+import {
+  loadImageMediaRefs,
+  loadVideoMediaRefs,
+  saveImageMediaRef,
+  saveVideoMediaRef,
+  loadViralWorksMediaCacheIndex,
+  purgeViralWorksMediaCache,
+} from "@/bibliotheque/viralWorksMediaCache";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { useStudioLayoutOptions } from "@/contexte/StudioLayoutOptionsContext";
@@ -44,6 +55,7 @@ let spaImageStepMemory = null;
 const STUDIO_FLOW_VERSION = 3;
 const STUDIO_V2_WITH_RECAP = 2;
 const STUDIO_STEP_COUNT = 3;
+const WORKFLOW_STATE_VERSION = 1;
 
 /**
  * Au rechargement complet (F5) : vider la session studio une seule fois par chargement de page.
@@ -300,6 +312,97 @@ function sanitizeImageStepFromDraft(raw) {
   };
 }
 
+function isSensitiveOrTransientUrl(value) {
+  if (typeof value !== "string") return false;
+  const raw = value.trim();
+  if (!raw) return false;
+  if (raw.startsWith("blob:") || raw.startsWith("data:")) return true;
+  if (!/^https?:\/\//i.test(raw)) return false;
+  try {
+    const parsed = new URL(raw);
+    const signedParamCandidates = [
+      "Expires",
+      "X-Goog-Algorithm",
+      "X-Goog-Credential",
+      "X-Goog-Date",
+      "X-Goog-Expires",
+      "X-Goog-Signature",
+      "X-Amz-Algorithm",
+      "X-Amz-Credential",
+      "X-Amz-Date",
+      "X-Amz-Expires",
+      "X-Amz-Signature",
+      "token",
+      "signature",
+      "sig",
+    ];
+    return signedParamCandidates.some((k) => parsed.searchParams.has(k));
+  } catch {
+    return true;
+  }
+}
+
+function sanitizeImageStepForWorkflowPersistence(raw) {
+  const base = sanitizeImageStepFromDraft(raw) || { ...INITIAL_IMAGE_STEP };
+  return {
+    ...base,
+    refCharDataUrl: null,
+    lastGeneratedImages: null,
+  };
+}
+
+function mergeImageStepWithMediaCache(raw, mediaCacheEntry) {
+  const base = sanitizeImageStepFromDraft(raw) || { ...INITIAL_IMAGE_STEP };
+  const hasImages = Array.isArray(base.lastGeneratedImages) && base.lastGeneratedImages.length > 0;
+  if (hasImages) return base;
+  const cachedUrls = Array.isArray(mediaCacheEntry?.urls) ? mediaCacheEntry.urls : [];
+  const fallbackUrls = Array.isArray(mediaCacheEntry?.fallbackData) ? mediaCacheEntry.fallbackData : [];
+  const mergedUrls = cachedUrls.length > 0 ? cachedUrls : fallbackUrls;
+  if (!mergedUrls.length) return base;
+  return {
+    ...base,
+    lastGeneratedImages: mergedUrls,
+    selectedImageIndex: Math.min(base.selectedImageIndex || 0, mergedUrls.length - 1),
+  };
+}
+
+function sanitizeWorkflowVideoState(raw) {
+  const allowed = new Set(["idle", "generating", "done", "error"]);
+  const status = typeof raw?.status === "string" && allowed.has(raw.status) ? raw.status : "idle";
+  const videoId =
+    typeof raw?.videoId === "string" && raw.videoId.trim() && !isSensitiveOrTransientUrl(raw.videoId)
+      ? raw.videoId.trim()
+      : null;
+  const lastError = typeof raw?.lastError === "string" ? raw.lastError.slice(0, 500) : "";
+  const provider =
+    typeof raw?.provider === "string" && raw.provider.trim() ? raw.provider.trim() : "veo3";
+  const createdAt =
+    typeof raw?.createdAt === "string" && raw.createdAt.trim() ? raw.createdAt.trim() : null;
+  return { status, videoId, lastError, provider, createdAt };
+}
+
+function deepStripSensitiveUrls(value) {
+  if (Array.isArray(value)) {
+    return value.map((entry) => deepStripSensitiveUrls(entry));
+  }
+  if (!value || typeof value !== "object") {
+    if (typeof value === "string" && isSensitiveOrTransientUrl(value)) {
+      return null;
+    }
+    return value;
+  }
+  const out = {};
+  for (const [key, entry] of Object.entries(value)) {
+    const lowered = key.toLowerCase();
+    if (lowered.includes("url") && typeof entry === "string" && isSensitiveOrTransientUrl(entry)) {
+      out[key] = null;
+      continue;
+    }
+    out[key] = deepStripSensitiveUrls(entry);
+  }
+  return out;
+}
+
 function mergeVisualSnapshotsList(prevList, step) {
   const urls = step?.lastGeneratedImages;
   if (!urls?.length) return prevList;
@@ -351,6 +454,7 @@ function serializeCampaignSpecForPrepareGate(spec) {
   return JSON.stringify({
     schema_version: normalized.meta.schema_version,
     profession: String(normalized.campaign.profession ?? "").trim(),
+    lieuTournage: normalized.campaign.location_type ?? "neutre",
     idea: String(normalized.campaign.core_idea ?? "").trim(),
     video_format_id: normalized.campaign.video_format_id ?? null,
     styleDetails: String(normalized.campaign.style_details ?? "").trim(),
@@ -362,6 +466,7 @@ function serializeCampaignSpecForPrepareGate(spec) {
     sequenceType: normalized.creative.sequence_type === "three_x_8s" ? "three_x_8s" : "single_8s",
     dialogueEnabled: normalized.rendering.audio.dialogue_enabled !== false,
     microAnswer: normalized.campaign.clarification.initial_state ?? null,
+    cameraViewAngle: normalized.campaign.clarification.camera_view_angle ?? null,
     clarifyAnswer: normalized.campaign.clarification.last_user_freeform_answer ?? null,
     clarifyMode: normalized.campaign.clarification.mode ?? null,
     clarifyDiagnostic: normalized.campaign.clarification.diagnostic ?? null,
@@ -384,6 +489,7 @@ function buildLegacyCampaignDataFromSpec(spec) {
   const s = normalizeCampaignGenerationSpec(spec);
   return {
     profession: s.campaign.profession ?? "",
+    lieuTournage: s.campaign.location_type ?? "neutre",
     idea: s.campaign.core_idea ?? "",
     videoFormatId: s.campaign.video_format_id ?? null,
     styleDetails: s.campaign.style_details ?? "",
@@ -395,6 +501,7 @@ function buildLegacyCampaignDataFromSpec(spec) {
     sequenceType: s.creative.sequence_type === "three_x_8s" ? "three_x_8s" : "single_8s",
     dialogueEnabled: s.rendering.audio.dialogue_enabled !== false,
     microAnswer: s.campaign.clarification.initial_state ?? null,
+    cameraViewAngle: s.campaign.clarification.camera_view_angle ?? null,
     tempoCompressionDecision: s.rendering.tempo_resolution_decision ?? null,
     causalAgentSelection: s.campaign.clarification.causal_agent ?? null,
     cameraAerialAngle: s.campaign.clarification.camera_aerial_angle ?? null,
@@ -426,6 +533,14 @@ function applyLegacyCampaignPatchToSpec(prevSpec, patch) {
     campaign: {
       ...prev.campaign,
       profession: patch?.profession ?? prev.campaign.profession,
+      location_type:
+        patch?.lieuTournage !== undefined
+          ? (patch.lieuTournage === "chez_client" ||
+            patch.lieuTournage === "etablissement" ||
+            patch.lieuTournage === "neutre"
+              ? patch.lieuTournage
+              : "neutre")
+          : prev.campaign.location_type,
       core_idea: patch?.idea ?? prev.campaign.core_idea,
       video_format_id:
         patch?.videoFormatId !== undefined
@@ -450,6 +565,10 @@ function applyLegacyCampaignPatchToSpec(prevSpec, patch) {
           patch?.cameraAerialAngle !== undefined
             ? patch.cameraAerialAngle
             : prev.campaign.clarification.camera_aerial_angle,
+        camera_view_angle:
+          patch?.cameraViewAngle !== undefined
+            ? patch.cameraViewAngle
+            : prev.campaign.clarification.camera_view_angle,
         last_user_freeform_answer:
           patch?.clarifyAnswer !== undefined
             ? patch.clarifyAnswer
@@ -641,11 +760,26 @@ const steps = [
 export default function ViralWorks() {
   const location = useLocation();
   const spaUiInitialRef = useRef(undefined);
+  const workflowInitialRef = useRef(undefined);
+  const mediaCacheInitialRef = useRef(undefined);
   if (spaUiInitialRef.current === undefined) {
     purgeStudioSessionIfFullReload();
     spaUiInitialRef.current = migrateSpaUiIfNeeded(loadSpaUiStateFromSession());
   }
+  if (workflowInitialRef.current === undefined) {
+    workflowInitialRef.current = loadViralWorksWorkflowStateFromLocal();
+  }
+  if (mediaCacheInitialRef.current === undefined) {
+    mediaCacheInitialRef.current = {
+      index: loadViralWorksMediaCacheIndex(),
+      image: null,
+      video: loadVideoMediaRefs(),
+    };
+  }
   const spaInitial = spaUiInitialRef.current;
+  const workflowInitial = workflowInitialRef.current;
+  const mediaCacheInitial = mediaCacheInitialRef.current;
+  const workflowHydrateCandidateRef = useRef(workflowInitial);
 
   const { session } = useAuth();
   const { runWithAuth } = useRequireAuthAction();
@@ -659,14 +793,27 @@ export default function ViralWorks() {
   const lastBrainSnapshotRef = useRef(null);
 
   const [currentStep, setCurrentStep] = useState(() => {
+    const fromWorkflow = Number(workflowInitial?.currentStep);
+    if (Number.isFinite(fromWorkflow) && fromWorkflow >= 1 && fromWorkflow <= STUDIO_STEP_COUNT) {
+      return Math.floor(fromWorkflow);
+    }
     const n = Number(spaInitial?.currentStep);
     return Number.isFinite(n) && n >= 1 && n <= STUDIO_STEP_COUNT ? Math.floor(n) : 1;
   });
-  const [validated, setValidated] = useState(() => normalizeValidated(spaInitial?.validated));
+  const [validated, setValidated] = useState(() =>
+    normalizeValidated(workflowInitial?.validated ?? spaInitial?.validated)
+  );
   const [campaignGenerationSpec, setCampaignGenerationSpec] = useState(() => {
+    const workflowCampaign =
+      workflowInitial?.campaignGenerationSpec && typeof workflowInitial.campaignGenerationSpec === "object"
+        ? normalizeCampaignGenerationSpec(
+            deepStripSensitiveUrls(workflowInitial.campaignGenerationSpec)
+          )
+        : null;
     const draft = loadViralStudioDraftFromLocal();
     return normalizeCampaignGenerationSpec(
-      spaInitial?.campaignGenerationSpec ??
+      workflowCampaign ??
+        spaInitial?.campaignGenerationSpec ??
         spaInitial?.campaignData ??
         draft?.campaignGenerationSpec ??
         draft?.campaign ??
@@ -678,6 +825,9 @@ export default function ViralWorks() {
     [campaignGenerationSpec]
   );
   const [scriptPromptForImage, setScriptPromptForImage] = useState(() => {
+    if (workflowInitial?.scriptPromptForImage !== undefined) {
+      return normalizeScriptPayload(workflowInitial.scriptPromptForImage);
+    }
     if (spaInitial?.scriptPromptForImage !== undefined) {
       return normalizeScriptPayload(spaInitial.scriptPromptForImage);
     }
@@ -699,9 +849,26 @@ export default function ViralWorks() {
   });
 
   const [imageStep, setImageStep] = useState(() => {
+    const fromWorkflow = mergeImageStepWithMediaCache(workflowInitial?.imageStep, mediaCacheInitial?.image);
+    if (fromWorkflow) {
+      spaImageStepMemory = cloneImageStep(fromWorkflow);
+      return fromWorkflow;
+    }
     const initial = pickInitialImageStep();
     spaImageStepMemory = cloneImageStep(initial);
     return initial;
+  });
+  const [workflowVideoState, setWorkflowVideoState] = useState(() =>
+    sanitizeWorkflowVideoState(workflowInitial?.videoState ?? mediaCacheInitial?.video)
+  );
+  const [mediaCacheMeta, setMediaCacheMeta] = useState(() => ({
+    updatedAt: mediaCacheInitial?.index?.updatedAt || null,
+    imageMediaId: mediaCacheInitial?.index?.images?.[0]?.mediaId || null,
+    videoMediaId: mediaCacheInitial?.index?.videos?.[0]?.mediaId || null,
+  }));
+  const [showWorkflowRecoveryChoice, setShowWorkflowRecoveryChoice] = useState(() => {
+    const status = workflowInitial?.videoState?.status;
+    return status === "generating";
   });
 
   const [visualSnapshots, setVisualSnapshots] = useState(() => loadVisualSnapshotsFromSession());
@@ -709,6 +876,8 @@ export default function ViralWorks() {
   const imageStepRef = useRef(imageStep);
   imageStepRef.current = imageStep;
   const wasOnVisualLayoutRef = useRef(false);
+  /** Évite un double traitement « idée campagne changée » (Strict Mode / effets en cascade). */
+  const visualStaleResetOnceRef = useRef(null);
   const studioScrollAnchorRef = useRef(null);
   /** Mobile : CTA « Préparer » délégué à CampagneVWS */
   const step1PrimaryRef = useRef(null);
@@ -732,6 +901,20 @@ export default function ViralWorks() {
 
   useLayoutEffect(() => {
     studioScrollAnchorRef.current?.scrollIntoView({ block: "start", behavior: "instant" });
+  }, [currentStep]);
+
+  /**
+   * Mobile studio : les étapes non actives restent dans le DOM avec `hidden` + `aria-hidden`.
+   * Si le focus reste sur un contrôle de l’étape précédente, le navigateur avertit (focus dans un arbre caché).
+   * On retire le focus avant le paint.
+   */
+  useLayoutEffect(() => {
+    if (typeof document === "undefined") return;
+    const active = document.activeElement;
+    if (!active || active === document.body || !(active instanceof HTMLElement)) return;
+    if (active.closest("[aria-hidden='true']")) {
+      active.blur();
+    }
   }, [currentStep]);
 
   useEffect(() => {
@@ -759,6 +942,7 @@ export default function ViralWorks() {
     const onVisual = currentStep === 2;
     if (!onVisual) {
       wasOnVisualLayoutRef.current = false;
+      visualStaleResetOnceRef.current = null;
       return;
     }
     const justEntered = !wasOnVisualLayoutRef.current;
@@ -784,6 +968,10 @@ export default function ViralWorks() {
 
     const stale = hasPaired ? pairedTrim !== ideaNow : promptTrim !== ideaNow;
     if (!stale) return;
+
+    const dedupeKey = `reset-visuel|${ideaNow}|${pairedTrim}|${promptTrim}`;
+    if (visualStaleResetOnceRef.current === dedupeKey) return;
+    visualStaleResetOnceRef.current = dedupeKey;
 
     appendVisualSnapshotFromStep(step, setVisualSnapshots);
 
@@ -847,6 +1035,24 @@ export default function ViralWorks() {
   }, [imageStep]);
 
   useEffect(() => {
+    let active = true;
+    const hydrateImageMediaCache = async () => {
+      const cached = await loadImageMediaRefs();
+      if (!active || !cached) return;
+      setMediaCacheMeta((prev) => ({
+        ...prev,
+        updatedAt: cached.updatedAt || prev.updatedAt,
+        imageMediaId: cached.mediaId || prev.imageMediaId,
+      }));
+      setImageStep((prev) => mergeImageStepWithMediaCache(prev, cached));
+    };
+    void hydrateImageMediaCache();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
     try {
       localStorage.setItem(
         LS_VIRAL_STUDIO_DRAFT,
@@ -859,7 +1065,90 @@ export default function ViralWorks() {
     } catch (err) {
       console.warn("[ViralWorks] Sauvegarde brouillon studio:", err);
     }
-  }, [campaignGenerationSpec, scriptPromptForImage, imageStep, campaignData]);
+  }, [campaignGenerationSpec, scriptPromptForImage, imageStep]);
+
+  useEffect(() => {
+    const sanitizedSnapshot = {
+      version: WORKFLOW_STATE_VERSION,
+      updatedAt: Date.now(),
+      currentStep,
+      validated: normalizeValidated(validated),
+      campaignGenerationSpec: deepStripSensitiveUrls(
+        normalizeCampaignGenerationSpec(campaignGenerationSpec)
+      ),
+      scriptPromptForImage: normalizeScriptPayload(scriptPromptForImage),
+      imageStep: sanitizeImageStepForWorkflowPersistence(imageStep),
+      videoState: sanitizeWorkflowVideoState(workflowVideoState),
+      mediaCache: {
+        imageMediaId: mediaCacheMeta.imageMediaId,
+        videoMediaId: mediaCacheMeta.videoMediaId,
+        updatedAt: mediaCacheMeta.updatedAt,
+      },
+    };
+    const ok = saveViralWorksWorkflowStateToLocal(sanitizedSnapshot);
+    if (!ok) {
+      console.warn("[ViralWorks] Persistance workflow_state impossible.");
+    }
+  }, [
+    currentStep,
+    validated,
+    campaignGenerationSpec,
+    scriptPromptForImage,
+    imageStep,
+    workflowVideoState,
+    mediaCacheMeta,
+  ]);
+
+  useEffect(() => {
+    const urls = Array.isArray(imageStep?.lastGeneratedImages) ? imageStep.lastGeneratedImages : [];
+    if (!urls.length) return;
+    const createdAt = new Date().toISOString();
+    void saveImageMediaRef({
+      mediaId: mediaCacheMeta.imageMediaId || undefined,
+      urls,
+      createdAt,
+      fallbackData: [],
+    }).then(async () => {
+      const index = loadViralWorksMediaCacheIndex();
+      setMediaCacheMeta((prev) => ({
+        ...prev,
+        updatedAt: index.updatedAt || prev.updatedAt,
+        imageMediaId: index.images?.[0]?.mediaId || prev.imageMediaId,
+      }));
+    });
+  }, [imageStep?.lastGeneratedImages, mediaCacheMeta.imageMediaId]);
+
+  useEffect(() => {
+    if (!workflowVideoState?.videoId) return;
+    saveVideoMediaRef({
+      mediaId: mediaCacheMeta.videoMediaId || undefined,
+      videoId: workflowVideoState.videoId,
+      provider: workflowVideoState.provider || "veo3",
+      status: workflowVideoState.status || "done",
+      createdAt: workflowVideoState.createdAt || new Date().toISOString(),
+    });
+    const index = loadViralWorksMediaCacheIndex();
+    setMediaCacheMeta((prev) => ({
+      ...prev,
+      updatedAt: index.updatedAt || prev.updatedAt,
+      videoMediaId: index.videos?.[0]?.mediaId || prev.videoMediaId,
+    }));
+  }, [
+    workflowVideoState?.videoId,
+    workflowVideoState?.provider,
+    workflowVideoState?.status,
+    workflowVideoState?.createdAt,
+    mediaCacheMeta.videoMediaId,
+  ]);
+
+  useEffect(() => {
+    const initial = workflowHydrateCandidateRef.current;
+    if (!initial || typeof initial !== "object") return;
+    const shouldPrompt = initial?.videoState?.status === "generating";
+    if (shouldPrompt) return;
+    setShowWorkflowRecoveryChoice(false);
+    workflowHydrateCandidateRef.current = null;
+  }, []);
 
   useEffect(() => {
     try {
@@ -984,6 +1273,8 @@ export default function ViralWorks() {
   }, [session, hasActiveSubscriptionVw]);
 
   const handleCampagneFullReset = useCallback(() => {
+    clearViralWorksWorkflowStateFromLocal();
+    void purgeViralWorksMediaCache();
     try {
       localStorage.removeItem("vws_brain_v2_last");
     } catch {
@@ -1005,8 +1296,23 @@ export default function ViralWorks() {
     setScriptPromptForImage(normalizeScriptPayload(""));
     setCampaignGenerationSpec(normalizeCampaignGenerationSpec(createDefaultCampaignGenerationSpec()));
     setCampagneMountKey((k) => k + 1);
+    setWorkflowVideoState({ status: "idle", videoId: null, lastError: "", provider: "veo3", createdAt: null });
+    setMediaCacheMeta({ updatedAt: null, imageMediaId: null, videoMediaId: null });
+    setShowWorkflowRecoveryChoice(false);
     resetImageStep();
   }, [resetImageStep]);
+
+  const handleResumeRecoveredWorkflow = useCallback(() => {
+    setShowWorkflowRecoveryChoice(false);
+    workflowHydrateCandidateRef.current = null;
+  }, []);
+
+  const handleRestartRecoveredWorkflow = useCallback(() => {
+    clearViralWorksWorkflowStateFromLocal();
+    setShowWorkflowRecoveryChoice(false);
+    workflowHydrateCandidateRef.current = null;
+    handleCampagneFullReset();
+  }, [handleCampagneFullReset]);
 
   const handleValidateAndNext = async () => {
     if (currentStep === 1 && !step1BrainLaunched) return;
@@ -1050,6 +1356,17 @@ export default function ViralWorks() {
 
   const validateStepPromptLoading = scriptGenStatus === "running";
 
+  const handleVideoWorkflowStateChange = useCallback((nextState) => {
+    setWorkflowVideoState((prev) => {
+      const incoming = sanitizeWorkflowVideoState(nextState);
+      return {
+        ...prev,
+        ...incoming,
+        createdAt: incoming.createdAt || prev?.createdAt || null,
+      };
+    });
+  }, []);
+
   /** Dès que le cerveau a fini, tant que l’étape 1 n’est pas validée : griser Préparer (y compris pendant le script). */
   const awaitingStep1Validation =
     currentStep === 1 && step1BrainLaunched && !validated[1];
@@ -1063,6 +1380,7 @@ export default function ViralWorks() {
     campaignClarifyMode: campaignData?.clarifyMode ?? campaignData?.gateResult?.mode ?? null,
     campaignClarifyAnswer: campaignData?.clarifyAnswer ?? null,
     campaignCameraAerialAngle: campaignData?.cameraAerialAngle ?? null,
+    campaignCameraViewAngle: campaignData?.cameraViewAngle ?? null,
     campaignGlobalIntentProfile: campaignData?.globalIntentProfile ?? null,
     campaignSelfieMode: Boolean(campaignData?.selfieMode),
     scriptScene1Idea: String(scriptPromptForImage?.scenes?.[0] ?? scriptPromptForImage?.combined ?? ""),
@@ -1212,6 +1530,30 @@ export default function ViralWorks() {
             </div>
           ) : null}
 
+          {showWorkflowRecoveryChoice ? (
+            <div className="rounded-xl border border-cyan-500/35 bg-cyan-950/20 p-4">
+              <p className="text-sm text-cyan-100">
+                Une session précédente a été trouvée. Une génération vidéo était en cours.
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleResumeRecoveredWorkflow}
+                  className="inline-flex items-center justify-center rounded-lg px-3 py-2 text-xs font-semibold btn-vws-primary"
+                >
+                  Reprendre
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRestartRecoveredWorkflow}
+                  className="inline-flex items-center justify-center rounded-lg px-3 py-2 text-xs font-semibold btn-vws-secondary text-gray-200"
+                >
+                  Recommencer
+                </button>
+              </div>
+            </div>
+          ) : null}
+
           <div className="w-full min-w-0 space-y-6 max-[640px]:space-y-3">
             {isMobileStudio ? (
               <>
@@ -1257,6 +1599,8 @@ export default function ViralWorks() {
                     studioCampaignData={campaignData}
                     studioStepActive={studioVideoStepActive}
                     studioOnStartNewCampaign={handleCampagneFullReset}
+                    onWorkflowVideoStateChange={handleVideoWorkflowStateChange}
+                    initialWorkflowVideoState={workflowVideoState}
                   />
                 </section>
               </>
@@ -1297,6 +1641,8 @@ export default function ViralWorks() {
                       studioCampaignData={campaignData}
                       studioStepActive={studioVideoStepActive}
                       studioOnStartNewCampaign={handleCampagneFullReset}
+                      onWorkflowVideoStateChange={handleVideoWorkflowStateChange}
+                      initialWorkflowVideoState={workflowVideoState}
                     />
                   </section>
                 ) : null}

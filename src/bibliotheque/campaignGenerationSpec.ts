@@ -7,6 +7,7 @@ export type CampaignClarifyAxis = "mode_agent" | "initial_t0" | "causal_agent" |
 export type CampaignClarifyInitialState = "from_nothing" | "partially_built" | null;
 export type CampaignClarifyCausalAgent = "visible" | "automatic" | null;
 export type CampaignClarifyCameraAerialAngle = "top_down" | "angled" | null;
+export type CampaignClarifyCameraViewAngle = "subjective_portee" | "exterieure_filmee" | null;
 export type RenderingTempo = "real_time" | "timelapse" | "slow_motion";
 export type CreativeSequenceType = "single_8s" | "three_x_8s";
 export type RenderingAspectRatio = "9:16" | "16:9" | "1:1";
@@ -31,6 +32,7 @@ export interface CampaignClarification {
   initial_state: CampaignClarifyInitialState;
   causal_agent: CampaignClarifyCausalAgent;
   camera_aerial_angle: CampaignClarifyCameraAerialAngle;
+  camera_view_angle: CampaignClarifyCameraViewAngle;
   last_user_freeform_answer: string | null;
   proceed_anyway: boolean;
   history: string[];
@@ -43,6 +45,8 @@ export interface CampaignSection {
   objective: string | null;
   /** Identifiant du format vidéo choisi à l’étape Campagne VWS (catalogue `vwsVideoFormatsCatalog`). */
   video_format_id: string | null;
+  /** Source de vérité lieu scène étape 1 (`chez_client` | `etablissement` | `neutre`). */
+  location_type: "chez_client" | "etablissement" | "neutre";
   core_idea: string;
   style_details: string;
   intent_profile: GlobalIntentProfile | null;
@@ -198,6 +202,7 @@ export function createDefaultCampaignGenerationSpec(): CampaignGenerationSpec {
       profession: "",
       objective: null,
       video_format_id: null,
+      location_type: "neutre",
       core_idea: "",
       style_details: "",
       intent_profile: null,
@@ -207,6 +212,7 @@ export function createDefaultCampaignGenerationSpec(): CampaignGenerationSpec {
         initial_state: null,
         causal_agent: null,
         camera_aerial_angle: null,
+        camera_view_angle: null,
         last_user_freeform_answer: null,
         proceed_anyway: false,
         history: [],
@@ -444,6 +450,11 @@ export function normalizeCampaignGenerationSpec(raw: unknown): CampaignGeneratio
       video_format_id: asNullableString(
         (campaign as Record<string, unknown>).video_format_id ?? (campaign as Record<string, unknown>).videoFormatId
       ),
+      location_type: asOneOf(
+        campaign.location_type ?? campaign.lieuTournage,
+        ["chez_client", "etablissement", "neutre"] as const,
+        "neutre"
+      ),
       core_idea: asString(campaign.core_idea, asString(campaign.idea)),
       style_details: asString(campaign.style_details, asString(campaign.styleDetails)),
       intent_profile: normalizeIntentProfile(campaign.intent_profile ?? campaign.globalIntentProfile),
@@ -459,6 +470,11 @@ export function normalizeCampaignGenerationSpec(raw: unknown): CampaignGeneratio
         camera_aerial_angle: asOneOf(
           clarification.camera_aerial_angle ?? campaign.cameraAerialAngle,
           ["top_down", "angled", null] as const,
+          null
+        ),
+        camera_view_angle: asOneOf(
+          clarification.camera_view_angle ?? campaign.cameraViewAngle,
+          ["subjective_portee", "exterieure_filmee", null] as const,
           null
         ),
         last_user_freeform_answer: asNullableString(

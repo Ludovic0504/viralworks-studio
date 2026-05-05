@@ -213,6 +213,34 @@ export async function fetchVertexVeoVideoStatus(
   )) as VertexVeoStatusResponse;
 }
 
+/**
+ * Récupère une URL vidéo fraîche depuis un `task_id` déjà connu.
+ * N'effectue pas de nouvelle génération : simple appel status.
+ */
+export async function refreshVertexVideoUrlFromId(
+  taskId: string,
+  accessToken: string | undefined | null,
+  clientOptions?: VertexVeoClientOptions,
+  model?: string,
+): Promise<{ status: "processing" | "success" | "failed"; videoUrl?: string; gcsUri?: string; error?: string }> {
+  const statusData = await fetchVertexVeoVideoStatus(taskId, accessToken, clientOptions, model);
+  if (statusData.status === "success") {
+    const videoUrl = String(statusData.video_url || "").trim();
+    return {
+      status: "success",
+      videoUrl: videoUrl || undefined,
+      gcsUri: statusData.gcs_uri ? String(statusData.gcs_uri) : undefined,
+    };
+  }
+  if (statusData.status === "failed") {
+    return {
+      status: "failed",
+      error: String(statusData.error || "La vidéo n'est plus disponible."),
+    };
+  }
+  return { status: "processing" };
+}
+
 export type PollVertexVeoOptions = {
   /** Nombre max de requêtes status (défaut : 90 × 4 s, ~6 min — Veo peut être lent). */
   maxAttempts?: number;

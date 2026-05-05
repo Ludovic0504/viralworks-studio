@@ -4,6 +4,15 @@ export function isHttpUrl(value) {
   return /^https?:\/\//i.test(String(value || "").trim());
 }
 
+/** Prévisualisation locale après concat FFmpeg (pipeline 24 s). */
+export function isBlobUrl(value) {
+  return String(value || "").trim().toLowerCase().startsWith("blob:");
+}
+
+export function isVideoPlayerUrl(value) {
+  return isHttpUrl(value) || isBlobUrl(value);
+}
+
 /**
  * Télécharge une ressource HTTP via le proxy Supabase (auth + CORS).
  * @param {string} url

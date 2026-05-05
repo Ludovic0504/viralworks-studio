@@ -217,13 +217,17 @@ async function ensurePublicImageUrlForKie(
 }
 
 function buildEditPrompt(instruction: string): string {
+  const antiDistortionBlock =
+    "Contraintes absolues : aucune distorsion anatomique sur les humains, les membres et le corps doivent respecter des proportions et positions physiquement possibles. Si une personne est sous ou près d'un véhicule/objet, sa posture doit être réaliste et cohérente avec l'espace disponible (allongée sur le dos, accroupie, penchée selon le contexte). Aucun objet ne doit avoir une taille ou une position physiquement impossible par rapport aux autres éléments de la scène. Pas de membres supplémentaires, pas de doigts mal formés, pas de visage déformé.";
   return (
     "You are given ONE input image (via URL). EDIT that image according to the instruction. " +
     "Preserve the original scene, subjects, and composition unless the instruction explicitly asks to change them. " +
     "Do not replace it with a completely unrelated new scene. " +
     "Apply only the requested modification.\n\n" +
     "User instruction (may be in French):\n" +
-    instruction
+    instruction +
+    "\n\n" +
+    antiDistortionBlock
   );
 }
 

@@ -18,6 +18,7 @@ import {
   createVertexVeoVideoTask,
   getSessionAccessTokenForVertexVeo,
   pollVertexVeoUntilComplete,
+  refreshVertexVideoUrlFromId,
 } from "@/bibliotheque/supabase/vertexVeoVideo";
 import {
   createDefaultCampaignGenerationSpec,
@@ -25,7 +26,15 @@ import {
   normalizeCampaignGenerationSpec,
 } from "@/bibliotheque/campaignGenerationSpec";
 import { buildVeo3Prompt } from "@/bibliotheque/video-translators/veo3";
-import { isHttpUrl, downloadUrlFile } from "@/bibliotheque/downloadRemoteAsset";
+import {
+  isHttpUrl,
+  isBlobUrl,
+  isVideoPlayerUrl,
+  downloadUrlFile,
+} from "@/bibliotheque/downloadRemoteAsset";
+import { generate24SecVideo } from "@/bibliotheque/videoPipeline";
+import { splitCampaignPromptIntoThreeVideoSegments } from "@/bibliotheque/splitVideoPromptThreeSegments";
+import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
 import PageTitle from "../composants/interface/TitrePage";
 import {
   validateIdeaLength,
@@ -59,9 +68,64 @@ const VEO3_FORMAT_OPTIONS = [
 ];
 
 const DURATION_OPTIONS = {
-  veo3: ["4s", "6s", "8s"],
+  veo3: ["4s", "6s", "8s", "24s"],
   hailuo: ["6s", "10s"],
 };
+
+/** Étapes affichées pendant la génération 24 s (alignées sur découpage + onProgress du pipeline). */
+const PIPELINE_24_STEP_LABELS = [
+  "Découpage du script (Claude)",
+  "Premier segment (8 s)",
+  "Deuxième segment (8 s)",
+  "Troisième segment (8 s)",
+  "Assemblage des clips",
+  "Terminé",
+];
+
+/** Script campagne complet pour le pipeline 24 s (3 × 8 s). */
+function buildCombinedStudioScriptFor24s({
+  studioScriptPrompt,
+  scripts,
+  canonicalScenes,
+  sceneCount,
+}) {
+  const sp =
+    studioScriptPrompt && typeof studioScriptPrompt === "object" && !Array.isArray(studioScriptPrompt)
+      ? studioScriptPrompt
+      : null;
+  const combined = String(sp?.combined ?? "").trim();
+  if (combined.length >= 8) return combined;
+  const parts = [];
+  const n = Math.max(1, Math.min(3, Number(sceneCount) || 1));
+  for (let i = 0; i < n; i++) {
+    const fromEditor = String(scripts?.[i] ?? "").trim();
+    const fromSpec = String(canonicalScenes?.[i]?.script_text ?? "").trim();
+    const block = fromEditor || fromSpec;
+    if (block) parts.push(block);
+  }
+  return parts.join("\n\n---\n\n").trim();
+}
+
+async function uploadBlobMp4ToGeneratedImagesBucket(blobUrl) {
+  const supabase = getBrowserSupabase();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.user?.id) {
+    throw new Error("Session requise pour publier la vidéo.");
+  }
+  const res = await fetch(blobUrl);
+  const blob = await res.blob();
+  const path = `${session.user.id}/studio-video-24s-${Date.now()}.mp4`;
+  const { error } = await supabase.storage.from("generated-images").upload(path, blob, {
+    contentType: "video/mp4",
+    cacheControl: "3600",
+    upsert: false,
+  });
+  if (error) throw new Error(error.message || "Upload vidéo impossible.");
+  const { data: pub } = supabase.storage.from("generated-images").getPublicUrl(path);
+  return pub.publicUrl;
+}
 
 const VIDEO_QUOTA_EXHAUSTED_MESSAGE =
   "limite vidéo atteint pour ce mois, veuillez attendre la fin du mois pour le renouvellement des vidéos ou acheter des packs vidéos pour continuer a créer";
@@ -596,6 +660,8 @@ const Video = forwardRef(function Video(
     studioStepActive = true,
     /** Reset complet du flux ViralWorks (équivalent ancien Récap « Faire une autre vidéo »). */
     studioOnStartNewCampaign,
+    onWorkflowVideoStateChange,
+    initialWorkflowVideoState,
   } = {},
   ref
 ) {
@@ -666,9 +732,17 @@ const Video = forwardRef(function Video(
               dialogueEnabled={dialogueEnabled}
               studioStepActive={studioStepActive}
               studioOnStartNewCampaign={studioOnStartNewCampaign}
+              onWorkflowVideoStateChange={onWorkflowVideoStateChange}
+              initialWorkflowVideoState={initialWorkflowVideoState}
             />
           ) : (
-            <HailuoVideoForm onCreditsUpdate={loadCredits} studioImageStep={studioImageStep} dialogueEnabled={dialogueEnabled} />
+            <HailuoVideoForm
+              onCreditsUpdate={loadCredits}
+              studioImageStep={studioImageStep}
+              dialogueEnabled={dialogueEnabled}
+              onWorkflowVideoStateChange={onWorkflowVideoStateChange}
+              initialWorkflowVideoState={initialWorkflowVideoState}
+            />
           )}
         </div>
 
@@ -861,6 +935,8 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
     dialogueEnabled = true,
     studioStepActive = true,
     studioOnStartNewCampaign,
+    onWorkflowVideoStateChange,
+    initialWorkflowVideoState,
   },
   ref
 ) {
@@ -890,8 +966,13 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
   const [copied, setCopied] = useState(false);
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState("");
+  /** 1–6 pendant chargement 24 s uniquement ; null sinon. */
+  const [pipeline24Step, setPipeline24Step] = useState(null);
   /** Message d’erreur métier (jamais confondu avec l’URL vidéo affichée dans <video>). */
   const [generationError, setGenerationError] = useState("");
+  const [lastVideoTaskId, setLastVideoTaskId] = useState(null);
+  const [videoCreatedAt, setVideoCreatedAt] = useState(null);
+  const [needsReloadFromCache, setNeedsReloadFromCache] = useState(false);
   const [showQuotaNotice, setShowQuotaNotice] = useState(false);
   const [quotaNoticeMessage, setQuotaNoticeMessage] = useState(VIDEO_QUOTA_EXHAUSTED_MESSAGE);
   const [hasActiveSubscription, setHasActiveSubscription] = useState(false);
@@ -924,6 +1005,18 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
   const historyVm = useVideoModelHistory("veo3");
 
   useEffect(() => {
+    if (typeof onWorkflowVideoStateChange !== "function") return;
+    const status = loading ? "generating" : generationError ? "error" : output ? "done" : "idle";
+    onWorkflowVideoStateChange({
+      status,
+      videoId: lastVideoTaskId || null,
+      lastError: generationError || "",
+      provider: "veo3",
+      createdAt: videoCreatedAt || null,
+    });
+  }, [onWorkflowVideoStateChange, loading, generationError, output, lastVideoTaskId, videoCreatedAt]);
+
+  useEffect(() => {
     if (studioStepActive === false) return;
     const url = validatedHookImage?.url ? String(validatedHookImage.url).trim() : "";
     if (!url) {
@@ -945,6 +1038,45 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
     img.src = url;
   }, [validatedHookImage?.url, studioStepActive]);
 
+  const restoreVideoFromCachedId = useCallback(async () => {
+    const cachedId = String(initialWorkflowVideoState?.videoId || "").trim();
+    if (!cachedId || !session?.access_token || loading) return;
+    try {
+      const res = await refreshVertexVideoUrlFromId(
+        cachedId,
+        session?.access_token,
+        { getAccessToken: getSessionAccessTokenForVertexVeo },
+        undefined
+      );
+      if (res.status === "success" && String(res.videoUrl || "").trim()) {
+        setOutput(String(res.videoUrl).trim());
+        setGenerationError("");
+        setLastVideoTaskId(cachedId);
+        setVideoCreatedAt(initialWorkflowVideoState?.createdAt || new Date().toISOString());
+        setNeedsReloadFromCache(false);
+        return;
+      }
+      setNeedsReloadFromCache(true);
+      setGenerationError("Vidéo précédemment générée — cliquez pour recharger.");
+    } catch {
+      setNeedsReloadFromCache(true);
+      setGenerationError("Vidéo précédemment générée — cliquez pour recharger.");
+    }
+  }, [initialWorkflowVideoState?.videoId, initialWorkflowVideoState?.createdAt, loading, session?.access_token]);
+
+  useEffect(() => {
+    if (!initialWorkflowVideoState?.videoId) return;
+    if (initialWorkflowVideoState?.provider && initialWorkflowVideoState.provider !== "veo3") return;
+    if (output || loading) return;
+    void restoreVideoFromCachedId();
+  }, [
+    initialWorkflowVideoState?.videoId,
+    initialWorkflowVideoState?.provider,
+    output,
+    loading,
+    restoreVideoFromCachedId,
+  ]);
+
   useEffect(() => {
     const payloadKey =
       studioScriptPrompt && typeof studioScriptPrompt === "object" && !Array.isArray(studioScriptPrompt)
@@ -965,7 +1097,15 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
   const scriptForGeneration = scripts[sceneIndexForGeneration] ?? "";
   /** Le visuel d’accroche n’est jamais requis ; on n’utilise ceci que pour l’apparence du bouton. */
   const sessionReady = Boolean(session?.access_token);
-  const scriptReady = (scriptForGeneration || "").trim().length >= 8;
+  const scriptReady =
+    duration === "24s"
+      ? buildCombinedStudioScriptFor24s({
+          studioScriptPrompt,
+          scripts,
+          canonicalScenes,
+          sceneCount,
+        }).trim().length >= 8
+      : (scriptForGeneration || "").trim().length >= 8;
   const abortRef = useRef(null);
 
   useEffect(() => {
@@ -1096,7 +1236,22 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
 
     const canonicalScriptTrim = String(canonicalScenes?.[sceneIndexForGeneration]?.script_text || "").trim();
     const scriptTrim = canonicalScriptTrim || String(scriptForGeneration || "").trim();
-    if (scriptTrim.length < 8) {
+
+    const combinedFor24s = buildCombinedStudioScriptFor24s({
+      studioScriptPrompt,
+      scripts,
+      canonicalScenes,
+      sceneCount,
+    });
+
+    if (duration === "24s") {
+      if (combinedFor24s.length < 8) {
+        alert(
+          "Pour une vidéo 24 s, le script campagne (réuni dans les options avancées ou issu du tunnel) doit faire au moins 8 caractères. Complète le texte des scènes puis réessaie."
+        );
+        return;
+      }
+    } else if (scriptTrim.length < 8) {
       alert(
         `Le script du moment « ${sceneTabLabels[activeTab] ?? `Partie ${activeTab + 1}`} » est trop court (minimum 8 caractères). Ouvre « Options avancées » pour compléter le texte. Aucun visuel d’accroche n’est nécessaire pour générer.`
       );
@@ -1114,7 +1269,8 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
     const hookPromptForValidation =
       String(hookVisual || "").trim() ||
       String(validatedHookImage?.prompt || "").trim();
-    let ideaForValidation = scriptTrim;
+    let ideaForValidation =
+      duration === "24s" ? combinedFor24s : scriptTrim;
     if (sceneIndexForGeneration === 0 && hookPromptForValidation) {
       ideaForValidation = `${ideaForValidation}\n\nVisuel d'accroche :\n${hookPromptForValidation}`;
     }
@@ -1154,6 +1310,9 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
     setShowQuotaNotice(false);
     setOutput("");
     setGenerationError("");
+    setLastVideoTaskId(null);
+    setVideoCreatedAt(null);
+    setNeedsReloadFromCache(false);
     setCopied(false);
     setProgress(0);
     setProgressMessage("Initialisation...");
@@ -1170,142 +1329,180 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
       );
       consumeVideoAttempt({ debitedCredit: false });
 
-      setProgress(25);
-      setProgressMessage("Création de la tâche vidéo...");
-
-      const durationSec =
-        duration === "4s" ? 4 : duration === "6s" ? 6 : 8;
-
-      const selectedHookImageUrl = String(validatedHookImage?.url || "").trim();
-      const selectedHookPrompt = String(validatedHookImage?.prompt || "").trim();
-      const hookPromptLive =
-        String(hookVisual || "").trim() ||
-        selectedHookPrompt ||
-        canonicalSpec.creative.hook_visual.prompt_text ||
-        "";
-      const finalAspectRatio = selectedHookImageUrl
-        ? (derivedFormat === "16:9" ? "16:9" : "9:16")
-        : "9:16";
-      const finalGenerationMode = selectedHookImageUrl ? "image_to_video" : "text_to_video";
-      const baseScenes = getSafeScenes(canonicalSpec);
-      const dialogueForActiveScene =
-        dialogueEnabled && !dialogueAuto ? manualDialogueLine : "";
-      const mergedScenes = [0, 1, 2].map((i) => ({
-        ...baseScenes[i],
-        ...(i === sceneIndexForGeneration ? { dialogue_text: dialogueForActiveScene } : {}),
-      }));
-      const generationOwnedSpec = normalizeCampaignGenerationSpec({
-        ...canonicalSpec,
-        creative: {
-          ...canonicalSpec.creative,
-          scenes: mergedScenes,
-          hook_visual: {
-            ...canonicalSpec.creative.hook_visual,
-            // Owner final at generation time: Video.jsx
-            selected_image_url: selectedHookImageUrl,
-            prompt_text: hookPromptLive,
+      if (duration === "24s") {
+        setLastVideoTaskId(
+          typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `veo3-24s-${Date.now()}`
+        );
+        setVideoCreatedAt(new Date().toISOString());
+        setVideoCreatedAt(new Date().toISOString());
+        setPipeline24Step(1);
+        const combinedScript = buildCombinedStudioScriptFor24s({
+          studioScriptPrompt,
+          scripts,
+          canonicalScenes,
+          sceneCount,
+        });
+        setProgress(8);
+        setProgressMessage("1/6 — Découpage du script (IA)…");
+        const [p1, p2, p3] = await splitCampaignPromptIntoThreeVideoSegments(combinedScript);
+        const blobUrl = await generate24SecVideo(p1, p2, p3, {
+          signal: ctrl.signal,
+          onProgress: ({ step, message }) => {
+            const uiStep = step + 1;
+            setPipeline24Step(uiStep);
+            const pct = 12 + uiStep * 14;
+            setProgress(Math.min(97, pct));
+            setProgressMessage(`${uiStep}/6 — ${message}`);
           },
-        },
-        rendering: {
-          ...canonicalSpec.rendering,
-          // Owner final unique: Video.jsx
-          aspect_ratio: finalAspectRatio,
-          generation_mode: finalGenerationMode,
-          duration_seconds: durationSec,
-          audio: {
-            ...canonicalSpec.rendering.audio,
-            dialogue_enabled: dialogueEnabled,
-            music_style: audioEnabled ? musicStyle : "none",
+        });
+        setProgress(100);
+        setProgressMessage("6/6 — Vidéo prête");
+        setGenerationError("");
+        setAudioStatus(
+          "Vidéo 24 s assemblée localement ; post-traitement audio studio non appliqué."
+        );
+        setOutput(blobUrl);
+      } else {
+        setProgress(25);
+        setProgressMessage("Création de la tâche vidéo...");
+
+        const durationSec =
+          duration === "4s" ? 4 : duration === "6s" ? 6 : 8;
+
+        const selectedHookImageUrl = String(validatedHookImage?.url || "").trim();
+        const selectedHookPrompt = String(validatedHookImage?.prompt || "").trim();
+        const hookPromptLive =
+          String(hookVisual || "").trim() ||
+          selectedHookPrompt ||
+          canonicalSpec.creative.hook_visual.prompt_text ||
+          "";
+        const finalAspectRatio = selectedHookImageUrl
+          ? (derivedFormat === "16:9" ? "16:9" : "9:16")
+          : "9:16";
+        const finalGenerationMode = selectedHookImageUrl ? "image_to_video" : "text_to_video";
+        const baseScenes = getSafeScenes(canonicalSpec);
+        const dialogueForActiveScene =
+          dialogueEnabled && !dialogueAuto ? manualDialogueLine : "";
+        const mergedScenes = [0, 1, 2].map((i) => ({
+          ...baseScenes[i],
+          ...(i === sceneIndexForGeneration ? { dialogue_text: dialogueForActiveScene } : {}),
+        }));
+        const generationOwnedSpec = normalizeCampaignGenerationSpec({
+          ...canonicalSpec,
+          creative: {
+            ...canonicalSpec.creative,
+            scenes: mergedScenes,
+            hook_visual: {
+              ...canonicalSpec.creative.hook_visual,
+              // Owner final at generation time: Video.jsx
+              selected_image_url: selectedHookImageUrl,
+              prompt_text: hookPromptLive,
+            },
           },
-        },
-        provider_overrides: {
-          ...canonicalSpec.provider_overrides,
-          veo3: {
-            ...canonicalSpec.provider_overrides.veo3,
+          rendering: {
+            ...canonicalSpec.rendering,
+            // Owner final unique: Video.jsx
             aspect_ratio: finalAspectRatio,
             generation_mode: finalGenerationMode,
-            initial_image_url: selectedHookImageUrl || null,
-            prompt: "",
-            // Intentionally DO NOT set `model` here (owner: vertexVeoVideo.ts)
-            // Intentionally DO NOT set task_id here (owner: vertexVeoVideo.ts)
-          },
-        },
-      });
-
-      const { prompt: fullPrompt, dialogueText } = buildVeo3Prompt(
-        generationOwnedSpec,
-        sceneIndexForGeneration
-      );
-      console.log('[DEBUG dialogueText]', dialogueText);
-      console.log("[DEBUG fullPrompt]", fullPrompt);
-      const veoClientOpts = { getAccessToken: getSessionAccessTokenForVertexVeo };
-
-      const { taskId, model: veoModel } = await createVertexVeoVideoTask(
-        generationOwnedSpec,
-        fullPrompt,
-        session?.access_token,
-        veoClientOpts
-      );
-
-      const maxPoll = 90;
-      const pollModelCandidate = String(
-        veoModel || canonicalSpec.provider_overrides?.veo3?.status_poll?.model || ""
-      ).trim();
-      const { videoUrl } = await pollVertexVeoUntilComplete(taskId, session?.access_token, {
-        maxAttempts: maxPoll,
-        intervalMs: 4000,
-        signal: ctrl.signal,
-        // Guard: if model absent before first create return, fallback poll without explicit model.
-        model: pollModelCandidate || undefined,
-        getAccessToken: getSessionAccessTokenForVertexVeo,
-        onTick: (i, max) => {
-          // (i+1)/max : avance même au premier tick ; plafond 82 % tant que le poll n’a pas fini.
-          const p = 30 + Math.min(52, Math.floor(((i + 1) / max) * 52));
-          setProgress(p);
-          setProgressMessage(`Génération vidéo en cours… (${i + 1}/${max})`);
-        },
-      });
-
-      setProgress(85);
-      setProgressMessage("Vidéo générée");
-
-      let finalVideoUrl = videoUrl;
-      if (audioEnabled && session?.access_token) {
-        setProgress(90);
-        setProgressMessage("Finalisation de la piste sonore…");
-        try {
-          const voiceText = dialogueAuto
-            ? scriptForGeneration.trim()
-            : dialogueText ?? (manualDialogueLine || scriptForGeneration.trim());
-          const postToken =
-            (await getSessionAccessTokenForVertexVeo()) || session.access_token;
-          console.log('[DEBUG voiceText]', voiceText);
-          const postData = await callVideoPostprocessApi(
-            {
-              video_url: videoUrl,
-              voice_text: dialogueEnabled ? voiceText : "",
-              music_style: musicStyle,
-              enable_tts: dialogueEnabled,
-              enable_music: true,
-              model: "veo3",
+            duration_seconds: durationSec,
+            audio: {
+              ...canonicalSpec.rendering.audio,
+              dialogue_enabled: dialogueEnabled,
+              music_style: audioEnabled ? musicStyle : "none",
             },
-            postToken
-          );
-          const processedUrl = String(postData?.video_url || "").trim();
-          if (processedUrl) finalVideoUrl = processedUrl;
-          setAudioStatus(audioPostprocessStatusLabel(postData));
-        } catch (postErr) {
-          console.warn("Post-traitement audio non appliqué:", postErr);
-          setAudioStatus(
-            "Échec de l’appel au service de post-traitement ; vérifie la session et la console réseau."
-          );
-        }
-      }
+          },
+          provider_overrides: {
+            ...canonicalSpec.provider_overrides,
+            veo3: {
+              ...canonicalSpec.provider_overrides.veo3,
+              aspect_ratio: finalAspectRatio,
+              generation_mode: finalGenerationMode,
+              initial_image_url: selectedHookImageUrl || null,
+              prompt: "",
+              // Intentionally DO NOT set `model` here (owner: vertexVeoVideo.ts)
+              // Intentionally DO NOT set task_id here (owner: vertexVeoVideo.ts)
+            },
+          },
+        });
 
-      setProgress(100);
-      setProgressMessage("Vidéo prête");
-      setGenerationError("");
-      setOutput(finalVideoUrl);
+        const { prompt: fullPrompt, dialogueText } = buildVeo3Prompt(
+          generationOwnedSpec,
+          sceneIndexForGeneration
+        );
+        console.log('[DEBUG dialogueText]', dialogueText);
+        console.log("[DEBUG fullPrompt]", fullPrompt);
+        const veoClientOpts = { getAccessToken: getSessionAccessTokenForVertexVeo };
+
+        const { taskId, model: veoModel } = await createVertexVeoVideoTask(
+          generationOwnedSpec,
+          fullPrompt,
+          session?.access_token,
+          veoClientOpts
+        );
+        setLastVideoTaskId(String(taskId || "").trim() || null);
+        setVideoCreatedAt(new Date().toISOString());
+        setVideoCreatedAt(new Date().toISOString());
+
+        const maxPoll = 90;
+        const pollModelCandidate = String(
+          veoModel || canonicalSpec.provider_overrides?.veo3?.status_poll?.model || ""
+        ).trim();
+        const { videoUrl } = await pollVertexVeoUntilComplete(taskId, session?.access_token, {
+          maxAttempts: maxPoll,
+          intervalMs: 4000,
+          signal: ctrl.signal,
+          // Guard: if model absent before first create return, fallback poll without explicit model.
+          model: pollModelCandidate || undefined,
+          getAccessToken: getSessionAccessTokenForVertexVeo,
+          onTick: (i, max) => {
+            // (i+1)/max : avance même au premier tick ; plafond 82 % tant que le poll n’a pas fini.
+            const p = 30 + Math.min(52, Math.floor(((i + 1) / max) * 52));
+            setProgress(p);
+            setProgressMessage(`Génération vidéo en cours… (${i + 1}/${max})`);
+          },
+        });
+
+        setProgress(85);
+        setProgressMessage("Vidéo générée");
+
+        let finalVideoUrl = videoUrl;
+        if (audioEnabled && session?.access_token) {
+          setProgress(90);
+          setProgressMessage("Finalisation de la piste sonore…");
+          try {
+            const voiceText = dialogueAuto
+              ? scriptForGeneration.trim()
+              : dialogueText ?? (manualDialogueLine || scriptForGeneration.trim());
+            const postToken =
+              (await getSessionAccessTokenForVertexVeo()) || session.access_token;
+            console.log('[DEBUG voiceText]', voiceText);
+            const postData = await callVideoPostprocessApi(
+              {
+                video_url: videoUrl,
+                voice_text: dialogueEnabled ? voiceText : "",
+                music_style: musicStyle,
+                enable_tts: dialogueEnabled,
+                enable_music: true,
+                model: "veo3",
+              },
+              postToken
+            );
+            const processedUrl = String(postData?.video_url || "").trim();
+            if (processedUrl) finalVideoUrl = processedUrl;
+            setAudioStatus(audioPostprocessStatusLabel(postData));
+          } catch (postErr) {
+            console.warn("Post-traitement audio non appliqué:", postErr);
+            setAudioStatus(
+              "Échec de l’appel au service de post-traitement ; vérifie la session et la console réseau."
+            );
+          }
+        }
+
+        setProgress(100);
+        setProgressMessage("Vidéo prête");
+        setGenerationError("");
+        setOutput(finalVideoUrl);
+      }
 
     } catch (e) {
       if (e.name === "AbortError") {
@@ -1324,6 +1521,7 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
     } finally {
       setLoading(false);
       abortRef.current = null;
+      setPipeline24Step(null);
       setTimeout(() => {
         setProgress(0);
         setProgressMessage("");
@@ -1392,11 +1590,24 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
     setDialoguePerScene(false);
     setDialogueByScene(["", "", ""]);
     setCopied(false);
+    setLastVideoTaskId(null);
+    setVideoCreatedAt(null);
+    setNeedsReloadFromCache(false);
   };
 
   const prepareAnotherVideoVersion = () => {
+    if (output && isBlobUrl(output)) {
+      try {
+        URL.revokeObjectURL(output);
+      } catch {
+        /* ignore */
+      }
+    }
     setOutput("");
     setGenerationError("");
+    setLastVideoTaskId(null);
+    setVideoCreatedAt(null);
+    setNeedsReloadFromCache(false);
     setCopied(false);
   };
 
@@ -1431,6 +1642,13 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
 
   const downloadVideoFileExport = async () => {
     const url = String(output || "").trim();
+    if (isBlobUrl(url)) {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `viralworks-video-24s-${new Date().toISOString().slice(0, 10)}.mp4`;
+      a.click();
+      return;
+    }
     if (!isHttpUrl(url)) {
       alert("Aucune vidéo finale téléchargeable pour le moment.");
       return;
@@ -1439,7 +1657,23 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
   };
 
   const handleValidate = async () => {
-    if (!output?.trim() || !isHttpUrl(output)) return;
+    if (!output?.trim() || !isVideoPlayerUrl(output)) return;
+    let outputToPersist = String(output).trim();
+    if (isBlobUrl(outputToPersist)) {
+      const blobRef = outputToPersist;
+      try {
+        outputToPersist = await uploadBlobMp4ToGeneratedImagesBucket(outputToPersist);
+        setOutput(outputToPersist);
+        URL.revokeObjectURL(blobRef);
+      } catch (err) {
+        alert(
+          err instanceof Error
+            ? err.message
+            : "Impossible de publier la vidéo. Vérifie ta session et le bucket de stockage."
+        );
+        return;
+      }
+    }
     const hookImageUrl = String(validatedHookImage?.url || "").trim();
     const hookImagePrompt = String(validatedHookImage?.prompt || "").trim();
     
@@ -1475,7 +1709,7 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
           id: crypto.randomUUID?.() || String(Date.now()),
           kind: "video",
           input: recapInputForHistory(),
-          output: output,
+          output: outputToPersist,
           model: "veo3",
           format: derivedFormat,
           duration: duration,
@@ -1492,7 +1726,7 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
           await saveHistorySupabase({
             kind: "video",
             input: recapInputForHistory(),
-            output: output,
+            output: outputToPersist,
             model: "veo3",
             metadata: {
               format: derivedFormat,
@@ -1531,6 +1765,13 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
 
   const handleDelete = () => {
     if (confirm("Supprimer cette vidéo ? Elle ne sera pas enregistrée.")) {
+      if (output && isBlobUrl(output)) {
+        try {
+          URL.revokeObjectURL(output);
+        } catch {
+          /* ignore */
+        }
+      }
       setOutput("");
       setGenerationError("");
       setDuration("8s");
@@ -1541,11 +1782,20 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
       setDialoguePerScene(false);
       setDialogueByScene(["", "", ""]);
       setCopied(false);
+      setLastVideoTaskId(null);
+      setVideoCreatedAt(null);
+      setNeedsReloadFromCache(false);
     }
   };
 
   const copy = async () => {
-    if (!output || !isHttpUrl(output)) return;
+    if (!output || !isVideoPlayerUrl(output)) return;
+    if (isBlobUrl(output)) {
+      alert(
+        "L’aperçu local (blob) ne fournit pas un lien partageable. Valide et enregistre la vidéo pour obtenir une URL HTTPS."
+      );
+      return;
+    }
     try {
       await navigator.clipboard.writeText(output);
       setCopied(true);
@@ -1787,10 +2037,16 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
                   >
                     {DURATION_OPTIONS.veo3.map((opt) => (
                       <option key={opt} value={opt} className="bg-[#0C1116]">
-                        {opt}
+                        {opt === "24s" ? "24 s (3 × 8 s enchaînés)" : opt}
                       </option>
                     ))}
                   </select>
+                  {duration === "24s" ? (
+                    <p className="text-[11px] text-cyan-200/85 leading-relaxed mt-2">
+                      Trois segments Vertex 8 s, script découpé par l’IA (Edge), dernière frame → segment suivant. Pas
+                      de post-traitement audio studio sur cette durée.
+                    </p>
+                  ) : null}
                 </div>
                 <div className="rounded-xl card-vws px-3 py-2.5 text-xs text-gray-400 leading-relaxed">
                   <span className="font-medium text-gray-300">Format</span> (lecture seule) :{" "}
@@ -1991,7 +2247,47 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
               style={{ width: `${progress}%` }}
             />
           </div>
-          <p className="text-xs text-gray-400">{progressMessage}</p>
+          {duration === "24s" && pipeline24Step != null ? (
+            <ol
+              className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-2.5 list-none"
+              aria-label="Étapes du pipeline 24 secondes"
+            >
+              {PIPELINE_24_STEP_LABELS.map((label, idx) => {
+                const stepNum = idx + 1;
+                const active = pipeline24Step === stepNum;
+                const done = pipeline24Step > stepNum;
+                return (
+                  <li
+                    key={stepNum}
+                    className={`flex gap-2 items-start rounded-lg border px-2.5 py-2 text-[11px] leading-snug transition-colors ${
+                      active
+                        ? "border-emerald-500/45 bg-emerald-500/[0.08]"
+                        : done
+                          ? "border-white/12 bg-white/[0.04]"
+                          : "border-white/[0.06] opacity-55"
+                    }`}
+                  >
+                    <span
+                      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${
+                        done
+                          ? "bg-emerald-500/35 text-emerald-100"
+                          : active
+                            ? "bg-emerald-500 text-[#0a0f14]"
+                            : "bg-white/10 text-gray-500"
+                      }`}
+                      aria-hidden
+                    >
+                      {done ? <Check className="h-3.5 w-3.5" strokeWidth={2.5} /> : stepNum}
+                    </span>
+                    <span className={active ? "text-gray-200" : "text-gray-500"}>{label}</span>
+                  </li>
+                );
+              })}
+            </ol>
+          ) : null}
+          <p className="text-xs text-gray-400 mt-3" role="status" aria-live="polite">
+            {progressMessage}
+          </p>
         </div>
       )}
 
@@ -2011,12 +2307,23 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
               >
                 Fermer
               </button>
+              {needsReloadFromCache ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void restoreVideoFromCachedId();
+                  }}
+                  className="text-xs font-medium text-cyan-300 hover:text-cyan-200 transition-colors"
+                >
+                  Recharger la vidéo depuis la session précédente
+                </button>
+              ) : null}
             </div>
           </div>
         </div>
       ) : null}
 
-      {output && !loading && isHttpUrl(output) ? (
+      {output && !loading && isVideoPlayerUrl(output) ? (
         <>
           <div className="studio-panel p-5 sm:p-6">
             <div className="flex items-center justify-between mb-3">
@@ -2050,13 +2357,17 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
                 key={output}
                 src={output}
                 controls
+                controlsList="nodownload"
+                onContextMenu={(e) => e.preventDefault()}
                 playsInline
                 className={`w-full rounded-lg border border-white/10 bg-black/70 ${
                   derivedFormat === "9:16" ? "max-h-[min(85vh,720px)] mx-auto aspect-[9/16]" : "aspect-video"
                 }`}
               />
               <p className="mt-3 text-[11px] text-gray-500 break-all">
-                URL signée (copie via le bouton) — lien temporaire côté stockage.
+                {isBlobUrl(output)
+                  ? "Aperçu local dans le navigateur. « Valider et enregistrer » publie une URL HTTPS et enregistre l’historique."
+                  : "URL signée (copie via le bouton) — lien temporaire côté stockage."}
               </p>
             </div>
             {audioStatus ? (
@@ -2065,22 +2376,6 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
           </div>
 
           <div className="flex flex-col sm:flex-row flex-wrap gap-3 mt-4">
-            <button
-              type="button"
-              onClick={downloadPromptVideoExport}
-              className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-all btn-vws-primary"
-            >
-              <Download className="w-4 h-4 shrink-0" />
-              {sceneCount > 1 ? "Télécharger les prompts vidéo" : "Télécharger le prompt vidéo"}
-            </button>
-            <button
-              type="button"
-              onClick={downloadHookImageExport}
-              className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-all btn-vws-secondary text-gray-200"
-            >
-              <Download className="w-4 h-4 shrink-0" />
-              Télécharger l’image
-            </button>
             <button
               type="button"
               onClick={downloadVideoFileExport}
@@ -2267,10 +2562,16 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
                       >
                         {DURATION_OPTIONS.veo3.map((opt) => (
                           <option key={opt} value={opt} className="bg-[#0C1116]">
-                            {opt}
+                            {opt === "24s" ? "24 s (3 × 8 s enchaînés)" : opt}
                           </option>
                         ))}
                       </select>
+                      {duration === "24s" ? (
+                        <p className="text-[11px] text-cyan-200/85 leading-relaxed mt-2">
+                          Trois segments Vertex 8 s, script découpé par l’IA (Edge), dernière frame → segment
+                          suivant. Pas de post-traitement audio studio sur cette durée.
+                        </p>
+                      ) : null}
                     </div>
                     <div className="rounded-xl card-vws px-3 py-2.5 text-xs text-gray-400 leading-relaxed">
                       <span className="font-medium text-gray-300">Format</span> (lecture seule) :{" "}
@@ -2371,7 +2672,7 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
             </div>
 
             {loading && (
-              <div className="studio-panel p-4">
+              <div className="studio-panel p-4 space-y-3">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs text-gray-300">Génération</span>
                   <span className="text-emerald-400 text-sm">{progress}%</span>
@@ -2382,19 +2683,73 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
                     style={{ width: `${progress}%`, backgroundColor: "#00d4a0" }}
                   />
                 </div>
+                {duration === "24s" && pipeline24Step != null ? (
+                  <ol
+                    className="grid grid-cols-2 gap-2 list-none"
+                    aria-label="Étapes du pipeline 24 secondes"
+                  >
+                    {PIPELINE_24_STEP_LABELS.map((label, idx) => {
+                      const stepNum = idx + 1;
+                      const active = pipeline24Step === stepNum;
+                      const done = pipeline24Step > stepNum;
+                      return (
+                        <li
+                          key={stepNum}
+                          className={`flex gap-2 items-start rounded-lg border px-2 py-1.5 text-[10px] leading-snug ${
+                            active
+                              ? "border-emerald-500/45 bg-emerald-500/[0.08]"
+                              : done
+                                ? "border-white/12 bg-white/[0.04]"
+                                : "border-white/[0.06] opacity-55"
+                          }`}
+                        >
+                          <span
+                            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-semibold ${
+                              done
+                                ? "bg-emerald-500/35 text-emerald-100"
+                                : active
+                                  ? "bg-emerald-500 text-[#0a0f14]"
+                                  : "bg-white/10 text-gray-500"
+                            }`}
+                            aria-hidden
+                          >
+                            {done ? <Check className="h-3 w-3" strokeWidth={2.5} /> : stepNum}
+                          </span>
+                          <span className={active ? "text-gray-200" : "text-gray-500"}>{label}</span>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                ) : null}
+                <p className="text-[11px] text-gray-400" role="status" aria-live="polite">
+                  {progressMessage}
+                </p>
               </div>
             )}
             {generationError ? (
               <div className="rounded-xl border border-red-500/35 bg-red-950/20 p-3 text-xs text-red-200">
-                {generationError}
+                <p>{generationError}</p>
+                {needsReloadFromCache ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void restoreVideoFromCachedId();
+                    }}
+                    className="mt-2 text-[11px] font-medium text-cyan-300 hover:text-cyan-200 transition-colors"
+                  >
+                    Recharger la vidéo
+                  </button>
+                ) : null}
               </div>
             ) : null}
-            {output && !loading && isHttpUrl(output) ? (
+            {output && !loading && isVideoPlayerUrl(output) ? (
               <div className="studio-panel p-4 space-y-3">
                 <video
                   key={output}
                   src={output}
                   controls
+                  controlsList="nodownload"
+                  onContextMenu={(e) => e.preventDefault()}
                   playsInline
                   className={`w-full rounded-lg border border-white/10 bg-black/70 ${
                     derivedFormat === "9:16" ? "max-h-[70vh] mx-auto aspect-[9/16]" : "aspect-video"
@@ -2482,7 +2837,13 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
   );
 });
 
-function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = true }) {
+function HailuoVideoForm({
+  onCreditsUpdate,
+  studioImageStep,
+  dialogueEnabled = true,
+  onWorkflowVideoStateChange,
+  initialWorkflowVideoState,
+}) {
   const { session } = useAuth();
   const navigate = useNavigate();
   const [scripts, setScripts] = useState(initialVeo3Scripts);
@@ -2496,6 +2857,10 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
   const [musicStyle, setMusicStyle] = useState("cinematic");
   const [audioStatus, setAudioStatus] = useState("");
   const [loading, setLoading] = useState(false);
+  const [generationError, setGenerationError] = useState("");
+  const [lastVideoTaskId, setLastVideoTaskId] = useState(null);
+  const [videoCreatedAt, setVideoCreatedAt] = useState(null);
+  const [needsReloadFromCache, setNeedsReloadFromCache] = useState(false);
   const [copied, setCopied] = useState(false);
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState("");
@@ -2514,6 +2879,18 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
   }, [scriptForGeneration, session]);
   const abortRef = useRef(null);
   const outputRef = useRef(null);
+
+  useEffect(() => {
+    if (typeof onWorkflowVideoStateChange !== "function") return;
+    const status = loading ? "generating" : generationError ? "error" : output ? "done" : "idle";
+    onWorkflowVideoStateChange({
+      status,
+      videoId: lastVideoTaskId || null,
+      lastError: generationError || "",
+      provider: "hailuo",
+      createdAt: videoCreatedAt || null,
+    });
+  }, [onWorkflowVideoStateChange, loading, generationError, output, lastVideoTaskId, videoCreatedAt]);
 
   useEffect(() => {
     if (session) {
@@ -2695,6 +3072,10 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
     setLoading(true);
     setShowQuotaNotice(false);
     setOutput("");
+    setGenerationError("");
+    setLastVideoTaskId(null);
+    setVideoCreatedAt(null);
+    setNeedsReloadFromCache(false);
     setCopied(false);
     setProgress(0);
     setProgressMessage("Initialisation...");
@@ -2737,6 +3118,8 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
       if (!taskId) {
         throw new Error("Hailuo n'a pas retourné de task_id.");
       }
+      setLastVideoTaskId(taskId);
+      setVideoCreatedAt(new Date().toISOString());
 
       let videoUrl = "";
       const maxPoll = 45;
@@ -2806,6 +3189,7 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
 
       setProgress(100);
       setProgressMessage("Vidéo prête");
+      setGenerationError("");
       setOutput(finalVideoUrl);
 
     } catch (e) {
@@ -2813,6 +3197,7 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
         return; // Requête annulée, ne rien faire
       }
       const errorMessage = e?.message || "Erreur lors de la génération";
+      setGenerationError(errorMessage);
       setOutput("⚠️ Erreur : " + errorMessage);
       console.error("Erreur génération vidéo Hailuo:", e);
       if (session) {
@@ -2857,11 +3242,19 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
     setMusicStyle("cinematic");
     setAudioStatus("");
     setCopied(false);
+    setGenerationError("");
+    setLastVideoTaskId(null);
+    setVideoCreatedAt(null);
+    setNeedsReloadFromCache(false);
   };
 
   const prepareAnotherVideoVersion = () => {
     setOutput("");
     setCopied(false);
+    setGenerationError("");
+    setLastVideoTaskId(null);
+    setVideoCreatedAt(null);
+    setNeedsReloadFromCache(false);
   };
 
   const hailuoMultiPrompt = scripts.filter((s) => String(s || "").trim()).length > 1;
@@ -3322,6 +3715,8 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
               <video
                 src={output}
                 controls
+                controlsList="nodownload"
+                onContextMenu={(e) => e.preventDefault()}
                 className="w-full rounded-lg border border-white/10 bg-black/70"
               />
               <pre
@@ -3337,22 +3732,6 @@ function HailuoVideoForm({ onCreditsUpdate, studioImageStep, dialogueEnabled = t
           </div>
 
           <div className="flex flex-col sm:flex-row flex-wrap gap-3 mt-4">
-            <button
-              type="button"
-              onClick={downloadPromptVideoExportHailuo}
-              className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-all btn-vws-primary"
-            >
-              <Download className="w-4 h-4 shrink-0" />
-              {hailuoMultiPrompt ? "Télécharger les prompts vidéo" : "Télécharger le prompt vidéo"}
-            </button>
-            <button
-              type="button"
-              onClick={downloadHookImageExportHailuo}
-              className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-all btn-vws-secondary text-gray-200"
-            >
-              <Download className="w-4 h-4 shrink-0" />
-              Télécharger l’image
-            </button>
             <button
               type="button"
               onClick={downloadVideoFileExportHailuo}

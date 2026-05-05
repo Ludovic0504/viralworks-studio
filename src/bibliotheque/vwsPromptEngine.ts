@@ -1189,10 +1189,13 @@ export function buildHookImageApiPrompt(
     jobTypeLabel?: string;
     lockedVideoScriptScene0?: string;
     cameraAerialAngle?: "top_down" | "angled" | null;
+    cameraViewAngle?: "subjective_portee" | "exterieure_filmee" | null;
     globalIntent?: GlobalIntentProfile | null;
     selfieMode?: boolean;
   }
 ): string {
+  const antiDistortionBlock =
+    "Contraintes absolues : aucune distorsion anatomique sur les humains, les membres et le corps doivent respecter des proportions et positions physiquement possibles. Si une personne est sous ou près d'un véhicule/objet, sa posture doit être réaliste et cohérente avec l'espace disponible (allongée sur le dos, accroupie, penchée selon le contexte). Aucun objet ne doit avoir une taille ou une position physiquement impossible par rapport aux autres éléments de la scène. Pas de membres supplémentaires, pas de doigts mal formés, pas de visage déformé.";
   const idea = clean(userIdea);
   if (!idea) return idea;
   const lower = idea.toLowerCase();
@@ -1223,6 +1226,13 @@ export function buildHookImageApiPrompt(
     }
     return "a clearly visible open space prepared for the next transformation step";
   };
+
+  const cameraViewAngleDirective =
+    options.cameraViewAngle === "subjective_portee"
+      ? "Point de vue caméra portée : on voit les mains et les outils du professionnel, pas son visage ni son corps entier."
+      : options.cameraViewAngle === "exterieure_filmee"
+        ? "La caméra filme le professionnel de l'extérieur, son corps entier ou en plan rapproché est visible dans le cadre."
+        : "";
 
   const hasProgressiveTransformationSignal =
     /\b(remplit|se remplit|progressivement|timelapse|construction|construit|rénov|renov|assembl|apparaît|apparaissent|pose|se pose|avant|après|vide|nu)\b/.test(
@@ -1258,6 +1268,18 @@ export function buildHookImageApiPrompt(
     assembled = `${baseIdea}\n\n${beforeOnly}`;
   }
 
+  if (cameraViewAngleDirective) {
+    const lieuMarker = /(^|\n)(LIEU DE LA SCÈNE\s*:[^\n]*)(\n|$)/i;
+    if (lieuMarker.test(assembled)) {
+      assembled = assembled.replace(
+        lieuMarker,
+        (_m, prefix, marker, suffix) => `${prefix}${marker}\n${cameraViewAngleDirective}${suffix}`
+      );
+    } else {
+      assembled = `${cameraViewAngleDirective}\n\n${assembled}`;
+    }
+  }
+
   if (options.lockedVideoScriptScene0?.trim()) {
     assembled += `\n\n${freezeVideoScriptForHookStill(options.lockedVideoScriptScene0)}`;
   }
@@ -1277,18 +1299,19 @@ export function buildHookImageApiPrompt(
   assembled +=
     "\n\nImage integrity constraint: realistic human anatomy and object geometry only. No deformed fingers/hands/faces, no broken hat or clothing edges, no warped pool lines/margins, no duplicated or missing limbs, no floating/merged objects, no melted textures, no broken seams, and no visual glitches. Keep all objects, clothes, character details, and environment structures clean and physically coherent.";
 
+  let withViewpoint = assembled;
   if (options.cameraAerialAngle === "top_down") {
-    assembled +=
+    withViewpoint +=
       "\n\nCamera viewpoint constraint: PURE TOP-DOWN overhead view, camera perpendicular to the ground, no perspective, no visible sides/facades.";
-    // Respect explicit user choice: do not rewrite top-down into oblique.
-    return assembled;
-  }
-  if (options.cameraAerialAngle === "angled") {
-    assembled +=
+  } else if (options.cameraAerialAngle === "angled") {
+    withViewpoint +=
       "\n\nCamera viewpoint constraint: HIGH-ANGLE with an oblique tilt, visible perspective and depth (sides/facades readable), avoid any orthographic/top-down-flat look.";
+    withViewpoint = applyViewpointSafetyGate(withViewpoint, options.jobTypeLabel || "");
+  } else {
+    withViewpoint = applyViewpointSafetyGate(withViewpoint, options.jobTypeLabel || "");
   }
 
-  return applyViewpointSafetyGate(assembled, options.jobTypeLabel || "");
+  return `${withViewpoint}\n\n${antiDistortionBlock}`;
 }
 
 export async function clarifyIdea(input: ClarifyIdeaInput): Promise<ClarifyIdeaResult> {

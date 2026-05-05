@@ -92,6 +92,133 @@ function buildMinimalIntentFallback({ idea, selfieMode }) {
   };
 }
 
+const LIEU_TOURNAGE_OPTIONS = [
+  {
+    value: "chez_client",
+    label: "Chez un particulier (domicile, jardin, chantier)",
+    sentence: "La scène se déroule chez un client particulier (domicile, jardin ou chantier).",
+  },
+  {
+    value: "etablissement",
+    label: "Dans l'établissement du professionnel",
+    sentence: "La scène se déroule dans l'établissement du professionnel (atelier, boutique, local ou cuisine).",
+  },
+  {
+    value: "neutre",
+    label: "Lieu neutre ou extérieur",
+    sentence: "La scène se déroule dans un lieu neutre ou extérieur.",
+  },
+];
+
+const PROFESSION_TO_LIEU_TOURNAGE = {
+  "Plombier": "chez_client",
+  "Électricien": "chez_client",
+  "Chauffagiste / climatisation": "chez_client",
+  "Menuisier": "chez_client",
+  "Maçon": "chez_client",
+  "Restaurateur": "etablissement",
+  "Coiffeur / barbier": "etablissement",
+  "Garagiste / mécanicien": "etablissement",
+  "Magasin de meubles / décoration": "etablissement",
+  "Coach sportif / salle de sport": "etablissement",
+  "Agent immobilier": "neutre",
+  "Pisciniste": "neutre",
+  "Paysagiste / jardinier": "neutre",
+  "Couvreur": "neutre",
+  "Architecte / architecte d'intérieur": "neutre",
+};
+
+function getLieuOption(value) {
+  return LIEU_TOURNAGE_OPTIONS.find((opt) => opt.value === value) || LIEU_TOURNAGE_OPTIONS[2];
+}
+
+function getContradictionDetectedLieuValue(rawLieu) {
+  const txt = String(rawLieu || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (!txt) return null;
+  if (/(client|particulier|domicile|maison|appartement|jardin|chantier|chez lui|chez elle)/.test(txt)) {
+    return "chez_client";
+  }
+  if (/(etablissement|atelier|boutique|local|cuisine|salon|restaurant|garage|magasin|cabinet|salle)/.test(txt)) {
+    return "etablissement";
+  }
+  if (/(neutre|exterieur|extérieur|rue|parc|place|ville|dehors|plein air)/.test(txt)) {
+    return "neutre";
+  }
+  return null;
+}
+
+function extractJsonObjectFromText(raw) {
+  const text = String(raw || "").trim();
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      try {
+        return JSON.parse(text.slice(start, end + 1));
+      } catch {
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
+function mapGateInferredValueToOptionId(gate, inferredValue) {
+  if (!gate?.options?.length) return null;
+  const normalized = String(inferredValue || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+  if (!normalized) return null;
+  const byIdOrLabel = gate.options.find((opt) => {
+    const id = String(opt?.id || "").toLowerCase();
+    const label = String(opt?.label || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+    return normalized === id || label.includes(normalized);
+  });
+  if (byIdOrLabel?.id) return byIdOrLabel.id;
+
+  if (gate.activePhase === "causal_agent") {
+    if (/(visible|personne|personnes|humain|humains|machine|machines|outil|outils|artisan|ouvrier)/.test(normalized)) {
+      return "vws_gate_causal_visible";
+    }
+    if (/(automatique|sans intervention|sans personne|sans humain|sans machine|autonome|seul)/.test(normalized)) {
+      return "vws_gate_causal_automatic";
+    }
+  }
+  if (gate.activePhase === "camera_aerial_angle") {
+    if (/(dessus|top down|overhead|vertical|sans angle|perpendiculaire)/.test(normalized)) {
+      return "vws_gate_camera_top_down";
+    }
+    if (/(angle|oblique|perspective|profondeur|hauteur)/.test(normalized)) {
+      return "vws_gate_camera_angled";
+    }
+  }
+  if (gate.activePhase === "initial_t0") {
+    if (/(avant|intact|rien|vide|depart propre|from scratch)/.test(normalized)) {
+      return "vws_gate_t0_pristine";
+    }
+    if (/(en cours|partiel|partiellement|deja|milieu|chantier ouvert)/.test(normalized)) {
+      return "vws_gate_t0_in_progress";
+    }
+  }
+  if (gate.activePhase === "mode_agent") {
+    if (/(humain|artisan|personne|visible|machine visible)/.test(normalized)) {
+      return "vws_gate_mode_human";
+    }
+    if (/(autonome|automatique|sans personne|sans humain|seul)/.test(normalized)) {
+      return "vws_gate_mode_autonomous";
+    }
+  }
+  return null;
+}
+
 export default function CampagneVWS({
   onBrainReady,
   campaignData,
@@ -129,6 +256,13 @@ export default function CampagneVWS({
   }, []);
 
   const [profession, setProfessionState] = useState(campaignData?.profession ?? "");
+  const [lieuTournage, setLieuTournageState] = useState(() =>
+    campaignData?.lieuTournage === "chez_client" ||
+    campaignData?.lieuTournage === "etablissement" ||
+    campaignData?.lieuTournage === "neutre"
+      ? campaignData.lieuTournage
+      : "neutre"
+  );
   const [idea, setIdeaState] = useState(campaignData?.idea ?? "");
   const [styleDetails, setStyleDetails] = useState(campaignData?.styleDetails ?? "");
   const [tempo, setTempo] = useState(() => normalizeTempo(campaignData?.tempo ?? "real_time"));
@@ -145,6 +279,9 @@ export default function CampagneVWS({
   );
   const [cameraAerialAngle, setCameraAerialAngle] = useState(
     campaignData?.cameraAerialAngle ?? null
+  );
+  const [cameraViewAngle, setCameraViewAngle] = useState(
+    campaignData?.cameraViewAngle ?? null
   );
   const [initialStateSelection, setInitialStateSelection] = useState(
     campaignData?.initialStateSelection ?? null
@@ -163,6 +300,32 @@ export default function CampagneVWS({
   const [showSystemVideo, setShowSystemVideo] = useState(false);
   const [showFormatModal, setShowFormatModal] = useState(false);
   const [videoFormatId, setVideoFormatId] = useState(campaignData?.videoFormatId ?? null);
+  const [locationConflict, setLocationConflict] = useState(null);
+
+  /** Parent (spec / brouillon) peut hydrater après le 1er rendu — évite métier vide alors que la campagne en a un. */
+  useEffect(() => {
+    const p = String(campaignData?.profession ?? "").trim();
+    if (!p) return;
+    setProfessionState((prev) => (prev.trim() ? prev : p));
+  }, [campaignData?.profession]);
+
+  useEffect(() => {
+    const fid = campaignData?.videoFormatId ?? null;
+    if (!fid) return;
+    setVideoFormatId((prev) => (prev != null && prev !== "" ? prev : fid));
+  }, [campaignData?.videoFormatId]);
+
+  useEffect(() => {
+    const incoming = campaignData?.lieuTournage;
+    if (incoming !== "chez_client" && incoming !== "etablissement" && incoming !== "neutre") return;
+    setLieuTournageState((prev) => (prev === incoming ? prev : incoming));
+  }, [campaignData?.lieuTournage]);
+
+  useEffect(() => {
+    const incoming = campaignData?.cameraViewAngle;
+    if (incoming !== "subjective_portee" && incoming !== "exterieure_filmee" && incoming !== null) return;
+    setCameraViewAngle((prev) => (prev === incoming ? prev : incoming));
+  }, [campaignData?.cameraViewAngle]);
 
   const ideaTextareaRef = useRef(null);
   const adjustIdeaTextareaHeightMobile = () => {
@@ -194,6 +357,7 @@ export default function CampagneVWS({
 
   const buildCampaignSnapshot = (overrides = {}) => ({
     profession,
+    lieuTournage,
     idea,
     styleDetails,
     tempo,
@@ -207,6 +371,7 @@ export default function CampagneVWS({
     tempoCompressionDecision,
     causalAgentSelection,
     cameraAerialAngle,
+    cameraViewAngle,
     initialStateSelection,
     gateResult,
     clarifyAnswer,
@@ -227,7 +392,15 @@ export default function CampagneVWS({
 
   const setProfession = (v) => {
     setProfessionState(v);
-    onCampaignChange?.(buildCampaignSnapshot({ profession: v }));
+    const prefillLieu = PROFESSION_TO_LIEU_TOURNAGE[v];
+    const nextLieu = prefillLieu || lieuTournage;
+    if (prefillLieu) setLieuTournageState(prefillLieu);
+    onCampaignChange?.(buildCampaignSnapshot({ profession: v, ...(prefillLieu ? { lieuTournage: nextLieu } : {}) }));
+  };
+  const setLieuTournage = (v) => {
+    const next = v === "chez_client" || v === "etablissement" || v === "neutre" ? v : "neutre";
+    setLieuTournageState(next);
+    onCampaignChange?.(buildCampaignSnapshot({ lieuTournage: next }));
   };
   const setIdea = (v) => {
     setIdeaState(v);
@@ -258,6 +431,7 @@ export default function CampagneVWS({
   };
   const syncState = (updates) => {
     if (updates.profession !== undefined) setProfessionState(updates.profession);
+    if (updates.lieuTournage !== undefined) setLieuTournageState(updates.lieuTournage);
     if (updates.idea !== undefined) setIdeaState(updates.idea);
     if (updates.styleDetails !== undefined) setStyleDetails(updates.styleDetails);
     if (updates.tempo !== undefined) setTempo(normalizeTempo(updates.tempo));
@@ -268,6 +442,7 @@ export default function CampagneVWS({
     if (updates.sequenceType !== undefined) setSequenceType(updates.sequenceType);
     if (updates.causalAgentSelection !== undefined) setCausalAgentSelection(updates.causalAgentSelection);
     if (updates.cameraAerialAngle !== undefined) setCameraAerialAngle(updates.cameraAerialAngle);
+    if (updates.cameraViewAngle !== undefined) setCameraViewAngle(updates.cameraViewAngle);
     if (updates.initialStateSelection !== undefined) setInitialStateSelection(updates.initialStateSelection);
     if (updates.gateResult !== undefined) setGateResult(updates.gateResult);
     if (updates.clarifyAnswer !== undefined) setClarifyAnswer(updates.clarifyAnswer);
@@ -275,6 +450,7 @@ export default function CampagneVWS({
     onCampaignChange?.(
       buildCampaignSnapshot({
         profession: updates.profession ?? profession,
+        lieuTournage: updates.lieuTournage ?? lieuTournage,
         idea: updates.idea ?? idea,
         styleDetails: updates.styleDetails ?? styleDetails,
         tempo: normalizeTempo(updates.tempo ?? tempo),
@@ -291,6 +467,8 @@ export default function CampagneVWS({
           updates.causalAgentSelection ?? causalAgentSelection,
         cameraAerialAngle:
           updates.cameraAerialAngle ?? cameraAerialAngle,
+        cameraViewAngle:
+          updates.cameraViewAngle ?? cameraViewAngle,
         initialStateSelection:
           updates.initialStateSelection ?? initialStateSelection,
         gateResult: updates.gateResult ?? gateResult,
@@ -333,139 +511,58 @@ export default function CampagneVWS({
   };
 
   const handleInspire = async () => {
-    if (!String(profession ?? "").trim()) {
-      alert(
+    const effectiveProfession =
+      String(profession ?? "").trim() ||
+      String(campaignData?.profession ?? "").trim();
+    const effectiveFormatId = videoFormatId || campaignData?.videoFormatId || null;
+
+    if (!effectiveProfession) {
+      setError(
         "Sélectionne d’abord ton métier dans la liste « Ton métier » pour utiliser « M'inspirer »."
       );
       return;
     }
-    if (!videoFormatId || !getFormatById(videoFormatId)) {
-      alert("Choisis d’abord un format vidéo avec « Choisir un format ».");
+    if (!effectiveFormatId || !getFormatById(effectiveFormatId)) {
+      setError("Choisis d’abord un format vidéo avec « Choisir un format ».");
       return;
     }
-    const metier = profession.trim();
+    const metier = effectiveProfession;
     setInspireLoading(true);
     setError("");
     try {
-      const systemPrompt = `Tu génères UNE SEULE idée pour une vidéo très courte (8 secondes), type TikTok/Reels/Shorts.
+      const systemPrompt = "Tu appliques strictement le prompt utilisateur et tu réponds uniquement par la scène demandée.";
+      const selectedLieu = getLieuOption(lieuTournage);
+      const selectedFormatLabel = getFormatById(effectiveFormatId)?.name || "Format non défini";
+      const userPrompt = `Tu es un expert en création de vidéos courtes pour les réseaux sociaux.
+Génère une idée de scène vidéo de 8 secondes pour un ${metier}
+qui travaille ${selectedLieu.sentence}
 
-Règle absolue : la phrase décrit une scène directement filmable en UNE SEULE PRISE (plan fixe OU plan-séquence où caméra + contenu ne font qu’un seul geste global). Zéro mini-récit, zéro enchaînement d’événements indépendants.
+Le format de cette vidéo est : ${selectedFormatLabel}
+Tu dois impérativement respecter ce que ce format implique :
+- "Démonstration produit" → montrer un produit ou outil en action,
+  gros plan sur l'objet, le professionnel l'utilise ou le présente
+- "Mise en situation (lifestyle)" → montrer le professionnel dans
+  son environnement naturel de travail, ambiance authentique,
+  pas de mise en scène forcée
+- "Erreur → correction" → montrer d'abord une mauvaise pratique
+  ou un problème visible, puis la correction ou le bon geste
+- "Comparatif produit" → montrer deux états, deux objets ou
+  deux résultats côte à côte ou en succession rapide
+- "Publicité produit (shooting esthétique)" → aucune personne visible,
+  uniquement le produit ou le résultat final dans un cadre soigné
+- Pour tout autre format : interpréter le libellé et adapter la scène
+  en conséquence
 
-Deux types d’idées valides (choisis l’un ou l’autre ; varie ; le type 1 reste le plus fréquent) :
-
-Type 1 — Transformation fixe (par défaut) : caméra fixe ou quasi fixe ; une seule logique visuelle globale parmi par exemple remplissage, construction, assemblage, remise en place en timelapse. Tu peux nommer plusieurs éléments (sol, murs, mobilier, objets, matériaux) s’ils obéissent tous au même type de progression (ex. tout se remplit progressivement, tout se construit en accéléré, tout s’assemble).
-
-Type 2 — Révélation par caméra (cas explicite autorisé) : mouvement caméra continu (la caméra avance, travelling, travelling latéral) ; découverte progressive d’un espace ; meubles, décor, structure ou matériaux se révèlent / se posent / se montent au fil du déplacement dans UNE seule logique globale (effet type pub IKEA : un seul flux synchronisé). Pas d’activité humaine indépendante ni de narration en parallèle.
-
-Une idée = UNE seule logique visuelle globale (un seul « moteur » de scène : remplissage, construction, assemblage, révélation synchronisée, etc.). Plusieurs éléments visuels dans la même phrase sont encouragés s’ils suivent tous cette même logique (cohérence : tout avance de la même façon).
-
-Interdit uniquement de mélanger plusieurs logiques différentes : ex. construction ou remplissage accéléré + action humaine indépendante (installer, cuisiner, parler, expliquer) ; apparition automatique + interaction manuelle réaliste + couche narrative ; « la caméra avance » + chef qui fait autre chose + objets qui apparaissent sans lien comme deux histoires séparées.
-
-Impact immédiat : dès la première seconde, le spectateur doit comprendre le lieu + ce qui bouge ou se construit, sans audio ni texte.
-
-La scène doit rester lisible et percutante visuellement même sans contexte métier ; privilégier des détails concrets filmables, pas une idée plate ni des formules d’accroche creuses.
-
-Élément visuel marquant ou satisfaisant (obligatoire, formulé dans la phrase) : au moins un détail concret et visible — répétition rythmée, alignement net, remplissage très lisible, symétrie, motif géométrique, contraste matière/couleur, lignes qui se complètent — décrit factuellement, sans adjectifs de jugement. Ne pas se contenter d’une action générique sans ce « pic » visuel.
-
-Précision anti-générique : éviter les formulations pauvres seules du type « une maison », « un toit », « un bâtiment », « un mur », « une voiture » sans ancrage visuel. Préférer matériau, couleur, style, forme, échelle ou motif distinctifs (ex. tuiles rouges, bardage sombre, verrière, ossature bois clair, carrelage graphique, lignes de parking, etc.) tant que tous les détails restent dans la même logique globale.
-
-Langage de la phrase finale : chaque mot doit soit décrire quelque chose de visible à l’image, soit préciser utilement le type de scène (lieu, type d’objet, matériau, cadrage ou mode de prise utile à la génération). Pas de remplissage décoratif.
-
-Autorisé et utile : qualificatifs factuels — type d’objet ou d’architecture (bâtiment moderne, cuisine professionnelle, hangar agricole), matériaux (bois, zinc, béton, briques rouges, verre), contexte spatial (garage, chantier, appartement nu, toiture, quai), indications de prise non subjectives (vue aérienne, travelling avant, plan large, timelapse) lorsqu’elles clarifient ce qu’on voit.
-
-Interdit dans la phrase finale (bruit inutile) : adjectifs ou jugements subjectifs (harmonieux, captivant, magnifique, esthétique, élégant, immersif, spectaculaire, saisissant, etc.) ; tournures d’interprétation (« créant… », « donnant… », « avec un rendu… », « pour une ambiance… », « visuellement impressionnant ») ; concepts abstraits ou processus invisibles (« en respectant chaque étape », « optimisé », « parfaitement conçu », « une expérience », « pensé pour », « met en valeur », « professionnalisme »).
-
-Structure obligatoire dans la même phrase courte, tous les éléments explicites :
-1) Un lieu précis et concret (ex. garage, chantier, appartement nu, jardin de villa, atelier, comptoir).
-2) Un objet ou support principal ancré visuellement (type précis + au moins un trait distinctif : matériau, couleur, motif ou style — pas un nom générique nu).
-3) UNE action / progression visible immédiatement : soit mécanique fixe (type 1), soit mouvement caméra couplé à une seule révélation progressive (type 2).
-4) Mécanique concrète et continue (timelapse, pièces qui s’emboîtent, éléments qui sortent du sol, pièce par pièce dans le même mouvement d’ensemble ; ou apparition synchronisée au travelling), avec le détail « satisfying » ou marquant intégré naturellement.
-
-Mécaniques visuelles à utiliser (une seule logique globale par idée ; plusieurs éléments possibles dans cette logique) :
-- Type 1 — Timelapse / assemblage / remplissage / remise en place sur cadre stable ; tu peux enchaîner sol + murs + mobilier si tout obéit au même mouvement (ex. tout se met en place en accéléré).
-- Type 2 — Travelling ou avancée caméra : uniquement si elle déroule le même flux unique (découverte d’un espace qui se remplit ou se monte au passage), sans personnage qui mène une autre activité parallèle.
-- Apparition structurée seulement si tu précises le geste visible (ex. sortent du sol, s’emboîtent, se vissent, se posent en rangées) — jamais un « pop » magique sans geste.
-
-Formulations INTERDITES dans la phrase finale (narration, effet « doc ») : « permettant de », « afin de », « grâce à », « montrant que », « illustrant », « on découvre », « on comprend », « on voit comment », « révélant », « dévoilant » — et tout ce qui n’est pas une image directe. Ne décris que ce qui est visible à l’écran, mot pour mot filmable.
-
-Liaisons : « alors que » et « tout en » : interdit s’ils opposent ou combinent deux logiques visuelles différentes. « pendant que » : autorisé en type 2 pour coupler mouvement caméra et révélation progressive (un seul flux) ; en type 1, « avec » ou coordonnées du même type vont souvent mieux pour lier plusieurs éléments sous la même logique. Interdit dès qu’une liaison introduit une activité humaine ou une narration indépendante de la logique principale.
-
-Dans la phrase finale, INTERDIT d’employer ces mots ou formulations vagues (même implicites) — en plus des interdits « langage » ci-dessus :
-transformation, se transforme, changement, amélioration, optimisation, métamorphose, magie, réparation / se répare / « ça se répare » sans décrire la mécanique, disparaît, disparaissent, « les pièces disparaissent », apparaît / apparaissent seuls sans dire comment (matériaux, geste, assemblage), devient, évolue, se convertit, abstraction du type « tout s’arrange ».
-
-INTERDIT aussi :
-- Enchaînements narratifs : « puis », « ensuite », « après », « suivi de », « d’abord… puis », « enfin » (séquence d’étapes indépendantes, pas une seule progression continue).
-- Mélange de plusieurs logiques visuelles différentes (construction / remplissage / assemblage automatique d’un côté, geste humain réel ou parole de l’autre ; ou apparition + interaction + commentaire comme couches séparées).
-- Idées non visibles : diagnostic, analyse, réflexion, stratégie, conseil, narration, voix off, texte à l’écran décrit.
-- Conclusion sur le résultat raconté après coup (« rendu final », « comme neuf », « parfait » comme fin d’histoire) : rester sur ce que la caméra voit en continu.
-- Listes, numérotation, guillemets.
-
-Métier : inspiration uniquement pour choisir lieu + objet + mécanique ; ne jamais écrire le nom du métier ni « métier : » ni parenthèses métier.
-
-Sortie : exactement une phrase courte en français, compréhensible sans audio dès la première seconde, sans préambule.
-
-Réponds uniquement par cette phrase, rien d’autre.`;
-      const profile = getVwsMetierProfile(profession);
-      let userPrompt = `Métier ou domaine (caché : ne jamais l’écrire dans la phrase) : ${metier}.
-
-Produis une idée nouvelle, concrète, filmable et lisible au premier regard. Choisis soit le type 1 (transformation fixe : caméra fixe, une seule logique globale — tu peux détailler plusieurs éléments qui suivent tous cette logique), soit le type 2 (révélation par caméra : avancée ou travelling + un seul flux d’apparition progressive, style IKEA). Varie entre les deux ; le type 1 peut rester majoritaire. Cohérence : un seul type de progression pour toute la scène. Langage : mots utiles à l’image (lieu, type d’objet, matériau, cadrage factuel) ; zéro adjectif décoratif ou phrase d’effet.
-
-BON — langage factuel utile (ne pas recopier) :
-« Un bâtiment moderne se construit progressivement en timelapse avec une vue aérienne ».
-
-MAUVAIS — bruit abstrait / subjectif (ne pas faire) :
-« Un bâtiment se construit en respectant chaque étape avec un rendu moderne et captivant ».
-
-BON — plusieurs éléments, une seule logique (remplissage / mise en place), ne pas recopier :
-« Une salle de bain vide se remplit progressivement en timelapse avec des carreaux au sol et du mobilier qui se met en place ».
-
-MAUVAIS — plusieurs logiques mélangées :
-« Une salle de bain se construit pendant que quelqu’un installe des objets et parle » — construction + geste humain + parole : incohérent.
-
-MAUVAIS — type 2 raté, plusieurs logiques indépendantes :
-« La caméra avance et le chef cuisine pendant que les objets apparaissent » — cuisine + apparition : deux logiques.
-
-BON — type 2, une seule logique couplée (ne pas recopier ; inventer autre chose) :
-« La caméra avance dans un appartement vide pendant que les meubles et éléments apparaissent progressivement dans chaque pièce ».
-
-MAUVAIS — trop basique / pas assez distinctif (ne pas faire) :
-« Un toit se couvre progressivement en tuiles » — générique, peu d’impact.
-
-BON — même mécanique mais pic visuel et précision (ne pas recopier ; inventer autre chose) :
-« Un toit vide se remplit en timelapse avec des tuiles rouges qui s’emboîtent parfaitement ligne par ligne ».
-
-MAUVAIS — deux actions (ne jamais faire) :
-« Une cuisine se remplit pendant que le chef prépare un plat » — remplissage + cuisine : deux actions (même pattern interdit en type 2).
-
-BON — une seule logique, plusieurs éléments (ustensiles + ingrédients) (ne pas recopier ; inventer autre chose) :
-« Une cuisine professionnelle vide se remplit progressivement avec les ustensiles et ingrédients qui se placent sur le plan de travail ».
-
-MAUVAIS — abstrait / non filmable :
-« Une voiture se transforme et ses pièces défectueuses disparaissent ».
-
-BON — une mécanique, un lieu, un objet (ne pas recopier ; inventer autre chose) :
-« Une Clio 2 démontée dans un garage se réassemble progressivement en timelapse avec les pièces qui reviennent en place ».
-
-Autres repères (inventer une variante ; une seule logique ; détail marquant ; pas de narration « on découvre », « permet de ») :
-- Type 1, jardin : fosse bleue, liner lisse et lames bois chaud d’une piscine semi-enterrée s’emboîtent en flux continu accéléré.
-- Type 1, îlot urbain : façade vitrée et noyau béton d’une tour étroite montent en timelapse, grue fixe, rythme d’étages symétrique vue aérienne.
-- Type 2, appartement : la caméra avance dans les volumes vides pendant que mobilier bas blanc et touches vert émeraude se posent en rangées nettes pièce par pièce.`;
-      const inspireFormatConfig = getVideoFormatConfigForCatalogId(videoFormatId);
-      if (inspireFormatConfig) {
-        userPrompt += `
-
-Contraintes du format vidéo choisi (à respecter pour l'idée) :
-Format vidéo sélectionné : ${inspireFormatConfig.label}
-Type d'accroche attendu : ${inspireFormatConfig.accroche_type}
-Style visuel : ${inspireFormatConfig.mots_cles_prompt.join(", ")}
-Vitesse : ${inspireFormatConfig.vitesse}
-Caméra : ${inspireFormatConfig.camera.join(", ")}
-
-L'idée générée doit être cohérente avec ces contraintes (ex. un format type avis / face caméra ne doit pas imposer un timelapse de chantier si ce n'est pas le cas ici).`;
-      }
-      if (profile?.inspireContext) {
-        userPrompt += ` Indices de contexte réaliste (ne pas citer tel quel si ce sont des labels ; en extraire seulement lieux/objets visuels) : ${profile.inspireContext}.`;
-      }
+Règles strictes :
+- L'idée doit montrer une action concrète, un geste métier précis
+  ou une transformation visible (avant → après, problème → solution)
+- La scène doit être filmable en conditions réelles, pas en studio
+- Un seul sujet, une seule action — pas de liste, pas de scène composite
+- Ne jamais utiliser les mots : magnifique, parfait, élégant, sublime,
+  harmonieux, spectaculaire, impressionnant, superbe, splendide,
+  symétrique, esthétique
+- Rédige uniquement la description de la scène, en 1 à 2 phrases maximum
+- Pas d'introduction, pas de conclusion, pas de guillemets`;
       const response = await generateResponse(userPrompt, systemPrompt, {
         max_tokens: 140,
         temperature: 0.42,
@@ -529,7 +626,70 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
     };
   };
 
-  const handleRun = async (clarificationHistoryOverride = null, runOverrides = null) => {
+  const checkGateQuestionAlreadyAnswered = async ({
+    formatLabel,
+    lieuSentence,
+    ideaText,
+    questionLabel,
+  }) => {
+    const verificationPrompt = `Les informations suivantes sont déjà renseignées par l'utilisateur :
+- Format vidéo : ${formatLabel}
+- Lieu : ${lieuSentence}
+- Idée principale : ${ideaText}
+
+La question conditionnelle suivante est-elle déjà répondue par ces informations ?
+Question : ${questionLabel}
+
+Réponds uniquement en JSON : { "already_answered": true/false, "inferred_value": "valeur déduite si true, sinon null" }`;
+    try {
+      const raw = await generateResponse(
+        verificationPrompt,
+        "Tu réponds uniquement avec un JSON valide, sans texte additionnel.",
+        {
+          max_tokens: 100,
+          temperature: 0,
+        }
+      );
+      const parsed = extractJsonObjectFromText(raw);
+      if (!parsed || typeof parsed !== "object") {
+        return { alreadyAnswered: false, inferredValue: null };
+      }
+      const alreadyAnswered = parsed.already_answered === true;
+      const inferredValue =
+        typeof parsed.inferred_value === "string" && parsed.inferred_value.trim()
+          ? parsed.inferred_value.trim()
+          : null;
+      return { alreadyAnswered, inferredValue };
+    } catch {
+      return { alreadyAnswered: false, inferredValue: null };
+    }
+  };
+
+  const detectPersonVisibleInIdea = async (ideaText) => {
+    const prompt = `Le texte suivant décrit une scène vidéo : "${ideaText}"
+Est-ce qu'une personne est visible et active dans cette scène ?
+Réponds uniquement en JSON : { "person_visible": true/false }`;
+    try {
+      const raw = await generateResponse(
+        prompt,
+        "Tu réponds uniquement avec un JSON valide, sans texte additionnel.",
+        {
+          max_tokens: 100,
+          temperature: 0,
+        }
+      );
+      const parsed = extractJsonObjectFromText(raw);
+      return parsed?.person_visible === true;
+    } catch {
+      return false;
+    }
+  };
+
+  const handleRun = async (
+    clarificationHistoryOverride = null,
+    runOverrides = null,
+    flowOptions = null
+  ) => {
     setError("");
     setLoading(true);
     try {
@@ -548,8 +708,55 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         : "";
       const baseCatalogHint = getFormatHintForEngine(catalogFormatDef);
       const formatHint = [baseCatalogHint, formatParamsAppendix].filter(Boolean).join("\n\n");
+      const effectiveLieuValue =
+        flowOptions?.forceLieuTournage === "chez_client" ||
+        flowOptions?.forceLieuTournage === "etablissement" ||
+        flowOptions?.forceLieuTournage === "neutre"
+          ? flowOptions.forceLieuTournage
+          : lieuTournage;
+      const selectedLieu = getLieuOption(effectiveLieuValue);
+      const ideaWithSceneContext = `LIEU DE LA SCÈNE : ${selectedLieu.sentence}
 
-      const historyLines =
+DESCRIPTION DE LA SCÈNE : ${safeIdea}`;
+
+      const shouldSkipContradictionCheck = flowOptions?.skipContradictionCheck === true;
+      if (!shouldSkipContradictionCheck && safeIdea) {
+        const contradictionPrompt = `Tu es un assistant qui analyse si la description d'une scène vidéo contredit le lieu sélectionné par l'utilisateur.
+Lieu sélectionné : ${selectedLieu.label}
+Description de la scène : ${safeIdea}
+Réponds uniquement en JSON :
+{
+"contradiction": true/false,
+"lieu_dans_description": "le lieu détecté dans la description si contradiction, sinon null"
+}`;
+        const contradictionRaw = await generateResponse(
+          contradictionPrompt,
+          "Tu réponds uniquement avec un JSON valide, sans texte autour.",
+          {
+            max_tokens: 100,
+            temperature: 0,
+          }
+        );
+        const parsed = extractJsonObjectFromText(contradictionRaw);
+        const contradiction = parsed?.contradiction === true;
+        const detectedLieu = typeof parsed?.lieu_dans_description === "string"
+          ? parsed.lieu_dans_description.trim()
+          : "";
+        if (contradiction && detectedLieu) {
+          setLocationConflict({
+            selectedValue: selectedLieu.value,
+            selectedLabel: selectedLieu.label,
+            detectedLabel: detectedLieu,
+            detectedValue: getContradictionDetectedLieuValue(detectedLieu),
+            clarificationHistoryOverride,
+            runOverrides,
+          });
+          setLoading(false);
+          return;
+        }
+      }
+
+      let historyLines =
         clarificationHistoryOverride ??
         (Array.isArray(campaignData?.clarificationHistory) ? campaignData.clarificationHistory : []);
 
@@ -559,6 +766,8 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         runOverrides?.sequenceType !== undefined ? runOverrides.sequenceType : sequenceType;
       const effectiveMicroAnswer =
         runOverrides?.microAnswer !== undefined ? runOverrides.microAnswer : microAnswer;
+      const effectiveCameraViewAngle =
+        runOverrides?.cameraViewAngle !== undefined ? runOverrides.cameraViewAngle : cameraViewAngle;
       const effectiveTempoCompressionDecision =
         runOverrides?.tempoCompressionDecision !== undefined
           ? runOverrides.tempoCompressionDecision
@@ -575,15 +784,16 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         cameraAerialAngle:
           campaignData?.clarifyAxesResolved?.cameraAerialAngle === true || histParsed.cameraAerialAngle,
       };
-      const microForBrain = effectiveMicroAnswer ?? histParsed.microFromGate ?? null;
-      const causalForBrain =
+      let microForBrain = effectiveMicroAnswer ?? histParsed.microFromGate ?? null;
+      let causalForBrain =
         causalAgentSelection ?? histParsed.causalAgentSelectionFromGate ?? null;
-      const cameraAerialForBrain =
+      let cameraAerialForBrain =
         cameraAerialAngle ?? histParsed.cameraAerialAngleFromGate ?? null;
-      const histJoined = historyLines.length ? historyLines.join("\n\n") : undefined;
+      let histJoined = historyLines.length ? historyLines.join("\n\n") : undefined;
+      const selectedFormatLabel = catalogFormatDef?.name || String(videoFormatId || "");
       const payload = {
         profession: safeProfession,
-        idea: safeIdea,
+        idea: ideaWithSceneContext,
         styleDetails: styleDetails.trim() || "",
         videoFormatHint: formatHint.trim() || undefined,
         revealMode,
@@ -604,18 +814,18 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
       let gate = null;
       for (;;) {
         const needCameraAerial =
-          !axes.cameraAerialAngle && clarifyGateNeedsCameraAerialAngle(safeIdea);
+          !axes.cameraAerialAngle && clarifyGateNeedsCameraAerialAngle(ideaWithSceneContext);
         const needCausal =
-          !isPresentationSelfie && !axes.causalAgent && clarifyGateNeedsCausalAgent(safeIdea);
+          !isPresentationSelfie && !axes.causalAgent && clarifyGateNeedsCausalAgent(ideaWithSceneContext);
         const needMode =
-          !isPresentationSelfie && !axes.modeAgent && clarifyGateNeedsModeAgent(safeIdea);
+          !isPresentationSelfie && !axes.modeAgent && clarifyGateNeedsModeAgent(ideaWithSceneContext);
         const needInitial =
-          !isPresentationSelfie && !axes.initialT0 && clarifyGateNeedsInitialT0(safeIdea);
+          !isPresentationSelfie && !axes.initialT0 && clarifyGateNeedsInitialT0(ideaWithSceneContext);
 
         if (!needCameraAerial && !needCausal && !needMode && !needInitial) {
           gate = await clarifyIdea({
             jobType: safeProfession,
-            mainIdea: safeIdea,
+            mainIdea: ideaWithSceneContext,
             modifiers: styleDetails.trim(),
             tempoSelection: effectiveTempo,
             clarificationHistory: histJoined,
@@ -634,7 +844,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
               : "initial_t0";
         gate = await clarifyIdea({
           jobType: safeProfession,
-          mainIdea: safeIdea,
+          mainIdea: ideaWithSceneContext,
           modifiers: styleDetails.trim(),
           tempoSelection: effectiveTempo,
           clarificationHistory: histJoined,
@@ -643,6 +853,63 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         });
 
         if (gate.status === "NEEDS_CLARIFICATION") {
+          const precheck = await checkGateQuestionAlreadyAnswered({
+            formatLabel: selectedFormatLabel,
+            lieuSentence: selectedLieu.sentence,
+            ideaText: safeIdea,
+            questionLabel: gate.question,
+          });
+          if (precheck.alreadyAnswered === true && precheck.inferredValue) {
+            const inferredOptionId = mapGateInferredValueToOptionId(gate, precheck.inferredValue);
+            if (inferredOptionId) {
+              const inferredOption = gate.options?.find((opt) => opt.id === inferredOptionId);
+              const inferredLabel = inferredOption?.label || precheck.inferredValue;
+              historyLines = [
+                ...historyLines,
+                `Q: ${gate.question} A: ${inferredLabel} (option_id=${inferredOptionId})`,
+              ];
+              histJoined = historyLines.join("\n\n");
+              if (inferredOptionId === "vws_gate_t0_pristine") {
+                axes.initialT0 = true;
+                microForBrain = "from_nothing";
+                setMicroAnswer("from_nothing");
+              } else if (inferredOptionId === "vws_gate_t0_in_progress") {
+                axes.initialT0 = true;
+                microForBrain = "partially_built";
+                setMicroAnswer("partially_built");
+              } else if (inferredOptionId === "vws_gate_causal_visible") {
+                axes.causalAgent = true;
+                axes.modeAgent = true;
+                causalForBrain = "visible";
+                setCausalAgentSelection("visible");
+              } else if (inferredOptionId === "vws_gate_causal_automatic") {
+                axes.causalAgent = true;
+                axes.modeAgent = true;
+                causalForBrain = "automatic";
+                setCausalAgentSelection("automatic");
+              } else if (inferredOptionId === "vws_gate_camera_top_down") {
+                axes.cameraAerialAngle = true;
+                cameraAerialForBrain = "top_down";
+                setCameraAerialAngle("top_down");
+              } else if (inferredOptionId === "vws_gate_camera_angled") {
+                axes.cameraAerialAngle = true;
+                cameraAerialForBrain = "angled";
+                setCameraAerialAngle("angled");
+              } else if (inferredOptionId === "vws_gate_mode_autonomous" || inferredOptionId === "vws_gate_mode_human") {
+                axes.modeAgent = true;
+              }
+              onCampaignChange?.(
+                buildCampaignSnapshot({
+                  clarificationHistory: historyLines,
+                  clarifyAxesResolved: axes,
+                  microAnswer: microForBrain,
+                  causalAgentSelection: causalForBrain,
+                  cameraAerialAngle: cameraAerialForBrain,
+                })
+              );
+              continue;
+            }
+          }
           setGateResult(gate);
           setMicroQuestion({
             question: gate.question,
@@ -677,6 +944,24 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         onCampaignChange?.(buildCampaignSnapshot({ clarifyAxesResolved: axes }));
       }
 
+      const isPubliciteProduitFormat =
+        selectedFormatLabel.toLowerCase() === "publicité produit (shooting esthétique)".toLowerCase();
+      if (!effectiveCameraViewAngle && !isPubliciteProduitFormat) {
+        const personVisible = await detectPersonVisibleInIdea(safeIdea);
+        if (personVisible) {
+          setMicroQuestion({
+            question: "Quel angle de caméra ?",
+            reason: "camera_view_angle",
+            options: [
+              { id: "camera_view_subjective", label: "Vue subjective (caméra portée)" },
+              { id: "camera_view_exterieure", label: "Vue extérieure (professionnel filmé)" },
+            ],
+          });
+          setError("Choisis l’angle caméra pour finaliser la préparation.");
+          return;
+        }
+      }
+
       if (
         preIntent.intentFamily === "presentation" &&
         effectiveSequenceType !== "three_x_8s" &&
@@ -699,7 +984,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
       if (
         effectiveTempo !== "timelapse" &&
         !effectiveTempoCompressionDecision &&
-        isIdeaTooDenseForRealtime(safeIdea)
+        isIdeaTooDenseForRealtime(ideaWithSceneContext)
       ) {
         setMicroQuestion({
           question:
@@ -716,7 +1001,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
 
       const brain = runVwsPromptEngine({
         profession: safeProfession,
-        idea: safeIdea,
+        idea: ideaWithSceneContext,
         styleDetails: styleDetails.trim() || undefined,
         videoFormatHint: formatHint.trim() || undefined,
         tempo: effectiveTempo,
@@ -738,7 +1023,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
       if (brain.microQuestion && !microForBrain && !skipBrainInitialMicro) {
         const questionToShow =
           brain.microQuestion.reason === "ambiguous_subject"
-            ? await resolveAmbiguousMicroQuestion(safeIdea)
+            ? await resolveAmbiguousMicroQuestion(ideaWithSceneContext)
             : brain.microQuestion;
         setMicroQuestion(questionToShow);
         setError("Précise ce point avant de préparer la vidéo.");
@@ -752,7 +1037,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
           JSON.stringify({
             input: {
               profession: safeProfession,
-              idea: safeIdea,
+              idea: ideaWithSceneContext,
               styleDetails: styleDetails.trim() || "",
               tempo: effectiveTempo,
               cameraFixed,
@@ -780,9 +1065,10 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
           ...createDefaultCampaignGenerationSpec().campaign,
           profession: safeProfession,
           video_format_id: videoFormatId,
-          core_idea: safeIdea,
+          location_type: selectedLieu.value,
+          core_idea: ideaWithSceneContext,
           style_details: styleDetails.trim() || "",
-          intent_profile: globalIntentProfile ?? buildMinimalIntentFallback({ idea: safeIdea, selfieMode }),
+          intent_profile: globalIntentProfile ?? buildMinimalIntentFallback({ idea: ideaWithSceneContext, selfieMode }),
           clarification: {
             ...createDefaultCampaignGenerationSpec().campaign.clarification,
             mode: clarificationMode,
@@ -791,6 +1077,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
             initial_state: microForBrain,
             causal_agent: causalForBrain,
             camera_aerial_angle: cameraAerialForBrain,
+            camera_view_angle: effectiveCameraViewAngle,
             last_user_freeform_answer: clarifyAnswer ?? null,
             proceed_anyway: false,
             history: historyLines,
@@ -838,7 +1125,8 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
       });
       const finalPayload = {
         profession: safeProfession,
-        idea: safeIdea,
+        lieuTournage: selectedLieu.value,
+        idea: ideaWithSceneContext,
         styleDetails: styleDetails.trim() || "",
         videoFormatId,
         tempo: effectiveTempo,
@@ -852,6 +1140,7 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         tempoCompressionDecision: effectiveTempoCompressionDecision,
         causalAgentSelection: causalForBrain,
         cameraAerialAngle: cameraAerialForBrain,
+        cameraViewAngle: effectiveCameraViewAngle,
         initialStateSelection: null,
         gateResult: gate,
         clarifyAnswer: clarifyAnswer ?? null,
@@ -1002,10 +1291,44 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
       });
       return;
     }
+    if (optionId === "camera_view_subjective" || optionId === "camera_view_exterieure") {
+      const nextCameraViewAngle =
+        optionId === "camera_view_subjective" ? "subjective_portee" : "exterieure_filmee";
+      setCameraViewAngle(nextCameraViewAngle);
+      setMicroQuestion(null);
+      onCampaignChange?.(
+        buildCampaignSnapshot({
+          cameraViewAngle: nextCameraViewAngle,
+        })
+      );
+      setError("");
+      void handleRun(null, { cameraViewAngle: nextCameraViewAngle });
+      return;
+    }
     setMicroAnswer(optionId);
     onCampaignChange?.(buildCampaignSnapshot({ microAnswer: optionId }));
     setError("");
     void handleRun(null, { microAnswer: optionId });
+  };
+
+  const rerunAfterLocationConflict = (nextLieuValue = null) => {
+    const conflict = locationConflict;
+    if (!conflict) return;
+    const resolvedLieu =
+      nextLieuValue === "chez_client" ||
+      nextLieuValue === "etablissement" ||
+      nextLieuValue === "neutre"
+        ? nextLieuValue
+        : lieuTournage;
+    if (resolvedLieu !== lieuTournage) {
+      setLieuTournageState(resolvedLieu);
+      onCampaignChange?.(buildCampaignSnapshot({ lieuTournage: resolvedLieu }));
+    }
+    setLocationConflict(null);
+    void handleRun(conflict.clarificationHistoryOverride ?? null, conflict.runOverrides ?? null, {
+      skipContradictionCheck: true,
+      forceLieuTournage: resolvedLieu,
+    });
   };
 
   useEffect(() => {
@@ -1188,6 +1511,49 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
             ) : null}
           </div>
 
+          <div
+            className="h-px w-full bg-white/10"
+            style={{ marginTop: "32px", marginBottom: "16px" }}
+            aria-hidden="true"
+          />
+
+          <div className="vws-campagne-block">
+            <div className="flex items-center gap-2">
+              <label className="vws-campagne-label !mb-0" htmlFor="campagne-lieu-tournage">
+                Où se passe la vidéo ?
+              </label>
+              <span className="relative inline-flex items-center group shrink-0">
+                <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-cyan-500/35 bg-cyan-500/10 text-[10px] font-semibold text-cyan-200 cursor-help">
+                  i
+                </span>
+                <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 hidden w-72 -translate-x-1/2 rounded-lg border border-cyan-500/25 bg-[#0d1a22] px-2.5 py-2 text-[11px] leading-snug text-cyan-100 shadow-lg group-hover:block">
+                  Le lieu du menu est la source officielle utilisée dans la génération.
+                </span>
+              </span>
+            </div>
+            <select
+              id="campagne-lieu-tournage"
+              value={lieuTournage}
+              onChange={(e) => setLieuTournage(e.target.value)}
+              className="vws-campagne-field vws-campagne-select vws-campagne-field--touch"
+            >
+              {LIEU_TOURNAGE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-400" style={{ marginTop: "6px", marginBottom: "12px" }}>
+              Sélectionne l'environnement principal de la scène. Le texte d'idée enrichit la scène sans redéfinir ce lieu.
+            </p>
+          </div>
+
+          <div
+            className="h-px w-full bg-white/10"
+            style={{ marginBottom: "16px" }}
+            aria-hidden="true"
+          />
+
           {/* Bloc 3 — Idée principale */}
           <div
             className="vws-campagne-block vws-campagne-block--idea"
@@ -1209,11 +1575,12 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
               <button
                 type="button"
                 onClick={() => void runWithAuth(handleInspire)}
-                disabled={inspireLoading || !videoFormatId}
+                disabled={inspireLoading || (!videoFormatId && !campaignData?.videoFormatId)}
                 title={
-                  !String(profession ?? "").trim()
+                  !String(profession ?? "").trim() &&
+                  !String(campaignData?.profession ?? "").trim()
                     ? "Choisis d’abord ton métier pour utiliser cette action."
-                    : !videoFormatId
+                    : !videoFormatId && !campaignData?.videoFormatId
                       ? "Choisis d’abord un format vidéo."
                       : undefined
                 }
@@ -1414,6 +1781,65 @@ Génère une question claire et 2 choix pour préciser l'état initial.`;
         presentation={formatPickerPresentation === "studioOverlay" ? "studioOverlay" : "portal"}
       />
     </div>
+
+    {locationConflict ? (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+        onClick={() => setLocationConflict(null)}
+        role="presentation"
+      >
+        <div
+          className="studio-panel max-w-xl w-full overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="campagne-vws-lieu-conflict-title"
+        >
+          <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+            <h2 id="campagne-vws-lieu-conflict-title" className="text-base font-semibold text-gray-200">
+              Où se passe exactement la scène ?
+            </h2>
+            <button
+              type="button"
+              onClick={() => setLocationConflict(null)}
+              className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-gray-200 transition-colors shrink-0"
+              aria-label="Fermer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="p-6 space-y-4">
+            <p className="text-sm text-gray-300">
+              Tu as sélectionné <strong>{locationConflict.selectedLabel}</strong> mais ta description mentionne{" "}
+              <strong>{locationConflict.detectedLabel}</strong>. Lequel correspond à ce que tu veux ?
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => rerunAfterLocationConflict(locationConflict.selectedValue)}
+                className="w-full px-4 py-2 rounded-lg btn-vws-primary font-semibold text-left"
+              >
+                {locationConflict.selectedLabel}
+              </button>
+              <button
+                type="button"
+                onClick={() => rerunAfterLocationConflict(locationConflict.detectedValue)}
+                className="w-full px-4 py-2 rounded-lg btn-vws-secondary text-left"
+              >
+                {locationConflict.detectedLabel}
+              </button>
+              <button
+                type="button"
+                onClick={() => setLocationConflict(null)}
+                className="w-full px-4 py-2 rounded-lg btn-vws-secondary text-gray-300"
+              >
+                Corriger moi-même
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    ) : null}
 
     {showSystemVideo && (
       <div

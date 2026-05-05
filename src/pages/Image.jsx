@@ -17,6 +17,10 @@ import {
   SS_CAMPAIGN_IDEA_LIVE_KEY,
 } from "@/bibliotheque/viralWorksStudioStorage";
 import {
+  loadImageMediaRefs,
+  saveImageMediaRef,
+} from "@/bibliotheque/viralWorksMediaCache";
+import {
   createDefaultCampaignGenerationSpec,
   getSafeIntentProfile,
   getSafeScenes,
@@ -167,6 +171,7 @@ export default function ImagePage({
   campaignClarifyMode = null,
   campaignClarifyAnswer = null,
   campaignCameraAerialAngle = null,
+  campaignCameraViewAngle = null,
   campaignGlobalIntentProfile = null,
   campaignSelfieMode = false,
   scriptScene1Idea = "",
@@ -214,6 +219,8 @@ export default function ImagePage({
             campaignClarifyAnswer ?? fromIncoming.campaign.clarification.last_user_freeform_answer,
           camera_aerial_angle:
             campaignCameraAerialAngle ?? fromIncoming.campaign.clarification.camera_aerial_angle,
+          camera_view_angle:
+            campaignCameraViewAngle ?? fromIncoming.campaign.clarification.camera_view_angle,
           initial_state: campaignMicroAnswer ?? fromIncoming.campaign.clarification.initial_state,
         },
       },
@@ -262,6 +269,7 @@ export default function ImagePage({
     campaignClarifyMode,
     campaignClarifyAnswer,
     campaignCameraAerialAngle,
+    campaignCameraViewAngle,
     campaignMicroAnswer,
     scriptScene1Idea,
     campaignIdeaPrompt,
@@ -301,6 +309,10 @@ export default function ImagePage({
     [patchImageStep, canonicalSpec]
   );
 
+  /** Évite une boucle update-depth : l’effet de sync des variantes ne doit pas dépendre de la callback, qui change quand canonicalSpec change. */
+  const writeHookVisualSpecRef = useRef(writeHookVisualSpec);
+  writeHookVisualSpecRef.current = writeHookVisualSpec;
+
   const [model] = useState("Image-01");
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -311,6 +323,42 @@ export default function ImagePage({
   const [showSystemVideo, setShowSystemVideo] = useState(false);
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const hydrateImagesFromCache = async () => {
+      if (Array.isArray(lastGeneratedImages) && lastGeneratedImages.length > 0) return;
+      const cached = await loadImageMediaRefs();
+      if (!active || !cached) return;
+      const urls =
+        Array.isArray(cached.urls) && cached.urls.length > 0
+          ? cached.urls
+          : Array.isArray(cached.fallbackData)
+          ? cached.fallbackData
+          : [];
+      if (!urls.length) return;
+      patchImageStep({
+        lastGeneratedImages: urls,
+        lastGeneratedPrompt:
+          typeof imageStep?.lastGeneratedPrompt === "string" && imageStep.lastGeneratedPrompt.trim()
+            ? imageStep.lastGeneratedPrompt
+            : "Session restaurée",
+      });
+    };
+    void hydrateImagesFromCache();
+    return () => {
+      active = false;
+    };
+  }, [lastGeneratedImages, patchImageStep, imageStep?.lastGeneratedPrompt]);
+
+  useEffect(() => {
+    if (!Array.isArray(lastGeneratedImages) || lastGeneratedImages.length === 0) return;
+    void saveImageMediaRef({
+      urls: lastGeneratedImages,
+      createdAt: new Date().toISOString(),
+      fallbackData: [],
+    });
+  }, [lastGeneratedImages]);
   const [showQuotaModal, setShowQuotaModal] = useState(false);
   const [quotaModalMessage, setQuotaModalMessage] = useState(VIDEO_QUOTA_EXHAUSTED_MESSAGE);
   const [hasActiveSubscription, setHasActiveSubscription] = useState(false);
@@ -544,6 +592,7 @@ export default function ImagePage({
               lockedVideoScriptScene0:
                 String(getSafeScenes(canonicalSpec)[0]?.script_text || "").trim() || undefined,
               cameraAerialAngle: canonicalSpec.campaign.clarification.camera_aerial_angle,
+              cameraViewAngle: canonicalSpec.campaign.clarification.camera_view_angle,
               // Guard: fallback neutre si intent profile absent/incomplet.
               globalIntent: getSafeIntentProfile(canonicalSpec),
               selfieMode: canonicalSpec.rendering.camera.selfie_mode === true,
@@ -985,12 +1034,12 @@ export default function ImagePage({
     });
     const safeIdx = Math.min(Number(selectedImageIndex) || 0, len - 1);
     const safeUrl = String(lastGeneratedImages?.[safeIdx] || "");
-    writeHookVisualSpec({
+    writeHookVisualSpecRef.current({
       image_variants: Array.isArray(lastGeneratedImages) ? [...lastGeneratedImages] : [],
       selected_variant_index: safeIdx,
       selected_image_url: safeUrl,
     });
-  }, [lastGeneratedImages, selectedImageIndex, patchImageStep, writeHookVisualSpec]);
+  }, [lastGeneratedImages, selectedImageIndex, patchImageStep]);
 
   const hasSessionImages = Boolean(lastGeneratedImages?.length);
   const bottomFieldValue = hasSessionImages ? modifyInstruction : campaignIdeaPrompt;

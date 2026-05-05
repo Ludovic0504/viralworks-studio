@@ -19,6 +19,7 @@
     "supabase:deploy:hailuo": "supabase functions deploy hailuo-image",
     "supabase:deploy:gemini-image-edit": "supabase functions deploy gemini-image-edit",
     "supabase:deploy:hailuo-video": "supabase functions deploy hailuo-video",
+    "supabase:deploy:anthropic-messages": "supabase functions deploy anthropic-messages",
     "supabase:deploy:vertex-veo-video": "supabase functions deploy vertex-veo-video",
     "supabase:deploy:video-postprocess": "supabase functions deploy video-postprocess",
     "backend:video-audio": "node backend/video-audio-pipeline/server.mjs",
@@ -26,6 +27,8 @@
     "supabase:link": "supabase link --project-ref wuvtfhletxieocetzppo"
   },
   "dependencies": {
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
     "@prisma/client": "^6.18.0",
     "@stripe/stripe-js": "^8.6.1",
     "@supabase/ssr": "^0.7.0",
