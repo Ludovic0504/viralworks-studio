@@ -2,7 +2,6 @@
 import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { Home, Sparkles, Info, X, ShoppingBag, Users, FileText } from "lucide-react";
-import { useAuth } from "@/contexte/FournisseurAuth";
 import LienNavSync from "@/composants/disposition/LienNavSync";
 
 const links = [
@@ -18,7 +17,6 @@ export default function SidebarShell({ children, open, onCloseMenu }) {
   const panelRef = useRef(null);
   const location = useLocation();
   const previousPathRef = useRef(location.pathname);
-  const { session } = useAuth();
 
   useEffect(() => {
     // Close only after a real route change (not when `open` flips to true).
@@ -107,17 +105,6 @@ export default function SidebarShell({ children, open, onCloseMenu }) {
             </LienNavSync>
           </div>
 
-          {!session && (
-            <div className="border-t border-white/10 p-4">
-              <LienNavSync
-                to="/login"
-                onClick={() => onCloseMenu?.()}
-                className="w-full flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold btn-vws-primary"
-              >
-                <span>Se connecter</span>
-              </LienNavSync>
-            </div>
-          )}
         </div>
       </aside>
 

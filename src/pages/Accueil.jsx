@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { ArrowRight, Menu } from "lucide-react";
 import { useAuth } from "@/contexte/FournisseurAuth";
+import { useCommunauteVWSNotif } from "@/contexte/FournisseurCommunauteVWSNotif.jsx";
 import Footer from "@/composants/disposition/PiedDePage";
 import SidebarShell from "@/composants/disposition/Navbar";
 import LienNavSync from "@/composants/disposition/LienNavSync";
@@ -16,8 +17,24 @@ const navLinks = [
   { path: "/a-savoir", label: "Playbook" },
 ];
 
+function MessageBubbleIcon({ className }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={22}
+      height={22}
+      className={className}
+      fill="currentColor"
+      aria-hidden
+    >
+      <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17L4 17.17V4h16v12z" />
+    </svg>
+  );
+}
+
 export default function Accueil() {
   const { session, signOut, loading } = useAuth();
+  const { unreadPrivateCount } = useCommunauteVWSNotif();
   const hasSession = Boolean(session?.user?.id);
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -157,12 +174,30 @@ export default function Accueil() {
             <nav className="hidden flex-1 items-center justify-center gap-6 md:flex lg:gap-8">{navItems}</nav>
 
             <div className="flex shrink-0 items-center justify-end">
+              {hasSession ? (
+                <LienNavSync
+                  to="/communaute-vws?tab=private"
+                  className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-300 transition-colors hover:bg-white/10 hover:text-white"
+                  aria-label={
+                    unreadPrivateCount > 0
+                      ? `Messages privés, ${unreadPrivateCount} non lus`
+                      : "Messages privés"
+                  }
+                >
+                  <MessageBubbleIcon className="text-gray-300" />
+                  {unreadPrivateCount > 0 ? (
+                    <span className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-semibold leading-none text-white">
+                      {unreadPrivateCount > 99 ? "99+" : unreadPrivateCount}
+                    </span>
+                  ) : null}
+                </LienNavSync>
+              ) : null}
               {showConnectedBranch ? (
                 <MenuProfilConnecte onLogout={handleLogout} signingOut={signingOut} />
               ) : (
                 <LienNavSync
                   to="/login"
-                  className="hidden md:inline-flex items-center justify-center rounded-lg btn-vws-primary px-6 py-2.5 text-sm font-semibold whitespace-nowrap"
+                  className="inline-flex items-center justify-center rounded-lg btn-vws-primary px-4 py-2 text-sm font-semibold whitespace-nowrap md:px-6 md:py-2.5"
                 >
                   Connexion
                 </LienNavSync>
