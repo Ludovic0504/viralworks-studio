@@ -141,7 +141,10 @@ export default function MenuProfilConnecte({ onLogout, signingOut }) {
           onMouseDown={(e) => e.stopPropagation()}
         >
           <div className="mb-3.5 flex items-start justify-between gap-3">
-            <h2 id="coaching-modal-title" className="text-base font-semibold leading-snug text-white/[0.92]">
+            <h2
+              id="coaching-modal-title"
+              className="text-base font-semibold leading-snug bg-gradient-to-r from-cyan-300 via-violet-300 to-yellow-300 bg-clip-text [-webkit-background-clip:text] text-transparent"
+            >
               Coaching personnalisé
             </h2>
             <button
@@ -154,12 +157,12 @@ export default function MenuProfilConnecte({ onLogout, signingOut }) {
             </button>
           </div>
           <p className="mb-4 text-xs leading-relaxed text-white/35">
-            Pour les entrepreneurs qui veulent aller plus vite avec un regard extérieur sur leur stratégie contenu.
+          Tu publies, ou tu veux te lancer — mais tu avances à l'aveugle. Je regarde ta stratégie, tes hooks, ton positionnement, et je te dis exactement quoi changer. Pas de théorie : des actions concrètes, adaptées à ta niche, semaine après semaine.
           </p>
           <ul className="mb-[18px] flex flex-col gap-2.5 list-none">
             {[
               "Suivi personnalisé sur Telegram",
-              "Feedback sur tes vidéos et tes hooks",
+              "Analyse complète de ta stratégie et de tes vidéos",
               "Stratégie adaptée à ta niche",
               "Accès aux ressources exclusives",
             ].map((line) => (
@@ -170,7 +173,8 @@ export default function MenuProfilConnecte({ onLogout, signingOut }) {
             ))}
           </ul>
           <p className="mb-3.5 text-center text-[11px] text-white/30">
-            Places limitées — <span className="font-medium text-[#f5d84e]">3 disponibles</span> ce mois-ci
+            Accompagnement 3 mois ·{" "}
+            <span className="font-bold text-[#FFFFFF]">800€</span> · 3 places disponibles
           </p>
           <button
             type="button"

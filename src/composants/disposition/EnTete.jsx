@@ -100,7 +100,7 @@ export default function Header({ onOpenMenu }) {
   ) : (
     <LienNavSync
       to="/login"
-      className="hidden md:inline-flex items-center justify-center rounded-lg btn-vws-primary px-6 py-2.5 text-sm font-semibold whitespace-nowrap"
+      className="inline-flex items-center justify-center rounded-lg btn-vws-primary px-4 py-2 text-sm font-semibold whitespace-nowrap md:px-6 md:py-2.5"
     >
       Connexion
     </LienNavSync>
