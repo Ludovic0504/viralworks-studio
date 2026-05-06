@@ -1058,9 +1058,13 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
       }
       setNeedsReloadFromCache(true);
       setGenerationError("Vidéo précédemment générée — cliquez pour recharger.");
-    } catch {
+    } catch (e) {
       setNeedsReloadFromCache(true);
-      setGenerationError("Vidéo précédemment générée — cliquez pour recharger.");
+      const detail =
+        e instanceof Error && String(e.message || "").trim()
+          ? e.message
+          : "Impossible de récupérer la vidéo (réseau ou serveur).";
+      setGenerationError(detail);
     }
   }, [initialWorkflowVideoState?.videoId, initialWorkflowVideoState?.createdAt, loading, session?.access_token]);
 

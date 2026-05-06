@@ -70,3 +70,32 @@ export const getRedirectTo = (): string => {
 
   return "https://viralworks-studio.com/auth/callback"
 }
+
+/** Liens utiles du dashboard Supabase (dérivés de VITE_SUPABASE_URL) pour configurer SMTP et Redirect URLs. */
+export type SupabaseDashboardAuthUrls = {
+  projectRef: string
+  smtp: string
+  urlConfiguration: string
+  orgTeam: string
+  docsSmtp: string
+  docsCaptcha: string
+}
+
+export function getSupabaseDashboardAuthUrls(): SupabaseDashboardAuthUrls | null {
+  const url = String(import.meta.env.VITE_SUPABASE_URL ?? "").trim()
+  try {
+    const host = new URL(url).hostname
+    const ref = host.split(".")[0]
+    if (!ref || ref === "placeholder") return null
+    return {
+      projectRef: ref,
+      smtp: `https://supabase.com/dashboard/project/${ref}/auth/smtp`,
+      urlConfiguration: `https://supabase.com/dashboard/project/${ref}/auth/url-configuration`,
+      orgTeam: "https://supabase.com/dashboard/org/_/team",
+      docsSmtp: "https://supabase.com/docs/guides/auth/auth-smtp",
+      docsCaptcha: "https://supabase.com/docs/guides/auth/auth-captcha",
+    }
+  } catch {
+    return null
+  }
+}

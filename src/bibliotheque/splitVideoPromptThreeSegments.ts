@@ -1,8 +1,7 @@
 /**
  * Découpe un script campagne en 3 prompts séquentiels pour le pipeline 24 s (3 × 8 s).
- * Ordre : **Claude** (Edge `anthropic-messages`) → repli **OpenAI** (`openai-chat`) → découpage texte.
+ * Ordre : **OpenAI** (`openai-chat`) → découpage texte.
  */
-import { anthropicMessages } from "./anthropic/anthropicMessages";
 import { chatCompletion, type ChatMessage } from "./openai/chatgpt-client";
 
 function roughSplitThree(text: string): [string, string, string] {
@@ -39,32 +38,26 @@ function parseThreeFromJson(raw: string): [string, string, string] | null {
   return null;
 }
 
-const CLAUDE_SYSTEM = `Tu découpes un script vidéo unique en exactement 3 segments narratifs cohérents pour une vidéo enchaînée en trois clips de 8 secondes chacun (début, milieu, fin du récit visuel).
+const OPENAI_SYSTEM_MESSAGES = (): ChatMessage[] => [
+  {
+    role: "system",
+    content: `Tu découpes un script vidéo unique en exactement 3 segments narratifs cohérents pour une vidéo enchaînée en trois clips de 8 secondes chacun (début, milieu, fin du récit visuel).
 Réponds UNIQUEMENT par un JSON compact, sans markdown ni texte avant ou après :
 {"part1":"...","part2":"...","part3":"..."}
 - part1 = ce qui se passe au début (premier tiers narratif / mise en place filmable).
 - part2 = développement central (milieu).
 - part3 = conclusion ou résolution visuelle (fin).
-Chaque chaîne est un prompt vidéo autonome (français ou anglais selon la source), avec continuité visuelle et narrative entre les segments. Minimum ~40 caractères par part si le script est assez long. Pas d'autres clés.`;
-
-const OPENAI_FALLBACK_MESSAGES = (): ChatMessage[] => [
-  {
-    role: "system",
-    content: `Tu découpes un script vidéo unique en exactement 3 segments séquentiels de ~8 secondes chacun (narration continue).
-Réponds UNIQUEMENT par un JSON compact, sans markdown :
-{"part1":"...","part2":"...","part3":"..."}
-Chaque part est un prompt vidéo autonome en français ou anglais selon le script source, cohérent visuellement d'un segment au suivant.
-Chaque chaîne fait au moins 40 caractères. Pas de clés autres que part1, part2, part3.`,
+Chaque chaîne est un prompt vidéo autonome (français ou anglais selon la source), avec continuité visuelle et narrative entre les segments. Minimum ~40 caractères par part si le script est assez long. Pas d'autres clés.`,
   },
 ];
 
-async function splitWithOpenAiFallback(src: string): Promise<[string, string, string] | null> {
+async function splitWithOpenAi(src: string): Promise<[string, string, string] | null> {
   try {
     const messages: ChatMessage[] = [
-      ...OPENAI_FALLBACK_MESSAGES(),
+      ...OPENAI_SYSTEM_MESSAGES(),
       {
         role: "user",
-        content: `Script campagne / scènes à répartir sur 3 clips de 8 secondes :\n\n${src.slice(0, 12000)}`,
+        content: `Script campagne à répartir en trois segments (début / milieu / fin), trois clips de 8 secondes :\n\n${src.slice(0, 12000)}`,
       },
     ];
     const res = await chatCompletion(messages, {
@@ -95,24 +88,7 @@ export async function splitCampaignPromptIntoThreeVideoSegments(
     ];
   }
 
-  try {
-    const raw = await anthropicMessages({
-      system: CLAUDE_SYSTEM,
-      messages: [
-        {
-          role: "user",
-          content: `Script campagne à répartir en trois segments (début / milieu / fin), trois clips de 8 secondes :\n\n${src.slice(0, 12000)}`,
-        },
-      ],
-      max_tokens: 1024,
-    });
-    const parsed = parseThreeFromJson(raw);
-    if (parsed) return parsed;
-  } catch (err) {
-    console.warn("[splitVideoPromptThreeSegments] Claude indisponible, repli OpenAI :", err);
-  }
-
-  const openAiParsed = await splitWithOpenAiFallback(src);
+  const openAiParsed = await splitWithOpenAi(src);
   if (openAiParsed) return openAiParsed;
 
   return roughSplitThree(src);

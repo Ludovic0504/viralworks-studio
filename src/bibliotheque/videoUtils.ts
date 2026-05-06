@@ -6,8 +6,8 @@
 import { FFmpeg } from "@ffmpeg/ffmpeg";
 import { fetchFile, toBlobURL } from "@ffmpeg/util";
 
-/** Keep in sync with `package.json` / `npm ls @ffmpeg/ffmpeg` (CDN @ffmpeg/core must match). */
-const FFMPEG_CORE_NPM_VERSION = "0.12.15";
+/** Latest @ffmpeg/core published on npm (independent of @ffmpeg/ffmpeg version). */
+const FFMPEG_CORE_NPM_VERSION = "0.12.10";
 
 const INPUT_FILE = "input.mp4";
 const OUTPUT_PNG = "last.png";

@@ -1011,6 +1011,26 @@ export default function ViralWorks() {
   }, []);
 
   const resetImageStep = useCallback(() => {
+    // #region agent log
+    fetch("http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "99f2f0" },
+      body: JSON.stringify({
+        sessionId: "99f2f0",
+        runId: "visual-reset-run1",
+        hypothesisId: "H3",
+        location: "src/pages/ViralWorks.jsx:resetImageStep:start",
+        message: "resetImageStep invoked",
+        data: {
+          currentImageCount: Array.isArray(imageStep?.lastGeneratedImages) ? imageStep.lastGeneratedImages.length : 0,
+          currentPromptLen: String(imageStep?.prompt || "").trim().length,
+          currentCampaignIdeaPromptLen: String(imageStep?.campaignIdeaPrompt || "").trim().length,
+          currentModifyInstructionLen: String(imageStep?.modifyInstruction || "").trim().length,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
     const empty = { ...INITIAL_IMAGE_STEP };
     spaImageStepMemory = cloneImageStep(empty);
     lastSnapshottedUrlsRef.current = null;
@@ -1018,6 +1038,26 @@ export default function ViralWorks() {
     persistVisualSnapshotsToSession([]);
     persistImageStepOnly(empty);
     setImageStep(empty);
+    // #region agent log
+    fetch("http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "99f2f0" },
+      body: JSON.stringify({
+        sessionId: "99f2f0",
+        runId: "visual-reset-run1",
+        hypothesisId: "H3",
+        location: "src/pages/ViralWorks.jsx:resetImageStep:end",
+        message: "resetImageStep state reset scheduled",
+        data: {
+          targetImageCount: 0,
+          targetPromptLen: 0,
+          targetCampaignIdeaPromptLen: 0,
+          targetModifyInstructionLen: 0,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
   }, []);
 
   useEffect(() => {

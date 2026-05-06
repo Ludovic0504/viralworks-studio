@@ -119,6 +119,12 @@ export async function invokeVertexVeoVideo(
     data = { error: text || `Erreur HTTP ${res.status}` };
   }
 
+  if (res.status === 404) {
+    throw new Error(
+      `La Edge Function « ${EDGE_FUNCTION} » est introuvable sur ce projet (404). Déploie-la : npm run supabase:deploy:vertex-veo-video (ou supabase functions deploy ${EDGE_FUNCTION}).`,
+    );
+  }
+
   if (!res.ok) {
     const msg = String((data as { error?: string }).error || `Erreur HTTP ${res.status}`);
     throw new Error(msg);

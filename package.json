@@ -24,7 +24,8 @@
     "supabase:deploy:video-postprocess": "supabase functions deploy video-postprocess",
     "backend:video-audio": "node backend/video-audio-pipeline/server.mjs",
     "supabase:login": "supabase login",
-    "supabase:link": "supabase link --project-ref wuvtfhletxieocetzppo"
+    "supabase:link": "supabase link --project-ref wuvtfhletxieocetzppo",
+    "supabase:dashboard-auth": "node scripts/open-supabase-auth-dashboard.mjs"
   },
   "dependencies": {
     "@ffmpeg/ffmpeg": "^0.12.15",

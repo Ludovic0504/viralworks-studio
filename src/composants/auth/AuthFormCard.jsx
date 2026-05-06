@@ -1,7 +1,56 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Eye, EyeOff, Lock, LogIn, Mail, UserPlus } from "lucide-react";
-import { getBrowserSupabase, getRedirectTo } from "@/bibliotheque/supabase/client-navigateur";
+import {
+  getBrowserSupabase,
+  getRedirectTo,
+  getSupabaseDashboardAuthUrls,
+} from "@/bibliotheque/supabase/client-navigateur";
+
+/**
+ * Erreurs côté projet Supabase (SMTP, restriction SMTP intégré, redirect URL).
+ * @returns {{ showDashboardHelp: boolean, message: string }}
+ */
+function analyzeRecoveryEmailError(error) {
+  const raw = (error?.message || "").toLowerCase();
+  const notAuthorized =
+    raw.includes("email address not authorized") ||
+    raw.includes("address not authorized") ||
+    (raw.includes("not authorized") && raw.includes("email"));
+  const likelyServerEmailFailure =
+    notAuthorized ||
+    raw.includes("error sending recovery email") ||
+    Number(error?.status) === 500;
+
+  if (!likelyServerEmailFailure) {
+    return {
+      showDashboardHelp: false,
+      message: error?.message || "Erreur lors de l'envoi de l'email de réinitialisation.",
+    };
+  }
+
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const callbackHint = origin ? `${origin}/auth/callback` : "/auth/callback";
+
+  if (notAuthorized) {
+    return {
+      showDashboardHelp: true,
+      message:
+        "Cette adresse ne peut pas recevoir d'email avec le SMTP par défaut Supabase : seuls les comptes de l'équipe de l'organisation du projet sont autorisés. " +
+        "Invite cet email dans l'organisation (lien « Équipe » ci-dessous) ou configure un SMTP personnalisé. " +
+        `Redirect URL locale à autoriser : ${callbackHint}`,
+    };
+  }
+
+  return {
+    showDashboardHelp: true,
+    message:
+      "Supabase n'a pas pu envoyer l'email (erreur serveur : SMTP personnalisé incorrect, quota, fournisseur qui rejette, ou CAPTCHA requis). " +
+      "Vérifie hôte, port, TLS et identifiants SMTP. Sans SMTP perso, seuls les emails des membres de l'équipe org reçoivent des messages. " +
+      "Si Attack Protection / CAPTCHA est activé pour les emails, désactive-le pour tester ou intègre un jeton captcha (voir lien doc CAPTCHA). " +
+      `Redirect URL à ajouter si besoin : ${callbackHint}`,
+  };
+}
 
 export default function AuthFormCard({
   next = "/",
@@ -19,6 +68,8 @@ export default function AuthFormCard({
   const [oauthLoading, setOauthLoading] = useState(false);
   const [infoMsg, setInfoMsg] = useState(null);
   const [errorMsg, setErrorMsg] = useState(initialError || "");
+  /** Liens dashboard affichés seulement après échec « mot de passe oublié » côté Supabase. */
+  const [recoveryDashboardUrls, setRecoveryDashboardUrls] = useState(null);
   const [showPwd, setShowPwd] = useState(false);
   const [remember, setRemember] = useState(false);
   const redirectTo = useMemo(() => getRedirectTo(), []);
@@ -48,20 +99,26 @@ export default function AuthFormCard({
     setLoading(true);
     setErrorMsg("");
     setInfoMsg(null);
+    setRecoveryDashboardUrls(null);
 
     try {
       const supabase = getBrowserSupabase({ remember });
       const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
 
       if (error) {
-        setErrorMsg(error.message);
+        const a = analyzeRecoveryEmailError(error);
+        setErrorMsg(a.message);
+        setRecoveryDashboardUrls(a.showDashboardHelp ? getSupabaseDashboardAuthUrls() : null);
         setLoading(false);
         return;
       }
 
+      setRecoveryDashboardUrls(null);
       setInfoMsg("Un email de réinitialisation a été envoyé. Vérifiez votre boîte mail.");
     } catch (err) {
-      setErrorMsg(err?.message || "Erreur lors de l'envoi de l'email de réinitialisation.");
+      const a = analyzeRecoveryEmailError(err);
+      setErrorMsg(a.message);
+      setRecoveryDashboardUrls(a.showDashboardHelp ? getSupabaseDashboardAuthUrls() : null);
     } finally {
       setLoading(false);
     }
@@ -69,6 +126,7 @@ export default function AuthFormCard({
 
   const signInWithGoogle = async () => {
     setErrorMsg("");
+    setRecoveryDashboardUrls(null);
     setOauthLoading(true);
     try {
       localStorage.setItem("onetool_oauth_remember", remember ? "1" : "0");
@@ -105,6 +163,7 @@ export default function AuthFormCard({
     setLoading(true);
     setErrorMsg("");
     setInfoMsg(null);
+    setRecoveryDashboardUrls(null);
 
     if (!email || !email.includes("@")) {
       setErrorMsg("Veuillez entrer une adresse email valide.");
@@ -217,7 +276,61 @@ export default function AuthFormCard({
 
       {errorMsg ? (
         <div className="mb-4 p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-sm">
-          {errorMsg}
+          <p className="whitespace-pre-wrap">{errorMsg}</p>
+          {recoveryDashboardUrls ? (
+            <ul className="mt-3 space-y-1.5 text-red-200/90 text-xs list-none border-t border-red-500/20 pt-3">
+              <li>
+                <a
+                  href={recoveryDashboardUrls.smtp}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-red-100"
+                >
+                  Ouvrir : SMTP / emails (projet {recoveryDashboardUrls.projectRef})
+                </a>
+              </li>
+              <li>
+                <a
+                  href={recoveryDashboardUrls.urlConfiguration}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-red-100"
+                >
+                  Ouvrir : URL Configuration (Redirect URLs)
+                </a>
+              </li>
+              <li>
+                <a
+                  href={recoveryDashboardUrls.orgTeam}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-red-100"
+                >
+                  Ouvrir : membres de l&apos;organisation (Team) — requis pour le SMTP intégré
+                </a>
+              </li>
+              <li>
+                <a
+                  href={recoveryDashboardUrls.docsSmtp}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-red-100"
+                >
+                  Documentation : SMTP Supabase Auth
+                </a>
+              </li>
+              <li>
+                <a
+                  href={recoveryDashboardUrls.docsCaptcha}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-red-100"
+                >
+                  Documentation : CAPTCHA / Attack Protection
+                </a>
+              </li>
+            </ul>
+          ) : null}
         </div>
       ) : null}
 
@@ -360,6 +473,7 @@ export default function AuthFormCard({
             setMode(mode === "signin" ? "signup" : "signin");
             setErrorMsg("");
             setInfoMsg(null);
+            setRecoveryDashboardUrls(null);
           }}
           className="text-sm text-emerald-400 hover:text-emerald-300 transition-colors underline"
         >
