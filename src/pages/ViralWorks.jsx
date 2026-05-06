@@ -3,11 +3,7 @@ import PageTitle from "../composants/interface/TitrePage";
 import CampagneVWS from "./CampagneVWS.jsx";
 import ImagePage from "./Image.jsx";
 import VideoPage from "./Video.jsx";
-import {
-  markVideoWorkflowCreditConsumed,
-  resetWorkflowUsage,
-  shouldDebitVideoCredit,
-} from "@/bibliotheque/workflowQuota";
+import { resetWorkflowUsage } from "@/bibliotheque/workflowQuota";
 import {
   LS_VIRAL_STUDIO_DRAFT,
   LS_IMAGE_STEP_KEY,
@@ -34,7 +30,6 @@ import {
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { useStudioLayoutOptions } from "@/contexte/StudioLayoutOptionsContext";
-import { debitCredits, hasEnoughCredits } from "@/bibliotheque/supabase/credits";
 import { getUserSubscription } from "@/bibliotheque/supabase/stripe";
 import {
   createDefaultCampaignGenerationSpec,
@@ -697,7 +692,6 @@ function normalizeScriptPayload(raw) {
   };
 }
 
-const VIDEO_STEP_CREDIT_COST = 1;
 const SCRIPT_STEP_VIDEO_QUOTA_MSG =
   "limite vidéo atteint pour ce mois, veuillez attendre la fin du mois pour le renouvellement des vidéos ou acheter des packs vidéos pour continuer a créer";
 const SCRIPT_STEP_NON_SUB_MSG =
@@ -1011,26 +1005,6 @@ export default function ViralWorks() {
   }, []);
 
   const resetImageStep = useCallback(() => {
-    // #region agent log
-    fetch("http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "99f2f0" },
-      body: JSON.stringify({
-        sessionId: "99f2f0",
-        runId: "visual-reset-run1",
-        hypothesisId: "H3",
-        location: "src/pages/ViralWorks.jsx:resetImageStep:start",
-        message: "resetImageStep invoked",
-        data: {
-          currentImageCount: Array.isArray(imageStep?.lastGeneratedImages) ? imageStep.lastGeneratedImages.length : 0,
-          currentPromptLen: String(imageStep?.prompt || "").trim().length,
-          currentCampaignIdeaPromptLen: String(imageStep?.campaignIdeaPrompt || "").trim().length,
-          currentModifyInstructionLen: String(imageStep?.modifyInstruction || "").trim().length,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
     const empty = { ...INITIAL_IMAGE_STEP };
     spaImageStepMemory = cloneImageStep(empty);
     lastSnapshottedUrlsRef.current = null;
@@ -1038,26 +1012,6 @@ export default function ViralWorks() {
     persistVisualSnapshotsToSession([]);
     persistImageStepOnly(empty);
     setImageStep(empty);
-    // #region agent log
-    fetch("http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "99f2f0" },
-      body: JSON.stringify({
-        sessionId: "99f2f0",
-        runId: "visual-reset-run1",
-        hypothesisId: "H3",
-        location: "src/pages/ViralWorks.jsx:resetImageStep:end",
-        message: "resetImageStep state reset scheduled",
-        data: {
-          targetImageCount: 0,
-          targetPromptLen: 0,
-          targetCampaignIdeaPromptLen: 0,
-          targetModifyInstructionLen: 0,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
   }, []);
 
   useEffect(() => {
@@ -1358,32 +1312,9 @@ export default function ViralWorks() {
     if (currentStep === 1 && !step1BrainLaunched) return;
     if (currentStep === 1 && scriptGenStatus === "running") return;
 
-    // Débit workflow studio une seule fois à la validation de l’étape Vidéo (dernière étape).
-    if (currentStep === 3 && session?.user?.id && shouldDebitVideoCredit()) {
-      const ok = await hasEnoughCredits(VIDEO_STEP_CREDIT_COST);
-      if (!ok) {
-        setScriptQuotaModalMessage(
-          hasActiveSubscriptionVw ? SCRIPT_STEP_VIDEO_QUOTA_MSG : SCRIPT_STEP_NON_SUB_MSG
-        );
-        setShowScriptQuotaModal(true);
-        return;
-      }
-
-      const debitResult = await debitCredits(VIDEO_STEP_CREDIT_COST, "video_generation", {
-        model: "workflow_studio",
-        step: "validate_step_3_final",
-      });
-
-      if (!debitResult.success) {
-        alert(
-          debitResult.error ||
-            "Impossible de valider l'étape vidéo. Vérifie tes crédits puis réessaie."
-        );
-        return;
-      }
-
-      markVideoWorkflowCreditConsumed();
-    }
+    // Le débit crédit « fin de parcours vidéo » est effectué dans Video.jsx au clic
+    // « Télécharger la vidéo » (upload + historique). Ne pas marquer videoCreditDebited ici,
+    // sinon le téléchargement ne débite plus le serveur.
 
     setValidated((prev) => ({ ...prev, [currentStep]: true }));
     if (currentStep < STUDIO_STEP_COUNT) {

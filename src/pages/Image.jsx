@@ -188,7 +188,6 @@ export default function ImagePage({
 }) {
   const { session, supabase } = useAuth();
   const uid = session?.user?.id;
-  const debugRunId = "visual-reset-run1";
 
   const {
     campaignIdeaPrompt,
@@ -338,24 +337,6 @@ export default function ImagePage({
           ? cached.fallbackData
           : [];
       if (!urls.length) return;
-      // #region agent log
-      fetch("http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "99f2f0" },
-        body: JSON.stringify({
-          sessionId: "99f2f0",
-          runId: debugRunId,
-          hypothesisId: "H3",
-          location: "src/pages/Image.jsx:hydrateImagesFromCache",
-          message: "Hydration from media cache triggered",
-          data: {
-            cachedUrlsCount: urls.length,
-            hadLocalImages: Array.isArray(lastGeneratedImages) ? lastGeneratedImages.length : 0,
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
       patchImageStep({
         lastGeneratedImages: urls,
         lastGeneratedPrompt:
@@ -1230,81 +1211,12 @@ export default function ImagePage({
           <button
             type="button"
             onClick={() => {
-              // #region agent log
-              fetch("http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7", {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "99f2f0" },
-                body: JSON.stringify({
-                  sessionId: "99f2f0",
-                  runId: debugRunId,
-                  hypothesisId: "H4",
-                  location: "src/pages/Image.jsx:resetButton:onClick:start",
-                  message: "Reset button clicked",
-                  data: {
-                    lastGeneratedImagesCount: Array.isArray(lastGeneratedImages) ? lastGeneratedImages.length : 0,
-                    promptLen: String(prompt || "").trim().length,
-                    modifyInstructionLen: String(modifyInstruction || "").trim().length,
-                    campaignIdeaPromptLen: String(campaignIdeaPrompt || "").trim().length,
-                    visualStepActive,
-                  },
-                  timestamp: Date.now(),
-                }),
-              }).catch(() => {});
-              // #endregion
               if (!lastGeneratedImages?.length && !prompt.trim() && !modifyInstruction.trim()) {
-                // #region agent log
-                fetch("http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "99f2f0" },
-                  body: JSON.stringify({
-                    sessionId: "99f2f0",
-                    runId: debugRunId,
-                    hypothesisId: "H1",
-                    location: "src/pages/Image.jsx:resetButton:onClick:guardReturn",
-                    message: "Reset aborted by pre-check guard",
-                    data: {
-                      guardCondition: "noImages && emptyPrompt && emptyModifyInstruction",
-                      campaignIdeaPromptLen: String(campaignIdeaPrompt || "").trim().length,
-                    },
-                    timestamp: Date.now(),
-                  }),
-                }).catch(() => {});
-                // #endregion
                 return;
               }
               if (!confirm("Repartir de zéro sur cette étape ? Les images non enregistrées seront perdues.")) {
-                // #region agent log
-                fetch("http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "99f2f0" },
-                  body: JSON.stringify({
-                    sessionId: "99f2f0",
-                    runId: debugRunId,
-                    hypothesisId: "H2",
-                    location: "src/pages/Image.jsx:resetButton:onClick:confirmDeclined",
-                    message: "Reset canceled in confirm dialog",
-                    data: {},
-                    timestamp: Date.now(),
-                  }),
-                }).catch(() => {});
-                // #endregion
                 return;
               }
-              // #region agent log
-              fetch("http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7", {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "99f2f0" },
-                body: JSON.stringify({
-                  sessionId: "99f2f0",
-                  runId: debugRunId,
-                  hypothesisId: "H3",
-                  location: "src/pages/Image.jsx:resetButton:onClick:invokeReset",
-                  message: "Calling resetImageStep from ImagePage",
-                  data: {},
-                  timestamp: Date.now(),
-                }),
-              }).catch(() => {});
-              // #endregion
               resetImageStep();
             }}
             className={`text-center text-[10px] uppercase tracking-wider text-gray-600 underline decoration-gray-700 underline-offset-2 hover:text-gray-500 ${

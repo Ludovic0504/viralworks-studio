@@ -760,7 +760,7 @@ const Video = forwardRef(function Video(
           <Settings2 className="w-3.5 h-3.5 shrink-0 opacity-70" aria-hidden />
           <span>
             Réglages avancés — moteur de génération{" "}
-            <span className="text-gray-600">(VEO3 / Hailuo, optionnel)</span>
+            <span className="text-gray-600">(VEO3 / Kling, optionnel)</span>
           </span>
         </summary>
         <div className="mt-3 border-t border-white/[0.06] pt-3">
@@ -773,9 +773,12 @@ const Video = forwardRef(function Video(
               <Zap className="w-3.5 h-3.5" />
               <span>VEO3</span>
             </TabButton>
-            <TabButton active={tab === "hailuo"} onClick={() => setTab("hailuo")}>
+            <TabButton disabled>
               <Wand2 className="w-3.5 h-3.5" />
-              <span>Hailuo</span>
+              <span>Kling</span>
+              <span className="ml-1 text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-200 border border-amber-500/30">
+                Bientôt
+              </span>
             </TabButton>
           </div>
         </div>
@@ -820,12 +823,16 @@ const Video = forwardRef(function Video(
 
 export default Video;
 
-function TabButton({ active, onClick, children }) {
+function TabButton({ active, onClick, disabled, children }) {
   return (
     <button
-      onClick={onClick}
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
+      aria-disabled={disabled || undefined}
       className={`px-4 py-2 text-sm font-medium transition-all duration-150 flex items-center gap-2 rounded-lg ${
-        active
+        disabled
+          ? "text-gray-500 cursor-not-allowed opacity-60 border border-transparent"
+          : active
           ? "card-vws-active text-emerald-100"
           : "text-gray-400 hover:text-gray-200 hover:bg-white/[0.06] border border-transparent"
       }`}
@@ -1645,23 +1652,11 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
   };
 
   const downloadVideoFileExport = async () => {
-    const url = String(output || "").trim();
-    if (isBlobUrl(url)) {
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `viralworks-video-24s-${new Date().toISOString().slice(0, 10)}.mp4`;
-      a.click();
-      return;
-    }
-    if (!isHttpUrl(url)) {
+    if (!output?.trim() || !isVideoPlayerUrl(output)) {
       alert("Aucune vidéo finale téléchargeable pour le moment.");
       return;
     }
-    await downloadUrlFile(url, `viralworks-video-${new Date().toISOString().slice(0, 10)}.mp4`);
-  };
 
-  const handleValidate = async () => {
-    if (!output?.trim() || !isVideoPlayerUrl(output)) return;
     let outputToPersist = String(output).trim();
     if (isBlobUrl(outputToPersist)) {
       const blobRef = outputToPersist;
@@ -1678,9 +1673,10 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
         return;
       }
     }
+
     const hookImageUrl = String(validatedHookImage?.url || "").trim();
     const hookImagePrompt = String(validatedHookImage?.prompt || "").trim();
-    
+
     try {
       if (session?.user?.id && shouldDebitVideoCredit()) {
         const hasCredits = await hasEnoughCredits(VIDEO_GENERATION_COST);
@@ -1694,12 +1690,12 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
         const debitResult = await debitCredits(
           VIDEO_GENERATION_COST,
           "video_generation",
-          { model: "veo3", format: derivedFormat, duration: duration, step: "validate_enregistrer" }
+          { model: "veo3", format: derivedFormat, duration: duration, step: "telecharger_video" }
         );
         if (!debitResult.success) {
           alert(
             debitResult.error ||
-              "Impossible de finaliser l’enregistrement. Vérifie tes crédits vidéo puis réessaie."
+              "Impossible de débiter le crédit vidéo. Vérifie tes crédits puis réessaie."
           );
           return;
         }
@@ -1724,7 +1720,7 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
           createdAt: new Date().toISOString(),
         });
       }
-      
+
       if (session?.user?.id) {
         try {
           await saveHistorySupabase({
@@ -1745,8 +1741,15 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
           console.warn("Erreur sauvegarde Supabase (non bloquant):", err);
         }
       }
-      
-      alert("✅ Vidéo validée et enregistrée avec succès !");
+
+      const filename =
+        duration === "24s"
+          ? `viralworks-video-24s-${new Date().toISOString().slice(0, 10)}.mp4`
+          : `viralworks-video-${new Date().toISOString().slice(0, 10)}.mp4`;
+      await downloadUrlFile(outputToPersist, filename);
+
+      alert("Vidéo téléchargée et enregistrée dans votre profil avec succès !");
+
       const brain = getVwsBrain();
       setScripts(buildVeo3ScriptsFromSources(studioScriptPromptRef.current, sceneCountRef.current));
       setHookVisual(brain?.coverPrompt ? String(brain.coverPrompt) : "");
@@ -1762,8 +1765,8 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
       setCopied(false);
       window.dispatchEvent(new Event("onetool:history:changed"));
     } catch (err) {
-      console.error("Erreur validation:", err);
-      alert("Erreur lors de la validation");
+      console.error("Erreur téléchargement/enregistrement:", err);
+      alert("Erreur lors du téléchargement et de l'enregistrement");
     }
   };
 
@@ -2379,18 +2382,7 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
             ) : null}
           </div>
 
-          <div className="flex flex-col sm:flex-row flex-wrap gap-3 mt-4">
-            <button
-              type="button"
-              onClick={downloadVideoFileExport}
-              className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-all btn-vws-primary"
-            >
-              <Download className="w-4 h-4 shrink-0" />
-              Télécharger la vidéo
-            </button>
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-3 mt-3">
+          <div className="flex flex-col sm:flex-row gap-3 mt-4">
             <button
               type="button"
               onClick={prepareAnotherVideoVersion}
@@ -2415,20 +2407,23 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
           <div className="mb-4 p-4 rounded-lg bg-blue-500/10 border border-blue-500/30 flex items-start gap-3">
             <User className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
             <div className="flex-1">
-              <p className="text-sm font-medium text-blue-300 mb-1">Vos vidéos sont enregistrées</p>
+              <p className="text-sm font-medium text-blue-300 mb-1">Historique et profil</p>
               <p className="text-xs text-blue-400/80">
-                Une fois validées, vos vidéos seront disponibles dans votre <Link to="/profil" className="underline hover:text-blue-300">profil</Link> où vous pourrez les télécharger, partager ou les gérer.
+                En cliquant sur « Télécharger la vidéo », la création est ajoutée à votre historique et disponible dans votre{" "}
+                <Link to="/profil" className="underline hover:text-blue-300">profil</Link>, où vous pourrez la retrouver,
+                la partager ou la gérer.
               </p>
             </div>
           </div>
 
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
             <button
-              onClick={handleValidate}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-300 font-medium transition-all"
+              type="button"
+              onClick={downloadVideoFileExport}
+              className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-all btn-vws-primary"
             >
-              <Check className="w-4 h-4" />
-              Valider et enregistrer
+              <Download className="w-4 h-4 shrink-0" />
+              Télécharger la vidéo
             </button>
             <button
               onClick={handleDelete}
@@ -3293,19 +3288,15 @@ function HailuoVideoForm({
   };
 
   const downloadVideoFileExportHailuo = async () => {
-    const url = String(output || "").trim();
-    if (!isHttpUrl(url)) {
+    if (!output?.trim() || !isHttpUrl(output)) {
       alert("Aucune vidéo finale téléchargeable pour le moment.");
       return;
     }
-    await downloadUrlFile(url, `viralworks-video-${new Date().toISOString().slice(0, 10)}.mp4`);
-  };
 
-  const handleValidate = async () => {
-    if (!output?.trim() || !isHttpUrl(output)) return;
+    const outputToPersist = String(output).trim();
     const hookImageUrl = String(validatedHookImage?.url || "").trim();
     const hookImagePrompt = String(validatedHookImage?.prompt || "").trim();
-    
+
     try {
       if (session?.user?.id && shouldDebitVideoCredit()) {
         const hasCredits = await hasEnoughCredits(VIDEO_GENERATION_COST);
@@ -3319,12 +3310,12 @@ function HailuoVideoForm({
         const debitResult = await debitCredits(
           VIDEO_GENERATION_COST,
           "video_generation",
-          { model: "hailuo", format: format, duration: duration, step: "validate_enregistrer" }
+          { model: "hailuo", format: format, duration: duration, step: "telecharger_video" }
         );
         if (!debitResult.success) {
           alert(
             debitResult.error ||
-              "Impossible de finaliser l’enregistrement. Vérifie tes crédits vidéo puis réessaie."
+              "Impossible de débiter le crédit vidéo. Vérifie tes crédits puis réessaie."
           );
           return;
         }
@@ -3338,7 +3329,7 @@ function HailuoVideoForm({
           id: crypto.randomUUID?.() || String(Date.now()),
           kind: "video",
           input: recapInputForHistory(),
-          output: output,
+          output: outputToPersist,
           model: "hailuo",
           format: format,
           duration: duration,
@@ -3349,13 +3340,13 @@ function HailuoVideoForm({
           createdAt: new Date().toISOString(),
         });
       }
-      
+
       if (session?.user?.id) {
         try {
           await saveHistorySupabase({
             kind: "video",
             input: recapInputForHistory(),
-            output: output,
+            output: outputToPersist,
             model: "hailuo",
             metadata: {
               format: format,
@@ -3370,8 +3361,14 @@ function HailuoVideoForm({
           console.warn("Erreur sauvegarde Supabase (non bloquant):", err);
         }
       }
-      
-      alert("✅ Vidéo validée et enregistrée avec succès !");
+
+      await downloadUrlFile(
+        outputToPersist,
+        `viralworks-video-${new Date().toISOString().slice(0, 10)}.mp4`
+      );
+
+      alert("Vidéo téléchargée et enregistrée dans votre profil avec succès !");
+
       const brain = getVwsBrain();
       setScripts(
         brain?.videoPrompts?.length
@@ -3387,8 +3384,8 @@ function HailuoVideoForm({
       setCopied(false);
       window.dispatchEvent(new Event("onetool:history:changed"));
     } catch (err) {
-      console.error("Erreur validation:", err);
-      alert("Erreur lors de la validation");
+      console.error("Erreur téléchargement/enregistrement:", err);
+      alert("Erreur lors du téléchargement et de l'enregistrement");
     }
   };
 
@@ -3735,18 +3732,7 @@ function HailuoVideoForm({
             ) : null}
           </div>
 
-          <div className="flex flex-col sm:flex-row flex-wrap gap-3 mt-4">
-            <button
-              type="button"
-              onClick={downloadVideoFileExportHailuo}
-              className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-all btn-vws-primary"
-            >
-              <Download className="w-4 h-4 shrink-0" />
-              Télécharger la vidéo
-            </button>
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-3 mt-3">
+          <div className="flex flex-col sm:flex-row gap-3 mt-4">
             <button
               type="button"
               onClick={prepareAnotherVideoVersion}
@@ -3761,20 +3747,23 @@ function HailuoVideoForm({
           <div className="mb-4 p-4 rounded-lg bg-blue-500/10 border border-blue-500/30 flex items-start gap-3">
             <User className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
             <div className="flex-1">
-              <p className="text-sm font-medium text-blue-300 mb-1">Vos vidéos sont enregistrées</p>
+              <p className="text-sm font-medium text-blue-300 mb-1">Historique et profil</p>
               <p className="text-xs text-blue-400/80">
-                Une fois validées, vos vidéos seront disponibles dans votre <Link to="/profil" className="underline hover:text-blue-300">profil</Link> où vous pourrez les télécharger, partager ou les gérer.
+                En cliquant sur « Télécharger la vidéo », la création est ajoutée à votre historique et disponible dans votre{" "}
+                <Link to="/profil" className="underline hover:text-blue-300">profil</Link>, où vous pourrez la retrouver,
+                la partager ou la gérer.
               </p>
             </div>
           </div>
 
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
             <button
-              onClick={handleValidate}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-300 font-medium transition-all"
+              type="button"
+              onClick={downloadVideoFileExportHailuo}
+              className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-all btn-vws-primary"
             >
-              <Check className="w-4 h-4" />
-              Valider et enregistrer
+              <Download className="w-4 h-4 shrink-0" />
+              Télécharger la vidéo
             </button>
             <button
               onClick={handleDelete}
