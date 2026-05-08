@@ -28,7 +28,9 @@ begin
   perform net.http_post(
     url,
     payload,
-    jsonb_build_object('Content-Type','application/json','x-hook-secret', token)
+    '{}'::jsonb,
+    jsonb_build_object('Content-Type','application/json','x-hook-secret', token),
+    10000
   );
 
   return new;
