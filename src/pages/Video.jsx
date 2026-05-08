@@ -1407,9 +1407,16 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
   };
 
   const generate = async () => {
+    console.log("[Video.jsx] generate() clicked", {
+      duration,
+      isStudio,
+      loading,
+      hasSession: Boolean(session?.access_token),
+    });
     if (loading) return;
 
     if (!session?.access_token) {
+      console.warn("[Video.jsx] generate() blocked: no session access_token");
       alert("Connecte-toi pour lancer la génération vidéo.");
       return;
     }
@@ -1440,12 +1447,20 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
     if (duration === "24s") {
       if (studioChain24) {
         if (promptSeg1.length < 8 || promptSeg2.length < 8 || promptSeg3.length < 8) {
+          console.warn("[Video.jsx] generate() blocked: prompts seg1/2/3 too short", {
+            promptSeg1Len: promptSeg1.length,
+            promptSeg2Len: promptSeg2.length,
+            promptSeg3Len: promptSeg3.length,
+          });
           alert(
             "Pour enchaîner trois clips 8 s, les prompts techniques Veo « Début », « Transformation » et « Résultat » doivent faire au moins 8 caractères chacun (options avancées)."
           );
           return;
         }
       } else if (effectivePrompt24s.length < 8) {
+        console.warn("[Video.jsx] generate() blocked: effectivePrompt24s too short", {
+          effectivePrompt24sLen: effectivePrompt24s.length,
+        });
         alert(
           isStudio
             ? "Pour une vidéo 24 s, le prompt technique Veo du moment actif (ou le script campagne combiné) doit faire au moins 8 caractères. Complète les options avancées puis réessaie."
@@ -1454,6 +1469,10 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
         return;
       }
     } else if (scriptTrim.length < 8) {
+      console.warn("[Video.jsx] generate() blocked: scriptTrim too short", {
+        scriptTrimLen: scriptTrim.length,
+        activeTab,
+      });
       alert(
         `Le script du moment « ${sceneTabLabels[activeTab] ?? `Partie ${activeTab + 1}`} » est trop court (minimum 8 caractères). Ouvre « Options avancées » pour compléter le texte. Aucun visuel d’accroche n’est nécessaire pour générer.`
       );
@@ -1471,28 +1490,52 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
     const hookPromptForValidation =
       String(hookVisual || "").trim() ||
       String(validatedHookImage?.prompt || "").trim();
-    let ideaForValidation =
-      duration === "24s"
-        ? studioChain24
-          ? `${promptSeg1}\n\n---\n\n${promptSeg2}\n\n---\n\n${promptSeg3}`
-          : effectivePrompt24s
-        : scriptTrim;
-    if (sceneIndexForGeneration === 0 && hookPromptForValidation) {
-      ideaForValidation = `${ideaForValidation}\n\nVisuel d'accroche :\n${hookPromptForValidation}`;
-    }
-    if (manualDialogueLine) {
-      ideaForValidation = `${ideaForValidation}\n\nÀ dire à l’écran : ${manualDialogueLine}`;
-    }
-    const lenCheck = validateIdeaLength(ideaForValidation);
-    if (!lenCheck.ok) {
-      alert(lenCheck.message);
-      return;
+    const validateOne = (label, text) => {
+      const base = String(text || "").trim();
+      // On garde les ajouts "visuel + dialogue" uniquement sur le segment 1 (contexte global de la vidéo).
+      const decorated =
+        label.startsWith("Segment 1")
+          ? [
+              base,
+              hookPromptForValidation && sceneIndexForGeneration === 0
+                ? `Visuel d'accroche :\n${hookPromptForValidation}`
+                : "",
+              manualDialogueLine ? `À dire à l’écran : ${manualDialogueLine}` : "",
+            ]
+              .filter(Boolean)
+              .join("\n\n")
+          : base;
+      const check = validateIdeaLength(decorated);
+      if (check.ok) return true;
+      const msg = String(check.message || "").toLowerCase().includes("texte trop long")
+        ? `${label} trop long — ${check.message}`
+        : `${label} invalide — ${check.message}`;
+      console.warn("[Video.jsx] generate() blocked: validateIdeaLength failed", {
+        label,
+        message: msg,
+      });
+      setGenerationError(msg);
+      return false;
+    };
+
+    if (duration === "24s" && studioChain24) {
+      // Validation individuelle par segment (pas de concat des 3 prompts).
+      if (!validateOne("Segment 1 (Début)", promptSeg1)) return;
+      if (!validateOne("Segment 2 (Transformation)", promptSeg2)) return;
+      if (!validateOne("Segment 3 (Résultat)", promptSeg3)) return;
+    } else {
+      const textToValidate =
+        duration === "24s"
+          ? effectivePrompt24s
+          : scriptTrim;
+      if (!validateOne("Script", textToValidate)) return;
     }
 
     if (!canUseVideoAttempt()) {
       const bypass =
         Boolean(session) && (await hasEnoughCredits(VIDEO_GENERATION_COST));
       if (!bypass) {
+        console.warn("[Video.jsx] generate() blocked: workflow video attempt limit reached");
         alert(
           "Tu as atteint la limite de générations vidéo pour ce parcours (incluant la variante). Valide et enregistre ta vidéo, ou lance un nouveau projet depuis le récap (« Faire une autre vidéo ») ou en réinitialisant la campagne."
         );
@@ -1504,6 +1547,7 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
     if (session && shouldReserveCredit) {
       const hasCredits = await hasEnoughCredits(VIDEO_GENERATION_COST);
       if (!hasCredits) {
+        console.warn("[Video.jsx] generate() blocked: insufficient server credits");
         setQuotaNoticeMessage(
           hasActiveSubscription ? VIDEO_QUOTA_EXHAUSTED_MESSAGE : NON_SUBSCRIBER_BLOCKED_MESSAGE
         );
@@ -3986,7 +4030,7 @@ function HailuoVideoForm({
 
     const lenCheck = validateIdeaLength(finalIdea);
     if (!lenCheck.ok) {
-      alert(lenCheck.message);
+      setGenerationError(lenCheck.message);
       return;
     }
 

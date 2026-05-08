@@ -191,7 +191,8 @@ async function concatThreeMp4ToBlobUrl(
 
   console.log(
     "[concatThreeMp4ToBlobUrl] jalon 92 — téléchargements + writeFile terminés ; onConcatProgress défini ?",
-    Boolean(onConcatProgress)
+    Boolean(onConcatProgress),
+    { bytesA: bufA.byteLength, bytesB: bufB.byteLength, bytesC: bufC.byteLength }
   );
   onConcatProgress?.({ percent: 92, message: "Téléchargements terminés." });
 
@@ -235,7 +236,8 @@ async function concatThreeMp4ToBlobUrl(
   const blob = new Blob([raw], { type: "video/mp4" });
   console.log(
     "[concatThreeMp4ToBlobUrl] jalon 100 — blob prêt ; onConcatProgress défini ?",
-    Boolean(onConcatProgress)
+    Boolean(onConcatProgress),
+    { outBytes: raw.byteLength }
   );
   onConcatProgress?.({ percent: 100, message: "Assemblage terminé." });
   return URL.createObjectURL(blob);

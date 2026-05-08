@@ -4,7 +4,7 @@
  *
  * Limites alignées avec src/bibliotheque/promptGenerationLimits.ts
  */
-const PROMPT_GEN_MAX_IDEA_CHARS = 5000;
+const PROMPT_GEN_MAX_IDEA_CHARS = 12000;
 const PROMPT_GEN_MAX_OUTPUT_CHARS = 1500;
 const PROMPT_GEN_MAX_COMPLETION_TOKENS = 480;
 

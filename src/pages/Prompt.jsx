@@ -384,7 +384,7 @@ function VEO3Generator({ initialIdea = "" }) {
 
     const lenCheck = validateIdeaLength(idea);
     if (!lenCheck.ok) {
-      alert(lenCheck.message);
+      setOutput(lenCheck.message);
       return;
     }
 
@@ -1203,7 +1203,7 @@ function ScriptPromptGenerator({
 
     const lenCheck = validateIdeaLength(idea);
     if (!lenCheck.ok) {
-      alert(lenCheck.message);
+      setOutput(lenCheck.message);
       return;
     }
 
@@ -1229,7 +1229,7 @@ function ScriptPromptGenerator({
           return;
         }
         if (result.code === "validation") {
-          alert(result.message);
+          setOutput(result.message);
           return;
         }
 

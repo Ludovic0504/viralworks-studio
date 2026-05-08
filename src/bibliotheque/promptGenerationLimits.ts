@@ -4,7 +4,7 @@
  */
 
 /** Taille max du texte « idée » envoyé au modèle (caractères) */
-export const PROMPT_GEN_MAX_IDEA_CHARS = 5000;
+export const PROMPT_GEN_MAX_IDEA_CHARS = 12000;
 
 /** Taille max du prompt généré (caractères) — troncature côté app + serveur */
 export const PROMPT_GEN_MAX_OUTPUT_CHARS = 1500;
