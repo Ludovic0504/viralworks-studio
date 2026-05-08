@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { anthropicMessages } from "@/bibliotheque/anthropic/anthropicMessages";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
@@ -64,10 +64,48 @@ export default function CampagneVwsExplicationSheet({ open, onClose }) {
   const [threadMessages, setThreadMessages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [hiddenQuick, setHiddenQuick] = useState(() => new Set());
+  const [isMobileViewport, setIsMobileViewport] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(max-width: 640px)").matches : false
+  );
+
+  /** Sur mobile le pied « pose une question » bouffe la hauteur utile et Safari peut défiler vers le bas ; on le masque hors onglet Questions IA. */
+  const showChatFooter = !isMobileViewport || currentPage === 6;
 
   useEffect(() => {
     loadingRef.current = loading;
   }, [loading]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const mq = window.matchMedia("(max-width: 640px)");
+    const sync = () => setIsMobileViewport(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  const scrollPbTop = useCallback(() => {
+    const el = pbRef.current;
+    if (el) el.scrollTop = 0;
+  }, []);
+
+  /** Ouverture / iOS : forcer le haut du contenu visible (évite scroll implicite vers le champ du bas). */
+  useLayoutEffect(() => {
+    if (!open) return;
+    scrollPbTop();
+  }, [open, scrollPbTop]);
+
+  useEffect(() => {
+    if (!open) return;
+    const t0 = window.setTimeout(scrollPbTop, 0);
+    const t1 = window.setTimeout(scrollPbTop, 100);
+    const t2 = window.setTimeout(scrollPbTop, 400);
+    return () => {
+      window.clearTimeout(t0);
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+    };
+  }, [open, scrollPbTop]);
 
   const goPage = useCallback((n) => {
     currentPageRef.current = n;
@@ -252,7 +290,10 @@ export default function CampagneVwsExplicationSheet({ open, onClose }) {
           ))}
         </div>
 
-        <div ref={pbRef} className="cvws-ex-pb">
+        <div
+          ref={pbRef}
+          className={`cvws-ex-pb${isMobileViewport && currentPage !== 6 ? " cvws-ex-pb--mobile-chat-hidden" : ""}`}
+        >
           {/* PAGE 0 */}
           <div className={`cvws-ex-page ${currentPage === 0 ? "cvws-ex-page--active" : ""}`}>
             <div className="cvws-ex-hero">
@@ -747,24 +788,26 @@ export default function CampagneVwsExplicationSheet({ open, onClose }) {
           </div>
         </div>
 
-        <div className="cvws-ex-pf">
-          <div className="cvws-ex-input-row">
-            <textarea
-              ref={ciRef}
-              className="cvws-ex-ci"
-              placeholder="Une question sur cet onglet…"
-              rows={1}
-              onKeyDown={onCiKeyDown}
-              onInput={(e) => aResize(e.currentTarget)}
-            />
-            <button type="button" className="cvws-ex-sb" disabled={loading} onClick={send} aria-label="Envoyer">
-              <svg viewBox="0 0 24 24">
-                <line x1="22" y1="2" x2="11" y2="13" />
-                <polygon points="22 2 15 22 11 13 2 9 22 2" />
-              </svg>
-            </button>
+        {showChatFooter ? (
+          <div className="cvws-ex-pf">
+            <div className="cvws-ex-input-row">
+              <textarea
+                ref={ciRef}
+                className="cvws-ex-ci"
+                placeholder="Une question sur cet onglet…"
+                rows={1}
+                onKeyDown={onCiKeyDown}
+                onInput={(e) => aResize(e.currentTarget)}
+              />
+              <button type="button" className="cvws-ex-sb" disabled={loading} onClick={send} aria-label="Envoyer">
+                <svg viewBox="0 0 24 24">
+                  <line x1="22" y1="2" x2="11" y2="13" />
+                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                </svg>
+              </button>
+            </div>
           </div>
-        </div>
+        ) : null}
       </div>
     </div>,
     document.body
