@@ -77,6 +77,7 @@ serve(async (req) => {
       { data: payments, error: paymentsError },
       { data: transactions, error: transactionsError },
       { data: history, error: historyError },
+      { data: adminNotifications, error: adminNotificationsError },
       { data: authUsers, error: authUsersError },
     ] = await Promise.all([
       supabaseAdminClient.from("profiles").select("user_id, email, full_name, first_name, last_name, created_at, role").order("created_at", { ascending: false }),
@@ -86,6 +87,7 @@ serve(async (req) => {
       supabaseAdminClient.from("stripe_payments").select("*").order("created_at", { ascending: false }),
       supabaseAdminClient.from("credit_transactions").select("*").order("created_at", { ascending: false }),
       supabaseAdminClient.from("history").select("*").order("created_at", { ascending: false }),
+      supabaseAdminClient.from("admin_notifications").select("*").order("created_at", { ascending: false }).limit(100),
       supabaseAdminClient.auth.admin.listUsers(),
     ]);
 
@@ -109,6 +111,9 @@ serve(async (req) => {
     }
     if (historyError) {
       console.error("Erreur récupération historique:", historyError);
+    }
+    if (adminNotificationsError) {
+      console.error("Erreur récupération notifications admin:", adminNotificationsError);
     }
     if (authUsersError) {
       console.error("Erreur récupération utilisateurs auth:", authUsersError);
@@ -142,6 +147,8 @@ serve(async (req) => {
     }).length;
 
     const verifiedEmails = (usersWithAuth || []).filter((u) => u.email_verified).length;
+
+    const unreadAdminNotifications = (adminNotifications || []).filter((n) => !n.read_at).length;
 
     // Enrichir les paiements avec les informations du client
     const paymentsWithClient = (payments || []).map((payment) => {
@@ -215,12 +222,14 @@ serve(async (req) => {
           totalPayments: payments?.length || 0,
           totalTransactions: transactions?.length || 0,
           totalHistory: history?.length || 0,
+          unreadAdminNotifications,
         },
         users: usersWithAuth,
         subscriptions: subscriptionsWithClient,
         payments: paymentsWithClient,
         transactions: transactionsWithClient,
         history: historyWithClient,
+        adminNotifications: adminNotifications || [],
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

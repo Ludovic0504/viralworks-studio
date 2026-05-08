@@ -35,6 +35,7 @@ export default function Admin() {
   const [transactions, setTransactions] = useState([]);
   const [subscriptions, setSubscriptions] = useState([]);
   const [history, setHistory] = useState([]);
+  const [adminNotifications, setAdminNotifications] = useState([]);
   const [stats, setStats] = useState({
     totalUsers: 0,
     activeSubscriptions: 0,
@@ -43,6 +44,7 @@ export default function Admin() {
     totalPayments: 0,
     totalTransactions: 0,
     totalHistory: 0,
+    unreadAdminNotifications: 0,
   });
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedUser, setSelectedUser] = useState(null);
@@ -113,6 +115,7 @@ export default function Admin() {
         setTransactions(data.transactions || []);
         setSubscriptions(data.subscriptions || []);
         setHistory(data.history || []);
+        setAdminNotifications(data.adminNotifications || []);
       }
     } catch (err) {
       console.error("Erreur chargement dashboard:", err);
@@ -243,6 +246,18 @@ export default function Admin() {
       canceled: "bg-gray-500/20 text-gray-300 border-gray-500/30",
     };
     return statusColors[status] || statusColors.pending;
+  };
+
+  const formatNotifDate = (dateString) => {
+    if (!dateString) return "";
+    const d = new Date(dateString);
+    return d.toLocaleString("fr-FR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   };
 
   const filteredUsers = users.filter(
@@ -420,6 +435,23 @@ export default function Admin() {
           >
             <History className="w-4 h-4 inline mr-2" />
             Historique ({history.length})
+          </button>
+          <button
+            onClick={() => setActiveTab("notifications")}
+            className={`px-4 py-2 font-medium transition-all ${
+              activeTab === "notifications"
+                ? "text-emerald-400 border-b-2 border-emerald-400"
+                : "text-gray-400 hover:text-gray-200"
+            }`}
+          >
+            <span className="inline-flex items-center gap-2">
+              <span>Notifications</span>
+              {stats.unreadAdminNotifications ? (
+                <span className="px-2 py-0.5 rounded-full text-xs bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  {stats.unreadAdminNotifications}
+                </span>
+              ) : null}
+            </span>
           </button>
         </div>
       </div>
@@ -795,6 +827,72 @@ export default function Admin() {
                   })
                 )}
               </div>
+            </div>
+          )}
+
+          {/* Onglet Notifications */}
+          {activeTab === "notifications" && (
+            <div className="glass-strong rounded-xl p-6 border border-white/10">
+              <div className="flex items-center justify-between gap-4 mb-4">
+                <div>
+                  <p className="text-sm font-semibold text-gray-200">Notifications admin</p>
+                  <p className="text-xs text-gray-400">
+                    Dernières notifications (inscriptions, etc.)
+                  </p>
+                </div>
+                <button
+                  onClick={loadDashboardData}
+                  className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 transition-all flex items-center gap-2"
+                  title="Rafraîchir"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Rafraîchir
+                </button>
+              </div>
+
+              {adminNotifications.length === 0 ? (
+                <div className="text-center py-12 text-gray-400">
+                  <p>Aucune notification</p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-[600px] overflow-y-auto">
+                  {adminNotifications.map((n) => (
+                    <div
+                      key={n.id}
+                      className={`p-4 rounded-lg border transition-all ${
+                        n.read_at
+                          ? "bg-white/5 border-white/10"
+                          : "bg-emerald-500/10 border-emerald-500/30"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-200">
+                            {n.title || "Notification"}
+                          </p>
+                          {n.body ? (
+                            <p className="text-xs text-gray-400 mt-1 whitespace-pre-wrap">
+                              {n.body}
+                            </p>
+                          ) : null}
+                          <div className="text-xs text-gray-500 mt-2 flex items-center gap-3">
+                            <span>{formatNotifDate(n.created_at)}</span>
+                            {n.actor_email ? <span className="truncate">{n.actor_email}</span> : null}
+                            {!n.read_at ? (
+                              <span className="text-emerald-300">Non lu</span>
+                            ) : (
+                              <span className="text-gray-400">Lu</span>
+                            )}
+                          </div>
+                        </div>
+                        <span className="px-2 py-0.5 rounded text-xs bg-white/5 border border-white/10 text-gray-300">
+                          {n.kind || "info"}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
