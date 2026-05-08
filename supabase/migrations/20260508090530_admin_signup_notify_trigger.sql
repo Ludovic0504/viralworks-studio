@@ -1,15 +1,8 @@
 -- Notifie l'admin lors d'une nouvelle inscription (auth.users INSERT)
 -- via un appel HTTP asynchrone à une Edge Function (pg_net).
-
-do $$
-begin
-  -- Secret DB (Vault) utilisé pour authentifier l'appel hook -> Edge Function.
-  begin
-    perform vault.create_secret('ADMIN_SIGNUP_NOTIFY_TOKEN', 'bf58acb1074440e39f122d485f49b0b6');
-  exception when others then
-    perform vault.update_secret('ADMIN_SIGNUP_NOTIFY_TOKEN', 'bf58acb1074440e39f122d485f49b0b6');
-  end;
-end $$;
+--
+-- Note: sur certains projets Supabase, `vault.read_secret()` n'est pas exposée.
+-- On utilise donc un token statique (à faire tourner si besoin).
 
 create or replace function public.notify_admin_on_signup()
 returns trigger
@@ -18,12 +11,10 @@ security definer
 set search_path = public
 as $$
 declare
-  token text;
+  token text := 'bf58acb1074440e39f122d485f49b0b6';
   url text;
   payload jsonb;
 begin
-  select (vault.read_secret('ADMIN_SIGNUP_NOTIFY_TOKEN')).secret into token;
-
   url := 'https://wuvtfhletxieocetzppo.supabase.co/functions/v1/admin-signup-notify';
   payload := jsonb_build_object(
     'type', 'signup',
@@ -37,7 +28,7 @@ begin
   perform net.http_post(
     url,
     payload,
-    jsonb_build_object('Content-Type','application/json','x-hook-secret', coalesce(token,''))
+    jsonb_build_object('Content-Type','application/json','x-hook-secret', token)
   );
 
   return new;
