@@ -152,11 +152,18 @@
 
 .cvws-ex-progress-bar {
   display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: stretch;
   gap: 0;
+  width: 100%;
+  min-width: 0;
   border-bottom: 0.5px solid var(--border);
   flex-shrink: 0;
   overflow-x: auto;
+  overflow-y: hidden;
   scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
 }
 
 .cvws-ex-progress-bar::-webkit-scrollbar {
@@ -164,8 +171,12 @@
 }
 
 .cvws-ex-ptab {
-  flex: 1;
-  min-width: 90px;
+  flex: 0 0 auto;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 88px;
   padding: 10px 14px;
   text-align: center;
   font-size: 12px;
@@ -178,6 +189,7 @@
   border-bottom: 2px solid transparent;
   transition: color 0.2s, border-color 0.2s;
   white-space: nowrap;
+  box-sizing: border-box;
 }
 
 .cvws-ex-ptab.cvws-ex-ptab--active {
@@ -906,9 +918,15 @@
   }
 
   .cvws-ex-ptab {
-    min-width: 72px;
+    flex: 0 0 auto;
+    min-width: 68px;
     padding: 6px 8px;
     font-size: 10px;
+  }
+
+  .cvws-ex-progress-bar {
+    flex-direction: row;
+    flex-wrap: nowrap;
   }
 
   .cvws-ex-pb {
