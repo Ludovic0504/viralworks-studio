@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useLocation } from "react-router-dom";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { isAdmin } from "@/bibliotheque/supabase/credits";
@@ -14,6 +14,8 @@ import {
   Users,
   TrendingUp,
   RefreshCw,
+  Trash2,
+  MailOpen,
   CreditCard,
   Clock,
   CheckCircle,
@@ -38,6 +40,7 @@ export default function Admin() {
   const [subscriptions, setSubscriptions] = useState([]);
   const [history, setHistory] = useState([]);
   const [adminNotifications, setAdminNotifications] = useState([]);
+  const [selectedNotifIds, setSelectedNotifIds] = useState(() => new Set());
   const [stats, setStats] = useState({
     totalUsers: 0,
     activeSubscriptions: 0,
@@ -55,6 +58,14 @@ export default function Admin() {
   const [reason, setReason] = useState("");
   const [processing, setProcessing] = useState(false);
   const [activeTab, setActiveTab] = useState("users"); // users, payments, transactions, subscriptions, history, notifications
+
+  const visibleNotifIds = useMemo(() => adminNotifications.map((n) => n.id).filter(Boolean), [adminNotifications]);
+  const allVisibleSelected = useMemo(() => {
+    if (!visibleNotifIds.length) return false;
+    for (const id of visibleNotifIds) if (!selectedNotifIds.has(id)) return false;
+    return true;
+  }, [visibleNotifIds, selectedNotifIds]);
+  const selectedCount = selectedNotifIds.size;
 
   const CREDIT_CATEGORY_OPTIONS = [
     { value: "workflow_video", label: "Workflow vidéo" },
@@ -123,10 +134,82 @@ export default function Admin() {
         setSubscriptions(data.subscriptions || []);
         setHistory(data.history || []);
         setAdminNotifications(data.adminNotifications || []);
+        setSelectedNotifIds(new Set());
       }
     } catch (err) {
       console.error("Erreur chargement dashboard:", err);
       alert(`Erreur: ${err.message}`);
+    }
+  };
+
+  const toggleNotifSelection = (id) => {
+    if (!id) return;
+    setSelectedNotifIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllVisible = () => {
+    setSelectedNotifIds((prev) => {
+      const next = new Set(prev);
+      const shouldSelectAll = !allVisibleSelected;
+      if (shouldSelectAll) {
+        for (const id of visibleNotifIds) next.add(id);
+      } else {
+        for (const id of visibleNotifIds) next.delete(id);
+      }
+      return next;
+    });
+  };
+
+  const runNotifAction = async (action, ids) => {
+    const supabase = getBrowserSupabase();
+    const { data: { session: currentSession } } = await supabase.auth.getSession();
+    if (!currentSession?.access_token) throw new Error("Session expirée, reconnectez-vous");
+
+    const payload =
+      action === "mark_all_read"
+        ? { action }
+        : { action, ids: Array.isArray(ids) ? ids : [] };
+
+    const { data, error } = await supabase.functions.invoke("admin-notifications", {
+      headers: { Authorization: `Bearer ${currentSession.access_token}` },
+      body: payload,
+    });
+
+    if (error) throw new Error(error.message || "Erreur action notifications");
+    return data;
+  };
+
+  const handleMarkRead = async (ids) => {
+    const list = Array.isArray(ids) ? ids : Array.from(selectedNotifIds);
+    if (!list.length) return;
+    setProcessing(true);
+    try {
+      await runNotifAction("mark_read", list);
+      await loadDashboardData();
+    } catch (e) {
+      alert(`❌ Erreur: ${e.message}`);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleDeleteNotifs = async (ids) => {
+    const list = Array.isArray(ids) ? ids : Array.from(selectedNotifIds);
+    if (!list.length) return;
+    if (!confirm(`Supprimer ${list.length} notification(s) ?`)) return;
+    setProcessing(true);
+    try {
+      await runNotifAction("delete", list);
+      await loadDashboardData();
+    } catch (e) {
+      alert(`❌ Erreur: ${e.message}`);
+    } finally {
+      setProcessing(false);
     }
   };
 
@@ -840,21 +923,50 @@ export default function Admin() {
           {/* Onglet Notifications */}
           {activeTab === "notifications" && (
             <div className="glass-strong rounded-xl p-6 border border-white/10">
-              <div className="flex items-center justify-between gap-4 mb-4">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
                 <div>
                   <p className="text-sm font-semibold text-gray-200">Notifications admin</p>
                   <p className="text-xs text-gray-400">
                     Dernières notifications (inscriptions, etc.)
                   </p>
                 </div>
-                <button
-                  onClick={loadDashboardData}
-                  className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 transition-all flex items-center gap-2"
-                  title="Rafraîchir"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                  Rafraîchir
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={toggleSelectAllVisible}
+                    className="px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Sélectionner tout"
+                    disabled={!adminNotifications.length || processing}
+                  >
+                    {allVisibleSelected ? "Tout désélectionner" : "Tout sélectionner"}
+                  </button>
+                  <button
+                    onClick={() => handleMarkRead()}
+                    className="px-3 py-2 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-200 transition-all text-sm inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Marquer comme lu"
+                    disabled={processing || selectedCount === 0}
+                  >
+                    <MailOpen className="w-4 h-4" />
+                    Marquer lu{selectedCount ? ` (${selectedCount})` : ""}
+                  </button>
+                  <button
+                    onClick={() => handleDeleteNotifs()}
+                    className="px-3 py-2 rounded-lg bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-200 transition-all text-sm inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Supprimer"
+                    disabled={processing || selectedCount === 0}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Supprimer{selectedCount ? ` (${selectedCount})` : ""}
+                  </button>
+                  <button
+                    onClick={loadDashboardData}
+                    className="px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 transition-all flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Rafraîchir"
+                    disabled={processing}
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    Rafraîchir
+                  </button>
+                </div>
               </div>
 
               {adminNotifications.length === 0 ? (
@@ -872,29 +984,64 @@ export default function Admin() {
                           : "bg-emerald-500/10 border-emerald-500/30"
                       }`}
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-gray-200">
-                            {n.title || "Notification"}
-                          </p>
-                          {n.body ? (
-                            <p className="text-xs text-gray-400 mt-1 whitespace-pre-wrap">
-                              {n.body}
+                      <div className="flex items-start gap-3">
+                        <div className="pt-0.5">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(n.id && selectedNotifIds.has(n.id))}
+                            onChange={() => toggleNotifSelection(n.id)}
+                            className="h-4 w-4 accent-emerald-500"
+                            aria-label="Sélectionner la notification"
+                          />
+                        </div>
+
+                        <div className="flex items-start justify-between gap-3 flex-1 min-w-0">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-gray-200">
+                              {n.title || "Notification"}
                             </p>
-                          ) : null}
-                          <div className="text-xs text-gray-500 mt-2 flex items-center gap-3">
-                            <span>{formatNotifDate(n.created_at)}</span>
-                            {n.actor_email ? <span className="truncate">{n.actor_email}</span> : null}
+                            {n.body ? (
+                              <p className="text-xs text-gray-400 mt-1 whitespace-pre-wrap">
+                                {n.body}
+                              </p>
+                            ) : null}
+                            <div className="text-xs text-gray-500 mt-2 flex items-center gap-3">
+                              <span>{formatNotifDate(n.created_at)}</span>
+                              {n.actor_email ? <span className="truncate">{n.actor_email}</span> : null}
+                              {!n.read_at ? (
+                                <span className="text-emerald-300">Non lu</span>
+                              ) : (
+                                <span className="text-gray-400">Lu</span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex items-start gap-2 shrink-0">
                             {!n.read_at ? (
-                              <span className="text-emerald-300">Non lu</span>
-                            ) : (
-                              <span className="text-gray-400">Lu</span>
-                            )}
+                              <button
+                                onClick={() => handleMarkRead([n.id])}
+                                className="px-2 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-200 transition-all text-xs inline-flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                                disabled={processing}
+                                title="Marquer comme lu"
+                              >
+                                <MailOpen className="w-3.5 h-3.5" />
+                                Lu
+                              </button>
+                            ) : null}
+                            <button
+                              onClick={() => handleDeleteNotifs([n.id])}
+                              className="px-2 py-1 rounded-lg bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-200 transition-all text-xs inline-flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                              disabled={processing}
+                              title="Supprimer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              Suppr.
+                            </button>
+                            <span className="px-2 py-0.5 rounded text-xs bg-white/5 border border-white/10 text-gray-300 self-start">
+                              {n.kind || "info"}
+                            </span>
                           </div>
                         </div>
-                        <span className="px-2 py-0.5 rounded text-xs bg-white/5 border border-white/10 text-gray-300">
-                          {n.kind || "info"}
-                        </span>
                       </div>
                     </div>
                   ))}
