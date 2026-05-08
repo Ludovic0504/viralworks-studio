@@ -59,7 +59,10 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   const hookSecret = (Deno.env.get("AUTH_HOOK_SECRET") ?? "").trim();
-  const provided = (req.headers.get("x-hook-secret") ?? "").trim();
+  const provided =
+    (req.headers.get("x-hook-secret") ?? "").trim() ||
+    new URL(req.url).searchParams.get("x-hook-secret")?.trim() ||
+    "";
   if (hookSecret && provided !== hookSecret) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
