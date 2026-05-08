@@ -210,15 +210,9 @@ export default function Header({ onOpenMenu }) {
                     />
                   ) : null}
                 </div>
-                {adminBar.unreadAdminNotifications > 0 || adminBar.signups24h > 0 ? (
+                {adminBar.unreadAdminNotifications > 0 ? (
                   <span className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-emerald-600 px-1 text-[10px] font-semibold leading-none text-white">
-                    {adminBar.unreadAdminNotifications > 0
-                      ? adminBar.unreadAdminNotifications > 99
-                        ? "99+"
-                        : adminBar.unreadAdminNotifications
-                      : adminBar.signups24h > 99
-                        ? "99+"
-                        : adminBar.signups24h}
+                    {adminBar.unreadAdminNotifications > 99 ? "99+" : adminBar.unreadAdminNotifications}
                   </span>
                 ) : null}
               </LienNavSync>
