@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { isAdmin } from "@/bibliotheque/supabase/credits";
 import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
@@ -28,6 +29,7 @@ import {
 
 export default function Admin() {
   const { session } = useAuth();
+  const location = useLocation();
   const [isAdminUser, setIsAdminUser] = useState(false);
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState([]);
@@ -52,7 +54,7 @@ export default function Admin() {
   const [creditCategory, setCreditCategory] = useState("workflow_video");
   const [reason, setReason] = useState("");
   const [processing, setProcessing] = useState(false);
-  const [activeTab, setActiveTab] = useState("users"); // users, payments, transactions, subscriptions, history
+  const [activeTab, setActiveTab] = useState("users"); // users, payments, transactions, subscriptions, history, notifications
 
   const CREDIT_CATEGORY_OPTIONS = [
     { value: "workflow_video", label: "Workflow vidéo" },
@@ -75,9 +77,7 @@ export default function Admin() {
       try {
         const admin = await isAdmin();
         setIsAdminUser(admin);
-        if (admin) {
-          loadDashboardData();
-        }
+        if (admin) loadDashboardData();
       } catch (err) {
         console.error("Erreur vérification admin:", err);
       } finally {
@@ -87,6 +87,13 @@ export default function Admin() {
 
     checkAdminAccess();
   }, [session]);
+
+  useEffect(() => {
+    const sp = new URLSearchParams(location.search);
+    const tab = sp.get("tab");
+    const allowed = new Set(["users", "payments", "transactions", "subscriptions", "history", "notifications"]);
+    if (tab && allowed.has(tab)) setActiveTab(tab);
+  }, [location.search]);
 
   const loadDashboardData = async () => {
     try {

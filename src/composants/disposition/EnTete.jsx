@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { Menu } from "lucide-react";
+import { Menu, Bell, UserPlus } from "lucide-react";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { useCommunauteVWSNotif } from "@/contexte/FournisseurCommunauteVWSNotif.jsx";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import LienNavSync from "@/composants/disposition/LienNavSync";
 import MenuProfilConnecte from "@/composants/disposition/MenuProfilConnecte";
+import { isAdmin } from "@/bibliotheque/supabase/credits";
+import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
 
 const navLinks = [
   { path: "/", label: "Accueil" },
@@ -37,8 +39,67 @@ export default function Header({ onOpenMenu }) {
   const { unreadPrivateCount } = useCommunauteVWSNotif();
   const location = useLocation();
 
+  const [adminBar, setAdminBar] = useState({
+    isAdmin: false,
+    unreadAdminNotifications: 0,
+    signups24h: 0,
+  });
+
   const [signingOut, setSigningOut] = useState(false);
   const wasConnectedRef = useRef(hasSession);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function refreshAdminBar() {
+      if (!hasSession) {
+        if (!cancelled) setAdminBar({ isAdmin: false, unreadAdminNotifications: 0, signups24h: 0 });
+        return;
+      }
+
+      let admin = false;
+      try {
+        admin = await isAdmin();
+      } catch {
+        admin = false;
+      }
+
+      if (!admin) {
+        if (!cancelled) setAdminBar({ isAdmin: false, unreadAdminNotifications: 0, signups24h: 0 });
+        return;
+      }
+
+      try {
+        const supabase = getBrowserSupabase();
+        const {
+          data: { session: currentSession },
+        } = await supabase.auth.getSession();
+        if (!currentSession?.access_token) return;
+
+        const { data, error } = await supabase.functions.invoke("admin-adminbar", {
+          headers: { Authorization: `Bearer ${currentSession.access_token}` },
+        });
+        if (error) return;
+
+        if (!cancelled) {
+          setAdminBar({
+            isAdmin: true,
+            unreadAdminNotifications: Number(data?.unreadAdminNotifications || 0),
+            signups24h: Number(data?.signups24h || 0),
+          });
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    refreshAdminBar();
+    const id = window.setInterval(refreshAdminBar, 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [hasSession, session?.user?.id]);
 
   useEffect(() => {
     if (hasSession) {
@@ -132,6 +193,36 @@ export default function Header({ onOpenMenu }) {
           <nav className="hidden flex-1 items-center justify-center gap-6 md:flex lg:gap-8">{navItems}</nav>
 
           <div className="nav-right flex shrink-0 items-center justify-end gap-2">
+            {adminBar.isAdmin ? (
+              <LienNavSync
+                to="/admin?tab=notifications"
+                className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-300 transition-colors hover:bg-white/10 hover:text-white"
+                aria-label="Admin: inscriptions et notifications"
+                title="Admin: inscriptions & notifications"
+              >
+                <div className="relative">
+                  <Bell size={18} className="text-gray-300" />
+                  {adminBar.signups24h > 0 ? (
+                    <UserPlus
+                      size={12}
+                      className="absolute -right-2 -bottom-2 text-emerald-300"
+                      aria-hidden
+                    />
+                  ) : null}
+                </div>
+                {adminBar.unreadAdminNotifications > 0 || adminBar.signups24h > 0 ? (
+                  <span className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-emerald-600 px-1 text-[10px] font-semibold leading-none text-white">
+                    {adminBar.unreadAdminNotifications > 0
+                      ? adminBar.unreadAdminNotifications > 99
+                        ? "99+"
+                        : adminBar.unreadAdminNotifications
+                      : adminBar.signups24h > 99
+                        ? "99+"
+                        : adminBar.signups24h}
+                  </span>
+                ) : null}
+              </LienNavSync>
+            ) : null}
             {hasSession ? (
               <LienNavSync
                 to="/communaute-vws?tab=private"
