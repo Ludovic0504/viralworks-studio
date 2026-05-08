@@ -11,6 +11,7 @@ import {
   getSafeScenes,
   normalizeCampaignGenerationSpec,
 } from "@/bibliotheque/campaignGenerationSpec";
+import { splitCampaignPromptIntoThreeVideoSegments } from "@/bibliotheque/splitVideoPromptThreeSegments";
 
 export const STUDIO_SCRIPT_GENERATION_COST = 1;
 
@@ -185,7 +186,14 @@ export async function runStudioScriptRefinement({
   let trimmedForHistory = "";
 
   if (isMultiScene) {
-    const nextScenes = [trimmedRefined, trimmedRefined, trimmedRefined];
+    let nextScenes;
+    try {
+      const parts = await splitCampaignPromptIntoThreeVideoSegments(trimmedRefined);
+      nextScenes = [parts[0], parts[1], parts[2]];
+    } catch (err) {
+      console.warn("[studioScriptRefinement] Découpe 3 segments impossible, repli triple copie:", err);
+      nextScenes = [trimmedRefined, trimmedRefined, trimmedRefined];
+    }
     const combined = nextScenes.join("\n\n---\n\n");
     trimmedForHistory = "";
     const nextSpec = buildCanonicalScriptSpec(canonicalSpec, idea, {

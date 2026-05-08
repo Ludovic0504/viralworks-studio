@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { ArrowRight, Menu } from "lucide-react";
 import { useAuth } from "@/contexte/FournisseurAuth";
+import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { useCommunauteVWSNotif } from "@/contexte/FournisseurCommunauteVWSNotif.jsx";
 import Footer from "@/composants/disposition/PiedDePage";
 import SidebarShell from "@/composants/disposition/Navbar";
@@ -14,7 +15,6 @@ const navLinks = [
   { path: "/viralworks", label: "ViralWorks" },
   { path: "/communaute-vws", label: "Communauté VWS" },
   { path: "/boutique", label: "Boutique" },
-  { path: "/a-savoir", label: "Playbook" },
 ];
 
 function MessageBubbleIcon({ className }) {
@@ -34,12 +34,14 @@ function MessageBubbleIcon({ className }) {
 
 export default function Accueil() {
   const { session, signOut, loading } = useAuth();
+  const { openAuthModal } = useRequireAuthAction();
   const { unreadPrivateCount } = useCommunauteVWSNotif();
   const hasSession = Boolean(session?.user?.id);
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const wasConnectedRef = useRef(hasSession);
+  const didLogLoginParamRef = useRef(false);
 
   const demoVideoChantierUrl = (import.meta.env.VITE_DEMO_VIDEO_CHANTIER_URL || "").trim();
   const demoVideoMoteurUrl = (import.meta.env.VITE_DEMO_VIDEO_MOTEUR_URL || "").trim();
@@ -79,6 +81,23 @@ export default function Accueil() {
       wasConnectedRef.current = false;
     }
   }, [hasSession, loading, signingOut]);
+
+  useEffect(() => {
+    if (didLogLoginParamRef.current) return;
+    didLogLoginParamRef.current = true;
+    const sp = new URLSearchParams(location.search);
+    const wantsLogin = sp.get("login") === "1";
+    // #region agent log
+    fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'0480cf'},body:JSON.stringify({sessionId:'0480cf',runId:'auth-bug',hypothesisId:'H2',location:'src/pages/Accueil.jsx:loginParam',message:'Accueil mounted',data:{path:location.pathname,search:location.search,wantsLogin,hasSession},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    if (wantsLogin) {
+      // #region agent log
+      fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'0480cf'},body:JSON.stringify({sessionId:'0480cf',runId:'auth-bug',hypothesisId:'H3',location:'src/pages/Accueil.jsx:openAuthModal',message:'Would openAuthModal for login=1',data:{},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      // Note: on n'ouvre pas encore ici, instrumentation only (fix après preuve).
+      void openAuthModal;
+    }
+  }, [location.pathname, location.search, hasSession, openAuthModal]);
 
   const showConnectedBranch = hasSession || (loading && wasConnectedRef.current);
 
@@ -195,12 +214,13 @@ export default function Accueil() {
               {showConnectedBranch ? (
                 <MenuProfilConnecte onLogout={handleLogout} signingOut={signingOut} />
               ) : (
-                <LienNavSync
-                  to="/login"
+                <button
+                  type="button"
+                  onClick={() => openAuthModal?.()}
                   className="inline-flex items-center justify-center rounded-lg btn-vws-primary px-4 py-2 text-sm font-semibold whitespace-nowrap md:px-6 md:py-2.5"
                 >
                   Connexion
-                </LienNavSync>
+                </button>
               )}
             </div>
           </div>
@@ -255,13 +275,24 @@ export default function Accueil() {
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <LienNavSync
-              to={session ? "/viralworks" : "/login"}
-              className="group inline-flex items-center gap-3 px-8 py-4 text-lg font-semibold rounded-xl transition-all duration-300 btn-vws-primary"
-            >
-              <span>{session ? "Créer ma vidéo" : "Se connecter"}</span>
-              <ArrowRight className="w-5 h-5 transition-transform duration-300 group-hover:translate-x-2" />
-            </LienNavSync>
+            {session ? (
+              <LienNavSync
+                to="/viralworks"
+                className="group inline-flex items-center gap-3 px-8 py-4 text-lg font-semibold rounded-xl transition-all duration-300 btn-vws-primary"
+              >
+                <span>Créer ma vidéo</span>
+                <ArrowRight className="w-5 h-5 transition-transform duration-300 group-hover:translate-x-2" />
+              </LienNavSync>
+            ) : (
+              <button
+                type="button"
+                onClick={() => openAuthModal?.()}
+                className="group inline-flex items-center gap-3 px-8 py-4 text-lg font-semibold rounded-xl transition-all duration-300 btn-vws-primary"
+              >
+                <span>Se connecter</span>
+                <ArrowRight className="w-5 h-5 transition-transform duration-300 group-hover:translate-x-2" />
+              </button>
+            )}
           </div>
         </div>
       </div>

@@ -369,10 +369,17 @@ export function clarifyGateNeedsCausalAgent(mainIdea: string): boolean {
   if (!isTransform) return false;
   // Explicit visible intervention
   if (
-    /\b(ouvrier|ouvriers|artisan|artisans|personne|gens|équipe|equipe|main\b|mains\b|hand\b|hands\b|worker|workers|crew|machine|machines|engin|pelleteuse|grue|bulldozer|robot|tool|tools|outil|outils)\b/.test(
+    /\b(ouvrier|ouvriers|artisan|artisans|personne|gens|équipe|equipe|main\b|mains\b|hand\b|hands\b|worker|workers|crew|machine|machines|engin|pelleteuse|grue|bulldozer|robot|tool|tools|outil|outils|menuisier|charpentier|ma[cç]on|plombier|[ée]lectricien|chauffagiste|coiffeur|cuisinier|chef|garagiste|m[ée]canicien|agent immobilier|architecte|pisciniste|paysagiste|jardinier|technicien)\b/.test(
       t
     )
   ) {
+    return false;
+  }
+  // Common explicit human grammar signals (even if profession is used as subject).
+  if (/\b(le|la|un|une|des)\s+(menuisier|charpentier|ma[cç]on|plombier|[ée]lectricien|chauffagiste|coiffeur|cuisinier|chef|garagiste|m[ée]canicien|agent immobilier|architecte|pisciniste|paysagiste|jardinier|technicien)\b/.test(t)) {
+    return false;
+  }
+  if (/\b(il|elle|ils|elles|je|nous|vous|on)\b/.test(t)) {
     return false;
   }
   // Explicit automatic / no intervention
@@ -963,7 +970,14 @@ function buildVideoPrompts(
       ? "Start from a partially built initial state where key base elements are already present and continue the build progression."
       : "";
 
+  // #region agent log
+  const __dbgB_dba02a = {sessionId:'dba02a',runId:'pre-fix-1',hypothesisId:'B',location:'vwsPromptEngine.ts:buildVideoPrompts',message:'Building video prompts (check duration constraints vs sequenceType)',data:{sequenceType:String(input.sequenceType||''),sequencesCount:Array.isArray(sequences)?sequences.length:0,dialogueEnabled:Boolean(dialogueEnabled),hasFixed8sLine:true},timestamp:Date.now()};
+  fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'dba02a'},body:JSON.stringify(__dbgB_dba02a)}).catch(()=>{});
+  // #endregion agent log
+
   return sequences.map((seq) => {
+    const isMulti = input.sequenceType === "three_x_8s" && sequences.length > 1;
+    const segmentLabel = isMulti ? `Segment ${seq.index + 1}/${sequences.length}` : "";
     const importantLines = [
       "- Describe clearly the action",
       "- Specify who the character is talking to",
@@ -972,6 +986,9 @@ function buildVideoPrompts(
       "- No exclamation marks or question marks",
       "- The video must be 8 seconds long",
     ];
+    if (segmentLabel) {
+      importantLines.push(`- ${segmentLabel} (must be narratively distinct from other segments)`);
+    }
     if (input.cameraFixed) {
       importantLines.push("- Locked-off static camera only for the full shot");
       importantLines.push("- Forbid any pan, tilt, dolly, zoom, orbit, crane, or handheld drift");
@@ -995,6 +1012,7 @@ function buildVideoPrompts(
     const base = [
       "Ultra realistic cinematic chaotic vlog shot",
       "",
+      ...(segmentLabel ? ["Segment :", segmentLabel, ""] : []),
       "Idea :",
       `${interpretedIntent} Sequence focus: ${seq.sequenceGoal}. ${routeHint}${answerHint ? ` ${answerHint}` : ""}`,
       "",

@@ -1,4 +1,5 @@
 import { getBrowserSupabase } from "./client-navigateur";
+import { track } from "@/bibliotheque/meta/pixel";
 
 export interface StripePayment {
   id: string;
@@ -169,6 +170,17 @@ export async function redirectToCheckout(
   if (!result.url) {
     throw new Error("URL de checkout non disponible");
   }
+
+  try {
+    sessionStorage.setItem(
+      "onetool_last_checkout",
+      JSON.stringify({ amount, credits, type, subscriptionPlan, currency: "EUR" })
+    );
+  } catch {
+    // no-op
+  }
+
+  track("InitiateCheckout", { value: amount, currency: "EUR" });
 
   // Rediriger vers Stripe Checkout
   window.location.href = result.url;

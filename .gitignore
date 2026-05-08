@@ -13,6 +13,7 @@ node_modules
 # Fichiers de build
 dist
 build
+deploy-ovh-dist.zip
 .vite
 *.tsbuildinfo
 
@@ -37,6 +38,7 @@ Thumbs.db
 *~
 
 # IDE / Éditeurs
+.cursor/
 .vscode/*
 !.vscode/extensions.json
 .idea

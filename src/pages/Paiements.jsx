@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexte/FournisseurAuth";
+import { track } from "@/bibliotheque/meta/pixel";
 import { getUserCredits } from "@/bibliotheque/supabase/credits";
 import { redirectToCheckout, getUserSubscription } from "@/bibliotheque/supabase/stripe";
 import { 
@@ -54,6 +55,21 @@ export default function Paiements() {
 
   useEffect(() => {
     if (paymentStatus === "success") {
+      try {
+        const raw = sessionStorage.getItem("onetool_last_checkout");
+        if (raw) {
+          const last = JSON.parse(raw);
+          track("Purchase", {
+            value: typeof last?.amount === "number" ? last.amount : undefined,
+            currency: last?.currency || "EUR",
+          });
+          sessionStorage.removeItem("onetool_last_checkout");
+        } else {
+          track("Purchase");
+        }
+      } catch {
+        track("Purchase");
+      }
       setTimeout(() => {
         loadData();
       }, 2000);

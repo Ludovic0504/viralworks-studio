@@ -3,6 +3,7 @@ import { useLocation } from "react-router-dom";
 import { Menu } from "lucide-react";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { useCommunauteVWSNotif } from "@/contexte/FournisseurCommunauteVWSNotif.jsx";
+import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import LienNavSync from "@/composants/disposition/LienNavSync";
 import MenuProfilConnecte from "@/composants/disposition/MenuProfilConnecte";
 
@@ -12,7 +13,6 @@ const navLinks = [
   { path: "/viralworks", label: "ViralWorks" },
   { path: "/communaute-vws", label: "Communauté VWS" },
   { path: "/boutique", label: "Boutique" },
-  { path: "/a-savoir", label: "Playbook" },
 ];
 
 function MessageBubbleIcon({ className }) {
@@ -32,6 +32,7 @@ function MessageBubbleIcon({ className }) {
 
 export default function Header({ onOpenMenu }) {
   const { session, signOut, loading } = useAuth();
+  const { openAuthModal } = useRequireAuthAction();
   const hasSession = Boolean(session?.user?.id);
   const { unreadPrivateCount } = useCommunauteVWSNotif();
   const location = useLocation();
@@ -98,12 +99,13 @@ export default function Header({ onOpenMenu }) {
   const authSlot = showConnectedBranch ? (
     <MenuProfilConnecte onLogout={handleLogout} signingOut={signingOut} />
   ) : (
-    <LienNavSync
-      to="/login"
+    <button
+      type="button"
+      onClick={() => openAuthModal?.()}
       className="inline-flex items-center justify-center rounded-lg btn-vws-primary px-4 py-2 text-sm font-semibold whitespace-nowrap md:px-6 md:py-2.5"
     >
       Connexion
-    </LienNavSync>
+    </button>
   );
 
   return (

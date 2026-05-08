@@ -1,10 +1,10 @@
-import { createBrowserRouter, RouterProvider, Outlet, Navigate } from "react-router-dom";
-import { useState, useEffect, Component } from "react";
+import { createBrowserRouter, RouterProvider, Outlet, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { useEffect, Component } from "react";
 import DashboardLayout from "./dispositions/DispositionTableauDeBord.jsx";
 import RappelAuth from "./pages/RappelAuth.jsx";
+import ConfirmerEmail from "./pages/ConfirmerEmail.jsx";
 import Accueil from "./pages/Accueil.jsx";
 import Lab from "./pages/Lab.jsx";
-import Asavoir from "./pages/Asavoir.jsx";
 import Connexion from "./pages/Connexion.jsx";
 import RouteDeconnexion from "./pages/RouteDeconnexion.jsx";
 import ReinitialiserMotDePasse from "./pages/ReinitialiserMotDePasse.jsx";
@@ -15,14 +15,13 @@ import CommunauteVWS from "./pages/CommunauteVWS.jsx";
 import Admin from "./pages/Admin.jsx";
 import MentionsLegales from "./pages/MentionsLegales.jsx";
 import ViralWorks from "./pages/ViralWorks.jsx";
-import ChargeurInitial from "./composants/interface/ChargeurInitial.jsx";
 import ProtectedRoute from "./composants/auth/RouteProtegee.jsx";
 import { AuthProvider } from "./contexte/FournisseurAuth";
 import { AuthActionProvider } from "./contexte/ActionAuthModalContext";
 import { FournisseurCommunauteVWSNotif } from "./contexte/FournisseurCommunauteVWSNotif.jsx";
-
-const LOADER_STORAGE_KEY = "onetool_initial_loader_seen";
-const LOADER_COOLDOWN_HOURS = 1;
+import { initMetaPixel, trackPageView } from "./bibliotheque/meta/pixel";
+import { useAuth } from "@/contexte/FournisseurAuth";
+import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 
 class RouteErrorBoundary extends Component {
   constructor(props) {
@@ -67,46 +66,60 @@ class RouteErrorBoundary extends Component {
   }
 }
 
-function AppShell() {
-  const [showInitialLoader, setShowInitialLoader] = useState(false);
+function MetaPixelRouteListener() {
+  const location = useLocation();
 
   useEffect(() => {
-    try {
-      const lastSeen = localStorage.getItem(LOADER_STORAGE_KEY);
-
-      if (!lastSeen) {
-        setShowInitialLoader(true);
-      } else {
-        const lastSeenTime = parseInt(lastSeen, 10);
-        const now = Date.now();
-        const hoursSinceLastSeen = (now - lastSeenTime) / (1000 * 60 * 60);
-
-        if (hoursSinceLastSeen >= LOADER_COOLDOWN_HOURS) {
-          setShowInitialLoader(true);
-        } else {
-          setShowInitialLoader(false);
-        }
-      }
-    } catch (error) {
-      console.warn("Erreur lors de la vérification du loader:", error);
-      setShowInitialLoader(false);
-    }
+    initMetaPixel();
   }, []);
 
-  const handleEnter = () => {
-    try {
-      localStorage.setItem(LOADER_STORAGE_KEY, Date.now().toString());
-    } catch (error) {
-      console.warn("Erreur lors de l'enregistrement du loader:", error);
-    }
-    setShowInitialLoader(false);
-  };
+  useEffect(() => {
+    trackPageView(`${location.pathname}${location.search}`);
+  }, [location.pathname, location.search]);
 
-  if (showInitialLoader) {
-    return <ChargeurInitial onEnter={handleEnter} />;
-  }
+  return null;
+}
 
+function AppShell() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { session, loading } = useAuth();
+  const { openAuthModal } = useRequireAuthAction();
+
+  useEffect(() => {
+    const sp = new URLSearchParams(location.search);
+    const wantsLogin = sp.get("login") === "1";
+    if (!wantsLogin) return;
+
+    // Nettoyer l'URL immédiatement pour éviter la réouverture au refresh.
+    sp.delete("login");
+    const nextSearch = sp.toString();
+    navigate(
+      { pathname: location.pathname, search: nextSearch ? `?${nextSearch}` : "" },
+      { replace: true }
+    );
+
+    // Si déjà connecté, rien à ouvrir.
+    if (session?.user?.id) return;
+    // Évite un flash si la session est en cours d'init.
+    if (loading) return;
+
+    openAuthModal();
+  }, [location.pathname, location.search, navigate, openAuthModal, session?.user?.id, loading]);
+
+  // Intro supprimée : on affiche toujours l'app directement.
   return <Outlet />;
+}
+
+function LoginRedirect() {
+  const location = useLocation();
+  const sp = new URLSearchParams(location.search);
+  sp.set("login", "1");
+  const search = sp.toString();
+  // #region agent log
+  fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'0480cf'},body:JSON.stringify({sessionId:'0480cf',runId:'auth-bug',hypothesisId:'H1',location:'src/Application.jsx:LoginRedirect',message:'LoginRedirect invoked',data:{fromPath:location.pathname,fromSearch:location.search,toSearch:search},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
+  return <Navigate to={`/${search ? `?${search}` : ""}`} replace />;
 }
 
 const router = createBrowserRouter([
@@ -115,22 +128,25 @@ const router = createBrowserRouter([
       <AuthProvider>
         <AuthActionProvider>
           <FournisseurCommunauteVWSNotif>
+            <MetaPixelRouteListener />
             <AppShell />
           </FournisseurCommunauteVWSNotif>
         </AuthActionProvider>
       </AuthProvider>
     ),
     children: [
-      { path: "/login", element: <Connexion /> },
+      { path: "/login", element: <LoginRedirect /> },
       { path: "/logout", element: <RouteDeconnexion /> },
       { path: "/auth/callback", element: <RappelAuth /> },
+      { path: "/auth/confirm", element: <ConfirmerEmail /> },
       { path: "/reset-password", element: <ReinitialiserMotDePasse /> },
       { path: "/", element: <Accueil /> },
       {
         element: <DashboardLayout />,
         children: [
           { path: "/lab", element: <Lab /> },
-          { path: "/a-savoir", element: <Asavoir /> },
+          // Backward compatibility: ancienne route supprimée → retour accueil.
+          { path: "/a-savoir", element: <Navigate to="/" replace /> },
           { path: "/mentions-legales", element: <MentionsLegales /> },
           { path: "/dashboard", element: <Navigate to="/" replace /> },
           { path: "/prompt", element: <Navigate to="/viralworks" replace /> },

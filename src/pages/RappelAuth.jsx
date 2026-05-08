@@ -24,7 +24,7 @@ export default function AuthCallback() {
       
       if (!urlEnv || !keyEnv || urlEnv === 'https://placeholder.supabase.co' || keyEnv === 'placeholder-key') {
         console.error("[AuthCallback] Configuration Supabase manquante");
-        navigate("/login?error=config", { replace: true });
+        navigate("/?login=1&error=config", { replace: true });
         return;
       }
 
@@ -74,7 +74,7 @@ export default function AuthCallback() {
         
         if (error) {
           console.error("[AuthCallback] error:", error);
-          navigate("/login?error=exchange", { replace: true });
+          navigate("/?login=1&error=exchange", { replace: true });
           return;
         }
 
@@ -82,7 +82,7 @@ export default function AuthCallback() {
 
         if (!hasSession) {
           console.error("[AuthCallback] no session after processing, redirecting to /login");
-          navigate("/login?error=callback", { replace: true });
+          navigate("/?login=1&error=callback", { replace: true });
           return;
         }
 
@@ -101,7 +101,7 @@ export default function AuthCallback() {
         navigate(next, { replace: true });
       } catch (err) {
         console.error("[AuthCallback] unexpected error:", err);
-        navigate("/login?error=callback", { replace: true });
+        navigate("/?login=1&error=callback", { replace: true });
       }
     })();
   }, [navigate]);

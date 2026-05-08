@@ -272,9 +272,6 @@ export default function BlocFormulaireNouveaute({ editingNouveaute, onCancel, on
               <option value="/lab" className="bg-gray-900 text-gray-100">
                 Nouveautés
               </option>
-              <option value="/a-savoir" className="bg-gray-900 text-gray-100">
-                Playbook
-              </option>
             </select>
           </div>
 

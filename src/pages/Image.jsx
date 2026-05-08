@@ -26,6 +26,7 @@ import {
   getSafeScenes,
   normalizeCampaignGenerationSpec,
 } from "@/bibliotheque/campaignGenerationSpec";
+import { STUDIO_24S_TEMPORAL_HOOK_IMAGES_ENABLED } from "@/bibliotheque/studio24sTemporalHookImages";
 import PageTitle from "../composants/interface/TitrePage";
 import {
   modifyImageWithNanoBanana,
@@ -149,6 +150,13 @@ const DEFAULT_IMAGE_STEP = {
   selectedImageIndex: 0,
   modifyInstruction: "",
   pairedCampaignIdea: null,
+  image24sDebug: null,
+  sceneHookImages: [null, null, null],
+  sceneHookStatus: {
+    scene2: { status: "idle", message: "" },
+    scene3: { status: "idle", message: "" },
+  },
+  sceneHookAutoKey: null,
 };
 
 function formatVisualSnapshotLabel(t) {
@@ -174,7 +182,10 @@ export default function ImagePage({
   campaignCameraViewAngle = null,
   campaignGlobalIntentProfile = null,
   campaignSelfieMode = false,
+  sequenceType = "single_8s",
   scriptScene1Idea = "",
+  scriptScene2Idea = "",
+  scriptScene3Idea = "",
   campaignRevealMode = false,
   campaignMicroAnswer = null,
   visualStepActive = false,
@@ -199,6 +210,10 @@ export default function ImagePage({
     lastGeneratedPrompt,
     selectedImageIndex,
     modifyInstruction,
+    sceneHookImages,
+    sceneHookStatus,
+    sceneHookAutoKey,
+    image24sDebug,
   } = imageStep ?? DEFAULT_IMAGE_STEP;
 
   const canonicalSpec = useMemo(() => {
@@ -231,8 +246,14 @@ export default function ImagePage({
             ...getSafeScenes(fromIncoming)[0],
             script_text: String(scriptScene1Idea || getSafeScenes(fromIncoming)[0]?.script_text || ""),
           },
-          getSafeScenes(fromIncoming)[1],
-          getSafeScenes(fromIncoming)[2],
+          {
+            ...getSafeScenes(fromIncoming)[1],
+            script_text: String(scriptScene2Idea || getSafeScenes(fromIncoming)[1]?.script_text || ""),
+          },
+          {
+            ...getSafeScenes(fromIncoming)[2],
+            script_text: String(scriptScene3Idea || getSafeScenes(fromIncoming)[2]?.script_text || ""),
+          },
         ],
         hook_visual: {
           ...fromIncoming.creative.hook_visual,
@@ -272,6 +293,8 @@ export default function ImagePage({
     campaignCameraViewAngle,
     campaignMicroAnswer,
     scriptScene1Idea,
+    scriptScene2Idea,
+    scriptScene3Idea,
     campaignIdeaPrompt,
     prompt,
     lastGeneratedImages,
@@ -323,6 +346,480 @@ export default function ImagePage({
   const [showSystemVideo, setShowSystemVideo] = useState(false);
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+
+  const is24s = sequenceType === "three_x_8s" || canonicalSpec.creative.sequence_type === "three_x_8s";
+  const autoHookInFlightRef = useRef(false);
+
+  const getSelectedHookUrl = useCallback(() => {
+    const urls = Array.isArray(lastGeneratedImages) ? lastGeneratedImages : [];
+    const n = urls.length;
+    if (n === 0) return "";
+    const idx = Math.max(0, Math.min(Number(selectedImageIndex) || 0, n - 1));
+    return String(urls[idx] || "").trim();
+  }, [lastGeneratedImages, selectedImageIndex]);
+
+  const buildNanoHookInstruction = useCallback((sceneText, sceneIndex1Based) => {
+    const base = String(sceneText || "").trim();
+    const label = sceneIndex1Based === 2 ? "Transformation (scène 2/3)" : "Résultat (scène 3/3)";
+    return [
+      `Tu modifies l'image de référence pour illustrer: ${label}.`,
+      "",
+      "Règles de continuité (OBLIGATOIRES):",
+      "- Conserver exactement le même personnage (visage, âge, vêtements), mêmes objets principaux, même décor, même lumière et même style.",
+      "- Conserver un cadrage et une perspective cohérents (pas de changement de caméra radical).",
+      "- Ne pas changer de lieu, ne pas changer de saison/heure, ne pas ajouter de nouveaux personnages.",
+      "",
+      "Objectif de la scène:",
+      base || "(décris une progression logique de l'action, sans changer l'identité du sujet)",
+      "",
+      "Tu fais évoluer uniquement l'action/état de la scène selon l'objectif ci-dessus, tout en gardant la continuité.",
+    ].join("\n");
+  }, []);
+
+  const fetchImageUrlAsDataUrl = useCallback(async (url) => {
+    const u = String(url || "").trim();
+    if (!u) return null;
+    const res = await fetch(u);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    if (!blob || blob.size === 0) return null;
+    const dataUrl = await new Promise((resolve) => {
+      const rd = new FileReader();
+      rd.onload = () => resolve(typeof rd.result === "string" ? rd.result : null);
+      rd.onerror = () => resolve(null);
+      rd.readAsDataURL(blob);
+    });
+    return typeof dataUrl === "string" && dataUrl.startsWith("data:") ? dataUrl : null;
+  }, []);
+
+  const buildHailuoHookPrompt = useCallback((sceneText, sceneIndex1Based) => {
+    const base = String(sceneText || "").trim();
+    const label = sceneIndex1Based === 2 ? "Transformation (scène 2/3)" : "Résultat (scène 3/3)";
+    return [
+      "Objectif: générer une image unique qui représente l'état initial t=0 de ce segment, cohérente avec l'image de référence.",
+      `Segment: ${label}`,
+      "",
+      "Résumé de la scène (à respecter):",
+      base || "(résumé manquant)",
+      "",
+      "Contraintes de continuité (OBLIGATOIRES):",
+      "- Conserver exactement le même personnage (visage, âge, vêtements), mêmes objets principaux, même décor, même lumière et même style.",
+      "- Conserver un cadrage et une perspective cohérents (pas de changement de caméra radical).",
+      "- Même lieu, mêmes éléments, pas de nouveaux personnages.",
+      "",
+      "Évolution autorisée:",
+      "- Seule l'action du personnage et son impact visible sur l'environnement évoluent, en cohérence avec le résumé.",
+    ].join("\n");
+  }, []);
+
+  const formatDebugJson = (value) => {
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch {
+      return String(value || "");
+    }
+  };
+
+  function DebugAccordion({ title, debug, referenceUrl }) {
+    const [open, setOpen] = useState(false);
+    const ref =
+      (typeof debug?.referenceUrl === "string" && debug.referenceUrl.trim())
+        ? debug.referenceUrl.trim()
+        : (typeof referenceUrl === "string" ? referenceUrl.trim() : "");
+    const hasAnyDetails = Boolean(
+      (typeof debug?.prompt === "string" && debug.prompt.trim()) ||
+      debug?.requestBody ||
+      (typeof debug?.functionUrl === "string" && debug.functionUrl.trim()) ||
+      (typeof debug?.provider === "string" && debug.provider.trim()) ||
+      ref
+    );
+    return (
+      <div className="mt-2">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="text-[10px] text-gray-500 hover:text-gray-300 transition-colors flex items-center gap-1"
+        >
+          <span className="select-none">{open ? "▲" : "▼"}</span>
+          <span className="underline underline-offset-2">{open ? "Masquer les détails" : "Voir les détails"}</span>
+        </button>
+        {open ? (
+          <div className="mt-2 rounded-lg border border-white/10 bg-black/30 p-2 space-y-2">
+            {title ? <p className="text-[10px] font-semibold text-gray-300">{title}</p> : null}
+            {!hasAnyDetails ? (
+              <p className="text-[10px] text-gray-500">
+                Détails pas encore capturés. Relance une génération (image 1) ou attends la génération auto (images 2/3),
+                puis ré-ouvre ce panneau.
+              </p>
+            ) : null}
+            {ref ? (
+              <div>
+                <p className="text-[10px] text-gray-400 mb-1">Référence</p>
+                <a href={ref} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2">
+                  <img
+                    src={ref}
+                    alt=""
+                    className="h-14 w-10 rounded border border-white/10 object-cover"
+                    loading="lazy"
+                  />
+                  <span className="text-[10px] text-gray-500 break-all max-w-[14rem]">{ref}</span>
+                </a>
+                {typeof debug?.referenceSummary === "string" && debug.referenceSummary.trim() ? (
+                  <p className="mt-1 text-[10px] text-gray-600">{debug.referenceSummary}</p>
+                ) : null}
+              </div>
+            ) : null}
+            {typeof debug?.prompt === "string" && debug.prompt.trim() ? (
+              <div>
+                <p className="text-[10px] text-gray-400 mb-1">Prompt exact envoyé</p>
+                <pre className="whitespace-pre-wrap text-[10px] leading-snug text-gray-200/90 max-h-44 overflow-auto">
+                  {debug.prompt}
+                </pre>
+              </div>
+            ) : null}
+            {debug?.requestBody ? (
+              <div>
+                <p className="text-[10px] text-gray-400 mb-1">Payload (body JSON) envoyé</p>
+                <pre className="whitespace-pre-wrap text-[10px] leading-snug text-gray-200/90 max-h-44 overflow-auto">
+                  {formatDebugJson(debug.requestBody)}
+                </pre>
+              </div>
+            ) : null}
+            {(typeof debug?.functionUrl === "string" && debug.functionUrl.trim()) ? (
+              <p className="text-[10px] text-gray-600 break-all">Endpoint: {debug.functionUrl}</p>
+            ) : null}
+            {(typeof debug?.provider === "string" && debug.provider.trim()) ? (
+              <p className="text-[10px] text-gray-600">Provider: {debug.provider}</p>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  const summarizeDataUrl = useCallback((dataUrl) => {
+    const s = typeof dataUrl === "string" ? dataUrl : "";
+    if (!s.startsWith("data:")) return "";
+    const head = s.slice(0, Math.min(80, s.length));
+    const mime = head.slice(5).split(";")[0] || "unknown";
+    return `data:${mime};base64,(len=${s.length})`;
+  }, []);
+
+  const generateHookWithHailuo = useCallback(
+    async ({ sceneIndex1Based, sceneText, refDataUrl, referenceUrl }) => {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const accessToken = session?.access_token;
+      if (!supabaseUrl || !supabaseAnonKey || !accessToken) return null;
+
+      const functionUrl = `${supabaseUrl}/functions/v1/hailuo-image`;
+      const hailuoPrompt = buildHookImageApiPrompt(
+        [
+          String(canonicalSpec.campaign.core_idea || "").trim(),
+          canonicalSpec.campaign.profession ? `Métier: ${canonicalSpec.campaign.profession}` : "",
+          canonicalSpec.campaign.style_details ? `Style: ${canonicalSpec.campaign.style_details}` : "",
+          buildHailuoHookPrompt(sceneText, sceneIndex1Based),
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
+        {
+          revealMode: canonicalSpec.rendering.camera.reveal_mode === true,
+          initialStateMode: null,
+          jobTypeLabel: canonicalSpec.campaign.profession || "",
+          lockedVideoScriptScene0: undefined,
+          cameraAerialAngle: canonicalSpec.campaign.clarification.camera_aerial_angle,
+          cameraViewAngle: canonicalSpec.campaign.clarification.camera_view_angle,
+          globalIntent: getSafeIntentProfile(canonicalSpec),
+          selfieMode: canonicalSpec.rendering.camera.selfie_mode === true,
+        }
+      );
+
+      const requestBody = {
+        prompt: hailuoPrompt,
+        ratio,
+        quantity: 1,
+        model,
+        refCharacter: refDataUrl || null,
+      };
+
+      // Debug UI: capture du payload exact envoyé (Image 2/3).
+      const debugKey = sceneIndex1Based === 2 ? "image2" : "image3";
+      patchImageStep((prev) => {
+        const p = prev && typeof prev === "object" ? prev : {};
+        return {
+          ...p,
+          image24sDebug: {
+            ...(p.image24sDebug || {}),
+            [debugKey]: {
+              provider: "hailuo",
+              functionUrl,
+              prompt: hailuoPrompt,
+              requestBody,
+              ratio,
+              model,
+              quantity: 1,
+              referenceUrl: typeof referenceUrl === "string" && referenceUrl.trim() ? referenceUrl.trim() : "",
+              referenceSummary: summarizeDataUrl(refDataUrl),
+              createdAt: new Date().toISOString(),
+            },
+          },
+        };
+      });
+
+      const response = await fetch(functionUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+          apikey: supabaseAnonKey,
+        },
+        body: JSON.stringify(requestBody),
+      });
+      const text = await response.text();
+      let data = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        data = { error: text || `Erreur HTTP ${response.status}` };
+      }
+      if (!response.ok) return null;
+      const urls = Array.isArray(data?.urls) ? data.urls : [];
+      const first = typeof urls?.[0] === "string" ? urls[0].trim() : "";
+      return first || null;
+    },
+    [session?.access_token, canonicalSpec, ratio, model, buildHailuoHookPrompt, patchImageStep, summarizeDataUrl]
+  );
+
+  useEffect(() => {
+    if (!patchImageStep) return;
+    if (!is24s) return;
+    const base = getSelectedHookUrl();
+    if (!base) return;
+    const next0 = sceneHookImages?.[0] ? String(sceneHookImages[0]) : "";
+    if (next0 === base) return;
+    patchImageStep((prev) => {
+      const p = prev && typeof prev === "object" ? prev : {};
+      const arr = Array.isArray(p.sceneHookImages) ? [...p.sceneHookImages] : [null, null, null];
+      arr[0] = base;
+      return { ...p, sceneHookImages: arr };
+    });
+  }, [is24s, getSelectedHookUrl, patchImageStep, sceneHookImages]);
+
+  useEffect(() => {
+    const run = async () => {
+      if (!patchImageStep) return;
+      if (!is24s) return;
+      if (!STUDIO_24S_TEMPORAL_HOOK_IMAGES_ENABLED) return;
+      if (autoHookInFlightRef.current) return;
+      if (!session?.access_token) return;
+
+      const baseUrl = getSelectedHookUrl();
+      if (!baseUrl) return;
+
+      const s2 = String(getSafeScenes(canonicalSpec)?.[1]?.script_text || "").trim();
+      const s3 = String(getSafeScenes(canonicalSpec)?.[2]?.script_text || "").trim();
+      if (!s2 || !s3) return;
+
+      const key = [
+        "v1",
+        String(campaignIdea || "").trim().slice(0, 140),
+        baseUrl.slice(0, 220),
+        s2.slice(0, 140),
+        s3.slice(0, 140),
+      ].join("|");
+      const has2 = Boolean(sceneHookImages?.[1]);
+      const has3 = Boolean(sceneHookImages?.[2]);
+      // Ne pas bloquer les retries si les images 2/3 manquent encore.
+      if (sceneHookAutoKey && sceneHookAutoKey === key && has2 && has3) return;
+      if (has2 && has3) {
+        patchImageStep({ sceneHookAutoKey: key });
+        return;
+      }
+
+      autoHookInFlightRef.current = true;
+      try {
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        if (!supabaseUrl || !supabaseAnonKey) return;
+
+        const auth = { accessToken: session.access_token, supabaseUrl, supabaseAnonKey };
+        // Circuit breaker: si NanoBanana a déjà échoué par manque de crédits (402/Kie credits),
+        // ne plus le retenter dans cette session pour éviter un spam réseau + console.
+        if (!window.__vwsNanoDisabledForSession) window.__vwsNanoDisabledForSession = false;
+        const canNano = canUseImageModification() && !window.__vwsNanoDisabledForSession;
+        // Hailuo: le quota local peut être désynchronisé (ex: crédits rajoutés côté serveur).
+        // Tant que le solde serveur est OK, on autorise le fallback auto.
+        const hasServerCreditsForHailuo = session ? await hasEnoughCredits(1) : false;
+        const canHailuo = canUseImageGeneration() || hasServerCreditsForHailuo;
+        let refDataUrl = null;
+        if (!canNano && canHailuo) {
+          refDataUrl = await fetchImageUrlAsDataUrl(baseUrl);
+        }
+        // Si aucun provider n'est possible, sortir proprement (évite re-run en boucle).
+        if (!canNano && !canHailuo) {
+          patchImageStep({
+            sceneHookStatus: {
+              ...(sceneHookStatus || {}),
+              scene2: has2 ? (sceneHookStatus?.scene2 || { status: "idle", message: "" }) : { status: "error", message: "Crédits insuffisants pour générer les images (Hailuo)." },
+              scene3: has3 ? (sceneHookStatus?.scene3 || { status: "idle", message: "" }) : { status: "error", message: "Crédits insuffisants pour générer les images (Hailuo)." },
+            },
+            sceneHookAutoKey: key,
+          });
+          return;
+        }
+
+        const shouldFallbackToHailuo = (err) => {
+          const msg = String(err?.message || err || "").toLowerCase();
+          return (
+            msg.includes("kie") ||
+            msg.includes("credits") ||
+            msg.includes("crédits") ||
+            msg.includes("insuffisant") ||
+            msg.includes("insufficient") ||
+            msg.includes("payment required") ||
+            msg.includes("402")
+          );
+        };
+
+        if (!has2) {
+          patchImageStep({
+            sceneHookStatus: { ...(sceneHookStatus || {}), scene2: { status: "generating", message: "Génération scène 2…" } },
+          });
+          let url2 = null;
+          let usedNano2 = false;
+          if (canNano) {
+            try {
+              url2 = await modifyImageWithNanoBanana(baseUrl, buildNanoHookInstruction(s2, 2), auth);
+              usedNano2 = true;
+            } catch (e) {
+              if (canHailuo && shouldFallbackToHailuo(e)) {
+                // Désactiver Nano pour cette session pour éviter de retenter après 402.
+                window.__vwsNanoDisabledForSession = true;
+                patchImageStep({
+                  sceneHookStatus: {
+                    ...(sceneHookStatus || {}),
+                    scene2: { status: "generating", message: "NanoBanana indisponible — fallback Hailuo…" },
+                  },
+                });
+                if (!refDataUrl) refDataUrl = await fetchImageUrlAsDataUrl(baseUrl);
+                url2 = await generateHookWithHailuo({ sceneIndex1Based: 2, sceneText: s2, refDataUrl, referenceUrl: baseUrl });
+              } else {
+                throw e;
+              }
+            }
+          } else if (canHailuo) {
+            url2 = await generateHookWithHailuo({ sceneIndex1Based: 2, sceneText: s2, refDataUrl, referenceUrl: baseUrl });
+          }
+          if (url2) {
+            if (usedNano2) consumeImageModification();
+            else consumeImageGeneration();
+            const uploaded = uid ? await uploadImagesFromUrls([url2], uid, "scene2_hook") : { success: false, urls: null };
+            const final2 = uploaded?.success && uploaded.urls?.[0] ? String(uploaded.urls[0]) : String(url2);
+            patchImageStep((prev) => {
+              const p = prev && typeof prev === "object" ? prev : {};
+              const arr = Array.isArray(p.sceneHookImages) ? [...p.sceneHookImages] : [null, null, null];
+              arr[1] = final2;
+              return {
+                ...p,
+                sceneHookImages: arr,
+                sceneHookStatus: { ...(p.sceneHookStatus || {}), scene2: { status: "done", message: "" } },
+              };
+            });
+          } else {
+            patchImageStep({
+              sceneHookStatus: { ...(sceneHookStatus || {}), scene2: { status: "error", message: IMAGE_EDIT_BUSY_MESSAGE } },
+              // Anti-boucle: si aucun provider n'a produit d'URL, mémoriser la clé pour éviter de retry en boucle
+              sceneHookAutoKey: key,
+            });
+          }
+        }
+
+        if (!has3) {
+          patchImageStep({
+            sceneHookStatus: { ...(sceneHookStatus || {}), scene3: { status: "generating", message: "Génération scène 3…" } },
+          });
+          let url3 = null;
+          let usedNano3 = false;
+          if (canNano) {
+            try {
+              url3 = await modifyImageWithNanoBanana(baseUrl, buildNanoHookInstruction(s3, 3), auth);
+              usedNano3 = true;
+            } catch (e) {
+              if (canHailuo && shouldFallbackToHailuo(e)) {
+                // Désactiver Nano pour cette session pour éviter de retenter après 402.
+                window.__vwsNanoDisabledForSession = true;
+                patchImageStep({
+                  sceneHookStatus: {
+                    ...(sceneHookStatus || {}),
+                    scene3: { status: "generating", message: "NanoBanana indisponible — fallback Hailuo…" },
+                  },
+                });
+                if (!refDataUrl) refDataUrl = await fetchImageUrlAsDataUrl(baseUrl);
+                url3 = await generateHookWithHailuo({ sceneIndex1Based: 3, sceneText: s3, refDataUrl, referenceUrl: baseUrl });
+              } else {
+                throw e;
+              }
+            }
+          } else if (canHailuo) {
+            url3 = await generateHookWithHailuo({ sceneIndex1Based: 3, sceneText: s3, refDataUrl, referenceUrl: baseUrl });
+          }
+          if (url3) {
+            if (usedNano3) consumeImageModification();
+            else consumeImageGeneration();
+            const uploaded = uid ? await uploadImagesFromUrls([url3], uid, "scene3_hook") : { success: false, urls: null };
+            const final3 = uploaded?.success && uploaded.urls?.[0] ? String(uploaded.urls[0]) : String(url3);
+            patchImageStep((prev) => {
+              const p = prev && typeof prev === "object" ? prev : {};
+              const arr = Array.isArray(p.sceneHookImages) ? [...p.sceneHookImages] : [null, null, null];
+              arr[2] = final3;
+              return {
+                ...p,
+                sceneHookImages: arr,
+                sceneHookStatus: { ...(p.sceneHookStatus || {}), scene3: { status: "done", message: "" } },
+              };
+            });
+          } else {
+            patchImageStep({
+              sceneHookStatus: { ...(sceneHookStatus || {}), scene3: { status: "error", message: IMAGE_EDIT_BUSY_MESSAGE } },
+              // Anti-boucle: si aucun provider n'a produit d'URL, mémoriser la clé pour éviter de retry en boucle
+              sceneHookAutoKey: key,
+            });
+          }
+        }
+
+        patchImageStep({ sceneHookAutoKey: key });
+      } catch (e) {
+        patchImageStep({
+          sceneHookStatus: {
+            ...(sceneHookStatus || {}),
+            scene2: (sceneHookStatus?.scene2?.status === "generating")
+              ? { status: "error", message: String(e?.message || "Erreur génération scène 2").slice(0, 180) }
+              : (sceneHookStatus?.scene2 || { status: "idle", message: "" }),
+            scene3: (sceneHookStatus?.scene3?.status === "generating")
+              ? { status: "error", message: String(e?.message || "Erreur génération scène 3").slice(0, 180) }
+              : (sceneHookStatus?.scene3 || { status: "idle", message: "" }),
+          },
+        });
+      } finally {
+        autoHookInFlightRef.current = false;
+      }
+    };
+    void run();
+  }, [
+    is24s,
+    patchImageStep,
+    session?.access_token,
+    uid,
+    campaignIdea,
+    canonicalSpec,
+    getSelectedHookUrl,
+    sceneHookImages,
+    sceneHookStatus,
+    sceneHookAutoKey,
+    buildNanoHookInstruction,
+    fetchImageUrlAsDataUrl,
+    generateHookWithHailuo,
+  ]);
 
   useEffect(() => {
     let active = true;
@@ -551,7 +1048,75 @@ export default function ImagePage({
       setProgress(20);
       setProgressMessage("Envoi de la requête...");
       console.log("📡 Appel de la fonction Edge Function:", functionUrl);
-      
+
+      const image1Prompt = buildHookImageApiPrompt(
+        [
+          String(canonicalSpec.creative.hook_visual.prompt_text || "").trim() ||
+            String(canonicalSpec.campaign.core_idea || "").trim(),
+          canonicalSpec.campaign.profession
+            ? `Métier: ${canonicalSpec.campaign.profession}`
+            : "",
+          canonicalSpec.campaign.style_details
+            ? `Style: ${canonicalSpec.campaign.style_details}`
+            : "",
+          canonicalSpec.campaign.clarification.mode
+            ? `Mode de transformation: ${canonicalSpec.campaign.clarification.mode}`
+            : "",
+          canonicalSpec.campaign.clarification.last_user_freeform_answer
+            ? `Précision utilisateur: ${canonicalSpec.campaign.clarification.last_user_freeform_answer}`
+            : "",
+          canonicalSpec.campaign.clarification.camera_aerial_angle
+            ? `Aerial angle: ${canonicalSpec.campaign.clarification.camera_aerial_angle}`
+            : "",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+        {
+          revealMode: canonicalSpec.rendering.camera.reveal_mode === true,
+          initialStateMode:
+            canonicalSpec.campaign.clarification.initial_state === "from_nothing"
+              ? "from_nothing"
+              : null,
+          jobTypeLabel: canonicalSpec.campaign.profession || "",
+          lockedVideoScriptScene0:
+            String(getSafeScenes(canonicalSpec)[0]?.script_text || "").trim() || undefined,
+          cameraAerialAngle: canonicalSpec.campaign.clarification.camera_aerial_angle,
+          cameraViewAngle: canonicalSpec.campaign.clarification.camera_view_angle,
+          // Guard: fallback neutre si intent profile absent/incomplet.
+          globalIntent: getSafeIntentProfile(canonicalSpec),
+          selfieMode: canonicalSpec.rendering.camera.selfie_mode === true,
+        }
+      );
+
+      const image1RequestBody = {
+        prompt: image1Prompt,
+        ratio,
+        quantity,
+        model,
+        refCharacter: refCharDataUrl,
+      };
+
+      // Debug UI: capture du payload exact envoyé (Image 1).
+      patchImageStep((prev) => {
+        const p = prev && typeof prev === "object" ? prev : {};
+        return {
+          ...p,
+          image24sDebug: {
+            ...(p.image24sDebug || {}),
+            image1: {
+              provider: "hailuo",
+              functionUrl,
+              prompt: image1Prompt,
+              requestBody: image1RequestBody,
+              ratio,
+              model,
+              quantity,
+              createdAt: new Date().toISOString(),
+            },
+          },
+        };
+      });
+
       const response = await fetch(functionUrl, {
         method: "POST",
         headers: {
@@ -559,50 +1124,7 @@ export default function ImagePage({
           Authorization: `Bearer ${accessToken}`,
           apikey: supabaseAnonKey,
         },
-        body: JSON.stringify({
-          prompt: buildHookImageApiPrompt(
-            [
-              String(canonicalSpec.creative.hook_visual.prompt_text || "").trim() ||
-                String(canonicalSpec.campaign.core_idea || "").trim(),
-              canonicalSpec.campaign.profession
-                ? `Métier: ${canonicalSpec.campaign.profession}`
-                : "",
-              canonicalSpec.campaign.style_details
-                ? `Style: ${canonicalSpec.campaign.style_details}`
-                : "",
-              canonicalSpec.campaign.clarification.mode
-                ? `Mode de transformation: ${canonicalSpec.campaign.clarification.mode}`
-                : "",
-              canonicalSpec.campaign.clarification.last_user_freeform_answer
-                ? `Précision utilisateur: ${canonicalSpec.campaign.clarification.last_user_freeform_answer}`
-                : "",
-              canonicalSpec.campaign.clarification.camera_aerial_angle
-                ? `Aerial angle: ${canonicalSpec.campaign.clarification.camera_aerial_angle}`
-                : "",
-            ]
-              .filter(Boolean)
-              .join("\n"),
-            {
-              revealMode: canonicalSpec.rendering.camera.reveal_mode === true,
-              initialStateMode:
-                canonicalSpec.campaign.clarification.initial_state === "from_nothing"
-                  ? "from_nothing"
-                  : null,
-              jobTypeLabel: canonicalSpec.campaign.profession || "",
-              lockedVideoScriptScene0:
-                String(getSafeScenes(canonicalSpec)[0]?.script_text || "").trim() || undefined,
-              cameraAerialAngle: canonicalSpec.campaign.clarification.camera_aerial_angle,
-              cameraViewAngle: canonicalSpec.campaign.clarification.camera_view_angle,
-              // Guard: fallback neutre si intent profile absent/incomplet.
-              globalIntent: getSafeIntentProfile(canonicalSpec),
-              selfieMode: canonicalSpec.rendering.camera.selfie_mode === true,
-            }
-          ),
-          ratio,
-          quantity,
-          model,
-          refCharacter: refCharDataUrl,
-        }),
+        body: JSON.stringify(image1RequestBody),
       });
 
       setProgress(40);
@@ -1085,6 +1607,131 @@ export default function ImagePage({
     return <Smartphone className="h-4 w-4 text-[#00d4a0]" aria-hidden />;
   };
 
+  const sceneHook1Url =
+    is24s && typeof sceneHookImages?.[0] === "string" && sceneHookImages[0].trim()
+      ? String(sceneHookImages[0]).trim()
+      : Array.isArray(lastGeneratedImages) && lastGeneratedImages[selectedImageIndex]
+        ? String(lastGeneratedImages[selectedImageIndex]).trim()
+        : "";
+  const sceneHook2Url =
+    is24s && typeof sceneHookImages?.[1] === "string" ? String(sceneHookImages[1] || "").trim() : "";
+  const sceneHook3Url =
+    is24s && typeof sceneHookImages?.[2] === "string" ? String(sceneHookImages[2] || "").trim() : "";
+  const scene2Status = sceneHookStatus?.scene2?.status || "idle";
+  const scene3Status = sceneHookStatus?.scene3?.status || "idle";
+  const scene2Msg = String(sceneHookStatus?.scene2?.message || "").trim();
+  const scene3Msg = String(sceneHookStatus?.scene3?.message || "").trim();
+
+  const reconstructedImage1Debug = useMemo(() => {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const functionUrl = supabaseUrl ? `${supabaseUrl}/functions/v1/hailuo-image` : "";
+    const image1Prompt = buildHookImageApiPrompt(
+      [
+        String(canonicalSpec.creative.hook_visual.prompt_text || "").trim() ||
+          String(canonicalSpec.campaign.core_idea || "").trim(),
+        canonicalSpec.campaign.profession ? `Métier: ${canonicalSpec.campaign.profession}` : "",
+        canonicalSpec.campaign.style_details ? `Style: ${canonicalSpec.campaign.style_details}` : "",
+        canonicalSpec.campaign.clarification.mode ? `Mode de transformation: ${canonicalSpec.campaign.clarification.mode}` : "",
+        canonicalSpec.campaign.clarification.last_user_freeform_answer
+          ? `Précision utilisateur: ${canonicalSpec.campaign.clarification.last_user_freeform_answer}`
+          : "",
+        canonicalSpec.campaign.clarification.camera_aerial_angle
+          ? `Aerial angle: ${canonicalSpec.campaign.clarification.camera_aerial_angle}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      {
+        revealMode: canonicalSpec.rendering.camera.reveal_mode === true,
+        initialStateMode:
+          canonicalSpec.campaign.clarification.initial_state === "from_nothing" ? "from_nothing" : null,
+        jobTypeLabel: canonicalSpec.campaign.profession || "",
+        lockedVideoScriptScene0:
+          String(getSafeScenes(canonicalSpec)[0]?.script_text || "").trim() || undefined,
+        cameraAerialAngle: canonicalSpec.campaign.clarification.camera_aerial_angle,
+        cameraViewAngle: canonicalSpec.campaign.clarification.camera_view_angle,
+        globalIntent: getSafeIntentProfile(canonicalSpec),
+        selfieMode: canonicalSpec.rendering.camera.selfie_mode === true,
+      }
+    );
+
+    return {
+      provider: "hailuo (reconstitué)",
+      functionUrl,
+      prompt: image1Prompt,
+      requestBody: {
+        prompt: image1Prompt,
+        ratio,
+        quantity,
+        model,
+        refCharacter: refCharDataUrl ? "(dataURL utilisateur via champ refCharacter)" : null,
+      },
+      ratio,
+      model,
+      quantity,
+      referenceSummary: "Reconstitué: body JSON envoyé à Hailuo (Image 1).",
+      createdAt: "",
+    };
+  }, [canonicalSpec, ratio, quantity, model, refCharDataUrl]);
+
+  const reconstructedHookDebug = useMemo(() => {
+    if (!is24s) return { image2: null, image3: null };
+    const baseUrl = String(sceneHook1Url || "").trim();
+    const s2 = String(getSafeScenes(canonicalSpec)?.[1]?.script_text || "").trim();
+    const s3 = String(getSafeScenes(canonicalSpec)?.[2]?.script_text || "").trim();
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const functionUrl = supabaseUrl ? `${supabaseUrl}/functions/v1/hailuo-image` : "";
+
+    const mk = (sceneIndex1Based, sceneText) => {
+      if (!sceneText) return null;
+      const hailuoPrompt = buildHookImageApiPrompt(
+        [
+          String(canonicalSpec.campaign.core_idea || "").trim(),
+          canonicalSpec.campaign.profession ? `Métier: ${canonicalSpec.campaign.profession}` : "",
+          canonicalSpec.campaign.style_details ? `Style: ${canonicalSpec.campaign.style_details}` : "",
+          buildHailuoHookPrompt(sceneText, sceneIndex1Based),
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
+        {
+          revealMode: canonicalSpec.rendering.camera.reveal_mode === true,
+          initialStateMode: null,
+          jobTypeLabel: canonicalSpec.campaign.profession || "",
+          lockedVideoScriptScene0: undefined,
+          cameraAerialAngle: canonicalSpec.campaign.clarification.camera_aerial_angle,
+          cameraViewAngle: canonicalSpec.campaign.clarification.camera_view_angle,
+          globalIntent: getSafeIntentProfile(canonicalSpec),
+          selfieMode: canonicalSpec.rendering.camera.selfie_mode === true,
+        }
+      );
+
+      return {
+        provider: "hailuo (reconstitué)",
+        functionUrl,
+        prompt: hailuoPrompt,
+        requestBody: {
+          prompt: hailuoPrompt,
+          ratio,
+          quantity: 1,
+          model,
+          refCharacter: "(dataURL générée depuis referenceUrl via fetchImageUrlAsDataUrl)",
+        },
+        ratio,
+        model,
+        quantity: 1,
+        referenceUrl: baseUrl,
+        referenceSummary:
+          "Reconstitué: refCharacter est transmis via le champ `refCharacter` (data URL) du body JSON.",
+        createdAt: "",
+      };
+    };
+
+    return {
+      image2: mk(2, s2),
+      image3: mk(3, s3),
+    };
+  }, [is24s, sceneHook1Url, canonicalSpec, ratio, model, buildHailuoHookPrompt]);
+
   const interactionPanel = (
     <div
       className={`min-w-0 w-full rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-4 sm:px-5 sm:py-5 ${
@@ -1211,9 +1858,15 @@ export default function ImagePage({
           <button
             type="button"
             onClick={() => {
-              if (!lastGeneratedImages?.length && !prompt.trim() && !modifyInstruction.trim()) {
-                return;
-              }
+              const hasSomethingToReset =
+                Boolean(lastGeneratedImages?.length) ||
+                Boolean(String(prompt || "").trim()) ||
+                Boolean(String(modifyInstruction || "").trim()) ||
+                Boolean(refCharDataUrl) ||
+                Boolean(String(lastGeneratedPrompt || "").trim()) ||
+                Boolean(String(campaignIdeaPrompt || "").trim()) ||
+                Number(selectedImageIndex || 0) !== 0;
+              if (!hasSomethingToReset) return;
               if (!confirm("Repartir de zéro sur cette étape ? Les images non enregistrées seront perdues.")) {
                 return;
               }
@@ -1643,6 +2296,80 @@ export default function ImagePage({
           </div>
         ) : null}
         </div>
+
+      {is24s && STUDIO_24S_TEMPORAL_HOOK_IMAGES_ENABLED ? (
+        <section className="mt-4 rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-4 sm:px-5 sm:py-5">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-xs font-semibold text-gray-200 tracking-wide">
+              Images 24 s (Début / Transformation / Résultat)
+            </h3>
+            <span className="text-[10px] uppercase tracking-wider text-gray-500">Auto</span>
+          </div>
+          <p className="mt-1 text-[11px] text-gray-500 leading-relaxed">
+            Scène 1 = image sélectionnée. Scènes 2 &amp; 3 se génèrent en arrière-plan (NanoBanana, sinon Hailuo).
+          </p>
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {[
+              { label: "Début", url: sceneHook1Url, status: "done", msg: "" },
+              { label: "Transformation", url: sceneHook2Url, status: scene2Status, msg: scene2Msg },
+              { label: "Résultat", url: sceneHook3Url, status: scene3Status, msg: scene3Msg },
+            ].map((card) => (
+              <div key={card.label} className="rounded-xl border border-white/10 bg-black/20 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-semibold text-gray-300">{card.label}</span>
+                  <span className="text-[10px] uppercase tracking-wider text-gray-500">
+                    {card.status === "generating"
+                      ? "génération…"
+                      : card.status === "error"
+                        ? "erreur"
+                        : card.url
+                          ? "ok"
+                          : "en attente"}
+                  </span>
+                </div>
+                <div className="mt-2 flex items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-white/[0.03] aspect-[9/16]">
+                  {card.url ? (
+                    <img src={card.url} alt="" className="h-full w-full object-cover" loading="lazy" />
+                  ) : (
+                    <span className="px-2 text-center text-[10px] leading-snug text-gray-500">
+                      {card.status === "generating"
+                        ? "Génération en cours…"
+                        : card.status === "error"
+                          ? "Impossible de générer."
+                          : "Pas encore générée."}
+                    </span>
+                  )}
+                </div>
+                {card.label === "Début" ? (
+                  <DebugAccordion
+                    title="Image 1 (Début)"
+                    debug={image24sDebug?.image1 || reconstructedImage1Debug}
+                  />
+                ) : card.label === "Transformation" ? (
+                  <DebugAccordion
+                    title="Image 2 (Transformation)"
+                    debug={image24sDebug?.image2 || reconstructedHookDebug?.image2}
+                    referenceUrl={sceneHook1Url}
+                  />
+                ) : card.label === "Résultat" ? (
+                  <DebugAccordion
+                    title="Image 3 (Résultat)"
+                    debug={image24sDebug?.image3 || reconstructedHookDebug?.image3}
+                    referenceUrl={sceneHook1Url}
+                  />
+                ) : null}
+                {card.status === "error" && card.msg ? (
+                  <p className="mt-2 text-[10px] text-amber-200/80">{card.msg}</p>
+                ) : card.status === "error" ? (
+                  <p className="mt-2 text-[10px] text-amber-200/80">
+                    Réessai automatique au prochain changement d’image 1 / de résumé.
+                  </p>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {/* 4. Zone d’interaction principale */}
       <div style={isMobile ? { marginTop: "20px" } : undefined}>{interactionPanel}</div>

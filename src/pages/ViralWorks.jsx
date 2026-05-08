@@ -264,6 +264,20 @@ const INITIAL_IMAGE_STEP = {
   modifyInstruction: "",
   /** Idée campagne pour laquelle la grille actuelle a été produite (nouveau contexte → reset). */
   pairedCampaignIdea: null,
+  /**
+   * Debug 24s (UI uniquement) : prompts/payloads envoyés pour image 1/2/3.
+   * Stocke des strings/objets légers (pas de data URLs complètes).
+   */
+  image24sDebug: null,
+  /** Hooks 24s : une image de référence par scène (1..3). */
+  sceneHookImages: [null, null, null],
+  /** Statut de génération auto des hooks 24s (scènes 2 & 3). */
+  sceneHookStatus: {
+    scene2: { status: "idle", message: "" },
+    scene3: { status: "idle", message: "" },
+  },
+  /** Anti-boucle: clé du dernier auto-run (24s hooks). */
+  sceneHookAutoKey: null,
 };
 
 function sanitizeImageStepFromDraft(raw) {
@@ -303,6 +317,61 @@ function sanitizeImageStepFromDraft(raw) {
     pairedCampaignIdea:
       typeof raw.pairedCampaignIdea === "string" && raw.pairedCampaignIdea.trim()
         ? raw.pairedCampaignIdea.trim()
+        : null,
+    image24sDebug: (() => {
+      const dbg = raw?.image24sDebug;
+      if (!dbg || typeof dbg !== "object") return null;
+      // On garde seulement un sous-ensemble simple et sûr (pas d’URLs signées, pas de data URL).
+      const pickOne = (src) => {
+        if (!src || typeof src !== "object") return null;
+        const out = {
+          prompt: typeof src.prompt === "string" ? src.prompt.slice(0, 20000) : "",
+          functionUrl: typeof src.functionUrl === "string" ? src.functionUrl.slice(0, 500) : "",
+          provider: typeof src.provider === "string" ? src.provider.slice(0, 40) : "",
+          createdAt: typeof src.createdAt === "string" ? src.createdAt.slice(0, 40) : "",
+          ratio: typeof src.ratio === "string" ? src.ratio.slice(0, 40) : "",
+          model: typeof src.model === "string" ? src.model.slice(0, 80) : "",
+          quantity: Number.isFinite(Number(src.quantity)) ? Number(src.quantity) : null,
+          referenceUrl:
+            typeof src.referenceUrl === "string" && src.referenceUrl.trim() && !isSensitiveOrTransientUrl(src.referenceUrl)
+              ? src.referenceUrl.trim()
+              : null,
+          referenceSummary: typeof src.referenceSummary === "string" ? src.referenceSummary.slice(0, 160) : "",
+          requestBody: src.requestBody && typeof src.requestBody === "object" ? deepStripSensitiveUrls(src.requestBody) : null,
+        };
+        return out;
+      };
+      return {
+        image1: pickOne(dbg.image1),
+        image2: pickOne(dbg.image2),
+        image3: pickOne(dbg.image3),
+      };
+    })(),
+    sceneHookImages: (() => {
+      const arr = Array.isArray(raw.sceneHookImages) ? raw.sceneHookImages : [];
+      const out = [null, null, null];
+      for (let i = 0; i < 3; i += 1) {
+        const v = typeof arr[i] === "string" && arr[i].trim() ? arr[i].trim() : null;
+        out[i] = v && !isSensitiveOrTransientUrl(v) ? v : null;
+      }
+      return out;
+    })(),
+    sceneHookStatus: (() => {
+      const s2 = raw?.sceneHookStatus?.scene2;
+      const s3 = raw?.sceneHookStatus?.scene3;
+      const normOne = (src) => {
+        const st = typeof src?.status === "string" ? src.status : "idle";
+        const allowed = new Set(["idle", "generating", "done", "error"]);
+        return {
+          status: allowed.has(st) ? st : "idle",
+          message: typeof src?.message === "string" ? src.message.slice(0, 180) : "",
+        };
+      };
+      return { scene2: normOne(s2), scene3: normOne(s3) };
+    })(),
+    sceneHookAutoKey:
+      typeof raw.sceneHookAutoKey === "string" && raw.sceneHookAutoKey.trim()
+        ? raw.sceneHookAutoKey.trim().slice(0, 240)
         : null,
   };
 }
@@ -1005,13 +1074,15 @@ export default function ViralWorks() {
   }, []);
 
   const resetImageStep = useCallback(() => {
-    const empty = { ...INITIAL_IMAGE_STEP };
+    const empty = { ...INITIAL_IMAGE_STEP, image24sDebug: null };
     spaImageStepMemory = cloneImageStep(empty);
     lastSnapshottedUrlsRef.current = null;
     setVisualSnapshots([]);
     persistVisualSnapshotsToSession([]);
     persistImageStepOnly(empty);
     setImageStep(empty);
+    // Empêche Image.jsx de ré-hydrater immédiatement l’ancienne grille via le cache média.
+    void saveImageMediaRef({ urls: [], fallbackData: [], createdAt: new Date().toISOString() });
   }, []);
 
   useEffect(() => {
@@ -1354,7 +1425,10 @@ export default function ViralWorks() {
     campaignCameraViewAngle: campaignData?.cameraViewAngle ?? null,
     campaignGlobalIntentProfile: campaignData?.globalIntentProfile ?? null,
     campaignSelfieMode: Boolean(campaignData?.selfieMode),
+    sequenceType: campaignData?.sequenceType === "three_x_8s" ? "three_x_8s" : "single_8s",
     scriptScene1Idea: String(scriptPromptForImage?.scenes?.[0] ?? scriptPromptForImage?.combined ?? ""),
+    scriptScene2Idea: String(scriptPromptForImage?.scenes?.[1] ?? ""),
+    scriptScene3Idea: String(scriptPromptForImage?.scenes?.[2] ?? ""),
     campaignRevealMode: Boolean(campaignData?.revealMode),
     campaignMicroAnswer: campaignData?.microAnswer ?? null,
     visualStepActive: currentStep === 2,
@@ -1568,8 +1642,10 @@ export default function ViralWorks() {
                     studioImageStep={imageStep}
                     dialogueEnabled={campaignData?.dialogueEnabled !== false}
                     studioCampaignData={campaignData}
+                    studioCampaignGenerationSpec={campaignGenerationSpec}
                     studioStepActive={studioVideoStepActive}
                     studioOnStartNewCampaign={handleCampagneFullReset}
+                    studioOnResetImageStep={resetImageStep}
                     onWorkflowVideoStateChange={handleVideoWorkflowStateChange}
                     initialWorkflowVideoState={workflowVideoState}
                   />
@@ -1610,8 +1686,10 @@ export default function ViralWorks() {
                       studioImageStep={imageStep}
                       dialogueEnabled={campaignData?.dialogueEnabled !== false}
                       studioCampaignData={campaignData}
+                      studioCampaignGenerationSpec={campaignGenerationSpec}
                       studioStepActive={studioVideoStepActive}
                       studioOnStartNewCampaign={handleCampagneFullReset}
+                      studioOnResetImageStep={resetImageStep}
                       onWorkflowVideoStateChange={handleVideoWorkflowStateChange}
                       initialWorkflowVideoState={workflowVideoState}
                     />

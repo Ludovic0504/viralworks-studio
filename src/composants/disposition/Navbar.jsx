@@ -1,7 +1,7 @@
 
 import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
-import { Home, Sparkles, Info, X, ShoppingBag, Users, FileText } from "lucide-react";
+import { Home, Sparkles, X, ShoppingBag, Users, FileText } from "lucide-react";
 import LienNavSync from "@/composants/disposition/LienNavSync";
 
 const links = [
@@ -10,7 +10,6 @@ const links = [
   { path: "/viralworks", label: "ViralWorks", icon: Sparkles },
   { path: "/communaute-vws", label: "Communauté VWS", icon: Users },
   { path: "/boutique", label: "Boutique", icon: ShoppingBag },
-  { path: "/a-savoir", label: "Playbook", icon: Info },
 ];
 
 export default function SidebarShell({ children, open, onCloseMenu }) {

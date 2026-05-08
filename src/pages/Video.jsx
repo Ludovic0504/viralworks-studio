@@ -6,7 +6,7 @@ import {
   listHistory,
   deleteHistory,
 } from "@/bibliotheque/supabase/historique";
-import { hasEnoughCredits, debitCredits, getUserCredits } from "@/bibliotheque/supabase/credits";
+import { hasEnoughCredits, debitCredits, getUserCredits, isAdmin } from "@/bibliotheque/supabase/credits";
 import { getUserSubscription } from "@/bibliotheque/supabase/stripe";
 import {
   canUseVideoAttempt,
@@ -32,7 +32,10 @@ import {
   isVideoPlayerUrl,
   downloadUrlFile,
 } from "@/bibliotheque/downloadRemoteAsset";
-import { generate24SecVideo } from "@/bibliotheque/videoPipeline";
+import {
+  generateVeo3EightSecondsAndLastFrame,
+  generateVeo3DiagnosticSegment1Through3AndConcat,
+} from "@/bibliotheque/videoPipeline";
 import { splitCampaignPromptIntoThreeVideoSegments } from "@/bibliotheque/splitVideoPromptThreeSegments";
 import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
 import PageTitle from "../composants/interface/TitrePage";
@@ -72,17 +75,20 @@ const DURATION_OPTIONS = {
   hailuo: ["6s", "10s"],
 };
 
-/** Étapes affichées pendant la génération 24 s (alignées sur découpage + onProgress du pipeline). */
-const PIPELINE_24_STEP_LABELS = [
-  "Découpage du script (Claude)",
-  "Premier segment (8 s)",
-  "Deuxième segment (8 s)",
-  "Troisième segment (8 s)",
-  "Assemblage des clips",
-  "Terminé",
+/** Étapes affichées pendant la génération « 24 s » (diagnostic : 1 clip + frame). */
+const PIPELINE_24_STEP_LABELS_SINGLE = ["Génération Veo (8 s)", "Extraction dernière image"];
+
+/** Diagnostic studio (3 moments) : chaîne clip 1 → frame → clip 2 → frame → clip 3 → concat 24 s. */
+const PIPELINE_24_STEP_LABELS_CHAIN = [
+  "Clip 1 (8 s)",
+  "Frame fin clip 1",
+  "Clip 2 (8 s)",
+  "Frame fin clip 2",
+  "Clip 3 — Résultat (8 s)",
+  "Assemblage 24 s (FFmpeg)",
 ];
 
-/** Script campagne complet pour le pipeline 24 s (3 × 8 s). */
+/** Script campagne complet pour le mode « 24 s » (diagnostic : un prompt combiné → clip 8 s). */
 function buildCombinedStudioScriptFor24s({
   studioScriptPrompt,
   scripts,
@@ -94,16 +100,67 @@ function buildCombinedStudioScriptFor24s({
       ? studioScriptPrompt
       : null;
   const combined = String(sp?.combined ?? "").trim();
-  if (combined.length >= 8) return combined;
+  const combinedFromStudio = combined.length >= 8;
+
+  if (import.meta.env.DEV) {
+    const n = Math.max(1, Math.min(3, Number(sceneCount) || 1));
+    const s0 = String(scripts?.[0] ?? "").trim();
+    const s1 = String(scripts?.[1] ?? "").trim();
+    const s2 = String(scripts?.[2] ?? "").trim();
+    const c0 = String(canonicalScenes?.[0]?.script_text ?? "").trim();
+    const c1 = String(canonicalScenes?.[1]?.script_text ?? "").trim();
+    const c2 = String(canonicalScenes?.[2]?.script_text ?? "").trim();
+    console.debug("[24s diag] buildCombinedStudioScriptFor24s", {
+      combinedFromStudio,
+      combinedLen: combined.length,
+      sceneCount: n,
+      scriptsLens: [s0.length, s1.length, s2.length],
+      canonicalLens: [c0.length, c1.length, c2.length],
+      scriptsEq01: s0 === s1,
+      scriptsEq12: s1 === s2,
+      canonicalEq01: c0 === c1,
+      canonicalEq12: c1 === c2,
+      scriptsSnippets: [
+        { head: s0.slice(0, 120), tail: s0.length > 120 ? s0.slice(-80) : "" },
+        { head: s1.slice(0, 120), tail: s1.length > 120 ? s1.slice(-80) : "" },
+        { head: s2.slice(0, 120), tail: s2.length > 120 ? s2.slice(-80) : "" },
+      ],
+    });
+  }
+
+  if (combinedFromStudio) {
+    if (import.meta.env.DEV) {
+      console.debug("[24s diag] buildCombined branch: studio combined only", {
+        fullLength: combined.length,
+        fullText: combined,
+      });
+    }
+    return combined;
+  }
   const parts = [];
   const n = Math.max(1, Math.min(3, Number(sceneCount) || 1));
   for (let i = 0; i < n; i++) {
     const fromEditor = String(scripts?.[i] ?? "").trim();
     const fromSpec = String(canonicalScenes?.[i]?.script_text ?? "").trim();
     const block = fromEditor || fromSpec;
+    if (import.meta.env.DEV) {
+      console.debug(`[24s diag] buildCombined scene ${i}`, {
+        usedEditor: Boolean(fromEditor),
+        blockLen: block.length,
+        blockHead: block.slice(0, 160),
+      });
+    }
     if (block) parts.push(block);
   }
-  return parts.join("\n\n---\n\n").trim();
+  const joined = parts.join("\n\n---\n\n").trim();
+  if (import.meta.env.DEV) {
+    console.debug("[24s diag] buildCombined branch: concat scenes", {
+      partsCount: parts.length,
+      joinedLength: joined.length,
+      joinedFullText: joined,
+    });
+  }
+  return joined;
 }
 
 async function uploadBlobMp4ToGeneratedImagesBucket(blobUrl) {
@@ -655,18 +712,22 @@ const Video = forwardRef(function Video(
     studioScriptPrompt,
     studioImageStep,
     studioCampaignData,
+    /** Spec canonique campagne (prioritaire sur legacy `studioCampaignData`). */
+    studioCampaignGenerationSpec = null,
     dialogueEnabled = true,
     /** false quand l’étape Vidéo studio n’est pas visible (autre route ou autre onglet) — évite effets inutiles. */
     studioStepActive = true,
     /** Reset complet du flux ViralWorks (équivalent ancien Récap « Faire une autre vidéo »). */
     studioOnStartNewCampaign,
+    /** Reset du visuel d’accroche (étape Image) depuis l’étape Vidéo. */
+    studioOnResetImageStep,
     onWorkflowVideoStateChange,
     initialWorkflowVideoState,
   } = {},
   ref
 ) {
   const [tab, setTab] = useState("veo3");
-  const isStudioPage = Boolean(studioCampaignData);
+  const isStudioPage = Boolean(studioCampaignData || studioCampaignGenerationSpec);
   const { session } = useAuth();
   const [showSystemVideo, setShowSystemVideo] = useState(false);
 
@@ -729,9 +790,11 @@ const Video = forwardRef(function Video(
               studioScriptPrompt={studioScriptPrompt}
               studioImageStep={studioImageStep}
               studioCampaignData={studioCampaignData}
+              studioCampaignGenerationSpec={studioCampaignGenerationSpec}
               dialogueEnabled={dialogueEnabled}
               studioStepActive={studioStepActive}
               studioOnStartNewCampaign={studioOnStartNewCampaign}
+              studioOnResetImageStep={studioOnResetImageStep}
               onWorkflowVideoStateChange={onWorkflowVideoStateChange}
               initialWorkflowVideoState={initialWorkflowVideoState}
             />
@@ -740,6 +803,7 @@ const Video = forwardRef(function Video(
               onCreditsUpdate={loadCredits}
               studioImageStep={studioImageStep}
               dialogueEnabled={dialogueEnabled}
+              studioOnResetImageStep={studioOnResetImageStep}
               onWorkflowVideoStateChange={onWorkflowVideoStateChange}
               initialWorkflowVideoState={initialWorkflowVideoState}
             />
@@ -939,9 +1003,11 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
     studioScriptPrompt,
     studioImageStep,
     studioCampaignData,
+    studioCampaignGenerationSpec = null,
     dialogueEnabled = true,
     studioStepActive = true,
     studioOnStartNewCampaign,
+    studioOnResetImageStep,
     onWorkflowVideoStateChange,
     initialWorkflowVideoState,
   },
@@ -969,12 +1035,24 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
   const [dialogueGlobal, setDialogueGlobal] = useState("");
   const [dialoguePerScene, setDialoguePerScene] = useState(false);
   const [dialogueByScene, setDialogueByScene] = useState(() => ["", "", ""]);
+  /** Prompts techniques Veo éditables (studio 24 s, 3 moments) — synchronisés depuis l’aperçu calculé. */
+  const [technicalVeoPromptDrafts, setTechnicalVeoPromptDrafts] = useState(() => ["", "", ""]);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState("");
-  /** 1–6 pendant chargement 24 s uniquement ; null sinon. */
+  /** 1–2 (mode simple) ou 1–6 (chaîne studio) pendant chargement 24 s ; null sinon. */
   const [pipeline24Step, setPipeline24Step] = useState(null);
+  /** Dernière frame PNG (data URL) après génération « 24 s » diagnostic. */
+  const [viral24LastFrameDataUrl, setViral24LastFrameDataUrl] = useState(null);
+  /** Chaîne diagnostic studio : vidéo segment 2 + dernière frame segment 2. */
+  const [viral24Segment2VideoUrl, setViral24Segment2VideoUrl] = useState(null);
+  const [viral24Segment2LastFrameDataUrl, setViral24Segment2LastFrameDataUrl] = useState(null);
+  const [viral24Segment3VideoUrl, setViral24Segment3VideoUrl] = useState(null);
+  /** Blob URL après concat FFmpeg — révoquer au reset. */
+  const [viral24Assembled24sBlobUrl, setViral24Assembled24sBlobUrl] = useState(null);
+  /** Téléchargements directs par clip (24 s) réservés aux admins. */
+  const [isAdminVideoUser, setIsAdminVideoUser] = useState(false);
   /** Message d’erreur métier (jamais confondu avec l’URL vidéo affichée dans <video>). */
   const [generationError, setGenerationError] = useState("");
   const [lastVideoTaskId, setLastVideoTaskId] = useState(null);
@@ -993,19 +1071,89 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
   sceneCountRef.current = sceneCount;
   const prevStudioSyncKey = useRef(null);
   const prevHookSyncKey = useRef(null);
+  /** 1 = poll segment 1, 2 = poll segment 2 (diagnostic chaîne 24 s). */
+  const chainPollPhaseRef = useRef(1);
 
   const sceneTabLabels = useMemo(() => veo3SceneTabLabels(sceneCount), [sceneCount]);
   const canonicalSpec = useMemo(
     () =>
       normalizeCampaignGenerationSpec(
-        studioCampaignData?.campaignGenerationSpec ??
+        studioCampaignGenerationSpec ??
+          studioCampaignData?.campaignGenerationSpec ??
           studioCampaignData ??
           createDefaultCampaignGenerationSpec()
       ),
-    [studioCampaignData]
+    [studioCampaignData, studioCampaignGenerationSpec]
   );
   const canonicalScenes = useMemo(() => getSafeScenes(canonicalSpec), [canonicalSpec]);
-  const isStudio = Boolean(studioCampaignData);
+  const isStudio = Boolean(studioCampaignData || studioCampaignGenerationSpec);
+
+  /** Évite les appels IA en boucle pour le découpage auto 24 s (studio). */
+  const autoSplit24sGuardRef = useRef(null);
+  const autoSplit24sFailedRef = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function run() {
+      if (!isStudio || !studioStepActive || duration !== "24s" || sceneCount < 3) {
+        return;
+      }
+      const combined = buildCombinedStudioScriptFor24s({
+        studioScriptPrompt,
+        scripts,
+        canonicalScenes,
+        sceneCount,
+      }).trim();
+      if (combined.length < 8) return;
+
+      const s0 = String(scripts[0] ?? "").trim();
+      const s1 = String(scripts[1] ?? "").trim();
+      const s2 = String(scripts[2] ?? "").trim();
+      const tripleIdentical = s0.length > 0 && s0 === s1 && s1 === s2;
+
+      if (!tripleIdentical) {
+        autoSplit24sFailedRef.current = null;
+        return;
+      }
+
+      const guardKey = `${combined.length}|${combined}`;
+      if (autoSplit24sFailedRef.current === guardKey) return;
+      if (autoSplit24sGuardRef.current === guardKey) return;
+
+      try {
+        const [p1, p2, p3] = await splitCampaignPromptIntoThreeVideoSegments(combined);
+        if (cancelled) return;
+        setScripts(ensureSceneScripts([p1, p2, p3], sceneCount));
+        autoSplit24sGuardRef.current = guardKey;
+        autoSplit24sFailedRef.current = null;
+      } catch (e) {
+        console.warn("[Video] auto-split 24s:", e);
+        autoSplit24sFailedRef.current = guardKey;
+      }
+    }
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isStudio,
+    studioStepActive,
+    duration,
+    sceneCount,
+    studioScriptPrompt,
+    scripts,
+    canonicalScenes,
+  ]);
+
+  useEffect(() => {
+    const resolved = resolveSequenceType(studioSequenceType);
+    if (resolved === "three_x_8s" && duration !== "24s") {
+      setDuration("24s");
+    }
+    if (resolved === "single_8s" && duration === "24s") {
+      setDuration("8s");
+    }
+  }, [studioSequenceType]);
 
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
   const [selectedHistoryId, setSelectedHistoryId] = useState(null);
@@ -1057,6 +1205,20 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
       );
       if (res.status === "success" && String(res.videoUrl || "").trim()) {
         setOutput(String(res.videoUrl).trim());
+        setViral24LastFrameDataUrl(null);
+        setViral24Segment2VideoUrl(null);
+        setViral24Segment2LastFrameDataUrl(null);
+        setViral24Segment3VideoUrl(null);
+        setViral24Assembled24sBlobUrl((prev) => {
+          if (prev && isBlobUrl(prev)) {
+            try {
+              URL.revokeObjectURL(prev);
+            } catch {
+              /* ignore */
+            }
+          }
+          return null;
+        });
         setGenerationError("");
         setLastVideoTaskId(cachedId);
         setVideoCreatedAt(initialWorkflowVideoState?.createdAt || new Date().toISOString());
@@ -1108,15 +1270,6 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
   const scriptForGeneration = scripts[sceneIndexForGeneration] ?? "";
   /** Le visuel d’accroche n’est jamais requis ; on n’utilise ceci que pour l’apparence du bouton. */
   const sessionReady = Boolean(session?.access_token);
-  const scriptReady =
-    duration === "24s"
-      ? buildCombinedStudioScriptFor24s({
-          studioScriptPrompt,
-          scripts,
-          canonicalScenes,
-          sceneCount,
-        }).trim().length >= 8
-      : (scriptForGeneration || "").trim().length >= 8;
   const abortRef = useRef(null);
 
   useEffect(() => {
@@ -1142,6 +1295,22 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
     loadSubscriptionState();
     return () => {
       active = false;
+    };
+  }, [session?.user?.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!session?.user?.id) {
+      setIsAdminVideoUser(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+    void isAdmin().then((ok) => {
+      if (!cancelled) setIsAdminVideoUser(Boolean(ok));
+    });
+    return () => {
+      cancelled = true;
     };
   }, [session?.user?.id]);
 
@@ -1253,12 +1422,34 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
       scripts,
       canonicalScenes,
       sceneCount,
-    });
+    }).trim();
+
+    const studioChain24 = duration === "24s" && isStudio && sceneCount >= 3;
+    const promptSeg1 =
+      studioChain24 ? String(technicalVeoPromptDrafts[0] ?? "").trim() || combinedFor24s : "";
+    const promptSeg2 =
+      studioChain24 ? String(technicalVeoPromptDrafts[1] ?? "").trim() || combinedFor24s : "";
+    const promptSeg3 =
+      studioChain24 ? String(technicalVeoPromptDrafts[2] ?? "").trim() || combinedFor24s : "";
+
+    const effectivePrompt24s =
+      duration === "24s" && !studioChain24
+        ? String(technicalVeoPromptDrafts[activeTab] ?? "").trim() || combinedFor24s
+        : combinedFor24s;
 
     if (duration === "24s") {
-      if (combinedFor24s.length < 8) {
+      if (studioChain24) {
+        if (promptSeg1.length < 8 || promptSeg2.length < 8 || promptSeg3.length < 8) {
+          alert(
+            "Pour enchaîner trois clips 8 s, les prompts techniques Veo « Début », « Transformation » et « Résultat » doivent faire au moins 8 caractères chacun (options avancées)."
+          );
+          return;
+        }
+      } else if (effectivePrompt24s.length < 8) {
         alert(
-          "Pour une vidéo 24 s, le script campagne (réuni dans les options avancées ou issu du tunnel) doit faire au moins 8 caractères. Complète le texte des scènes puis réessaie."
+          isStudio
+            ? "Pour une vidéo 24 s, le prompt technique Veo du moment actif (ou le script campagne combiné) doit faire au moins 8 caractères. Complète les options avancées puis réessaie."
+            : "Pour une vidéo 24 s, le script campagne (réuni dans les options avancées ou issu du tunnel) doit faire au moins 8 caractères. Complète le texte des scènes puis réessaie."
         );
         return;
       }
@@ -1281,7 +1472,11 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
       String(hookVisual || "").trim() ||
       String(validatedHookImage?.prompt || "").trim();
     let ideaForValidation =
-      duration === "24s" ? combinedFor24s : scriptTrim;
+      duration === "24s"
+        ? studioChain24
+          ? `${promptSeg1}\n\n---\n\n${promptSeg2}\n\n---\n\n${promptSeg3}`
+          : effectivePrompt24s
+        : scriptTrim;
     if (sceneIndexForGeneration === 0 && hookPromptForValidation) {
       ideaForValidation = `${ideaForValidation}\n\nVisuel d'accroche :\n${hookPromptForValidation}`;
     }
@@ -1320,6 +1515,20 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
     setLoading(true);
     setShowQuotaNotice(false);
     setOutput("");
+    setViral24LastFrameDataUrl(null);
+    setViral24Segment2VideoUrl(null);
+    setViral24Segment2LastFrameDataUrl(null);
+    setViral24Segment3VideoUrl(null);
+    setViral24Assembled24sBlobUrl((prev) => {
+      if (prev && isBlobUrl(prev)) {
+        try {
+          URL.revokeObjectURL(prev);
+        } catch {
+          /* ignore */
+        }
+      }
+      return null;
+    });
     setGenerationError("");
     setLastVideoTaskId(null);
     setVideoCreatedAt(null);
@@ -1341,38 +1550,110 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
       consumeVideoAttempt({ debitedCredit: false });
 
       if (duration === "24s") {
-        setLastVideoTaskId(
-          typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `veo3-24s-${Date.now()}`
-        );
-        setVideoCreatedAt(new Date().toISOString());
-        setVideoCreatedAt(new Date().toISOString());
-        setPipeline24Step(1);
-        const combinedScript = buildCombinedStudioScriptFor24s({
-          studioScriptPrompt,
-          scripts,
-          canonicalScenes,
-          sceneCount,
-        });
-        setProgress(8);
-        setProgressMessage("1/6 — Découpage du script (IA)…");
-        const [p1, p2, p3] = await splitCampaignPromptIntoThreeVideoSegments(combinedScript);
-        const blobUrl = await generate24SecVideo(p1, p2, p3, {
-          signal: ctrl.signal,
-          onProgress: ({ step, message }) => {
-            const uiStep = step + 1;
-            setPipeline24Step(uiStep);
-            const pct = 12 + uiStep * 14;
-            setProgress(Math.min(97, pct));
-            setProgressMessage(`${uiStep}/6 — ${message}`);
-          },
-        });
-        setProgress(100);
-        setProgressMessage("6/6 — Vidéo prête");
-        setGenerationError("");
-        setAudioStatus(
-          "Vidéo 24 s assemblée localement ; post-traitement audio studio non appliqué."
-        );
-        setOutput(blobUrl);
+        const hookArr = Array.isArray(studioImageStep?.sceneHookImages) ? studioImageStep.sceneHookImages : [];
+        const hook1Studio = typeof hookArr[0] === "string" ? hookArr[0] : "";
+        const hook1 =
+          hook1Studio.trim() || String(validatedHookImage?.url || "").trim() || "";
+
+        if (studioChain24) {
+          setPipeline24Step(1);
+          setProgress(12);
+          setProgressMessage("1/6 — Démarrage…");
+          chainPollPhaseRef.current = 1;
+          const out = await generateVeo3DiagnosticSegment1Through3AndConcat(
+            promptSeg1,
+            promptSeg2,
+            promptSeg3,
+            hook1 || null,
+            {
+              signal: ctrl.signal,
+              onProgress: ({ step, message }) => {
+                chainPollPhaseRef.current = step <= 2 ? 1 : step <= 4 ? 2 : step <= 5 ? 3 : 3;
+                setPipeline24Step(step);
+                const pct =
+                  step === 1
+                    ? 12
+                    : step === 2
+                      ? 24
+                      : step === 3
+                        ? 38
+                        : step === 4
+                          ? 50
+                          : step === 5
+                            ? 68
+                            : 88;
+                setProgress(pct);
+                setProgressMessage(`${step}/6 — ${message}`);
+              },
+              onPollTick: (i, max) => {
+                const phase = chainPollPhaseRef.current;
+                const base = phase === 1 ? 12 : phase === 2 ? 36 : 58;
+                const span = phase === 1 ? 14 : phase === 2 ? 16 : 22;
+                const p = base + Math.floor((span * (i + 1)) / Math.max(1, max));
+                setProgress(Math.min(base + span, p));
+                const phaseLabel = phase === 1 ? "1" : phase === 2 ? "3" : "5";
+                setProgressMessage(
+                  `${phaseLabel}/6 — Génération Veo… (${i + 1}/${max})`
+                );
+              },
+              onAssemblyProgress: ({ percent, message }) => {
+                console.log("[Video.jsx studioChain24 onAssemblyProgress]", {
+                  percent,
+                  message,
+                });
+                setProgress(percent);
+                setProgressMessage(`6/6 — ${message}`);
+              },
+            }
+          );
+          setLastVideoTaskId(String(out.segment3.taskId || "").trim() || null);
+          setVideoCreatedAt(new Date().toISOString());
+          setProgress(100);
+          setProgressMessage("6/6 — Terminé");
+          setPipeline24Step(6);
+          setGenerationError("");
+          setAudioStatus(
+            "Mode 24 s (diagnostic) : trois clips 8 s + deux images fin de clip + assemblage ~24 s ; post-traitement audio studio non appliqué."
+          );
+          setViral24LastFrameDataUrl(out.segment1.lastFrameDataUrl);
+          setViral24Segment2VideoUrl(out.segment2.videoUrl);
+          setViral24Segment2LastFrameDataUrl(out.segment2.lastFrameDataUrl);
+          setViral24Segment3VideoUrl(out.segment3.videoUrl);
+          setViral24Assembled24sBlobUrl(out.assembled24sBlobUrl);
+          setOutput(out.segment1.videoUrl);
+        } else {
+          setPipeline24Step(1);
+          setProgress(12);
+          setProgressMessage("1/2 — Génération Veo 8 s…");
+          const { taskId, videoUrl, lastFrameDataUrl } = await generateVeo3EightSecondsAndLastFrame(
+            effectivePrompt24s,
+            hook1 || null,
+            {
+              signal: ctrl.signal,
+              onProgress: ({ step, message }) => {
+                setPipeline24Step(step);
+                setProgress(step === 1 ? 55 : 90);
+                setProgressMessage(`${step}/2 — ${message}`);
+              },
+              onPollTick: (i, max) => {
+                const p = 12 + Math.min(52, Math.floor(((i + 1) / max) * 52));
+                setProgress(p);
+                setProgressMessage(`1/2 — Génération Veo 8 s… (${i + 1}/${max})`);
+              },
+            }
+          );
+          setLastVideoTaskId(String(taskId || "").trim() || null);
+          setVideoCreatedAt(new Date().toISOString());
+          setProgress(100);
+          setProgressMessage("2/2 — Terminé");
+          setPipeline24Step(2);
+          setGenerationError("");
+          setAudioStatus(
+            "Mode 24 s (diagnostic) : un clip 8 s + dernière image ; post-traitement audio studio non appliqué."
+          );
+          setViral24LastFrameDataUrl(lastFrameDataUrl);
+          setOutput(videoUrl);
+        }
       } else {
         setProgress(25);
         setProgressMessage("Création de la tâche vidéo...");
@@ -1519,10 +1800,12 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
       if (e.name === "AbortError") {
         setGenerationError("Génération annulée.");
         setOutput("");
+        setViral24LastFrameDataUrl(null);
         return;
       }
       const errorMessage = e?.message || "Erreur lors de la génération";
       setOutput("");
+      setViral24LastFrameDataUrl(null);
       setGenerationError(errorMessage);
       console.error("Erreur génération vidéo VEO3:", e);
       if (session) {
@@ -1581,8 +1864,15 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
 
   const reset = () => {
     abortRef.current?.abort?.();
+    try {
+      studioOnResetImageStep?.();
+    } catch {
+      /* ignore */
+    }
     const brain = getVwsBrain();
     setScripts(buildVeo3ScriptsFromSources(studioScriptPromptRef.current, sceneCountRef.current));
+    setCustomHookImage(null);
+    setValidatedHookImage(studioImageStep ? studioHookImage : { url: "", prompt: "" });
     setHookVisual(
       studioImageStep
         ? String(studioHookImage?.prompt || "").trim()
@@ -1592,7 +1882,12 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
     );
     setActiveTab(0);
     setOutput("");
+    setViral24LastFrameDataUrl(null);
     setGenerationError("");
+    setLoading(false);
+    setProgress(0);
+    setProgressMessage("");
+    setPipeline24Step(null);
     setDuration("8s");
     setMusicStyle("cinematic");
     setAudioStatus("");
@@ -1604,6 +1899,20 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
     setLastVideoTaskId(null);
     setVideoCreatedAt(null);
     setNeedsReloadFromCache(false);
+    setTechnicalVeoPromptDrafts(["", "", ""]);
+    setViral24Segment2VideoUrl(null);
+    setViral24Segment2LastFrameDataUrl(null);
+    setViral24Segment3VideoUrl(null);
+    setViral24Assembled24sBlobUrl((prev) => {
+      if (prev && isBlobUrl(prev)) {
+        try {
+          URL.revokeObjectURL(prev);
+        } catch {
+          /* ignore */
+        }
+      }
+      return null;
+    });
   };
 
   const prepareAnotherVideoVersion = () => {
@@ -1614,7 +1923,33 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
         /* ignore */
       }
     }
+    if (viral24Segment2VideoUrl && isBlobUrl(viral24Segment2VideoUrl)) {
+      try {
+        URL.revokeObjectURL(viral24Segment2VideoUrl);
+      } catch {
+        /* ignore */
+      }
+    }
+    if (viral24Segment3VideoUrl && isBlobUrl(viral24Segment3VideoUrl)) {
+      try {
+        URL.revokeObjectURL(viral24Segment3VideoUrl);
+      } catch {
+        /* ignore */
+      }
+    }
+    if (viral24Assembled24sBlobUrl && isBlobUrl(viral24Assembled24sBlobUrl)) {
+      try {
+        URL.revokeObjectURL(viral24Assembled24sBlobUrl);
+      } catch {
+        /* ignore */
+      }
+    }
     setOutput("");
+    setViral24LastFrameDataUrl(null);
+    setViral24Segment2VideoUrl(null);
+    setViral24Segment2LastFrameDataUrl(null);
+    setViral24Segment3VideoUrl(null);
+    setViral24Assembled24sBlobUrl(null);
     setGenerationError("");
     setLastVideoTaskId(null);
     setVideoCreatedAt(null);
@@ -1649,6 +1984,85 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
       hookImageUrl,
       `viralworks-image-${new Date().toISOString().slice(0, 10)}.png`
     );
+  };
+
+  const downloadViral24LastFrameExport = () => {
+    const dataUrl = String(viral24LastFrameDataUrl || "").trim();
+    if (!dataUrl.startsWith("data:image/")) {
+      alert("Aucune dernière image à télécharger pour le moment.");
+      return;
+    }
+    const a = document.createElement("a");
+    a.href = dataUrl;
+    a.download = `viralworks-derniere-frame-clip1-${new Date().toISOString().slice(0, 10)}.png`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
+  const downloadViral24Segment2LastFrameExport = () => {
+    const dataUrl = String(viral24Segment2LastFrameDataUrl || "").trim();
+    if (!dataUrl.startsWith("data:image/")) {
+      alert("Aucune dernière image du clip 2 à télécharger pour le moment.");
+      return;
+    }
+    const a = document.createElement("a");
+    a.href = dataUrl;
+    a.download = `viralworks-derniere-frame-clip2-${new Date().toISOString().slice(0, 10)}.png`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
+  /** Téléchargement direct d’un clip (sans crédit ni historique), admin + 24 s uniquement. */
+  const downloadAdmin24sClipFile = async (url, clipIndex) => {
+    if (duration !== "24s" || !isAdminVideoUser) return;
+    const u = String(url || "").trim();
+    if (!isVideoPlayerUrl(u)) {
+      alert("Aucune vidéo téléchargeable pour ce clip.");
+      return;
+    }
+    const fn = `viralworks-24s-clip${clipIndex}-${new Date().toISOString().slice(0, 10)}.mp4`;
+    if (isBlobUrl(u)) {
+      try {
+        const a = document.createElement("a");
+        a.href = u;
+        a.download = fn;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      } catch (e) {
+        console.error(e);
+        alert("Téléchargement impossible pour cette prévisualisation locale.");
+      }
+      return;
+    }
+    await downloadUrlFile(u, fn);
+  };
+
+  const downloadAdmin24sAssembledFile = async () => {
+    if (duration !== "24s" || !isAdminVideoUser) return;
+    const u = String(viral24Assembled24sBlobUrl || "").trim();
+    if (!isVideoPlayerUrl(u)) {
+      alert("Aucune vidéo assemblée à télécharger pour le moment.");
+      return;
+    }
+    const fn = `viralworks-24s-assembled-${new Date().toISOString().slice(0, 10)}.mp4`;
+    if (isBlobUrl(u)) {
+      try {
+        const a = document.createElement("a");
+        a.href = u;
+        a.download = fn;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      } catch (e) {
+        console.error(e);
+        alert("Téléchargement impossible pour cette vidéo locale.");
+      }
+      return;
+    }
+    await downloadUrlFile(u, fn);
   };
 
   const downloadVideoFileExport = async () => {
@@ -1779,7 +2193,33 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
           /* ignore */
         }
       }
+      if (viral24Segment2VideoUrl && isBlobUrl(viral24Segment2VideoUrl)) {
+        try {
+          URL.revokeObjectURL(viral24Segment2VideoUrl);
+        } catch {
+          /* ignore */
+        }
+      }
+      if (viral24Segment3VideoUrl && isBlobUrl(viral24Segment3VideoUrl)) {
+        try {
+          URL.revokeObjectURL(viral24Segment3VideoUrl);
+        } catch {
+          /* ignore */
+        }
+      }
+      if (viral24Assembled24sBlobUrl && isBlobUrl(viral24Assembled24sBlobUrl)) {
+        try {
+          URL.revokeObjectURL(viral24Assembled24sBlobUrl);
+        } catch {
+          /* ignore */
+        }
+      }
       setOutput("");
+      setViral24LastFrameDataUrl(null);
+      setViral24Segment2VideoUrl(null);
+      setViral24Segment2LastFrameDataUrl(null);
+      setViral24Segment3VideoUrl(null);
+      setViral24Assembled24sBlobUrl(null);
       setGenerationError("");
       setDuration("8s");
       setMusicStyle("cinematic");
@@ -1828,6 +2268,204 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
       return next;
     });
   };
+
+  const ceQueMontreSceneContent = useCallback(
+    (sceneIndex) => {
+      if (duration === "24s" && isStudio && sceneCount >= 3) {
+        const text = String(scripts[sceneIndex] ?? "").trim();
+        if (text.length > 0) {
+          const s0 = String(scripts[0] ?? "").trim();
+          const s1 = String(scripts[1] ?? "").trim();
+          const s2 = String(scripts[2] ?? "").trim();
+          const triple = s0.length > 0 && s0 === s1 && s1 === s2;
+          if (!triple) {
+            return (
+              <div className="text-sm text-gray-100 leading-relaxed whitespace-pre-wrap">{text}</div>
+            );
+          }
+        }
+      }
+      return (
+        <div className="text-sm text-gray-100 leading-relaxed">
+          {veo3ScenePlainDescription(scripts[sceneIndex] ?? "", sceneIndex, sceneCount)}
+        </div>
+      );
+    },
+    [duration, isStudio, sceneCount, scripts]
+  );
+
+  const technicalVeoPromptsByScene = useMemo(() => {
+    if (!isStudio || duration !== "24s" || sceneCount < 3) return null;
+    const durationSec = 8;
+    const selectedHookImageUrl = String(validatedHookImage?.url || "").trim();
+    const selectedHookPrompt = String(validatedHookImage?.prompt || "").trim();
+    const hookPromptLive =
+      String(hookVisual || "").trim() ||
+      selectedHookPrompt ||
+      canonicalSpec.creative.hook_visual.prompt_text ||
+      "";
+    const finalAspectRatio = selectedHookImageUrl
+      ? derivedFormat === "16:9"
+        ? "16:9"
+        : "9:16"
+      : "9:16";
+    const finalGenerationMode = selectedHookImageUrl ? "image_to_video" : "text_to_video";
+    const baseScenes = getSafeScenes(canonicalSpec);
+
+    const dialogueLineForScene = (idx) => {
+      if (!dialogueEnabled || dialogueAuto) return "";
+      if (dialoguePerScene) return String(dialogueByScene[idx] ?? "").trim();
+      return String(dialogueGlobal ?? "").trim();
+    };
+
+    const buildOwnedSpecForSceneIndex = (sceneIdx) => {
+      const mergedScenes = [0, 1, 2].map((i) => ({
+        ...baseScenes[i],
+        script_text: String(scripts[i] ?? "").trim(),
+        ...(i === sceneIdx ? { dialogue_text: dialogueLineForScene(sceneIdx) } : {}),
+      }));
+      return normalizeCampaignGenerationSpec({
+        ...canonicalSpec,
+        creative: {
+          ...canonicalSpec.creative,
+          scenes: mergedScenes,
+          hook_visual: {
+            ...canonicalSpec.creative.hook_visual,
+            selected_image_url: selectedHookImageUrl,
+            prompt_text: hookPromptLive,
+          },
+        },
+        rendering: {
+          ...canonicalSpec.rendering,
+          aspect_ratio: finalAspectRatio,
+          generation_mode: finalGenerationMode,
+          duration_seconds: durationSec,
+          audio: {
+            ...canonicalSpec.rendering.audio,
+            dialogue_enabled: dialogueEnabled,
+            music_style: audioEnabled ? musicStyle : "none",
+          },
+        },
+        provider_overrides: {
+          ...canonicalSpec.provider_overrides,
+          veo3: {
+            ...canonicalSpec.provider_overrides.veo3,
+            aspect_ratio: finalAspectRatio,
+            generation_mode: finalGenerationMode,
+            initial_image_url: selectedHookImageUrl || null,
+            prompt: "",
+          },
+        },
+      });
+    };
+
+    try {
+      return [0, 1, 2].map((sceneIdx) => {
+        const spec = buildOwnedSpecForSceneIndex(sceneIdx);
+        return buildVeo3Prompt(spec, sceneIdx).prompt;
+      });
+    } catch (e) {
+      console.warn("[Video] aperçu prompt technique Veo:", e);
+      return null;
+    }
+  }, [
+    isStudio,
+    duration,
+    sceneCount,
+    canonicalSpec,
+    scripts,
+    validatedHookImage?.url,
+    validatedHookImage?.prompt,
+    hookVisual,
+    derivedFormat,
+    dialogueEnabled,
+    dialogueAuto,
+    dialoguePerScene,
+    dialogueByScene,
+    dialogueGlobal,
+    audioEnabled,
+    musicStyle,
+  ]);
+
+  const showStudio24sTechnicalEditors =
+    isStudio && duration === "24s" && sceneCount >= 3 && technicalVeoPromptsByScene != null;
+
+  useEffect(() => {
+    if (!technicalVeoPromptsByScene || technicalVeoPromptsByScene.length !== 3) return;
+    setTechnicalVeoPromptDrafts([
+      technicalVeoPromptsByScene[0],
+      technicalVeoPromptsByScene[1],
+      technicalVeoPromptsByScene[2],
+    ]);
+  }, [technicalVeoPromptsByScene]);
+
+  const updateTechnicalVeoPromptDraft = useCallback((sceneIndex, value) => {
+    setTechnicalVeoPromptDrafts((prev) => {
+      const next = [...ensureSceneScripts(prev, sceneCount)];
+      if (sceneIndex >= 0 && sceneIndex < next.length) next[sceneIndex] = value;
+      return next;
+    });
+  }, [sceneCount]);
+
+  /** Mode diagnostic 24 s sans chaîne studio : un seul clip Veo ; prompt = onglet actif ou script combiné. */
+  const promptForStudio24sDiagnosticGeneration = useMemo(() => {
+    const combined = buildCombinedStudioScriptFor24s({
+      studioScriptPrompt,
+      scripts,
+      canonicalScenes,
+      sceneCount,
+    }).trim();
+    if (!(isStudio && sceneCount >= 3)) return combined;
+    const draft = String(technicalVeoPromptDrafts[activeTab] ?? "").trim();
+    return draft || combined;
+  }, [
+    isStudio,
+    sceneCount,
+    technicalVeoPromptDrafts,
+    activeTab,
+    studioScriptPrompt,
+    scripts,
+    canonicalScenes,
+  ]);
+
+  const scriptReady = useMemo(() => {
+    if (duration !== "24s") {
+      return (scriptForGeneration || "").trim().length >= 8;
+    }
+    const combined = buildCombinedStudioScriptFor24s({
+      studioScriptPrompt,
+      scripts,
+      canonicalScenes,
+      sceneCount,
+    }).trim();
+    if (isStudio && sceneCount >= 3) {
+      const p1 = String(technicalVeoPromptDrafts[0] ?? "").trim() || combined;
+      const p2 = String(technicalVeoPromptDrafts[1] ?? "").trim() || combined;
+      const p3 = String(technicalVeoPromptDrafts[2] ?? "").trim() || combined;
+      return p1.length >= 8 && p2.length >= 8 && p3.length >= 8;
+    }
+    return promptForStudio24sDiagnosticGeneration.trim().length >= 8;
+  }, [
+    duration,
+    scriptForGeneration,
+    isStudio,
+    sceneCount,
+    technicalVeoPromptDrafts,
+    studioScriptPrompt,
+    scripts,
+    canonicalScenes,
+    promptForStudio24sDiagnosticGeneration,
+  ]);
+
+  const pipeline24StepLabels = useMemo(() => {
+    if (duration === "24s" && isStudio && sceneCount >= 3) {
+      return PIPELINE_24_STEP_LABELS_CHAIN;
+    }
+    return PIPELINE_24_STEP_LABELS_SINGLE;
+  }, [duration, isStudio, sceneCount]);
+
+  /** Lecteur sans blocage « nodownload » + boutons par clip ; réservé admin en mode 24 s. */
+  const admin24sRawDownloadEnabled = duration === "24s" && isAdminVideoUser;
 
   const tabButtonClass = (selected) =>
     `px-3 py-2 rounded-md text-xs font-medium border transition-all duration-150 whitespace-nowrap ${
@@ -1897,9 +2535,7 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
                     <BookOpen className="w-4 h-4 text-emerald-400 shrink-0" />
                     Ce que montre la scène
                   </label>
-                  <p className="text-sm text-gray-100 leading-relaxed">
-                    {veo3ScenePlainDescription(scripts[0] ?? "", 0, sceneCount)}
-                  </p>
+                  {ceQueMontreSceneContent(0)}
                   <p className="text-xs text-gray-500 mt-3">
                     Pour le détail exact de la génération, ouvre les options avancées.
                   </p>
@@ -1983,9 +2619,7 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
               <p className="text-xs text-gray-500">
                 Pas d’image d’accroche sur ce moment : la vidéo s’appuie sur la description.
               </p>
-              <p className="text-sm text-gray-100 leading-relaxed">
-                {veo3ScenePlainDescription(scripts[activeTab] ?? "", activeTab, sceneCount)}
-              </p>
+              {ceQueMontreSceneContent(activeTab)}
               <p className="text-xs text-gray-500">
                 Pour le détail exact de la génération, ouvre les options avancées.
               </p>
@@ -2044,14 +2678,15 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
                   >
                     {DURATION_OPTIONS.veo3.map((opt) => (
                       <option key={opt} value={opt} className="bg-[#0C1116]">
-                        {opt === "24s" ? "24 s (3 × 8 s enchaînés)" : opt}
+                        {opt === "24s" ? "24 s (diagnostic studio)" : opt}
                       </option>
                     ))}
                   </select>
                   {duration === "24s" ? (
                     <p className="text-[11px] text-cyan-200/85 leading-relaxed mt-2">
-                      Trois segments Vertex 8 s, script découpé par l’IA (Edge), dernière frame → segment suivant. Pas
-                      de post-traitement audio studio sur cette durée.
+                      {showStudio24sTechnicalEditors
+                        ? "Trois clips Vertex 8 s enchaînés, deux PNG fin de clip (1 et 2), puis assemblage ~24 s en local (FFmpeg). Pas de post-traitement audio studio."
+                        : "Un clip Vertex 8 s à partir du script campagne combiné, puis extraction de la dernière frame (PNG). Pas de post-traitement audio studio sur cette durée."}
                     </p>
                   ) : null}
                 </div>
@@ -2166,24 +2801,44 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
                   Script technique (avancé)
                 </h4>
                 <p className="text-[11px] text-gray-500 leading-relaxed">
-                  Texte détaillé envoyé au moteur vidéo. Tu peux l’éditer si tu maîtrises le vocabulaire
-                  technique ; sinon laisse le texte issu du tunnel.
+                  {showStudio24sTechnicalEditors
+                    ? "Prompts techniques Vertex/Veo par moment (alignés sur la campagne). En 24 s studio : trois clips 8 s enchaînés (hooks Début → Transformation → Résultat), extraction des deux dernières images intermédiaires, puis assemblage FFmpeg ~24 s."
+                    : "Instructions par scène (éditables) alignées sur la campagne."}
                 </p>
                 <div className="space-y-3">
-                  {Array.from({ length: sceneCount }, (_, i) => (
-                    <div key={i} className="space-y-1.5">
-                      <label className="text-xs font-medium text-gray-400">
-                        {sceneTabLabels[i] ?? `Partie ${i + 1}`}
-                      </label>
-                      <textarea
-                        value={scripts[i] ?? ""}
-                        onChange={(e) => updateSceneScript(i, e.target.value)}
-                        rows={6}
-                        className="w-full rounded-lg p-3 text-sm text-gray-200 placeholder-gray-500 focus:outline-none transition-all resize-y input-vws"
-                        placeholder="Instructions détaillées pour la génération (scène par scène)."
-                      />
-                    </div>
-                  ))}
+                  {showStudio24sTechnicalEditors
+                    ? Array.from({ length: sceneCount }, (_, i) => (
+                        <div key={i} className="space-y-1.5">
+                          <label
+                            htmlFor={`veo3-tech-veo-desktop-${i}`}
+                            className="text-xs font-medium text-gray-400"
+                          >
+                            Prompt technique Veo — {sceneTabLabels[i] ?? `Partie ${i + 1}`}
+                          </label>
+                          <textarea
+                            id={`veo3-tech-veo-desktop-${i}`}
+                            value={technicalVeoPromptDrafts[i] ?? ""}
+                            onChange={(e) => updateTechnicalVeoPromptDraft(i, e.target.value)}
+                            rows={8}
+                            className="w-full rounded-lg p-3 text-sm text-gray-200 placeholder-gray-500 focus:outline-none transition-all resize-y input-vws font-mono text-[11px] leading-relaxed"
+                            placeholder="Prompt envoyé au moteur pour ce moment."
+                          />
+                        </div>
+                      ))
+                    : Array.from({ length: sceneCount }, (_, i) => (
+                        <div key={i} className="space-y-1.5">
+                          <label className="text-xs font-medium text-gray-400">
+                            {sceneTabLabels[i] ?? `Partie ${i + 1}`}
+                          </label>
+                          <textarea
+                            value={scripts[i] ?? ""}
+                            onChange={(e) => updateSceneScript(i, e.target.value)}
+                            rows={6}
+                            className="w-full rounded-lg p-3 text-sm text-gray-200 placeholder-gray-500 focus:outline-none transition-all resize-y input-vws"
+                            placeholder="Instructions détaillées pour la génération (scène par scène)."
+                          />
+                        </div>
+                      ))}
                 </div>
               </section>
             </div>
@@ -2256,10 +2911,10 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
           </div>
           {duration === "24s" && pipeline24Step != null ? (
             <ol
-              className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-2.5 list-none"
-              aria-label="Étapes du pipeline 24 secondes"
+              className="mt-4 grid grid-cols-2 gap-2.5 list-none"
+              aria-label="Étapes du mode 24 secondes (diagnostic)"
             >
-              {PIPELINE_24_STEP_LABELS.map((label, idx) => {
+              {pipeline24StepLabels.map((label, idx) => {
                 const stepNum = idx + 1;
                 const active = pipeline24Step === stepNum;
                 const done = pipeline24Step > stepNum;
@@ -2336,7 +2991,7 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
             <div className="flex items-center justify-between mb-3">
               <label className="block text-sm font-medium text-gray-300 flex items-center gap-2">
                 <BookOpen className="w-4 h-4 text-emerald-400" />
-                Vidéo générée (VEO3)
+                {viral24Segment2VideoUrl ? "Clip 1 — Début (VEO3)" : "Vidéo générée (VEO3)"}
               </label>
               <button
                 onClick={copy}
@@ -2364,19 +3019,181 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
                 key={output}
                 src={output}
                 controls
-                controlsList="nodownload"
-                onContextMenu={(e) => e.preventDefault()}
                 playsInline
+                {...(admin24sRawDownloadEnabled
+                  ? {}
+                  : {
+                      controlsList: "nodownload",
+                      onContextMenu: (e) => e.preventDefault(),
+                    })}
                 className={`w-full rounded-lg border border-white/10 bg-black/70 ${
                   derivedFormat === "9:16" ? "max-h-[min(85vh,720px)] mx-auto aspect-[9/16]" : "aspect-video"
                 }`}
               />
+              {admin24sRawDownloadEnabled ? (
+                <button
+                  type="button"
+                  onClick={() => void downloadAdmin24sClipFile(output, 1)}
+                  className="mt-2 inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium btn-vws-secondary"
+                >
+                  <Download className="w-3.5 h-3.5 shrink-0" />
+                  Télécharger le clip 1 (admin)
+                </button>
+              ) : null}
               <p className="mt-3 text-[11px] text-gray-500 break-all">
                 {isBlobUrl(output)
                   ? "Aperçu local dans le navigateur. « Valider et enregistrer » publie une URL HTTPS et enregistre l’historique."
                   : "URL signée (copie via le bouton) — lien temporaire côté stockage."}
               </p>
             </div>
+            {viral24LastFrameDataUrl ? (
+              <div className="mt-4 rounded-xl card-vws p-4 border border-cyan-500/25">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
+                  <label className="block text-sm font-medium text-gray-300">
+                    Dernière image — fin du clip 1 (8 s)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={downloadViral24LastFrameExport}
+                    className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium btn-vws-secondary shrink-0"
+                  >
+                    <Download className="w-4 h-4 shrink-0" />
+                    Télécharger PNG
+                  </button>
+                </div>
+                <img
+                  src={viral24LastFrameDataUrl}
+                  alt="Dernière frame du clip 1"
+                  className={`w-full rounded-lg border border-white/10 bg-black/70 object-contain ${
+                    derivedFormat === "9:16" ? "max-h-[min(60vh,520px)] mx-auto aspect-[9/16]" : "max-h-[min(50vh,380px)]"
+                  }`}
+                />
+              </div>
+            ) : null}
+            {viral24Segment2VideoUrl && isVideoPlayerUrl(viral24Segment2VideoUrl) ? (
+              <div className="mt-6 rounded-xl card-vws p-4 border border-emerald-500/20">
+                <label className="block text-sm font-medium text-gray-300 mb-3">
+                  Clip 2 — Transformation (VEO3)
+                </label>
+                <video
+                  key={viral24Segment2VideoUrl}
+                  src={viral24Segment2VideoUrl}
+                  controls
+                  playsInline
+                  {...(admin24sRawDownloadEnabled
+                    ? {}
+                    : {
+                        controlsList: "nodownload",
+                        onContextMenu: (e) => e.preventDefault(),
+                      })}
+                  className={`w-full rounded-lg border border-white/10 bg-black/70 ${
+                    derivedFormat === "9:16" ? "max-h-[min(85vh,720px)] mx-auto aspect-[9/16]" : "aspect-video"
+                  }`}
+                />
+                {admin24sRawDownloadEnabled ? (
+                  <button
+                    type="button"
+                    onClick={() => void downloadAdmin24sClipFile(viral24Segment2VideoUrl, 2)}
+                    className="mt-2 inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium btn-vws-secondary"
+                  >
+                    <Download className="w-3.5 h-3.5 shrink-0" />
+                    Télécharger le clip 2 (admin)
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+            {viral24Segment2LastFrameDataUrl ? (
+              <div className="mt-4 rounded-xl card-vws p-4 border border-cyan-500/25">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
+                  <label className="block text-sm font-medium text-gray-300">
+                    Dernière image — fin du clip 2 (8 s)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={downloadViral24Segment2LastFrameExport}
+                    className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium btn-vws-secondary shrink-0"
+                  >
+                    <Download className="w-4 h-4 shrink-0" />
+                    Télécharger PNG
+                  </button>
+                </div>
+                <img
+                  src={viral24Segment2LastFrameDataUrl}
+                  alt="Dernière frame du clip 2"
+                  className={`w-full rounded-lg border border-white/10 bg-black/70 object-contain ${
+                    derivedFormat === "9:16" ? "max-h-[min(60vh,520px)] mx-auto aspect-[9/16]" : "max-h-[min(50vh,380px)]"
+                  }`}
+                />
+              </div>
+            ) : null}
+            {viral24Segment3VideoUrl && isVideoPlayerUrl(viral24Segment3VideoUrl) ? (
+              <div className="mt-6 rounded-xl card-vws p-4 border border-emerald-500/20">
+                <label className="block text-sm font-medium text-gray-300 mb-3">
+                  Clip 3 — Résultat (VEO3)
+                </label>
+                <video
+                  key={viral24Segment3VideoUrl}
+                  src={viral24Segment3VideoUrl}
+                  controls
+                  playsInline
+                  {...(admin24sRawDownloadEnabled
+                    ? {}
+                    : {
+                        controlsList: "nodownload",
+                        onContextMenu: (e) => e.preventDefault(),
+                      })}
+                  className={`w-full rounded-lg border border-white/10 bg-black/70 ${
+                    derivedFormat === "9:16" ? "max-h-[min(85vh,720px)] mx-auto aspect-[9/16]" : "aspect-video"
+                  }`}
+                />
+                {admin24sRawDownloadEnabled ? (
+                  <button
+                    type="button"
+                    onClick={() => void downloadAdmin24sClipFile(viral24Segment3VideoUrl, 3)}
+                    className="mt-2 inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium btn-vws-secondary"
+                  >
+                    <Download className="w-3.5 h-3.5 shrink-0" />
+                    Télécharger le clip 3 (admin)
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+            {viral24Assembled24sBlobUrl && isVideoPlayerUrl(viral24Assembled24sBlobUrl) ? (
+              <div className="mt-6 rounded-xl card-vws p-4 border border-violet-500/30">
+                <label className="block text-sm font-medium text-gray-300 mb-3">
+                  Vidéo finale ~24 s (assemblage FFmpeg)
+                </label>
+                <video
+                  key={viral24Assembled24sBlobUrl}
+                  src={viral24Assembled24sBlobUrl}
+                  controls
+                  playsInline
+                  {...(admin24sRawDownloadEnabled
+                    ? {}
+                    : {
+                        controlsList: "nodownload",
+                        onContextMenu: (e) => e.preventDefault(),
+                      })}
+                  className={`w-full rounded-lg border border-white/10 bg-black/70 ${
+                    derivedFormat === "9:16" ? "max-h-[min(85vh,720px)] mx-auto aspect-[9/16]" : "aspect-video"
+                  }`}
+                />
+                <p className="mt-2 text-[11px] text-gray-500">
+                  Trois clips 8 s concaténés localement (pas de réencodage). « Valider et enregistrer » sur le clip 1
+                  publie une URL HTTPS pour l’historique.
+                </p>
+                {admin24sRawDownloadEnabled ? (
+                  <button
+                    type="button"
+                    onClick={() => void downloadAdmin24sAssembledFile()}
+                    className="mt-2 inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium btn-vws-secondary"
+                  >
+                    <Download className="w-3.5 h-3.5 shrink-0" />
+                    Télécharger la vidéo 24 s assemblée (admin)
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
             {audioStatus ? (
               <p className="mt-3 text-xs text-gray-400">{audioStatus}</p>
             ) : null}
@@ -2501,9 +3318,7 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
               <div className="grid gap-3">
                 <div className="rounded-xl border border-white/10 bg-black/40 p-3">
                   <p className="mb-2 text-[10px] font-semibold uppercase text-gray-500">Scène</p>
-                  <p className="text-sm leading-relaxed text-gray-100">
-                    {veo3ScenePlainDescription(scripts[activeTab] ?? "", activeTab, sceneCount)}
-                  </p>
+                  {ceQueMontreSceneContent(activeTab)}
                 </div>
                 <div className="rounded-xl border border-white/10 bg-black/40 p-3">
                   <p className="mb-2 text-[10px] font-semibold uppercase text-gray-500">Visuel d&apos;accroche</p>
@@ -2561,14 +3376,15 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
                       >
                         {DURATION_OPTIONS.veo3.map((opt) => (
                           <option key={opt} value={opt} className="bg-[#0C1116]">
-                            {opt === "24s" ? "24 s (3 × 8 s enchaînés)" : opt}
+                            {opt === "24s" ? "24 s (diagnostic studio)" : opt}
                           </option>
                         ))}
                       </select>
                       {duration === "24s" ? (
                         <p className="text-[11px] text-cyan-200/85 leading-relaxed mt-2">
-                          Trois segments Vertex 8 s, script découpé par l’IA (Edge), dernière frame → segment
-                          suivant. Pas de post-traitement audio studio sur cette durée.
+                          {showStudio24sTechnicalEditors
+                            ? "Trois clips Vertex 8 s enchaînés, deux PNG fin de clip (1 et 2), puis assemblage ~24 s en local (FFmpeg). Pas de post-traitement audio studio."
+                            : "Un clip Vertex 8 s à partir du script campagne combiné, puis extraction de la dernière frame (PNG). Pas de post-traitement audio studio sur cette durée."}
                         </p>
                       ) : null}
                     </div>
@@ -2650,20 +3466,44 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
                   </section>
                   <section className="space-y-3 pt-1 border-t border-white/[0.06]">
                     <h4 className="text-xs font-semibold text-gray-200 tracking-wide">Script technique (avancé)</h4>
+                    <p className="text-[10px] text-gray-500 leading-relaxed">
+                      {showStudio24sTechnicalEditors
+                        ? "En 24 s studio : trois prompts (Début, Transformation, Résultat) → trois clips + deux PNG intermédiaires + vidéo ~24 s assemblée."
+                        : "Instructions par scène (éditables)."}
+                    </p>
                     <div className="space-y-3">
-                      {Array.from({ length: sceneCount }, (_, i) => (
-                        <div key={i} className="space-y-1.5">
-                          <label className="text-xs font-medium text-gray-400">
-                            {sceneTabLabels[i] ?? `Partie ${i + 1}`}
-                          </label>
-                          <textarea
-                            value={scripts[i] ?? ""}
-                            onChange={(e) => updateSceneScript(i, e.target.value)}
-                            rows={5}
-                            className="w-full rounded-lg p-3 text-sm text-gray-200 placeholder-gray-500 focus:outline-none transition-all resize-y input-vws"
-                          />
-                        </div>
-                      ))}
+                      {showStudio24sTechnicalEditors
+                        ? Array.from({ length: sceneCount }, (_, i) => (
+                            <div key={i} className="space-y-1.5">
+                              <label
+                                htmlFor={`veo3-tech-veo-mobile-${i}`}
+                                className="text-xs font-medium text-gray-400"
+                              >
+                                Prompt technique Veo — {sceneTabLabels[i] ?? `Partie ${i + 1}`}
+                              </label>
+                              <textarea
+                                id={`veo3-tech-veo-mobile-${i}`}
+                                value={technicalVeoPromptDrafts[i] ?? ""}
+                                onChange={(e) => updateTechnicalVeoPromptDraft(i, e.target.value)}
+                                rows={6}
+                                className="w-full rounded-lg p-3 text-[10px] text-gray-200 placeholder-gray-500 focus:outline-none transition-all resize-y input-vws font-mono leading-relaxed"
+                                placeholder="Prompt pour ce moment."
+                              />
+                            </div>
+                          ))
+                        : Array.from({ length: sceneCount }, (_, i) => (
+                            <div key={i} className="space-y-1.5">
+                              <label className="text-xs font-medium text-gray-400">
+                                {sceneTabLabels[i] ?? `Partie ${i + 1}`}
+                              </label>
+                              <textarea
+                                value={scripts[i] ?? ""}
+                                onChange={(e) => updateSceneScript(i, e.target.value)}
+                                rows={5}
+                                className="w-full rounded-lg p-3 text-sm text-gray-200 placeholder-gray-500 focus:outline-none transition-all resize-y input-vws"
+                              />
+                            </div>
+                          ))}
                     </div>
                   </section>
                 </div>
@@ -2685,9 +3525,9 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
                 {duration === "24s" && pipeline24Step != null ? (
                   <ol
                     className="grid grid-cols-2 gap-2 list-none"
-                    aria-label="Étapes du pipeline 24 secondes"
+                    aria-label="Étapes du mode 24 secondes (diagnostic)"
                   >
-                    {PIPELINE_24_STEP_LABELS.map((label, idx) => {
+                    {pipeline24StepLabels.map((label, idx) => {
                       const stepNum = idx + 1;
                       const active = pipeline24Step === stepNum;
                       const done = pipeline24Step > stepNum;
@@ -2747,13 +3587,117 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
                   key={output}
                   src={output}
                   controls
-                  controlsList="nodownload"
-                  onContextMenu={(e) => e.preventDefault()}
                   playsInline
+                  {...(admin24sRawDownloadEnabled
+                    ? {}
+                    : {
+                        controlsList: "nodownload",
+                        onContextMenu: (e) => e.preventDefault(),
+                      })}
                   className={`w-full rounded-lg border border-white/10 bg-black/70 ${
                     derivedFormat === "9:16" ? "max-h-[70vh] mx-auto aspect-[9/16]" : "aspect-video"
                   }`}
                 />
+                {admin24sRawDownloadEnabled ? (
+                  <button
+                    type="button"
+                    onClick={() => void downloadAdmin24sClipFile(output, 1)}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium btn-vws-secondary"
+                  >
+                    <Download className="w-3.5 h-3.5 shrink-0" />
+                    Télécharger le clip 1 (admin)
+                  </button>
+                ) : null}
+                {viral24Segment2VideoUrl && isVideoPlayerUrl(viral24Segment2VideoUrl) ? (
+                  <>
+                    <p className="text-xs font-medium text-gray-400 pt-1">Clip 2 — Transformation</p>
+                    <video
+                      key={viral24Segment2VideoUrl}
+                      src={viral24Segment2VideoUrl}
+                      controls
+                      playsInline
+                      {...(admin24sRawDownloadEnabled
+                        ? {}
+                        : {
+                            controlsList: "nodownload",
+                            onContextMenu: (e) => e.preventDefault(),
+                          })}
+                      className={`w-full rounded-lg border border-white/10 bg-black/70 ${
+                        derivedFormat === "9:16" ? "max-h-[70vh] mx-auto aspect-[9/16]" : "aspect-video"
+                      }`}
+                    />
+                    {admin24sRawDownloadEnabled ? (
+                      <button
+                        type="button"
+                        onClick={() => void downloadAdmin24sClipFile(viral24Segment2VideoUrl, 2)}
+                        className="inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium btn-vws-secondary"
+                      >
+                        <Download className="w-3.5 h-3.5 shrink-0" />
+                        Télécharger le clip 2 (admin)
+                      </button>
+                    ) : null}
+                  </>
+                ) : null}
+                {viral24Segment3VideoUrl && isVideoPlayerUrl(viral24Segment3VideoUrl) ? (
+                  <>
+                    <p className="text-xs font-medium text-gray-400 pt-1">Clip 3 — Résultat</p>
+                    <video
+                      key={viral24Segment3VideoUrl}
+                      src={viral24Segment3VideoUrl}
+                      controls
+                      playsInline
+                      {...(admin24sRawDownloadEnabled
+                        ? {}
+                        : {
+                            controlsList: "nodownload",
+                            onContextMenu: (e) => e.preventDefault(),
+                          })}
+                      className={`w-full rounded-lg border border-white/10 bg-black/70 ${
+                        derivedFormat === "9:16" ? "max-h-[70vh] mx-auto aspect-[9/16]" : "aspect-video"
+                      }`}
+                    />
+                    {admin24sRawDownloadEnabled ? (
+                      <button
+                        type="button"
+                        onClick={() => void downloadAdmin24sClipFile(viral24Segment3VideoUrl, 3)}
+                        className="inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium btn-vws-secondary"
+                      >
+                        <Download className="w-3.5 h-3.5 shrink-0" />
+                        Télécharger le clip 3 (admin)
+                      </button>
+                    ) : null}
+                  </>
+                ) : null}
+                {viral24Assembled24sBlobUrl && isVideoPlayerUrl(viral24Assembled24sBlobUrl) ? (
+                  <>
+                    <p className="text-xs font-medium text-gray-400 pt-1">Vidéo finale ~24 s (FFmpeg)</p>
+                    <video
+                      key={viral24Assembled24sBlobUrl}
+                      src={viral24Assembled24sBlobUrl}
+                      controls
+                      playsInline
+                      {...(admin24sRawDownloadEnabled
+                        ? {}
+                        : {
+                            controlsList: "nodownload",
+                            onContextMenu: (e) => e.preventDefault(),
+                          })}
+                      className={`w-full rounded-lg border border-white/10 bg-black/70 ${
+                        derivedFormat === "9:16" ? "max-h-[70vh] mx-auto aspect-[9/16]" : "aspect-video"
+                      }`}
+                    />
+                    {admin24sRawDownloadEnabled ? (
+                      <button
+                        type="button"
+                        onClick={() => void downloadAdmin24sAssembledFile()}
+                        className="inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium btn-vws-secondary"
+                      >
+                        <Download className="w-3.5 h-3.5 shrink-0" />
+                        Télécharger la vidéo 24 s assemblée (admin)
+                      </button>
+                    ) : null}
+                  </>
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -2840,6 +3784,7 @@ function HailuoVideoForm({
   onCreditsUpdate,
   studioImageStep,
   dialogueEnabled = true,
+  studioOnResetImageStep,
   onWorkflowVideoStateChange,
   initialWorkflowVideoState,
 }) {
@@ -3221,12 +4166,19 @@ function HailuoVideoForm({
 
   const reset = () => {
     abortRef.current?.abort?.();
+    try {
+      studioOnResetImageStep?.();
+    } catch {
+      /* ignore */
+    }
     const brain = getVwsBrain();
     setScripts(
       brain?.videoPrompts?.length
         ? ensureVeo3SceneScripts(brain.videoPrompts)
         : ensureVeo3SceneScripts([])
     );
+    setCustomHookImage(null);
+    setValidatedHookImage(studioImageStep ? studioHookImage : { url: "", prompt: "" });
     setHookVisual(
       studioImageStep
         ? String(studioHookImage?.prompt || "").trim()
@@ -3236,6 +4188,9 @@ function HailuoVideoForm({
     );
     setActiveTab(0);
     setOutput("");
+    setLoading(false);
+    setProgress(0);
+    setProgressMessage("");
     setFormat("16:9");
     setDuration("10s");
     setMusicStyle("cinematic");

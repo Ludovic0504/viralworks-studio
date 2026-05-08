@@ -791,6 +791,11 @@ Réponds uniquement en JSON :
         cameraAerialAngle ?? histParsed.cameraAerialAngleFromGate ?? null;
       let histJoined = historyLines.length ? historyLines.join("\n\n") : undefined;
       const selectedFormatLabel = catalogFormatDef?.name || String(videoFormatId || "");
+      // #region agent log
+      const __dbgB = {sessionId:'0480cf',runId:'pre-fix-1',hypothesisId:'B',location:'CampagneVWS.jsx:793',message:'Effective tempo/sequence before microQuestions',data:{sequenceType,runOverridesSequenceType:runOverrides?.sequenceType??null,effectiveSequenceType,effectiveTempo,tempoCompressionDecision:tempoCompressionDecision??null,effectiveTempoCompressionDecision:effectiveTempoCompressionDecision??null,videoFormatId:String(videoFormatId||''),selectedFormatLabel,formatRenderingSequenceType:catalogFormatDef?.rendering?.sequenceType??null,formatRenderingTempo:catalogFormatDef?.rendering?.tempo??null},timestamp:Date.now()};
+      console.debug("[debug-0480cf]", __dbgB);
+      fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'0480cf'},body:JSON.stringify(__dbgB)}).catch((e)=>{console.debug("[debug-0480cf] ingest failed", e?.message||String(e));});
+      // #endregion agent log
       const payload = {
         profession: safeProfession,
         idea: ideaWithSceneContext,
@@ -984,8 +989,14 @@ Réponds uniquement en JSON :
       if (
         effectiveTempo !== "timelapse" &&
         !effectiveTempoCompressionDecision &&
+        effectiveSequenceType === "single_8s" &&
         isIdeaTooDenseForRealtime(ideaWithSceneContext)
       ) {
+        // #region agent log
+        const __dbgC = {sessionId:'0480cf',runId:'pre-fix-1',hypothesisId:'C',location:'CampagneVWS.jsx:987',message:'Triggered timelapse_density microQuestion',data:{effectiveSequenceType,effectiveTempo,effectiveTempoCompressionDecision:effectiveTempoCompressionDecision??null,ideaLength:String(ideaWithSceneContext||'').length,videoFormatId:String(videoFormatId||''),selectedFormatLabel},timestamp:Date.now()};
+        console.debug("[debug-0480cf]", __dbgC);
+        fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'0480cf'},body:JSON.stringify(__dbgC)}).catch((e)=>{console.debug("[debug-0480cf] ingest failed", e?.message||String(e));});
+        // #endregion agent log
         setMicroQuestion({
           question:
             "Cette idée semble trop dense pour 8 secondes en temps réel. Veux-tu passer en “Très rapide : le temps défile” (timelapse) ?",
@@ -1273,6 +1284,10 @@ Réponds uniquement en JSON :
     }
     if (optionId === "switch_24s" || optionId === "keep_8s") {
       const nextSequenceType = optionId === "switch_24s" ? "three_x_8s" : "single_8s";
+      // #region agent log
+      const __dbgA2_dba02a = {sessionId:'dba02a',runId:'pre-fix-1',hypothesisId:'A',location:'CampagneVWS.jsx:handleSelectMicroAnswer:switch_24s',message:'User answered microQuestion presentation_duration (switch_24s/keep_8s)',data:{optionId:String(optionId||''),nextSequenceType,prevSequenceType:String(sequenceType||''),tempoCompressionDecisionPrev:String(tempoCompressionDecision||''),videoFormatId:String(videoFormatId||'')},timestamp:Date.now()};
+      fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'dba02a'},body:JSON.stringify(__dbgA2_dba02a)}).catch(()=>{});
+      // #endregion agent log
       if (optionId === "switch_24s") {
         setSequenceType("three_x_8s");
       }
@@ -1476,6 +1491,15 @@ Réponds uniquement en JSON :
                   value={sequenceType}
                   onChange={(e) => {
                     const v = e.target.value;
+                    // #region agent log
+                    const __dbgA_dba02a = {sessionId:'dba02a',runId:'pre-fix-1',hypothesisId:'A',location:'CampagneVWS.jsx:sequenceType:onChange',message:'User changed sequenceType select (duration choice)',data:{nextSequenceType:String(v||''),prevSequenceType:String(sequenceType||''),tempo:String(tempo||''),videoFormatId:String(videoFormatId||'')},timestamp:Date.now()};
+                    fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'dba02a'},body:JSON.stringify(__dbgA_dba02a)}).catch(()=>{});
+                    // #endregion agent log
+                    // #region agent log
+                    const __dbgA = {sessionId:'0480cf',runId:'pre-fix-1',hypothesisId:'A',location:'CampagneVWS.jsx:1475',message:'User changed sequenceType',data:{nextSequenceType:v,prevSequenceType:sequenceType,videoFormatId:String(videoFormatId||''),tempo:String(tempo||'')},timestamp:Date.now()};
+                    console.debug("[debug-0480cf]", __dbgA);
+                    fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'0480cf'},body:JSON.stringify(__dbgA)}).catch((e)=>{console.debug("[debug-0480cf] ingest failed", e?.message||String(e));});
+                    // #endregion agent log
                     setSequenceType(v);
                     onCampaignChange?.({
                       profession,

@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { getUserCredits } from "@/bibliotheque/supabase/credits";
+import { track } from "@/bibliotheque/meta/pixel";
 import {
   getUserSubscription,
   fetchWelcomeGiftNeedsChoice,
@@ -108,6 +109,22 @@ export default function Boutique() {
       if (!session) {
         openAuthModal();
         return;
+      }
+
+      try {
+        const raw = sessionStorage.getItem("onetool_last_checkout");
+        if (raw) {
+          const last = JSON.parse(raw);
+          track("Purchase", {
+            value: typeof last?.amount === "number" ? last.amount : undefined,
+            currency: last?.currency || "EUR",
+          });
+          sessionStorage.removeItem("onetool_last_checkout");
+        } else {
+          track("Purchase");
+        }
+      } catch {
+        track("Purchase");
       }
 
       setTimeout(() => {

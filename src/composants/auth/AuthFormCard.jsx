@@ -6,6 +6,7 @@ import {
   getRedirectTo,
   getSupabaseDashboardAuthUrls,
 } from "@/bibliotheque/supabase/client-navigateur";
+import { track } from "@/bibliotheque/meta/pixel";
 
 /**
  * Erreurs côté projet Supabase (SMTP, restriction SMTP intégré, redirect URL).
@@ -52,6 +53,70 @@ function analyzeRecoveryEmailError(error) {
   };
 }
 
+/**
+ * Erreurs d'envoi d'email de confirmation (signup / resend).
+ * @returns {{ showDashboardHelp: boolean, message: string }}
+ */
+function analyzeConfirmationEmailError(error) {
+  const raw = (error?.message || "").toLowerCase();
+  const notAuthorized =
+    raw.includes("email address not authorized") ||
+    raw.includes("address not authorized") ||
+    (raw.includes("not authorized") && raw.includes("email"));
+
+  const redirectNotAllowed =
+    raw.includes("redirect url") ||
+    raw.includes("redirect_to") ||
+    raw.includes("not allowed") ||
+    raw.includes("unauthorized") ||
+    raw.includes("invalid redirect");
+
+  const likelyServerEmailFailure =
+    notAuthorized ||
+    raw.includes("error sending confirmation email") ||
+    raw.includes("error sending email") ||
+    Number(error?.status) === 500;
+
+  if (!likelyServerEmailFailure && !redirectNotAllowed) {
+    return {
+      showDashboardHelp: false,
+      message: error?.message || "Erreur lors de l'envoi de l'email de confirmation.",
+    };
+  }
+
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const callbackHint = origin ? `${origin}/auth/callback` : "/auth/callback";
+
+  if (redirectNotAllowed) {
+    return {
+      showDashboardHelp: true,
+      message:
+        "Supabase refuse l'URL de redirection utilisée pour la confirmation. " +
+        "Ajoute l'URL ci-dessous dans Auth → URL Configuration → Redirect URLs. " +
+        `URL attendue : ${callbackHint}`,
+    };
+  }
+
+  if (notAuthorized) {
+    return {
+      showDashboardHelp: true,
+      message:
+        "Cette adresse ne peut pas recevoir l'email de confirmation avec le SMTP intégré Supabase : seuls les comptes de l'équipe de l'organisation du projet sont autorisés. " +
+        "Invite cet email dans l'organisation (lien « Équipe » ci-dessous) ou configure un SMTP personnalisé. " +
+        `Redirect URL à autoriser : ${callbackHint}`,
+    };
+  }
+
+  return {
+    showDashboardHelp: true,
+    message:
+      "Supabase n'a pas pu envoyer l'email de confirmation (erreur serveur : SMTP personnalisé incorrect, quota, fournisseur qui rejette, ou CAPTCHA requis). " +
+      "Vérifie hôte, port, TLS et identifiants SMTP. Sans SMTP perso, seuls les emails des membres de l'équipe org reçoivent des messages. " +
+      "Si Attack Protection / CAPTCHA est activé pour les emails, désactive-le pour tester ou intègre un jeton captcha (voir lien doc CAPTCHA). " +
+      `Redirect URL à ajouter si besoin : ${callbackHint}`,
+  };
+}
+
 export default function AuthFormCard({
   next = "/",
   initialMode = "signin",
@@ -72,6 +137,9 @@ export default function AuthFormCard({
   const [recoveryDashboardUrls, setRecoveryDashboardUrls] = useState(null);
   const [showPwd, setShowPwd] = useState(false);
   const [remember, setRemember] = useState(false);
+  /** Email du dernier signup en attente de confirmation (active le bouton « renvoyer »). */
+  const [pendingConfirmEmail, setPendingConfirmEmail] = useState("");
+  const [resendStatus, setResendStatus] = useState("idle");
   const redirectTo = useMemo(() => getRedirectTo(), []);
 
   useEffect(() => {
@@ -88,6 +156,32 @@ export default function AuthFormCard({
       return;
     }
     navigate(next, { replace: true });
+  };
+
+  const handleResendConfirmation = async () => {
+    if (!pendingConfirmEmail || resendStatus === "sending") return;
+    setResendStatus("sending");
+    setRecoveryDashboardUrls(null);
+    try {
+      const supabase = getBrowserSupabase({ remember });
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email: pendingConfirmEmail,
+      });
+      if (error) {
+        const a = analyzeConfirmationEmailError(error);
+        setResendStatus("error");
+        setErrorMsg(a.message);
+        setRecoveryDashboardUrls(a.showDashboardHelp ? getSupabaseDashboardAuthUrls() : null);
+        return;
+      }
+      setResendStatus("sent");
+    } catch (err) {
+      const a = analyzeConfirmationEmailError(err);
+      setResendStatus("error");
+      setErrorMsg(a.message);
+      setRecoveryDashboardUrls(a.showDashboardHelp ? getSupabaseDashboardAuthUrls() : null);
+    }
   };
 
   const handleForgotPassword = async () => {
@@ -230,6 +324,7 @@ export default function AuthFormCard({
         return;
       }
 
+      track("Lead");
       const signUpResult = await supabase.auth.signUp({
         email: email.trim().toLowerCase(),
         password,
@@ -237,11 +332,13 @@ export default function AuthFormCard({
       });
 
       if (signUpResult.error) {
-        let message = signUpResult.error.message || "Erreur lors de la création du compte.";
+        const a = analyzeConfirmationEmailError(signUpResult.error);
+        let message = a.message || "Erreur lors de la création du compte.";
         if (message.includes("User already registered")) {
           message = "Cet email est déjà utilisé. Essayez de vous connecter ou utilisez 'Mot de passe oublié'.";
         }
         setErrorMsg(message);
+        setRecoveryDashboardUrls(a.showDashboardHelp ? getSupabaseDashboardAuthUrls() : null);
         setLoading(false);
         return;
       }
@@ -251,6 +348,9 @@ export default function AuthFormCard({
         return;
       }
 
+      const cleanedEmail = email.trim().toLowerCase();
+      setPendingConfirmEmail(cleanedEmail);
+      setResendStatus("idle");
       setInfoMsg(
         "Compte créé ! Vérifie ta boîte mail (et tes spams) et clique sur le lien de confirmation."
       );
@@ -335,8 +435,25 @@ export default function AuthFormCard({
       ) : null}
 
       {infoMsg ? (
-        <div className="mb-4 p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-sm">
-          {infoMsg}
+        <div className="mb-4 p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-sm space-y-3">
+          <p>{infoMsg}</p>
+          {pendingConfirmEmail ? (
+            <div className="pt-2 border-t border-emerald-500/20 text-emerald-200/90 text-xs">
+              <p className="mb-2">Tu n'as rien reçu après quelques minutes ?</p>
+              <button
+                type="button"
+                onClick={handleResendConfirmation}
+                disabled={resendStatus === "sending" || resendStatus === "sent"}
+                className="underline hover:text-emerald-100 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {resendStatus === "sending"
+                  ? "Envoi en cours…"
+                  : resendStatus === "sent"
+                    ? "Email renvoyé ✓"
+                    : "Renvoyer l'email de confirmation"}
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -474,6 +591,8 @@ export default function AuthFormCard({
             setErrorMsg("");
             setInfoMsg(null);
             setRecoveryDashboardUrls(null);
+            setPendingConfirmEmail("");
+            setResendStatus("idle");
           }}
           className="text-sm text-emerald-400 hover:text-emerald-300 transition-colors underline"
         >

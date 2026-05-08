@@ -1,9 +1,10 @@
-import { Link } from "react-router-dom";
 import { useAuth } from "@/contexte/FournisseurAuth";
+import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import LogoutButton from "./BoutonDeconnexion";
 
 export default function AuthCta() {
   const { session, loading } = useAuth();
+  const { openAuthModal } = useRequireAuthAction();
 
 
   return (
@@ -14,7 +15,9 @@ export default function AuthCta() {
 
         <LogoutButton className="text-sm underline" />
       ) : (
-        <Link to="/login" className="text-sm underline">Se connecter</Link>
+        <button type="button" onClick={() => openAuthModal?.()} className="text-sm underline">
+          Se connecter
+        </button>
       )}
     </div>
   );

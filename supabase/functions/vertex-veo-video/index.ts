@@ -317,14 +317,43 @@ function pushGcsCandidates(s: string, out: string[]): void {
     return;
   }
   const noQuery = t.split("?")[0].split("#")[0];
-  const mPath = noQuery.match(/^https:\/\/storage\.googleapis\.com\/([^/]+)\/(.+)$/i);
-  if (mPath) {
-    out.push(`gs://${mPath[1]}/${mPath[2]}`);
+
+  /** JSON API : https://storage.googleapis.com/download/storage/v1/b/BUCKET/o/OBJECT */
+  const mDl = noQuery.match(
+    /^https:\/\/storage\.googleapis\.com\/download\/storage\/v1\/b\/([^/]+)\/o\/([^/?]+)/i,
+  );
+  if (mDl) {
+    try {
+      const objPath = decodeURIComponent(mDl[2].replace(/\+/g, " "));
+      out.push(`gs://${mDl[1]}/${objPath}`);
+    } catch {
+      out.push(`gs://${mDl[1]}/${mDl[2]}`);
+    }
     return;
   }
+
+  const mPath = noQuery.match(/^https:\/\/storage\.googleapis\.com\/([^/]+)\/(.+)$/i);
+  if (mPath) {
+    const hostFirst = mPath[1].toLowerCase();
+    if (hostFirst !== "download") {
+      try {
+        const rest = decodeURIComponent(mPath[2].replace(/\+/g, " "));
+        out.push(`gs://${mPath[1]}/${rest}`);
+      } catch {
+        out.push(`gs://${mPath[1]}/${mPath[2]}`);
+      }
+      return;
+    }
+  }
+
   const mVirt = noQuery.match(/^https:\/\/([^.]+)\.storage\.googleapis\.com\/(.+)$/i);
   if (mVirt) {
-    out.push(`gs://${mVirt[1]}/${mVirt[2]}`);
+    try {
+      const rest = decodeURIComponent(mVirt[2].replace(/\+/g, " "));
+      out.push(`gs://${mVirt[1]}/${rest}`);
+    } catch {
+      out.push(`gs://${mVirt[1]}/${mVirt[2]}`);
+    }
   }
 }
 

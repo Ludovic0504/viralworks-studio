@@ -44,6 +44,15 @@ function pickUserFacingMessage(
   const st = response.status;
   const code = data?.code ?? "";
 
+  /**
+   * Les erreurs 402 remontent parfois sans JSON (ou avec un body vide) depuis
+   * l’Edge Function. Dans ce cas on doit guider vers le rechargement Kie,
+   * et permettre au client de déclencher un fallback automatique.
+   */
+  if (st === 402) {
+    return KIE_CREDITS_HINT_FR;
+  }
+
   if (
     looksLikeKieCreditsMessage(rawText) ||
     code === "KIE_CREDITS" ||
@@ -121,6 +130,9 @@ export async function modifyImageWithNanoBanana(
   try {
     data = JSON.parse(text) as ErrorBody;
   } catch {
+    if (!response.ok && response.status === 402) {
+      throw new Error(KIE_CREDITS_HINT_FR);
+    }
     if (!response.ok && (response.status === 504 || response.status >= 502)) {
       throw new Error(IMAGE_EDIT_BUSY_MESSAGE);
     }
