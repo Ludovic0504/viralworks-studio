@@ -21,6 +21,7 @@ import {
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { Sparkles, BookOpen, X, Clapperboard } from "lucide-react";
 import ModaleChoixFormatVideo from "../composants/campagne/ModaleChoixFormatVideo.jsx";
+import CampagneVwsExplicationSheet from "../composants/campagne/CampagneVwsExplicationSheet.jsx";
 import {
   getFormatById,
   getFormatHintForEngine,
@@ -297,7 +298,7 @@ export default function CampagneVWS({
   const [tempoCompressionDecision, setTempoCompressionDecision] = useState(
     campaignData?.tempoCompressionDecision ?? null
   );
-  const [showSystemVideo, setShowSystemVideo] = useState(false);
+  const [showCampagneExplication, setShowCampagneExplication] = useState(false);
   const [showFormatModal, setShowFormatModal] = useState(false);
   const [videoFormatId, setVideoFormatId] = useState(campaignData?.videoFormatId ?? null);
   const [locationConflict, setLocationConflict] = useState(null);
@@ -342,9 +343,6 @@ export default function CampagneVWS({
   useLayoutEffect(() => {
     adjustIdeaTextareaHeightMobile();
   }, [idea]);
-
-  // Vidéo explicative non versionnée dans certains clones.
-  const explicationCampagneVwsVideo = "";
 
   const metierProfile = useMemo(() => getVwsMetierProfile(profession), [profession]);
   const selectedFormatDef = useMemo(() => getFormatById(videoFormatId), [videoFormatId]);
@@ -1375,13 +1373,29 @@ Réponds uniquement en JSON :
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => setShowSystemVideo(true)}
+            onClick={() => setShowCampagneExplication(true)}
             className="studio-toolbar-btn !py-1.5 !px-3 text-sm min-h-[44px] sm:min-h-0"
           >
             <BookOpen className="w-3.5 h-3.5 text-cyan-400" />
             Explication du système
           </button>
         </div>
+      </div>
+
+      {/* Même action que sur desktop : sur mobile le titre desktop est masqué, sans bouton on ne pouvait pas ouvrir le bottom sheet */}
+      <div className="flex min-[641px]:hidden flex-wrap items-center justify-between gap-3 mb-6">
+        <h2 className="text-sm font-semibold text-gray-200 flex items-center gap-2 min-w-0">
+          <Sparkles className="w-4 h-4 text-cyan-400 shrink-0" />
+          <span className="truncate">Étape 1 – Votre campagne vidéo</span>
+        </h2>
+        <button
+          type="button"
+          onClick={() => setShowCampagneExplication(true)}
+          className="studio-toolbar-btn !py-1.5 !px-3 text-sm shrink-0 min-h-[44px]"
+        >
+          <BookOpen className="w-3.5 h-3.5 text-cyan-400" />
+          Explication du système
+        </button>
       </div>
 
       <div className="vws-campagne-form max-[640px]:pb-4">
@@ -1865,60 +1879,10 @@ Réponds uniquement en JSON :
       </div>
     ) : null}
 
-    {showSystemVideo && (
-      <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
-        onClick={() => setShowSystemVideo(false)}
-        role="presentation"
-      >
-        <div
-          className="studio-panel max-w-3xl w-full overflow-hidden"
-          onClick={(e) => e.stopPropagation()}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="campagne-vws-explication-title"
-        >
-          <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
-            <div>
-              <h2 id="campagne-vws-explication-title" className="text-base font-semibold text-gray-200">
-                Explication du système
-              </h2>
-              <p className="text-xs text-gray-400 mt-1">
-                Cette vidéo explique cette étape pas à pas : choix du métier, idée de scène, réglages simples, puis le
-                bouton qui lance la préparation pour la suite du studio.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowSystemVideo(false)}
-              className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-gray-200 transition-colors shrink-0"
-              aria-label="Fermer"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="p-6">
-            {explicationCampagneVwsVideo ? (
-              <video
-                className="w-full rounded-xl border border-white/10 bg-black/60 aspect-video object-contain"
-                src={explicationCampagneVwsVideo}
-                controls
-                playsInline
-                preload="metadata"
-              >
-                Ton navigateur ne lit pas la vidéo intégrée.
-              </video>
-            ) : (
-              <div className="w-full rounded-xl border border-white/10 bg-black/40 aspect-video flex items-center justify-center">
-                <p className="text-xs text-gray-400 px-4 text-center">
-                  Vidéo d’explication non incluse dans ce clone (fichier média manquant).
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    )}
+    <CampagneVwsExplicationSheet
+      open={showCampagneExplication}
+      onClose={() => setShowCampagneExplication(false)}
+    />
     </>
   );
 }
