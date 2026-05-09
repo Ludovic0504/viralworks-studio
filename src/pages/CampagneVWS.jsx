@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import "./CampagneVWS.css";
 import {
   clarifyIdea,
@@ -299,6 +299,7 @@ export default function CampagneVWS({
     campaignData?.tempoCompressionDecision ?? null
   );
   const [showCampagneExplication, setShowCampagneExplication] = useState(false);
+  const closeCampagneExplication = useCallback(() => setShowCampagneExplication(false), []);
   const [showFormatModal, setShowFormatModal] = useState(false);
   const [videoFormatId, setVideoFormatId] = useState(campaignData?.videoFormatId ?? null);
   const [locationConflict, setLocationConflict] = useState(null);
@@ -1879,10 +1880,7 @@ Réponds uniquement en JSON :
       </div>
     ) : null}
 
-    <CampagneVwsExplicationSheet
-      open={showCampagneExplication}
-      onClose={() => setShowCampagneExplication(false)}
-    />
+    <CampagneVwsExplicationSheet open={showCampagneExplication} onClose={closeCampagneExplication} />
     </>
   );
 }

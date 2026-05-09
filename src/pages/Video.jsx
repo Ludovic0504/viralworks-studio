@@ -39,6 +39,7 @@ import {
 import { splitCampaignPromptIntoThreeVideoSegments } from "@/bibliotheque/splitVideoPromptThreeSegments";
 import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
 import PageTitle from "../composants/interface/TitrePage";
+import VideoViraleExplicationSheet from "../composants/video/VideoViraleExplicationSheet";
 import {
   validateIdeaLength,
 } from "@/bibliotheque/promptGenerationLimits";
@@ -848,39 +849,7 @@ const Video = forwardRef(function Video(
         </div>
       </details>
 
-      {/* Pop-up explication du système */}
-      {showSystemVideo && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
-          onClick={() => setShowSystemVideo(false)}
-        >
-          <div
-            className="studio-panel max-w-3xl w-full overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
-              <div>
-                <h2 className="text-base font-semibold text-gray-200">Explication du système</h2>
-                <p className="text-xs text-gray-400 mt-1">
-                  Cette courte vidéo t’explique comment utiliser la vidéo générée et quelles actions simples peuvent
-                  améliorer ses performances une fois publiée.
-                </p>
-              </div>
-              <button
-                onClick={() => setShowSystemVideo(false)}
-                className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-gray-200 transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="p-6">
-              <div className="aspect-video w-full rounded-xl border border-white/10 bg-black/60 flex items-center justify-center text-xs text-gray-400">
-                Vidéo explicative à intégrer ici
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <VideoViraleExplicationSheet open={showSystemVideo} onClose={() => setShowSystemVideo(false)} />
     </div>
   );
 });

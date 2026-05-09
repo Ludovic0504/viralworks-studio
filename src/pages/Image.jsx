@@ -28,6 +28,7 @@ import {
 } from "@/bibliotheque/campaignGenerationSpec";
 import { STUDIO_24S_TEMPORAL_HOOK_IMAGES_ENABLED } from "@/bibliotheque/studio24sTemporalHookImages";
 import PageTitle from "../composants/interface/TitrePage";
+import VisuelAccrocheExplicationSheet from "../composants/image/VisuelAccrocheExplicationSheet";
 import {
   modifyImageWithNanoBanana,
   IMAGE_EDIT_BUSY_MESSAGE,
@@ -2447,45 +2448,7 @@ export default function ImagePage({
       </div>
       </div>
 
-      {showSystemVideo && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
-          onClick={() => setShowSystemVideo(false)}
-          role="presentation"
-        >
-          <div
-            className="studio-panel max-w-3xl w-full overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="image-explication-systeme-title"
-          >
-            <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
-              <div>
-                <h2 id="image-explication-systeme-title" className="text-base font-semibold text-gray-200">
-                  Explication du système
-                </h2>
-                <p className="text-xs text-gray-400 mt-1">
-                  Cette courte vidéo t’explique à quoi sert l’étape visuel d’accroche, comment formuler une description
-                  efficace et à quoi servent le format, la quantité et l’image de référence avant de passer à la vidéo.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowSystemVideo(false)}
-                className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-gray-200 transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="p-6">
-              <div className="aspect-video w-full rounded-xl border border-white/10 bg-black/60 flex items-center justify-center text-xs text-gray-400">
-                Vidéo explicative à intégrer ici
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <VisuelAccrocheExplicationSheet open={showSystemVideo} onClose={() => setShowSystemVideo(false)} />
     </>
   );
 }
