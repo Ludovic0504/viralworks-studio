@@ -129,6 +129,60 @@ const PROFESSION_TO_LIEU_TOURNAGE = {
   "Architecte / architecte d'intérieur": "neutre",
 };
 
+const PRODUCT_STAGING_PREFIX = "__VWS_PRODUCT_STAGING__:";
+
+const PRODUCT_STAGING_OPTIONS = [
+  { id: "situation_reelle", label: "En situation réelle" },
+  { id: "avant_apres", label: "Avant / Après" },
+  { id: "test_direct", label: "Test en direct" },
+  { id: "temoignage", label: "Témoignage" },
+];
+
+function parseProductStaging(styleDetails) {
+  const raw = String(styleDetails ?? "");
+  if (!raw.startsWith(PRODUCT_STAGING_PREFIX)) {
+    return { stagingKeys: [], precisionsText: raw };
+  }
+  const rest = raw.slice(PRODUCT_STAGING_PREFIX.length);
+  const nl = rest.indexOf("\n");
+  if (nl === -1) {
+    try {
+      const j = JSON.parse(rest);
+      return {
+        stagingKeys: Array.isArray(j.staging) ? j.staging : [],
+        precisionsText: "",
+      };
+    } catch {
+      return { stagingKeys: [], precisionsText: raw };
+    }
+  }
+  const jsonLine = rest.slice(0, nl);
+  const precisionsText = rest.slice(nl + 1);
+  try {
+    const j = JSON.parse(jsonLine);
+    return {
+      stagingKeys: Array.isArray(j.staging) ? j.staging : [],
+      precisionsText,
+    };
+  } catch {
+    return { stagingKeys: [], precisionsText: raw };
+  }
+}
+
+function mergeProductStaging(_styleDetails, nextStagingKeys, nextPrecisionsText) {
+  const payload = JSON.stringify({ staging: nextStagingKeys });
+  return `${PRODUCT_STAGING_PREFIX}${payload}\n${nextPrecisionsText}`;
+}
+
+function stripProductStagingPrefix(styleDetails) {
+  const raw = String(styleDetails ?? "");
+  if (!raw.startsWith(PRODUCT_STAGING_PREFIX)) return raw;
+  const rest = raw.slice(PRODUCT_STAGING_PREFIX.length);
+  const nl = rest.indexOf("\n");
+  if (nl === -1) return "";
+  return rest.slice(nl + 1);
+}
+
 function getLieuOption(value) {
   return LIEU_TOURNAGE_OPTIONS.find((opt) => opt.value === value) || LIEU_TOURNAGE_OPTIONS[2];
 }
@@ -341,18 +395,41 @@ export default function CampagneVWS({
     el.style.height = `${el.scrollHeight}px`;
   };
 
-  useLayoutEffect(() => {
-    adjustIdeaTextareaHeightMobile();
-  }, [idea]);
-
   const metierProfile = useMemo(() => getVwsMetierProfile(profession), [profession]);
   const selectedFormatDef = useMemo(() => getFormatById(videoFormatId), [videoFormatId]);
+  const selectedFormat = selectedFormatDef;
+  const isProductMode = selectedFormat?.categoryId === "produit";
+
+  useLayoutEffect(() => {
+    if (isProductMode) return;
+    adjustIdeaTextareaHeightMobile();
+  }, [idea, isProductMode]);
+
   const ideaPlaceholder =
     selectedFormatDef?.placeholderIdea ??
     "Ex : un architecte explique son nouveau projet à la caméra dans son studio, tout en dessinant les plans sur une tablette…";
+  const productPromessePlaceholder = "Ce que ça résout ou apporte en une phrase…";
   const stylePlaceholder =
     metierProfile?.stylePlaceholder ??
     "Ex. : ambiance, lumière, style visuel, matériaux…";
+
+  const precisionsFieldValue = useMemo(
+    () => (isProductMode ? parseProductStaging(styleDetails).precisionsText : styleDetails),
+    [isProductMode, styleDetails]
+  );
+
+  const productStagingSelectedKeys = useMemo(
+    () => parseProductStaging(styleDetails).stagingKeys,
+    [styleDetails]
+  );
+
+  useEffect(() => {
+    if (isProductMode) return;
+    setStyleDetails((prev) => {
+      const stripped = stripProductStagingPrefix(prev);
+      return stripped === prev ? prev : stripped;
+    });
+  }, [isProductMode]);
 
   const buildCampaignSnapshot = (overrides = {}) => ({
     profession,
@@ -395,6 +472,21 @@ export default function CampagneVWS({
     const nextLieu = prefillLieu || lieuTournage;
     if (prefillLieu) setLieuTournageState(prefillLieu);
     onCampaignChange?.(buildCampaignSnapshot({ profession: v, ...(prefillLieu ? { lieuTournage: nextLieu } : {}) }));
+  };
+
+  const setProfessionPlain = (v) => {
+    setProfessionState(v);
+    onCampaignChange?.(buildCampaignSnapshot({ profession: v }));
+  };
+
+  const toggleProductStagingChip = (chipId) => {
+    const { stagingKeys, precisionsText } = parseProductStaging(styleDetails);
+    const nextKeys = stagingKeys.includes(chipId)
+      ? stagingKeys.filter((k) => k !== chipId)
+      : [...stagingKeys, chipId];
+    const merged = mergeProductStaging(styleDetails, nextKeys, precisionsText);
+    setStyleDetails(merged);
+    onCampaignChange?.(buildCampaignSnapshot({ styleDetails: merged }));
   };
   const setLieuTournage = (v) => {
     const next = v === "chez_client" || v === "etablissement" || v === "neutre" ? v : "neutre";
@@ -510,12 +602,18 @@ export default function CampagneVWS({
   };
 
   const handleInspire = async () => {
-    const effectiveProfession =
-      String(profession ?? "").trim() ||
-      String(campaignData?.profession ?? "").trim();
+    const professionLocal = String(profession ?? "").trim();
+    const professionLegacy = String(campaignData?.profession ?? "").trim();
+    const effectiveProfession = professionLocal || professionLegacy;
     const effectiveFormatId = videoFormatId || campaignData?.videoFormatId || null;
+    const inspireFormatDef = effectiveFormatId ? getFormatById(effectiveFormatId) : null;
 
-    if (!effectiveProfession) {
+    if (isProductMode) {
+      if (!professionLocal) {
+        setError("Indique d’abord le nom du produit pour utiliser « M'inspirer ».");
+        return;
+      }
+    } else if (!effectiveProfession) {
       setError(
         "Sélectionne d’abord ton métier dans la liste « Ton métier » pour utiliser « M'inspirer »."
       );
@@ -531,8 +629,48 @@ export default function CampagneVWS({
     try {
       const systemPrompt = "Tu appliques strictement le prompt utilisateur et tu réponds uniquement par la scène demandée.";
       const selectedLieu = getLieuOption(lieuTournage);
-      const selectedFormatLabel = getFormatById(effectiveFormatId)?.name || "Format non défini";
-      const userPrompt = `Tu es un expert en création de vidéos courtes pour les réseaux sociaux.
+      const selectedFormatLabel = inspireFormatDef?.name || "Format non défini";
+      const nomDuProduit = professionLocal;
+      const promesseDuProduit = String(idea ?? "").trim();
+      const { stagingKeys } = parseProductStaging(styleDetails);
+      const misEnSceneLabels = stagingKeys
+        .map((id) => PRODUCT_STAGING_OPTIONS.find((o) => o.id === id)?.label)
+        .filter(Boolean);
+      const misEnScene =
+        misEnSceneLabels.length > 0
+          ? misEnSceneLabels.join(", ")
+          : "non précisée — déduis une mise en scène cohérente avec le format « " +
+            selectedFormatLabel +
+            " », en gardant le produit comme sujet principal";
+
+      const userPrompt = isProductMode
+        ? `Génère une idée de scène vidéo pour promouvoir un produit appelé « ${nomDuProduit} ».
+
+Sa promesse : ${
+          promesseDuProduit
+            ? promesseDuProduit
+            : "non encore renseignée — propose une idée visuelle courte centrée sur le produit et son usage concret au quotidien."
+        }
+
+Type de mise en scène souhaité : ${misEnScene}
+
+Lieu / environnement choisi pour la vidéo : ${selectedLieu.sentence}
+
+Format vidéo choisi : « ${selectedFormatLabel} » — sers-toi-en pour le cadrage et le type de plans. Ne décris pas un lieu qui évoquerait un atelier, une boutique spécialisée ou tout décor associé à un corps de métier.
+
+La scène reste centrée sur le produit et ce qu’il permet de faire ou de montrer, pas sur un profil utilisateur détaillé (âge, situation personnelle ou sociale).
+
+Si une présence humaine est nécessaire (mise en scène ou format), décris uniquement une personne ou quelqu’un sans qualification professionnelle : figure neutre qui utilise ou teste le produit dans un cadre quotidien. N’emploie jamais les termes expert, artisan, professionnel ni aucune inférence de métier.
+
+Règles strictes :
+- Une action ou un message visuel clair — pas de liste, pas de scène composite
+- Filmable en conditions réelles (pas de studio « pub » artificiel sauf si le format l’implique clairement)
+- Ne jamais utiliser les mots : magnifique, parfait, élégant, sublime,
+  harmonieux, spectaculaire, impressionnant, superbe, splendide,
+  symétrique, esthétique
+- Rédige uniquement la description de la scène, en 1 à 2 phrases maximum
+- Pas d'introduction, pas de conclusion, pas de guillemets`
+        : `Tu es un expert en création de vidéos courtes pour les réseaux sociaux.
 Génère une idée de scène vidéo de 8 secondes pour un ${metier}
 qui travaille ${selectedLieu.sentence}
 
@@ -714,9 +852,23 @@ Réponds uniquement en JSON : { "person_visible": true/false }`;
           ? flowOptions.forceLieuTournage
           : lieuTournage;
       const selectedLieu = getLieuOption(effectiveLieuValue);
+      const isProductModeRun = catalogFormatDef?.categoryId === "produit";
+      const stagingParsedRun = parseProductStaging(styleDetails);
+      const precisionsForModifiers = (
+        isProductModeRun ? stagingParsedRun.precisionsText : String(styleDetails ?? "")
+      ).trim();
+      const stagingLabelsRun = isProductModeRun
+        ? stagingParsedRun.stagingKeys
+            .map((id) => PRODUCT_STAGING_OPTIONS.find((o) => o.id === id)?.label)
+            .filter(Boolean)
+        : [];
+      const sceneDescriptionBody =
+        isProductModeRun && stagingLabelsRun.length > 0
+          ? `${safeIdea}\n\nMise en scène souhaitée : ${stagingLabelsRun.join(", ")}`
+          : safeIdea;
       const ideaWithSceneContext = `LIEU DE LA SCÈNE : ${selectedLieu.sentence}
 
-DESCRIPTION DE LA SCÈNE : ${safeIdea}`;
+DESCRIPTION DE LA SCÈNE : ${sceneDescriptionBody}`;
 
       const shouldSkipContradictionCheck = flowOptions?.skipContradictionCheck === true;
       if (!shouldSkipContradictionCheck && safeIdea) {
@@ -798,7 +950,7 @@ Réponds uniquement en JSON :
       const payload = {
         profession: safeProfession,
         idea: ideaWithSceneContext,
-        styleDetails: styleDetails.trim() || "",
+        styleDetails: precisionsForModifiers || "",
         videoFormatHint: formatHint.trim() || undefined,
         revealMode,
         selfieMode,
@@ -830,7 +982,7 @@ Réponds uniquement en JSON :
           gate = await clarifyIdea({
             jobType: safeProfession,
             mainIdea: ideaWithSceneContext,
-            modifiers: styleDetails.trim(),
+            modifiers: precisionsForModifiers,
             tempoSelection: effectiveTempo,
             clarificationHistory: histJoined,
             gatePhase: "none",
@@ -849,7 +1001,7 @@ Réponds uniquement en JSON :
         gate = await clarifyIdea({
           jobType: safeProfession,
           mainIdea: ideaWithSceneContext,
-          modifiers: styleDetails.trim(),
+          modifiers: precisionsForModifiers,
           tempoSelection: effectiveTempo,
           clarificationHistory: histJoined,
           gatePhase: phase,
@@ -1012,7 +1164,7 @@ Réponds uniquement en JSON :
       const brain = runVwsPromptEngine({
         profession: safeProfession,
         idea: ideaWithSceneContext,
-        styleDetails: styleDetails.trim() || undefined,
+        styleDetails: precisionsForModifiers || undefined,
         videoFormatHint: formatHint.trim() || undefined,
         tempo: effectiveTempo,
         cameraFixed,
@@ -1048,7 +1200,7 @@ Réponds uniquement en JSON :
             input: {
               profession: safeProfession,
               idea: ideaWithSceneContext,
-              styleDetails: styleDetails.trim() || "",
+              styleDetails: precisionsForModifiers || "",
               tempo: effectiveTempo,
               cameraFixed,
               revealMode,
@@ -1077,7 +1229,7 @@ Réponds uniquement en JSON :
           video_format_id: videoFormatId,
           location_type: selectedLieu.value,
           core_idea: ideaWithSceneContext,
-          style_details: styleDetails.trim() || "",
+          style_details: precisionsForModifiers || "",
           intent_profile: globalIntentProfile ?? buildMinimalIntentFallback({ idea: ideaWithSceneContext, selfieMode }),
           clarification: {
             ...createDefaultCampaignGenerationSpec().campaign.clarification,
@@ -1137,7 +1289,7 @@ Réponds uniquement en JSON :
         profession: safeProfession,
         lieuTournage: selectedLieu.value,
         idea: ideaWithSceneContext,
-        styleDetails: styleDetails.trim() || "",
+        styleDetails: precisionsForModifiers || "",
         videoFormatId,
         tempo: effectiveTempo,
         cameraFixed,
@@ -1473,29 +1625,48 @@ Réponds uniquement en JSON :
           <div className="vws-campagne-block">
             <div className="mt-0 grid grid-cols-2 max-[640px]:mt-3 max-[640px]:gap-[6px] gap-x-3 md:grid-cols-2 md:gap-x-8 md:gap-y-6">
               <div className="min-w-0">
-                <label className="vws-campagne-label" htmlFor="campagne-metier">
-                  Ton métier
-                </label>
-                <select
-                  id="campagne-metier"
-                  value={profession}
-                  onChange={(e) => setProfession(e.target.value)}
-                  className="vws-campagne-field vws-campagne-select vws-campagne-field--touch vws-campagne-select-grid-mobile"
-                  aria-describedby={metierProfile ? "campagne-metier-hint" : undefined}
-                >
-                  <option value="">Choisir un métier...</option>
-                  {VWS_METIER_LABELS.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
-                {metierProfile ? (
-                  <p className="vws-campagne-metier-hint min-[641px]:block max-[640px]:hidden" id="campagne-metier-hint">
-                    Ambiance typique pour ce métier (pour aider à imaginer la scène) :{" "}
-                    {metierProfile.environmentHint}
-                  </p>
-                ) : null}
+                {isProductMode ? (
+                  <>
+                    <label className="vws-campagne-label" htmlFor="campagne-nom-produit">
+                      Nom du produit
+                    </label>
+                    <input
+                      id="campagne-nom-produit"
+                      type="text"
+                      value={profession}
+                      onChange={(e) => setProfessionPlain(e.target.value)}
+                      className="vws-campagne-field vws-campagne-field--touch vws-campagne-select-grid-mobile"
+                      placeholder="ex. Colle XtraGrip, livre de cuisine…"
+                      autoComplete="off"
+                    />
+                  </>
+                ) : (
+                  <>
+                    <label className="vws-campagne-label" htmlFor="campagne-metier">
+                      Ton métier
+                    </label>
+                    <select
+                      id="campagne-metier"
+                      value={profession}
+                      onChange={(e) => setProfession(e.target.value)}
+                      className="vws-campagne-field vws-campagne-select vws-campagne-field--touch vws-campagne-select-grid-mobile"
+                      aria-describedby={metierProfile ? "campagne-metier-hint" : undefined}
+                    >
+                      <option value="">Choisir un métier...</option>
+                      {VWS_METIER_LABELS.map((m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                    {metierProfile ? (
+                      <p className="vws-campagne-metier-hint min-[641px]:block max-[640px]:hidden" id="campagne-metier-hint">
+                        Ambiance typique pour ce métier (pour aider à imaginer la scène) :{" "}
+                        {metierProfile.environmentHint}
+                      </p>
+                    ) : null}
+                  </>
+                )}
               </div>
               <div className="min-w-0">
                 <label className="vws-campagne-label" htmlFor="campagne-duree">
@@ -1540,7 +1711,7 @@ Réponds uniquement en JSON :
                 </select>
               </div>
             </div>
-            {metierProfile ? (
+            {!isProductMode && metierProfile ? (
               <div className="mt-1.5 hidden rounded-xl border border-[#1e2845] bg-[#161d2e] px-[9px] py-[7px]">
                 <span className="mb-0.5 block text-[9px] font-semibold uppercase tracking-wide text-[#3e4870]">
                   Ambiance typique
@@ -1604,12 +1775,21 @@ Réponds uniquement en JSON :
             >
               <label
                 className="vws-campagne-label vws-campagne-label--idea mb-0 min-w-0 flex-1 pr-2 md:flex-none md:pr-0 md:pt-0.5"
-                htmlFor="campagne-idee"
+                htmlFor={isProductMode ? "campagne-promesse" : "campagne-idee"}
               >
-                <span className="md:hidden">Ta scène</span>
-                <span className="hidden md:inline">
-                  Idée principale de la scène (sujet + action)
-                </span>
+                {isProductMode ? (
+                  <>
+                    <span className="md:hidden">Promesse</span>
+                    <span className="hidden md:inline">Promesse du produit</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="md:hidden">Ta scène</span>
+                    <span className="hidden md:inline">
+                      Idée principale de la scène (sujet + action)
+                    </span>
+                  </>
+                )}
               </label>
               <button
                 type="button"
@@ -1618,7 +1798,9 @@ Réponds uniquement en JSON :
                 title={
                   !String(profession ?? "").trim() &&
                   !String(campaignData?.profession ?? "").trim()
-                    ? "Choisis d’abord ton métier pour utiliser cette action."
+                    ? isProductMode
+                      ? "Indique d’abord le nom du produit pour utiliser cette action."
+                      : "Choisis d’abord ton métier pour utiliser cette action."
                     : !videoFormatId && !campaignData?.videoFormatId
                       ? "Choisis d’abord un format vidéo."
                       : undefined
@@ -1633,15 +1815,51 @@ Réponds uniquement en JSON :
                 M&apos;inspirer →
               </button>
             </div>
-            <textarea
-              ref={ideaTextareaRef}
-              id="campagne-idee"
-              value={idea}
-              onChange={(e) => setIdea(e.target.value)}
-              onInput={adjustIdeaTextareaHeightMobile}
-              className="vws-campagne-field vws-campagne-textarea vws-campagne-textarea-mobile vws-campagne-idea-textarea vws-campagne-idea-textarea--auto-mobile mt-1.5 w-full"
-              placeholder={ideaPlaceholder}
-            />
+            {isProductMode ? (
+              <>
+                <input
+                  id="campagne-promesse"
+                  type="text"
+                  value={idea}
+                  onChange={(e) => setIdea(e.target.value)}
+                  className="vws-campagne-field vws-campagne-field--touch mt-1.5 w-full"
+                  placeholder={productPromessePlaceholder}
+                  autoComplete="off"
+                />
+                <div className="mt-4 mb-8 max-[640px]:mb-6 md:mb-10">
+                  <span className="vws-campagne-label mb-2 block">Mise en scène</span>
+                  <div className="flex flex-wrap gap-2">
+                    {PRODUCT_STAGING_OPTIONS.map((opt) => {
+                      const selected = productStagingSelectedKeys.includes(opt.id);
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => toggleProductStagingChip(opt.id)}
+                          className={`rounded-full border px-3 py-1.5 text-xs transition-all duration-150 ${
+                            selected
+                              ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-200"
+                              : "border-[#1e2845] bg-[#161d2e] text-gray-300 hover:border-[#2a3555]"
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <textarea
+                ref={ideaTextareaRef}
+                id="campagne-idee"
+                value={idea}
+                onChange={(e) => setIdea(e.target.value)}
+                onInput={adjustIdeaTextareaHeightMobile}
+                className="vws-campagne-field vws-campagne-textarea vws-campagne-textarea-mobile vws-campagne-idea-textarea vws-campagne-idea-textarea--auto-mobile mt-1.5 w-full"
+                placeholder={ideaPlaceholder}
+              />
+            )}
           </div>
 
           {/* Bloc 4 — Précisions + Dialogue */}
@@ -1656,23 +1874,44 @@ Réponds uniquement en JSON :
               <input
                 id="campagne-precisions"
                 type="text"
-                value={styleDetails}
+                value={precisionsFieldValue}
                 onChange={(e) => {
-                  setStyleDetails(e.target.value);
-                  onCampaignChange?.({
-                    profession,
-                    idea,
-                    styleDetails: e.target.value,
-                    tempo,
-                    cameraFixed,
-                    revealMode,
-                    cinematicMovement,
-                    selfieMode,
-                    sequenceType,
-                    dialogueEnabled,
-                    microAnswer,
-                    tempoCompressionDecision,
-                  });
+                  const nextVal = e.target.value;
+                  if (isProductMode) {
+                    const { stagingKeys } = parseProductStaging(styleDetails);
+                    const merged = mergeProductStaging(styleDetails, stagingKeys, nextVal);
+                    setStyleDetails(merged);
+                    onCampaignChange?.({
+                      profession,
+                      idea,
+                      styleDetails: merged,
+                      tempo,
+                      cameraFixed,
+                      revealMode,
+                      cinematicMovement,
+                      selfieMode,
+                      sequenceType,
+                      dialogueEnabled,
+                      microAnswer,
+                      tempoCompressionDecision,
+                    });
+                  } else {
+                    setStyleDetails(nextVal);
+                    onCampaignChange?.({
+                      profession,
+                      idea,
+                      styleDetails: nextVal,
+                      tempo,
+                      cameraFixed,
+                      revealMode,
+                      cinematicMovement,
+                      selfieMode,
+                      sequenceType,
+                      dialogueEnabled,
+                      microAnswer,
+                      tempoCompressionDecision,
+                    });
+                  }
                 }}
                 className="vws-campagne-field vws-campagne-field--touch"
                 placeholder={stylePlaceholder}
