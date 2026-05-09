@@ -150,8 +150,8 @@ export default function Accueil() {
               </div>
             </div>
 
-            <div className="accueil-fade-up accueil-fade-up-d5 flex w-full min-w-0 max-md:-mt-24 max-md:flex-none max-md:items-center max-md:justify-start max-md:py-0 max-md:overflow-hidden md:mt-0 md:flex-1 md:items-center md:justify-end">
-              <div className="relative mx-auto aspect-[260/340] h-[clamp(300px,min(52dvh,520px),580px)] w-auto max-w-full shrink-0 overflow-hidden max-md:-translate-y-14 md:h-[clamp(240px,min(48vw,44vh),520px)] md:translate-y-0 md:max-w-[min(96vw,440px)] md:overflow-visible">
+            <div className="accueil-fade-up accueil-fade-up-d5 flex w-full min-w-0 max-md:-mt-20 max-md:flex-none max-md:items-center max-md:justify-start max-md:py-0 max-md:overflow-hidden md:mt-0 md:flex-1 md:items-center md:justify-end">
+              <div className="relative mx-auto aspect-[260/340] h-[clamp(300px,min(52dvh,520px),580px)] w-auto max-w-full shrink-0 overflow-hidden max-md:-translate-y-12 md:h-[clamp(240px,min(48vw,44vh),520px)] md:translate-y-0 md:max-w-[min(96vw,440px)] md:overflow-visible">
                 <div
                   className="pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 rounded-full bg-[rgba(33,243,185,0.08)] blur-[clamp(18px,4vw,28px)]"
                   style={{
