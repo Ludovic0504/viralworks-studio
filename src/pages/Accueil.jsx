@@ -84,7 +84,7 @@ export default function Accueil() {
         <div className="flex min-h-0 w-full flex-1 flex-col max-md:min-h-[calc(100svh-4rem-12px)] max-md:overflow-y-auto md:overflow-hidden">
           <section className="relative flex min-h-0 w-full flex-1 flex-col items-center max-md:justify-start md:justify-center max-md:overflow-visible md:overflow-hidden">
             <div className="relative z-10 mx-auto flex w-full max-w-[1100px] flex-col items-center gap-3 px-6 sm:px-8 md:gap-4 md:px-12 xl:px-16">
-          <div className="flex min-h-0 w-full flex-col items-center gap-4 md:flex-row md:items-center md:gap-12">
+          <div className="flex min-h-0 w-full flex-col items-center gap-2 md:flex-row md:items-center md:gap-12">
             <div className="w-full min-w-0 flex-[1.1] text-left max-[580px]:text-center md:pr-2 xl:pr-6">
               <div className="accueil-fade-up accueil-fade-up-d1 mb-3 inline-flex max-md:mb-2 max-[580px]:mx-auto max-[580px]:w-full max-[580px]:justify-center md:mb-4">
                 <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5">
@@ -135,7 +135,7 @@ export default function Accueil() {
                 </LienNavSync>
               </div>
 
-              <div className="accueil-fade-up accueil-fade-up-d4 mb-2 flex flex-wrap items-center gap-2 text-[10px] font-medium text-white/25 max-md:mb-3 max-[580px]:justify-center md:mb-0 md:gap-3">
+              <div className="accueil-fade-up accueil-fade-up-d4 mb-2 flex flex-wrap items-center gap-2 text-[10px] font-medium text-white/25 max-md:mb-1 max-[580px]:justify-center md:mb-0 md:gap-3">
                 <span className="inline-flex items-center gap-1.5">
                   <span className="text-[#21f3b9]">✓</span> Sans abonnement caché
                 </span>
@@ -150,8 +150,8 @@ export default function Accueil() {
               </div>
             </div>
 
-            <div className="accueil-fade-up accueil-fade-up-d5 flex w-full max-md:flex-none max-md:py-1 flex-1 items-center justify-center md:justify-end">
-              <div className="relative mx-auto aspect-[260/340] h-[clamp(200px,min(68vw,38vh),380px)] w-auto max-w-[min(100vw,520px)] shrink-0 md:h-[clamp(240px,min(48vw,44vh),520px)] md:max-w-[min(96vw,440px)]">
+            <div className="accueil-fade-up accueil-fade-up-d5 flex w-full max-md:flex-none max-md:py-0 flex-1 items-center justify-center md:justify-end">
+              <div className="relative mx-auto aspect-[260/340] h-[clamp(260px,min(84vw,54vh),480px)] w-auto max-w-[min(100vw,560px)] shrink-0 md:h-[clamp(240px,min(48vw,44vh),520px)] md:max-w-[min(96vw,440px)]">
                 <div
                   className="pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 rounded-full bg-[rgba(33,243,185,0.08)] blur-[clamp(18px,4vw,28px)]"
                   style={{
@@ -219,7 +219,7 @@ export default function Accueil() {
             </div>
           </div>
 
-          <div className="relative z-[1] mx-auto flex w-full shrink-0 items-center gap-3.5 pb-0 pt-1">
+          <div className="relative z-[1] mx-auto flex w-full shrink-0 items-center gap-3.5 pb-0 pt-1 max-md:mt-7 max-md:pt-3 md:mt-0 md:pt-1">
             <div
               className="div-line-accueil-l h-px max-w-[90px] flex-1"
               style={{
