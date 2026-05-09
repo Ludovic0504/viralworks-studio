@@ -47,7 +47,7 @@ export default function Accueil() {
   }, [location.pathname, location.search, hasSession, openAuthModal]);
 
   return (
-    <div className="relative flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-[#07090f]">
+    <div className="relative flex min-h-[100dvh] flex-col bg-[#07090f] max-md:overflow-y-auto md:h-[100dvh] md:max-h-[100dvh] md:overflow-hidden">
       <div className="pointer-events-none absolute inset-0 z-0">
         <div
           className="absolute inset-0 bg-[#07090f]"
@@ -75,18 +75,18 @@ export default function Accueil() {
 
       <Header onOpenMenu={() => setMenuOpen(true)} />
 
-      <div className="flex min-h-0 flex-1 flex-col pt-16">
+      <div className="flex min-h-0 flex-1 flex-col pt-16 max-md:pt-[calc(4rem+12px)]">
       <SidebarShell
         open={menuOpen}
         onCloseMenu={() => setMenuOpen(false)}
-        mainClassName="overflow-hidden"
+        mainClassName="max-md:overflow-y-auto md:overflow-hidden"
       >
-        <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
-          <section className="relative flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden">
-            <div className="relative z-10 mx-auto flex w-full max-w-[1100px] flex-col items-center gap-4 px-6 sm:px-8 md:px-12 xl:px-16">
-          <div className="flex min-h-0 w-full flex-col items-center gap-5 md:flex-row md:items-center md:gap-12">
+        <div className="flex min-h-0 w-full flex-1 flex-col max-md:min-h-[calc(100svh-4rem-12px)] max-md:overflow-y-auto md:overflow-hidden">
+          <section className="relative flex min-h-0 w-full flex-1 flex-col items-center max-md:justify-start md:justify-center max-md:overflow-visible md:overflow-hidden">
+            <div className="relative z-10 mx-auto flex w-full max-w-[1100px] flex-col items-center gap-3 px-6 sm:px-8 md:gap-4 md:px-12 xl:px-16">
+          <div className="flex min-h-0 w-full flex-col items-center gap-4 md:flex-row md:items-center md:gap-12">
             <div className="w-full min-w-0 flex-[1.1] text-left max-[580px]:text-center md:pr-2 xl:pr-6">
-              <div className="accueil-fade-up accueil-fade-up-d1 mb-4 inline-flex max-[580px]:mx-auto max-[580px]:w-full max-[580px]:justify-center">
+              <div className="accueil-fade-up accueil-fade-up-d1 mb-3 inline-flex max-md:mb-2 max-[580px]:mx-auto max-[580px]:w-full max-[580px]:justify-center md:mb-4">
                 <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5">
                   <span className="accueil-badge-dot h-1.5 w-1.5 shrink-0 rounded-full bg-[#34d399]" />
                   <span className="text-[9px] font-bold uppercase tracking-[0.13em] text-emerald-300/90">
@@ -95,7 +95,7 @@ export default function Accueil() {
                 </div>
               </div>
 
-              <h1 className="accueil-fade-up accueil-fade-up-d2 mb-4 text-[clamp(34px,6vw,58px)] font-black leading-[0.9] tracking-tight text-white/[0.93] max-[580px]:text-[36px]">
+              <h1 className="accueil-fade-up accueil-fade-up-d2 mb-3 font-black tracking-tight text-white/[0.93] max-md:text-[clamp(26px,8vw,34px)] max-md:leading-[0.92] text-[clamp(34px,6vw,58px)] leading-[0.9] md:mb-4">
                 <span className="block">Créez des vidéos</span>
                 <span className="block">qui attirent</span>
                 <span className="block bg-gradient-to-br from-[#21f3b9] from-0% via-[#818cf8] via-[42%] to-[#facc15] to-100% bg-clip-text text-transparent">
@@ -103,12 +103,12 @@ export default function Accueil() {
                 </span>
               </h1>
 
-              <p className="accueil-fade-up accueil-fade-up-d3 mb-5 max-w-[440px] text-sm leading-relaxed text-white/[0.36] max-[580px]:mx-auto">
+              <p className="accueil-fade-up accueil-fade-up-d3 mb-4 max-w-[440px] max-md:mb-3 max-md:text-[13px] max-md:leading-snug text-sm leading-relaxed text-white/[0.36] max-[580px]:mx-auto md:mb-5">
                 L&apos;outil IA des entrepreneurs qui veulent publier tous les jours sur TikTok, Reels et Shorts —{" "}
                 <strong className="font-medium text-white/[0.58]">sans y passer des heures.</strong>
               </p>
 
-              <div className="accueil-fade-up accueil-fade-up-d4 mb-4 flex flex-wrap items-center gap-2.5 max-[580px]:justify-center">
+              <div className="accueil-fade-up accueil-fade-up-d4 mb-3 flex flex-wrap items-center gap-2 max-md:gap-2 md:mb-4 md:gap-2.5 max-[580px]:justify-center">
                 {session ? (
                   <LienNavSync
                     to="/viralworks"
@@ -135,7 +135,7 @@ export default function Accueil() {
                 </LienNavSync>
               </div>
 
-              <div className="accueil-fade-up accueil-fade-up-d4 flex flex-wrap items-center gap-3 text-[10px] font-medium text-white/25 max-[580px]:justify-center">
+              <div className="accueil-fade-up accueil-fade-up-d4 mb-2 flex flex-wrap items-center gap-2 text-[10px] font-medium text-white/25 max-md:mb-3 max-[580px]:justify-center md:mb-0 md:gap-3">
                 <span className="inline-flex items-center gap-1.5">
                   <span className="text-[#21f3b9]">✓</span> Sans abonnement caché
                 </span>
@@ -150,8 +150,8 @@ export default function Accueil() {
               </div>
             </div>
 
-            <div className="accueil-fade-up accueil-fade-up-d5 flex w-full flex-1 items-center justify-center md:justify-end">
-              <div className="relative mx-auto aspect-[260/340] h-[clamp(300px,min(82vw,62vh),560px)] w-auto max-w-[min(100vw,520px)] shrink-0 md:h-[clamp(240px,min(48vw,44vh),520px)] md:max-w-[min(96vw,440px)]">
+            <div className="accueil-fade-up accueil-fade-up-d5 flex w-full max-md:flex-none max-md:py-1 flex-1 items-center justify-center md:justify-end">
+              <div className="relative mx-auto aspect-[260/340] h-[clamp(200px,min(68vw,38vh),380px)] w-auto max-w-[min(100vw,520px)] shrink-0 md:h-[clamp(240px,min(48vw,44vh),520px)] md:max-w-[min(96vw,440px)]">
                 <div
                   className="pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 rounded-full bg-[rgba(33,243,185,0.08)] blur-[clamp(18px,4vw,28px)]"
                   style={{
@@ -238,7 +238,7 @@ export default function Accueil() {
           </div>
             </div>
           </section>
-          <div className="shrink-0">
+          <div className="shrink-0 max-md:mt-auto">
             <Footer />
           </div>
         </div>

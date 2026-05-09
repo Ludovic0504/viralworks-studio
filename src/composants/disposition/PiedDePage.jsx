@@ -24,7 +24,7 @@ export default function Footer() {
             </Link>
           </div>
           <div className="text-sm text-gray-400">
-            © {currentYear} Mon copyright. Tous droits réservés.
+            © {currentYear} ViralWorks Studio. Tous droits réservés.
           </div>
         </div>
       </div>
