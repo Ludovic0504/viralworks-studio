@@ -151,7 +151,7 @@ export default function Accueil() {
             </div>
 
             <div className="accueil-fade-up accueil-fade-up-d5 flex w-full min-w-0 max-md:flex-none max-md:py-0 flex-1 items-center justify-center max-md:overflow-hidden md:justify-end">
-              <div className="relative mx-auto aspect-[260/340] h-[clamp(300px,min(92vw,62vh),580px)] w-auto max-w-full shrink-0 overflow-hidden md:h-[clamp(240px,min(48vw,44vh),520px)] md:max-w-[min(96vw,440px)] md:overflow-visible">
+              <div className="relative mx-auto aspect-[260/340] h-[clamp(340px,min(96vw,72vh),660px)] w-auto max-w-full shrink-0 overflow-hidden md:h-[clamp(240px,min(48vw,44vh),520px)] md:max-w-[min(96vw,440px)] md:overflow-visible">
                 <div
                   className="pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 rounded-full bg-[rgba(33,243,185,0.08)] blur-[clamp(18px,4vw,28px)]"
                   style={{
