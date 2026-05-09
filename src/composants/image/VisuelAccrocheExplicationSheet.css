@@ -43,6 +43,7 @@
   inset: 0;
   background: rgba(0, 0, 0, 0.72);
   backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   z-index: 100;
   display: none;
 }
@@ -53,6 +54,9 @@
   justify-content: flex-end;
   align-items: center;
   animation: vwa-fIn 0.18s ease;
+  /* Laisse voir le fond = lecture « popup » et pas « nouvelle page » */
+  padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+  box-sizing: border-box;
 }
 @keyframes vwa-fIn {
   from {
@@ -78,6 +82,19 @@
   flex-direction: column;
   overflow: hidden;
   animation: vwa-sUp 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 -12px 48px rgba(0, 0, 0, 0.4);
+}
+/* Poignée type bottom-sheet (repère visuel « modale ») */
+.vwa-ex-host .panel::before {
+  content: "";
+  display: block;
+  width: 40px;
+  height: 4px;
+  border-radius: 4px;
+  background: var(--muted2);
+  margin: 8px auto 0;
+  flex-shrink: 0;
+  opacity: 0.85;
 }
 @keyframes vwa-sUp {
   from {
@@ -911,18 +928,34 @@
 
 /* RESPONSIVE */
 @media (max-width: 640px) {
+  .vwa-ex-host .overlay {
+    background: rgba(0, 0, 0, 0.78);
+  }
   .vwa-ex-host .panel {
-    max-width: 100%;
-    border-radius: 18px 18px 0 0;
+    width: calc(100% - 24px);
+    max-width: 660px;
+    max-height: min(78dvh, 78vh);
+    margin: 0 auto;
+    border-radius: 20px;
+    border: 0.5px solid var(--border2);
+    border-bottom: 0.5px solid var(--border2);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+  }
+  .vwa-ex-host .panel::before {
+    margin-top: 10px;
   }
   .vwa-ex-host .tabs {
     overflow-x: auto;
     scrollbar-width: none;
+    padding-left: 10px;
+    padding-right: 10px;
+    scroll-padding-inline: 12px;
   }
   .vwa-ex-host .tab {
-    min-width: 80px;
+    min-width: 72px;
     font-size: 11px;
     padding: 9px 10px;
+    flex: 0 0 auto;
   }
   .vwa-ex-host .pb {
     padding: 14px 16px;

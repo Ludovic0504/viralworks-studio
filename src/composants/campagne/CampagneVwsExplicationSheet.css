@@ -26,18 +26,21 @@
 }
 
 /* OVERLAY — colonne + flex-end pour Safari iOS (borne le panel, scroll dans .pb) */
-.overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.72); backdrop-filter: blur(6px); z-index: 100; display: none; }
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.72); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); z-index: 100; display: none; }
 .overlay.open {
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
   align-items: center;
   animation: fIn .18s ease;
+  padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+  box-sizing: border-box;
 }
 @keyframes fIn { from{opacity:0}to{opacity:1} }
 
 /* PANEL */
-.panel { width: 100%; max-width: 660px; max-height: min(92vh, 90dvh); min-height: 0; flex-shrink: 1; background: var(--s1); border-radius: 22px 22px 0 0; border: 0.5px solid var(--border2); border-bottom: none; display: flex; flex-direction: column; overflow: hidden; animation: sUp .32s cubic-bezier(.16,1,.3,1); }
+.panel { width: 100%; max-width: 660px; max-height: min(92vh, 90dvh); min-height: 0; flex-shrink: 1; background: var(--s1); border-radius: 22px 22px 0 0; border: 0.5px solid var(--border2); border-bottom: none; display: flex; flex-direction: column; overflow: hidden; animation: sUp .32s cubic-bezier(.16,1,.3,1); box-shadow: 0 -12px 48px rgba(0,0,0,0.4); }
+.panel::before { content: ""; display: block; width: 40px; height: 4px; border-radius: 4px; background: var(--muted2); margin: 8px auto 0; flex-shrink: 0; opacity: 0.85; }
 @keyframes sUp { from{transform:translateY(40px);opacity:0}to{transform:translateY(0);opacity:1} }
 
 /* HEADER */
@@ -180,12 +183,23 @@
 .sb svg { width: 15px; height: 15px; stroke: #0d1117; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 
 @media (max-width: 640px) {
-  /* Panel pleine largeur sur mobile */
-  .panel { max-width: 100%; border-radius: 18px 18px 0 0; }
-  
-  /* Tabs scrollables horizontalement */
-  .tabs { overflow-x: auto; scrollbar-width: none; }
-  .tab { min-width: 80px; font-size: 11px; padding: 9px 10px; }
+  .overlay { background: rgba(0,0,0,0.78); }
+  /* Carte flottante : marges + fond visible = lecture « popup » */
+  .panel {
+    width: calc(100% - 24px);
+    max-width: 660px;
+    max-height: min(78dvh, 78vh);
+    margin: 0 auto;
+    border-radius: 20px;
+    border: 0.5px solid var(--border2);
+    border-bottom: 0.5px solid var(--border2);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.04) inset;
+  }
+  .panel::before { margin-top: 10px; }
+
+  /* Tabs scrollables — dernier onglet accessible au swipe */
+  .tabs { overflow-x: auto; scrollbar-width: none; padding-left: 10px; padding-right: 10px; scroll-padding-inline: 12px; }
+  .tab { min-width: 72px; font-size: 11px; padding: 9px 10px; flex: 0 0 auto; }
   
   /* Padding réduit */
   .pb { padding: 14px 16px; }

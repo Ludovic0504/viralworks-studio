@@ -1,46 +1,19 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
-import { ArrowRight, Menu } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
-import { useCommunauteVWSNotif } from "@/contexte/FournisseurCommunauteVWSNotif.jsx";
 import Footer from "@/composants/disposition/PiedDePage";
 import SidebarShell from "@/composants/disposition/Navbar";
+import Header from "@/composants/disposition/EnTete";
 import LienNavSync from "@/composants/disposition/LienNavSync";
-import MenuProfilConnecte from "@/composants/disposition/MenuProfilConnecte";
-
-const navLinks = [
-  { path: "/", label: "Accueil" },
-  { path: "/lab", label: "Nouveautés" },
-  { path: "/viralworks", label: "ViralWorks" },
-  { path: "/communaute-vws", label: "Communauté VWS" },
-  { path: "/boutique", label: "Boutique" },
-];
-
-function MessageBubbleIcon({ className }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width={22}
-      height={22}
-      className={className}
-      fill="currentColor"
-      aria-hidden
-    >
-      <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17L4 17.17V4h16v12z" />
-    </svg>
-  );
-}
 
 export default function Accueil() {
-  const { session, signOut, loading } = useAuth();
+  const { session } = useAuth();
   const { openAuthModal } = useRequireAuthAction();
-  const { unreadPrivateCount } = useCommunauteVWSNotif();
   const hasSession = Boolean(session?.user?.id);
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [signingOut, setSigningOut] = useState(false);
-  const wasConnectedRef = useRef(hasSession);
   const didLogLoginParamRef = useRef(false);
 
   const demoVideoChantierUrl = (import.meta.env.VITE_DEMO_VIDEO_CHANTIER_URL || "").trim();
@@ -55,32 +28,6 @@ export default function Accueil() {
     ],
     [demoVideoChantierUrl, demoVideoMoteurUrl, demoVideoYachtUrl]
   );
-
-  const isActive = (path) => {
-    if (path === "/") return location.pathname === "/";
-    return location.pathname === path || (path !== "/lab" && location.pathname.startsWith(path));
-  };
-
-  const handleLogout = async () => {
-    try {
-      setSigningOut(true);
-      await signOut?.();
-    } catch (err) {
-      console.error("Erreur déconnexion:", err);
-    } finally {
-      setSigningOut(false);
-    }
-  };
-
-  useEffect(() => {
-    if (hasSession) {
-      wasConnectedRef.current = true;
-      return;
-    }
-    if (!loading && !signingOut) {
-      wasConnectedRef.current = false;
-    }
-  }, [hasSession, loading, signingOut]);
 
   useEffect(() => {
     if (didLogLoginParamRef.current) return;
@@ -99,271 +46,260 @@ export default function Accueil() {
     }
   }, [location.pathname, location.search, hasSession, openAuthModal]);
 
-  const showConnectedBranch = hasSession || (loading && wasConnectedRef.current);
-
-  const logoTitle = (
-    <span className="text-xl font-black bg-gradient-to-r from-cyan-300 via-violet-300 to-yellow-300 bg-clip-text text-transparent group-hover:from-cyan-200 group-hover:via-violet-200 group-hover:to-yellow-200 transition-all">
-      ViralWorks Studio
-    </span>
-  );
-
-  const navItems = (
-    <>
-      {navLinks.map((link) => {
-        const active = isActive(link.path);
-        return (
-          <LienNavSync
-            key={link.path}
-            to={link.path}
-            className={`relative text-sm font-medium transition-all duration-300 whitespace-nowrap ${
-              active ? "text-emerald-300" : "text-gray-400 hover:text-gray-200"
-            }`}
-          >
-            <span className="relative z-10">{link.label}</span>
-            {active && (
-              <>
-                <div className="absolute -bottom-1 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent" />
-                <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-emerald-400" />
-              </>
-            )}
-          </LienNavSync>
-        );
-      })}
-    </>
-  );
-
   return (
-    <div className="relative min-h-screen overflow-hidden">
-      <div className="absolute inset-0">
-        <div className="absolute inset-0 bg-gradient-to-br from-[#0C1116] via-[#0a0f14] to-[#080b10]" />
-        
-        <div className="absolute inset-0 opacity-15">
-          <div className="absolute top-1/4 left-0 w-full h-96 bg-gradient-to-r from-transparent via-cyan-500/20 to-transparent blur-3xl animate-wave1" />
-          <div className="absolute top-1/2 left-0 w-full h-96 bg-gradient-to-r from-transparent via-violet-500/20 to-transparent blur-3xl animate-wave2" />
-          <div className="absolute bottom-1/4 left-0 w-full h-96 bg-gradient-to-r from-transparent via-yellow-500/20 to-transparent blur-3xl animate-wave3" />
-        </div>
-
-        {useMemo(() => {
-          return Array.from({ length: 30 }, (_, i) => {
-            const colors = ['rgba(65, 209, 255, 0.4)', 'rgba(189, 52, 254, 0.4)', 'rgba(255, 234, 131, 0.4)'];
-            const color = colors[i % 3];
-            const left = (i * 13.7) % 95;
-            const top = (i * 19.3) % 90;
-            const duration = 6 + (i % 4) * 1.5;
-            const delay = (i * 0.1) % 3;
-            return { i, color, left, top, duration, delay };
-          });
-        }, []).map(({ i, color, left, top, duration, delay }) => (
-          <div
-            key={`particle-${i}`}
-            className="absolute w-1 h-1 rounded-full"
-            style={{
-              background: color,
-              left: `${left}%`,
-              top: `${top}%`,
-              animation: `float ${duration}s ease-in-out infinite`,
-              animationDelay: `${delay}s`,
-              boxShadow: `0 0 6px ${color}`,
-              opacity: 0.6
-            }}
-          />
-        ))}
+    <div className="relative flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-[#07090f]">
+      <div className="pointer-events-none absolute inset-0 z-0">
+        <div
+          className="absolute inset-0 bg-[#07090f]"
+          style={{
+            backgroundImage:
+              "radial-gradient(circle, rgba(255,255,255,0.042) 1px, transparent 1px)",
+            backgroundSize: "30px 30px",
+          }}
+        />
+        <div
+          className="absolute -top-20 left-[25%] h-[420px] w-[420px] rounded-full opacity-100"
+          style={{
+            background: "rgba(33,243,185,0.055)",
+            filter: "blur(100px)",
+          }}
+        />
+        <div
+          className="absolute top-[15%] -right-[60px] h-[340px] w-[340px] rounded-full opacity-100"
+          style={{
+            background: "rgba(129,140,248,0.07)",
+            filter: "blur(90px)",
+          }}
+        />
       </div>
 
-      <header className="fixed top-0 left-0 right-0 z-50">
-        <div className="absolute inset-0 bg-[#0C1116]/30 backdrop-blur-xl" />
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex h-16 w-full items-center gap-2 md:justify-between">
-            <button
-              type="button"
-              aria-label="Ouvrir le menu"
-              onClick={() => setMenuOpen(true)}
-              className="md:hidden inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-white/5 transition-colors z-10"
-            >
-              <Menu size={18} className="text-gray-300" />
-            </button>
+      <Header onOpenMenu={() => setMenuOpen(true)} />
 
-            <LienNavSync
-              to="/"
-              className="group z-10 flex min-w-0 flex-1 justify-center md:mr-4 md:flex-none md:justify-start md:shrink-0"
-            >
-              {logoTitle}
-            </LienNavSync>
+      <div className="flex min-h-0 flex-1 flex-col pt-16">
+      <SidebarShell
+        open={menuOpen}
+        onCloseMenu={() => setMenuOpen(false)}
+        mainClassName="overflow-hidden"
+      >
+        <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
+          <section className="relative flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden">
+            <div className="relative z-10 mx-auto flex w-full max-w-[1100px] flex-col items-center gap-4 px-6 sm:px-8 md:px-12 xl:px-16">
+          <div className="flex min-h-0 w-full flex-col items-center gap-5 md:flex-row md:items-center md:gap-12">
+            <div className="w-full min-w-0 flex-[1.1] text-left max-[580px]:text-center md:pr-2 xl:pr-6">
+              <div className="accueil-fade-up accueil-fade-up-d1 mb-4 inline-flex max-[580px]:mx-auto max-[580px]:w-full max-[580px]:justify-center">
+                <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5">
+                  <span className="accueil-badge-dot h-1.5 w-1.5 shrink-0 rounded-full bg-[#34d399]" />
+                  <span className="text-[9px] font-bold uppercase tracking-[0.13em] text-emerald-300/90">
+                    Vidéos IA · TikTok · Reels · Shorts
+                  </span>
+                </div>
+              </div>
 
-            <nav className="hidden flex-1 items-center justify-center gap-6 md:flex lg:gap-8">{navItems}</nav>
+              <h1 className="accueil-fade-up accueil-fade-up-d2 mb-4 text-[clamp(34px,6vw,58px)] font-black leading-[0.9] tracking-tight text-white/[0.93] max-[580px]:text-[36px]">
+                <span className="block">Créez des vidéos</span>
+                <span className="block">qui attirent</span>
+                <span className="block bg-gradient-to-br from-[#21f3b9] from-0% via-[#818cf8] via-[42%] to-[#facc15] to-100% bg-clip-text text-transparent">
+                  l'attention.
+                </span>
+              </h1>
 
-            <div className="flex shrink-0 items-center justify-end">
-              {hasSession ? (
+              <p className="accueil-fade-up accueil-fade-up-d3 mb-5 max-w-[440px] text-sm leading-relaxed text-white/[0.36] max-[580px]:mx-auto">
+                L&apos;outil IA des entrepreneurs qui veulent publier tous les jours sur TikTok, Reels et Shorts —{" "}
+                <strong className="font-medium text-white/[0.58]">sans y passer des heures.</strong>
+              </p>
+
+              <div className="accueil-fade-up accueil-fade-up-d4 mb-4 flex flex-wrap items-center gap-2.5 max-[580px]:justify-center">
+                {session ? (
+                  <LienNavSync
+                    to="/viralworks"
+                    className="group inline-flex items-center gap-2 rounded-[11px] bg-[#21f3b9] px-6 py-3.5 text-sm font-extrabold text-[#07090f] shadow-[0_0_28px_rgba(33,243,185,0.26)] transition-all duration-200 hover:-translate-y-px hover:shadow-[0_0_44px_rgba(33,243,185,0.42)]"
+                  >
+                    <span>Créer ma vidéo</span>
+                    <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5" />
+                  </LienNavSync>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => openAuthModal?.()}
+                    className="group inline-flex items-center gap-2 rounded-[11px] bg-[#21f3b9] px-6 py-3.5 text-sm font-extrabold text-[#07090f] shadow-[0_0_28px_rgba(33,243,185,0.26)] transition-all duration-200 hover:-translate-y-px hover:shadow-[0_0_44px_rgba(33,243,185,0.42)]"
+                  >
+                    <span>Se connecter</span>
+                    <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5" />
+                  </button>
+                )}
                 <LienNavSync
-                  to="/communaute-vws?tab=private"
-                  className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-300 transition-colors hover:bg-white/10 hover:text-white"
-                  aria-label={
-                    unreadPrivateCount > 0
-                      ? `Messages privés, ${unreadPrivateCount} non lus`
-                      : "Messages privés"
-                  }
+                  to="/lab"
+                  className="inline-flex items-center rounded-[11px] border border-white/[0.08] bg-white/[0.03] px-[18px] py-3.5 text-[13px] font-semibold text-white/35 transition-all duration-200 hover:bg-white/[0.06] hover:text-white/60"
                 >
-                  <MessageBubbleIcon className="text-gray-300" />
-                  {unreadPrivateCount > 0 ? (
-                    <span className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-semibold leading-none text-white">
-                      {unreadPrivateCount > 99 ? "99+" : unreadPrivateCount}
-                    </span>
-                  ) : null}
+                  Voir les nouveautés
                 </LienNavSync>
-              ) : null}
-              {showConnectedBranch ? (
-                <MenuProfilConnecte onLogout={handleLogout} signingOut={signingOut} />
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => openAuthModal?.()}
-                  className="inline-flex items-center justify-center rounded-lg btn-vws-primary px-4 py-2 text-sm font-semibold whitespace-nowrap md:px-6 md:py-2.5"
-                >
-                  Connexion
-                </button>
-              )}
+              </div>
+
+              <div className="accueil-fade-up accueil-fade-up-d4 flex flex-wrap items-center gap-3 text-[10px] font-medium text-white/25 max-[580px]:justify-center">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="text-[#21f3b9]">✓</span> Sans abonnement caché
+                </span>
+                <span className="hidden h-2.5 w-px bg-white/10 sm:block" aria-hidden />
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="text-[#21f3b9]">✓</span> Prêt en 60 secondes
+                </span>
+                <span className="hidden h-2.5 w-px bg-white/10 sm:block" aria-hidden />
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="text-[#21f3b9]">✓</span> Qualité pro
+                </span>
+              </div>
+            </div>
+
+            <div className="accueil-fade-up accueil-fade-up-d5 flex w-full flex-1 items-center justify-center md:justify-end">
+              <div className="relative mx-auto aspect-[260/340] h-[clamp(300px,min(82vw,62vh),560px)] w-auto max-w-[min(100vw,520px)] shrink-0 md:h-[clamp(240px,min(48vw,44vh),520px)] md:max-w-[min(96vw,440px)]">
+                <div
+                  className="pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 rounded-full bg-[rgba(33,243,185,0.08)] blur-[clamp(18px,4vw,28px)]"
+                  style={{
+                    bottom: "-2.35%",
+                    width: "50%",
+                    height: "64.7%",
+                  }}
+                  aria-hidden
+                />
+                {demoVideos[0] ? (
+                  <div
+                    className="accueil-vcard accueil-vcard-l group absolute z-[1] h-[45.882%] w-[33.846%] overflow-hidden rounded-2xl border border-white/10 shadow-[0_18px_50px_rgba(0,0,0,0.65)]"
+                  >
+                    <video
+                      src={demoVideos[0].src}
+                      autoPlay
+                      loop
+                      muted
+                      playsInline
+                      preload="auto"
+                      className="h-full w-full object-cover"
+                    />
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 pb-2 pt-8 text-center text-[8px] font-bold uppercase tracking-widest text-white/45">
+                      {demoVideos[0].label}
+                    </div>
+                  </div>
+                ) : null}
+                {demoVideos[1] ? (
+                  <div
+                    className="accueil-vcard accueil-vcard-c group absolute bottom-0 z-[3] h-[57.647%] w-[42.308%] overflow-hidden rounded-2xl border border-[rgba(33,243,185,0.13)] shadow-[0_24px_65px_rgba(0,0,0,0.75)]"
+                  >
+                    <video
+                      src={demoVideos[1].src}
+                      autoPlay
+                      loop
+                      muted
+                      playsInline
+                      preload="auto"
+                      className="h-full w-full object-cover"
+                    />
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 pb-2 pt-8 text-center text-[8px] font-bold uppercase tracking-widest text-white/45">
+                      {demoVideos[1].label}
+                    </div>
+                  </div>
+                ) : null}
+                {demoVideos[2] ? (
+                  <div
+                    className="accueil-vcard accueil-vcard-r group absolute z-[1] h-[45.882%] w-[33.846%] overflow-hidden rounded-2xl border border-white/10 shadow-[0_18px_50px_rgba(0,0,0,0.65)]"
+                  >
+                    <video
+                      src={demoVideos[2].src}
+                      autoPlay
+                      loop
+                      muted
+                      playsInline
+                      preload="auto"
+                      className="h-full w-full object-cover"
+                    />
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 pb-2 pt-8 text-center text-[8px] font-bold uppercase tracking-widest text-white/45">
+                      {demoVideos[2].label}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
-        </div>
-      </header>
 
-      <SidebarShell open={menuOpen} onCloseMenu={() => setMenuOpen(false)}>
-        <div className="relative z-10 min-h-screen flex items-center justify-center px-4 sm:px-6 lg:px-8 py-24">
-        <div className="max-w-5xl mx-auto text-center w-full">
-          <div className="mb-10 sm:mb-14">
-            <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl xl:text-9xl font-black mb-6 leading-none tracking-tight">
-              <span className="text-gray-100 block mb-2">Créez des vidéos qui attirent</span>
-              <span className="relative inline-block">
-                <span
-                  className="inline-block bg-gradient-to-r from-cyan-400 via-violet-400 to-yellow-400 bg-clip-text text-transparent"
-                  style={{
-                    backgroundSize: '200% 200%',
-                    animation: 'gradient 3s ease infinite'
-                  }}
-                >
-                  l'attention
-                </span>
-              </span>
-            </h1>
-            <p className="text-xl sm:text-2xl md:text-3xl text-gray-400 font-light mt-4">
-              avec l'intelligence artificielle
-            </p>
+          <div className="relative z-[1] mx-auto flex w-full shrink-0 items-center gap-3.5 pb-0 pt-1">
+            <div
+              className="div-line-accueil-l h-px max-w-[90px] flex-1"
+              style={{
+                background: "linear-gradient(to right, transparent, rgba(255,255,255,0.1))",
+              }}
+            />
+            <span className="whitespace-nowrap text-[9px] font-semibold uppercase tracking-[0.14em] text-white/15">
+              Propulsé par l&apos;IA générative
+            </span>
+            <div
+              className="div-line-accueil-r h-px max-w-[90px] flex-1"
+              style={{
+                background: "linear-gradient(to left, transparent, rgba(255,255,255,0.1))",
+              }}
+            />
           </div>
-
-          {/* Vidéos de démonstration VWS */}
-          <div className="mb-10 sm:mb-14 grid grid-cols-3 gap-3 sm:gap-5 lg:gap-7 max-w-6xl mx-auto">
-            {demoVideos.map(({ src, label }) => (
-              <div
-                key={label}
-                className="rounded-2xl sm:rounded-3xl overflow-hidden shadow-[0_20px_45px_rgba(0,0,0,0.45)]"
-              >
-                <video
-                  src={src}
-                  autoPlay
-                  loop
-                  muted
-                  playsInline
-                  preload="auto"
-                  className="block w-full h-[clamp(220px,32vw,420px)] object-contain"
-                />
-              </div>
-            ))}
-          </div>
-
-          <p className="text-base sm:text-lg text-gray-500 mb-10 sm:mb-12 max-w-2xl mx-auto leading-relaxed">
-            L'outil IA des entrepreneurs qui veulent publier tous les jours sur TikTok, Reels et Shorts, sans y passer des heures.
-          </p>
-
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            {session ? (
-              <LienNavSync
-                to="/viralworks"
-                className="group inline-flex items-center gap-3 px-8 py-4 text-lg font-semibold rounded-xl transition-all duration-300 btn-vws-primary"
-              >
-                <span>Créer ma vidéo</span>
-                <ArrowRight className="w-5 h-5 transition-transform duration-300 group-hover:translate-x-2" />
-              </LienNavSync>
-            ) : (
-              <button
-                type="button"
-                onClick={() => openAuthModal?.()}
-                className="group inline-flex items-center gap-3 px-8 py-4 text-lg font-semibold rounded-xl transition-all duration-300 btn-vws-primary"
-              >
-                <span>Se connecter</span>
-                <ArrowRight className="w-5 h-5 transition-transform duration-300 group-hover:translate-x-2" />
-              </button>
-            )}
+            </div>
+          </section>
+          <div className="shrink-0">
+            <Footer />
           </div>
         </div>
-      </div>
       </SidebarShell>
+      </div>
 
       <style>{`
-        @keyframes gradient {
-          0%, 100% { background-position: 0% 50%; }
-          50% { background-position: 100% 50%; }
-        }
-        @keyframes fadeIn {
-          from {
-            opacity: 0;
-            transform: translateY(10px);
-          }
+        @keyframes accueilFadeUp {
           to {
             opacity: 1;
             transform: translateY(0);
           }
         }
-        @keyframes blink {
-          0%, 50% { opacity: 1; }
-          51%, 100% { opacity: 0; }
+        @keyframes accueilBadgePulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.35; }
         }
-        @keyframes progress {
-          0% { transform: translateX(-100%); }
-          100% { transform: translateX(100%); }
+        .accueil-fade-up {
+          opacity: 0;
+          transform: translateY(16px);
+          animation: accueilFadeUp 0.7s ease forwards;
         }
-        @keyframes float {
-          0%, 100% { 
-            transform: translateY(0px) translateX(0px);
-            opacity: 0.4;
-          }
-          50% { 
-            transform: translateY(-15px) translateX(8px);
-            opacity: 0.8;
-          }
+        .accueil-fade-up-d1 { animation-delay: 0.05s; }
+        .accueil-fade-up-d2 { animation-delay: 0.18s; }
+        .accueil-fade-up-d3 { animation-delay: 0.32s; }
+        .accueil-fade-up-d4 { animation-delay: 0.46s; }
+        .accueil-fade-up-d5 { animation-delay: 0.58s; }
+        .accueil-badge-dot {
+          animation: accueilBadgePulse 2s ease-in-out infinite;
         }
-        @keyframes wave1 {
-          0%, 100% { transform: translateX(-30%) translateY(0); opacity: 0.15; }
-          50% { transform: translateX(30%) translateY(-20px); opacity: 0.2; }
+        .accueil-vcard {
+          transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.2s ease;
         }
-        @keyframes wave2 {
-          0%, 100% { transform: translateX(30%) translateY(0); opacity: 0.15; }
-          50% { transform: translateX(-30%) translateY(20px); opacity: 0.2; }
+        .accueil-vcard:hover {
+          border-color: rgba(255, 255, 255, 0.2);
         }
-        @keyframes wave3 {
-          0%, 100% { transform: translateX(-20%) translateY(0); opacity: 0.15; }
-          50% { transform: translateX(20%) translateY(-15px); opacity: 0.2; }
+        .accueil-vcard-l {
+          bottom: 8.235%;
+          left: 1.538%;
+          transform: rotate(-5deg) scale(0.87) translateX(-6px);
         }
-        .animate-fadeIn {
-          animation: fadeIn 0.5s ease-out;
+        .accueil-vcard-l:hover {
+          transform: rotate(-3deg) scale(0.9) translateX(-6px);
         }
-        .animate-blink {
-          animation: blink 1s step-end infinite;
+        .accueil-vcard-c {
+          left: 50%;
+          bottom: 0;
+          transform: translateX(-50%);
         }
-        .animate-progress {
-          animation: progress 2s ease-in-out infinite;
+        .accueil-vcard-c:hover {
+          transform: translateX(-50%) translateY(-5px) scale(1.03);
         }
-        .animate-wave1 {
-          animation: wave1 12s ease-in-out infinite;
+        .accueil-vcard-r {
+          bottom: 8.235%;
+          right: 1.538%;
+          transform: rotate(5deg) scale(0.87) translateX(6px);
         }
-        .animate-wave2 {
-          animation: wave2 14s ease-in-out infinite;
-        }
-        .animate-wave3 {
-          animation: wave3 16s ease-in-out infinite;
+        .accueil-vcard-r:hover {
+          transform: rotate(3deg) scale(0.9) translateX(6px);
         }
       `}</style>
-
-      <Footer />
     </div>
   );
 }

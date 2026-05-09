@@ -12,7 +12,12 @@ const links = [
   { path: "/boutique", label: "Boutique", icon: ShoppingBag },
 ];
 
-export default function SidebarShell({ children, open, onCloseMenu }) {
+export default function SidebarShell({
+  children,
+  open,
+  onCloseMenu,
+  mainClassName = "overflow-y-auto",
+}) {
   const panelRef = useRef(null);
   const location = useLocation();
   const previousPathRef = useRef(location.pathname);
@@ -107,7 +112,7 @@ export default function SidebarShell({ children, open, onCloseMenu }) {
         </div>
       </aside>
 
-      <main className="min-w-0 flex-1 w-full overflow-y-auto">
+      <main className={`flex min-h-0 min-w-0 flex-1 flex-col ${mainClassName}`}>
         {children}
       </main>
     </div>
