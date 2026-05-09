@@ -47,7 +47,7 @@ export default function Accueil() {
   }, [location.pathname, location.search, hasSession, openAuthModal]);
 
   return (
-    <div className="relative flex min-h-[100dvh] flex-col bg-[#07090f] max-md:overflow-y-auto md:h-[100dvh] md:max-h-[100dvh] md:overflow-hidden">
+    <div className="relative flex min-h-[100dvh] flex-col bg-[#07090f] max-md:overflow-x-hidden max-md:overflow-y-auto md:h-[100dvh] md:max-h-[100dvh] md:overflow-hidden">
       <div className="pointer-events-none absolute inset-0 z-0">
         <div
           className="absolute inset-0 bg-[#07090f]"
@@ -75,16 +75,16 @@ export default function Accueil() {
 
       <Header onOpenMenu={() => setMenuOpen(true)} />
 
-      <div className="flex min-h-0 flex-1 flex-col pt-16 max-md:pt-[calc(4rem+12px)]">
+      <div className="flex min-h-0 flex-1 flex-col pt-16 max-md:pt-[calc(4rem+28px)]">
       <SidebarShell
         open={menuOpen}
         onCloseMenu={() => setMenuOpen(false)}
-        mainClassName="max-md:overflow-y-auto md:overflow-hidden"
+        mainClassName="max-md:overflow-x-hidden max-md:overflow-y-auto md:overflow-hidden"
       >
-        <div className="flex min-h-0 w-full flex-1 flex-col max-md:min-h-[calc(100svh-4rem-12px)] max-md:overflow-y-auto md:overflow-hidden">
-          <section className="relative flex min-h-0 w-full flex-1 flex-col items-center max-md:justify-start md:justify-center max-md:overflow-visible md:overflow-hidden">
-            <div className="relative z-10 mx-auto flex w-full max-w-[1100px] flex-col items-center gap-3 px-6 sm:px-8 md:gap-4 md:px-12 xl:px-16">
-          <div className="flex min-h-0 w-full flex-col items-center gap-2 md:flex-row md:items-center md:gap-12">
+        <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col max-md:min-h-[calc(100svh-4rem-28px)] max-md:overflow-x-hidden max-md:overflow-y-auto md:overflow-hidden">
+          <section className="relative flex min-h-0 w-full min-w-0 flex-1 flex-col items-center max-md:justify-start max-md:overflow-x-hidden md:justify-center md:overflow-hidden">
+            <div className="relative z-10 mx-auto flex w-full min-w-0 max-w-[1100px] flex-col items-center gap-3 px-6 sm:px-8 md:gap-4 md:px-12 xl:px-16">
+          <div className="flex min-h-0 w-full min-w-0 flex-col items-center gap-0 md:flex-row md:items-center md:gap-12">
             <div className="w-full min-w-0 flex-[1.1] text-left max-[580px]:text-center md:pr-2 xl:pr-6">
               <div className="accueil-fade-up accueil-fade-up-d1 mb-3 inline-flex max-md:mb-2 max-[580px]:mx-auto max-[580px]:w-full max-[580px]:justify-center md:mb-4">
                 <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5">
@@ -135,7 +135,7 @@ export default function Accueil() {
                 </LienNavSync>
               </div>
 
-              <div className="accueil-fade-up accueil-fade-up-d4 mb-2 flex flex-wrap items-center gap-2 text-[10px] font-medium text-white/25 max-md:mb-1 max-[580px]:justify-center md:mb-0 md:gap-3">
+              <div className="accueil-fade-up accueil-fade-up-d4 mb-2 flex flex-wrap items-center gap-2 text-[10px] font-medium text-white/25 max-md:mb-0 max-[580px]:justify-center md:mb-0 md:gap-3">
                 <span className="inline-flex items-center gap-1.5">
                   <span className="text-[#21f3b9]">✓</span> Sans abonnement caché
                 </span>
@@ -150,8 +150,8 @@ export default function Accueil() {
               </div>
             </div>
 
-            <div className="accueil-fade-up accueil-fade-up-d5 flex w-full max-md:flex-none max-md:py-0 flex-1 items-center justify-center md:justify-end">
-              <div className="relative mx-auto aspect-[260/340] h-[clamp(260px,min(84vw,54vh),480px)] w-auto max-w-[min(100vw,560px)] shrink-0 md:h-[clamp(240px,min(48vw,44vh),520px)] md:max-w-[min(96vw,440px)]">
+            <div className="accueil-fade-up accueil-fade-up-d5 flex w-full min-w-0 max-md:flex-none max-md:py-0 flex-1 items-center justify-center max-md:overflow-hidden md:justify-end">
+              <div className="relative mx-auto aspect-[260/340] h-[clamp(300px,min(92vw,62vh),580px)] w-auto max-w-full shrink-0 overflow-hidden md:h-[clamp(240px,min(48vw,44vh),520px)] md:max-w-[min(96vw,440px)] md:overflow-visible">
                 <div
                   className="pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 rounded-full bg-[rgba(33,243,185,0.08)] blur-[clamp(18px,4vw,28px)]"
                   style={{
@@ -298,6 +298,20 @@ export default function Accueil() {
         }
         .accueil-vcard-r:hover {
           transform: rotate(3deg) scale(0.9) translateX(6px);
+        }
+        @media (max-width: 767px) {
+          .accueil-vcard-l {
+            transform: rotate(-5deg) scale(0.87) translateX(-2px);
+          }
+          .accueil-vcard-l:hover {
+            transform: rotate(-3deg) scale(0.9) translateX(-2px);
+          }
+          .accueil-vcard-r {
+            transform: rotate(5deg) scale(0.87) translateX(2px);
+          }
+          .accueil-vcard-r:hover {
+            transform: rotate(3deg) scale(0.9) translateX(2px);
+          }
         }
       `}</style>
     </div>
