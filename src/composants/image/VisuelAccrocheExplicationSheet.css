@@ -45,11 +45,13 @@
   backdrop-filter: blur(6px);
   z-index: 100;
   display: none;
-  align-items: flex-end;
-  justify-content: center;
 }
+/* Colonne + flex-end : borne la hauteur du panel sur Safari iOS (sinon .pb ne scroll pas, onglets hors écran) */
 .vwa-ex-host .overlay.open {
   display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
   animation: vwa-fIn 0.18s ease;
 }
 @keyframes vwa-fIn {
@@ -65,7 +67,9 @@
 .vwa-ex-host .panel {
   width: 100%;
   max-width: 660px;
-  max-height: 92vh;
+  max-height: min(92vh, 90dvh);
+  min-height: 0;
+  flex-shrink: 1;
   background: var(--s1);
   border-radius: 22px 22px 0 0;
   border: 0.5px solid var(--border2);
@@ -192,6 +196,8 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   padding: 18px 20px;
   display: flex;
   flex-direction: column;
