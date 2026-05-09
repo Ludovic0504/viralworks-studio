@@ -85,7 +85,7 @@ export default function Accueil() {
           <section className="relative flex min-h-0 w-full min-w-0 flex-1 flex-col items-center max-md:justify-start max-md:overflow-x-hidden md:justify-center md:overflow-hidden">
             <div className="relative z-10 mx-auto flex w-full min-w-0 max-w-[1100px] flex-col items-center gap-3 px-6 sm:px-8 md:gap-4 md:px-12 xl:px-16">
           <div className="flex min-h-0 w-full min-w-0 flex-col items-center gap-0 md:flex-row md:items-center md:gap-12">
-            <div className="w-full min-w-0 flex-[1.1] text-left max-[580px]:text-center md:pr-2 xl:pr-6">
+            <div className="w-full min-w-0 flex-[1.1] max-md:flex-none text-left max-[580px]:text-center md:pr-2 xl:pr-6">
               <div className="accueil-fade-up accueil-fade-up-d1 mb-3 inline-flex max-md:mb-2 max-[580px]:mx-auto max-[580px]:w-full max-[580px]:justify-center md:mb-4">
                 <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5">
                   <span className="accueil-badge-dot h-1.5 w-1.5 shrink-0 rounded-full bg-[#34d399]" />
@@ -150,8 +150,8 @@ export default function Accueil() {
               </div>
             </div>
 
-            <div className="accueil-fade-up accueil-fade-up-d5 flex w-full min-w-0 max-md:mt-3 max-md:flex-none max-md:py-0 flex-1 items-center justify-center max-md:overflow-hidden md:mt-0 md:justify-end">
-              <div className="relative mx-auto aspect-[260/340] h-[clamp(380px,min(72dvh,640px),700px)] w-auto max-w-full shrink-0 overflow-hidden md:h-[clamp(240px,min(48vw,44vh),520px)] md:max-w-[min(96vw,440px)] md:overflow-visible">
+            <div className="accueil-fade-up accueil-fade-up-d5 flex w-full min-w-0 max-md:mt-2 max-md:flex-none max-md:items-center max-md:justify-start max-md:py-0 max-md:overflow-hidden md:mt-0 md:flex-1 md:items-center md:justify-end">
+              <div className="relative mx-auto aspect-[260/340] h-[clamp(300px,min(52dvh,520px),580px)] w-auto max-w-full shrink-0 overflow-hidden max-md:-translate-y-1 md:h-[clamp(240px,min(48vw,44vh),520px)] md:translate-y-0 md:max-w-[min(96vw,440px)] md:overflow-visible">
                 <div
                   className="pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 rounded-full bg-[rgba(33,243,185,0.08)] blur-[clamp(18px,4vw,28px)]"
                   style={{
