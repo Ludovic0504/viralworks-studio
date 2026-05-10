@@ -743,14 +743,14 @@ export default function Profil() {
     quotaVidVarCap === null ? null : Math.max(0, quotaVidVarCap - Math.max(0, vAttempts - 1));
 
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="mx-auto w-full min-w-0 max-w-6xl px-3 py-6 sm:px-6 sm:py-8 lg:px-8">
       {showQuotaDetails && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
           onClick={() => setShowQuotaDetails(false)}
         >
           <div
-            className="glass-strong max-w-lg w-full rounded-2xl border border-white/10 p-6"
+            className="glass-strong max-h-[min(90dvh,32rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/10 p-4 sm:max-h-none sm:overflow-visible sm:p-6"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-5">
@@ -840,91 +840,103 @@ export default function Profil() {
           </div>
         </div>
       )}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
-        <div className="glass-strong rounded-xl border border-white/10 p-6">
-          <div className="flex items-center justify-between mb-2">
-            <div className="w-10 h-10 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
-              <Video className="w-5 h-5 text-emerald-400" />
+      <div className="mb-6 grid min-w-0 grid-cols-6 gap-2 sm:grid-cols-5 sm:gap-3 lg:gap-4">
+        <div className="glass-strong col-span-3 min-w-0 rounded-lg border border-white/10 p-2 sm:col-span-1 sm:rounded-xl sm:p-4 lg:p-6">
+          <div className="mb-1 flex items-center justify-between gap-0.5 sm:mb-2">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-emerald-500/30 bg-emerald-500/20 sm:h-10 sm:w-10 sm:rounded-lg">
+              <Video className="h-3.5 w-3.5 text-emerald-400 sm:h-5 sm:w-5" />
             </div>
             <button
               type="button"
               onClick={() => setShowQuotaDetails(true)}
-              className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 hover:text-emerald-300 transition-all"
+              className="shrink-0 rounded-md border border-white/10 bg-white/5 p-1 text-gray-300 transition-all hover:bg-white/10 hover:text-emerald-300 sm:rounded-lg sm:p-1.5"
               title="Voir workflow vidéo et autres quotas"
             >
-              <Info className="w-4 h-4" />
+              <Info className="h-3 w-3 sm:h-4 sm:w-4" />
             </button>
           </div>
-          <p className="text-2xl font-bold text-gray-200">{credits !== null ? credits : "..."}</p>
-          <p className="text-xs text-gray-400 mt-1">Vidéos disponibles</p>
+          <p className="truncate text-base font-bold tabular-nums text-gray-200 sm:text-2xl">
+            {credits !== null ? credits : "..."}
+          </p>
+          <p className="mt-0.5 text-[9px] leading-tight text-gray-400 sm:mt-1 sm:text-xs">
+            Vidéos disponibles
+          </p>
           <Link
             to="/boutique"
-            className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-sm font-medium transition-all"
+            className="mt-1.5 flex w-full items-center justify-center gap-0.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-1 py-1 text-center text-[9px] font-medium leading-tight text-emerald-300 transition-all hover:bg-emerald-500/20 sm:mt-3 sm:gap-2 sm:rounded-lg sm:px-3 sm:py-1.5 sm:text-sm"
           >
-            <ShoppingBag className="w-4 h-4" />
-            Acheter des crédits
+            <ShoppingBag className="h-3 w-3 shrink-0 sm:h-4 sm:w-4" />
+            <span className="line-clamp-2 sm:line-clamp-none">Acheter des crédits</span>
           </Link>
         </div>
 
-        <div className="glass-strong rounded-xl border border-white/10 p-6">
-          <div className="flex items-center justify-between mb-2">
-            <div className="w-10 h-10 rounded-lg bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center">
-              <FileText className="w-5 h-5 text-cyan-400" />
+        <div className="glass-strong col-span-3 min-w-0 rounded-lg border border-white/10 p-2 sm:col-span-1 sm:rounded-xl sm:p-4 lg:p-6">
+          <div className="mb-1 flex items-center justify-between gap-0.5 sm:mb-2">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-cyan-500/30 bg-cyan-500/20 sm:h-10 sm:w-10 sm:rounded-lg">
+              <FileText className="h-3.5 w-3.5 text-cyan-400 sm:h-5 sm:w-5" />
             </div>
-            <TrendingUp className="w-4 h-4 text-gray-400" />
+            <TrendingUp className="h-3 w-3 shrink-0 text-gray-400 sm:h-4 sm:w-4" />
           </div>
-          <p className="text-2xl font-bold text-gray-200">{loading ? "..." : stats.prompts}</p>
-          <p className="text-xs text-gray-400 mt-1">Textes créés</p>
+          <p className="truncate text-base font-bold tabular-nums text-gray-200 sm:text-2xl">
+            {loading ? "..." : stats.prompts}
+          </p>
+          <p className="mt-0.5 text-[9px] leading-tight text-gray-400 sm:mt-1 sm:text-xs">Textes créés</p>
         </div>
 
-        <div className="glass-strong rounded-xl border border-white/10 p-6">
-          <div className="flex items-center justify-between mb-2">
-            <div className="w-10 h-10 rounded-lg bg-violet-500/20 border border-violet-500/30 flex items-center justify-center">
-              <ImageIcon className="w-5 h-5 text-violet-400" />
+        <div className="glass-strong col-span-2 min-w-0 rounded-lg border border-white/10 p-2 sm:col-span-1 sm:rounded-xl sm:p-4 lg:p-6">
+          <div className="mb-1 flex items-center justify-between gap-0.5 sm:mb-2">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-violet-500/30 bg-violet-500/20 sm:h-10 sm:w-10 sm:rounded-lg">
+              <ImageIcon className="h-3.5 w-3.5 text-violet-400 sm:h-5 sm:w-5" />
             </div>
-            <TrendingUp className="w-4 h-4 text-gray-400" />
+            <TrendingUp className="h-3 w-3 shrink-0 text-gray-400 sm:h-4 sm:w-4" />
           </div>
-          <p className="text-2xl font-bold text-gray-200">{loading ? "..." : stats.images}</p>
-          <p className="text-xs text-gray-400 mt-1">Images créées</p>
+          <p className="truncate text-base font-bold tabular-nums text-gray-200 sm:text-2xl">
+            {loading ? "..." : stats.images}
+          </p>
+          <p className="mt-0.5 text-[9px] leading-tight text-gray-400 sm:mt-1 sm:text-xs">Images créées</p>
         </div>
 
-        <div className="glass-strong rounded-xl border border-white/10 p-6">
-          <div className="flex items-center justify-between mb-2">
-            <div className="w-10 h-10 rounded-lg bg-yellow-500/20 border border-yellow-500/30 flex items-center justify-center">
-              <Video className="w-5 h-5 text-yellow-400" />
+        <div className="glass-strong col-span-2 min-w-0 rounded-lg border border-white/10 p-2 sm:col-span-1 sm:rounded-xl sm:p-4 lg:p-6">
+          <div className="mb-1 flex items-center justify-between gap-0.5 sm:mb-2">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-yellow-500/30 bg-yellow-500/20 sm:h-10 sm:w-10 sm:rounded-lg">
+              <Video className="h-3.5 w-3.5 text-yellow-400 sm:h-5 sm:w-5" />
             </div>
-            <TrendingUp className="w-4 h-4 text-gray-400" />
+            <TrendingUp className="h-3 w-3 shrink-0 text-gray-400 sm:h-4 sm:w-4" />
           </div>
-          <p className="text-2xl font-bold text-gray-200">{loading ? "..." : stats.videos}</p>
-          <p className="text-xs text-gray-400 mt-1">Vidéos créées</p>
+          <p className="truncate text-base font-bold tabular-nums text-gray-200 sm:text-2xl">
+            {loading ? "..." : stats.videos}
+          </p>
+          <p className="mt-0.5 text-[9px] leading-tight text-gray-400 sm:mt-1 sm:text-xs">Vidéos créées</p>
         </div>
 
-        <div className="glass-strong rounded-xl border border-white/10 p-6">
-          <div className="flex items-center justify-between mb-2">
-            <div className="w-10 h-10 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
-              <Sparkles className="w-5 h-5 text-emerald-400" />
+        <div className="glass-strong col-span-2 min-w-0 rounded-lg border border-white/10 p-2 sm:col-span-1 sm:rounded-xl sm:p-4 lg:p-6">
+          <div className="mb-1 flex items-center justify-between gap-0.5 sm:mb-2">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-emerald-500/30 bg-emerald-500/20 sm:h-10 sm:w-10 sm:rounded-lg">
+              <Sparkles className="h-3.5 w-3.5 text-emerald-400 sm:h-5 sm:w-5" />
             </div>
-            <TrendingUp className="w-4 h-4 text-gray-400" />
+            <TrendingUp className="h-3 w-3 shrink-0 text-gray-400 sm:h-4 sm:w-4" />
           </div>
-          <p className="text-2xl font-bold text-gray-200">{loading ? "..." : stats.total}</p>
-          <p className="text-xs text-gray-400 mt-1">Total créations</p>
+          <p className="truncate text-base font-bold tabular-nums text-gray-200 sm:text-2xl">
+            {loading ? "..." : stats.total}
+          </p>
+          <p className="mt-0.5 text-[9px] leading-tight text-gray-400 sm:mt-1 sm:text-xs">Total créations</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="glass-strong rounded-2xl border border-white/10 p-8">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-semibold text-gray-200 flex items-center gap-2">
-              <User className="w-5 h-5 text-emerald-400" />
+      <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-3">
+        <div className="glass-strong rounded-2xl border border-white/10 p-4 sm:p-6 lg:p-8">
+          <div className="mb-4 flex min-w-0 items-center justify-between gap-3 sm:mb-6">
+            <h3 className="flex min-w-0 items-center gap-2 text-base font-semibold text-gray-200 sm:text-lg">
+              <User className="h-5 w-5 shrink-0 text-emerald-400" />
               Profil
             </h3>
             {!isEditing && (
               <button
                 onClick={() => setIsEditing(true)}
-                className="p-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 transition-all"
+                className="shrink-0 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2 text-emerald-300 transition-all hover:bg-emerald-500/20"
                 title="Modifier le profil"
               >
-                <Edit2 className="w-4 h-4" />
+                <Edit2 className="h-4 w-4" />
               </button>
             )}
           </div>
@@ -1090,13 +1102,13 @@ export default function Profil() {
               </div>
 
               {/* Informations */}
-              <div className="flex items-center gap-4 p-4 rounded-lg bg-white/5 border border-white/10">
-                <div className="w-10 h-10 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
-                  <User className="w-5 h-5 text-emerald-400" />
+              <div className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/5 p-3 sm:items-center sm:gap-4 sm:p-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/20">
+                  <User className="h-5 w-5 text-emerald-400" />
                 </div>
-                <div className="flex-1">
-                  <p className="text-xs text-gray-400 mb-1">Nom complet</p>
-                  <p className="text-sm font-medium text-gray-200">
+                <div className="min-w-0 flex-1">
+                  <p className="mb-1 text-xs text-gray-400">Nom complet</p>
+                  <p className="break-words text-sm font-medium text-gray-200">
                     {profile?.full_name || profile?.first_name || profile?.last_name 
                       ? `${profile?.first_name || ""} ${profile?.last_name || ""}`.trim() || profile?.full_name
                       : "Non renseigné"}
@@ -1104,36 +1116,36 @@ export default function Profil() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-4 p-4 rounded-lg bg-white/5 border border-white/10">
-                <div className="w-10 h-10 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
-                  <Mail className="w-5 h-5 text-emerald-400" />
+              <div className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/5 p-3 sm:items-center sm:gap-4 sm:p-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/20">
+                  <Mail className="h-5 w-5 text-emerald-400" />
                 </div>
-                <div className="flex-1">
-                  <p className="text-xs text-gray-400 mb-1">Email</p>
-                  <p className="text-sm font-medium text-gray-200">{email}</p>
+                <div className="min-w-0 flex-1">
+                  <p className="mb-1 text-xs text-gray-400">Email</p>
+                  <p className="break-all text-sm font-medium text-gray-200">{email}</p>
                 </div>
               </div>
 
               {profile?.job && (
-                <div className="flex items-center gap-4 p-4 rounded-lg bg-white/5 border border-white/10">
-                  <div className="w-10 h-10 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
-                    <Briefcase className="w-5 h-5 text-emerald-400" />
+                <div className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/5 p-3 sm:items-center sm:gap-4 sm:p-4">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/20">
+                    <Briefcase className="h-5 w-5 text-emerald-400" />
                   </div>
-                  <div className="flex-1">
-                    <p className="text-xs text-gray-400 mb-1">Métier</p>
-                    <p className="text-sm font-medium text-gray-200">{profile.job}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="mb-1 text-xs text-gray-400">Métier</p>
+                    <p className="break-words text-sm font-medium text-gray-200">{profile.job}</p>
                   </div>
                 </div>
               )}
 
               {profile?.birth_date && (
-                <div className="flex items-center gap-4 p-4 rounded-lg bg-white/5 border border-white/10">
-                  <div className="w-10 h-10 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
-                    <Calendar className="w-5 h-5 text-emerald-400" />
+                <div className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/5 p-3 sm:items-center sm:gap-4 sm:p-4">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/20">
+                    <Calendar className="h-5 w-5 text-emerald-400" />
                   </div>
-                  <div className="flex-1">
-                    <p className="text-xs text-gray-400 mb-1">Date de naissance</p>
-                    <p className="text-sm font-medium text-gray-200">
+                  <div className="min-w-0 flex-1">
+                    <p className="mb-1 text-xs text-gray-400">Date de naissance</p>
+                    <p className="break-words text-sm font-medium text-gray-200">
                       {new Date(profile.birth_date).toLocaleDateString("fr-FR", {
                         year: "numeric",
                         month: "long",
@@ -1144,28 +1156,28 @@ export default function Profil() {
                 </div>
               )}
 
-              <div className="flex items-center gap-4 p-4 rounded-lg bg-white/5 border border-white/10">
-                <div className="w-10 h-10 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
-                  <Calendar className="w-5 h-5 text-emerald-400" />
+              <div className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/5 p-3 sm:items-center sm:gap-4 sm:p-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/20">
+                  <Calendar className="h-5 w-5 text-emerald-400" />
                 </div>
-                <div className="flex-1">
-                  <p className="text-xs text-gray-400 mb-1">Compte créé le</p>
-                  <p className="text-sm font-medium text-gray-200">{createdAt}</p>
+                <div className="min-w-0 flex-1">
+                  <p className="mb-1 text-xs text-gray-400">Compte créé le</p>
+                  <p className="break-words text-sm font-medium text-gray-200">{createdAt}</p>
                 </div>
               </div>
 
               {userRole === 'admin' && (
-                <div className="flex items-center gap-4 p-4 rounded-lg bg-violet-500/10 border border-violet-500/30">
-                  <div className="w-10 h-10 rounded-lg bg-violet-500/20 border border-violet-500/30 flex items-center justify-center">
-                    <Shield className="w-5 h-5 text-violet-400" />
+                <div className="flex items-start gap-3 rounded-lg border border-violet-500/30 bg-violet-500/10 p-3 sm:items-center sm:gap-4 sm:p-4">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-violet-500/30 bg-violet-500/20">
+                    <Shield className="h-5 w-5 text-violet-400" />
                   </div>
-                  <div className="flex-1">
-                    <p className="text-xs text-gray-400 mb-1">Rôle</p>
-                    <div className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="mb-1 text-xs text-gray-400">Rôle</p>
+                    <div className="flex flex-col items-start gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                       <p className="text-sm font-semibold text-violet-300">Administrateur</p>
                       <Link
                         to="/admin"
-                        className="text-xs text-violet-400 hover:text-violet-300 underline"
+                        className="text-xs text-violet-400 underline hover:text-violet-300"
                       >
                         Accéder au panel admin
                       </Link>
@@ -1177,8 +1189,8 @@ export default function Profil() {
           )}
         </div>
 
-        <div className="lg:col-span-2 space-y-6">
-          <div className="glass-strong rounded-2xl border border-white/10 p-6">
+        <div className="space-y-4 sm:space-y-6 lg:col-span-2">
+          <div className="glass-strong rounded-2xl border border-white/10 p-4 sm:p-6">
             <h3 className="text-lg font-semibold text-gray-200 mb-4 flex items-center gap-2">
               <Settings className="w-5 h-5 text-emerald-400" />
               Paramètres
@@ -1196,7 +1208,7 @@ export default function Profil() {
             </div>
           </div>
 
-          <div className="glass-strong rounded-2xl border border-white/10 p-6">
+          <div className="glass-strong rounded-2xl border border-white/10 p-4 sm:p-6">
             <h3 className="text-lg font-semibold text-gray-200 mb-4 flex items-center gap-2">
               <CreditCard className="w-5 h-5 text-emerald-400" />
               Historique des paiements
@@ -1207,10 +1219,10 @@ export default function Profil() {
                   {(showAllPayments ? payments : payments.slice(0, 3)).map((payment) => (
                     <div
                       key={payment.id}
-                      className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/10"
+                      className="flex flex-col gap-2 rounded-lg border border-white/10 bg-white/5 p-3 sm:flex-row sm:items-center sm:justify-between"
                     >
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-1 flex flex-wrap items-center gap-2">
                           {getPaymentStatusIcon(payment.status)}
                           <p className="text-sm font-medium text-gray-200">
                             {payment.amount.toFixed(2)} €
@@ -1252,34 +1264,34 @@ export default function Profil() {
           </div>
 
           {/* Section Abonnement */}
-          <div className="glass-strong rounded-2xl border border-white/10 p-6">
+          <div className="glass-strong rounded-2xl border border-white/10 p-4 sm:p-6">
             <h3 className="text-lg font-semibold text-gray-200 mb-4 flex items-center gap-2">
               <Crown className="w-5 h-5 text-violet-400" />
               Mon abonnement
             </h3>
             {subscription ? (
               <div className="space-y-4">
-                <div className="p-4 rounded-lg bg-violet-500/10 border border-violet-500/30">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <Crown className="w-5 h-5 text-violet-400" />
+                <div className="rounded-lg border border-violet-500/30 bg-violet-500/10 p-3 sm:p-4">
+                  <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Crown className="h-5 w-5 shrink-0 text-violet-400" />
                       <span className="text-sm font-semibold text-violet-300">Abonnement actif</span>
                     </div>
                     {subscription.cancel_at_period_end && (
-                      <span className="px-2 py-1 rounded text-xs font-medium bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">
+                      <span className="w-fit rounded border border-yellow-500/30 bg-yellow-500/20 px-2 py-1 text-xs font-medium text-yellow-400">
                         Annulé
                       </span>
                     )}
                   </div>
                   
                   <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Statut:</span>
-                      <span className="text-emerald-400 font-medium capitalize">{subscription.status}</span>
+                    <div className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                      <span className="shrink-0 text-gray-400">Statut:</span>
+                      <span className="font-medium capitalize text-emerald-400 sm:text-right">{subscription.status}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Période actuelle:</span>
-                      <span className="text-gray-200">
+                    <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
+                      <span className="shrink-0 text-gray-400">Période actuelle:</span>
+                      <span className="min-w-0 break-words text-gray-200 sm:text-right">
                         {new Date(subscription.current_period_start).toLocaleDateString("fr-FR", {
                           day: "numeric",
                           month: "short"
@@ -1343,7 +1355,7 @@ export default function Profil() {
             )}
           </div>
 
-          <div className="glass-strong rounded-2xl border border-white/10 p-6">
+          <div className="glass-strong rounded-2xl border border-white/10 p-4 sm:p-6">
             <h3 className="text-lg font-semibold text-gray-200 mb-4 flex items-center gap-2">
               <Coins className="w-5 h-5 text-emerald-400" />
               Transactions de crédits
@@ -1354,10 +1366,10 @@ export default function Profil() {
                   {(showAllTransactions ? transactions : transactions.slice(0, 3)).map((tx) => (
                     <div
                       key={tx.id}
-                      className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/10"
+                      className="flex items-start justify-between gap-3 rounded-lg border border-white/10 bg-white/5 p-3 sm:items-center"
                     >
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-200">
+                      <div className="min-w-0 flex-1">
+                        <p className="break-words text-sm font-medium text-gray-200">
                           {tx.reason === "prompt_generation" && "Génération de prompt"}
                           {tx.reason === "image_generation" && "Génération d'image"}
                           {tx.reason === "video_generation" && "Génération de vidéo"}
@@ -1374,7 +1386,7 @@ export default function Profil() {
                         </p>
                         <p className="text-xs text-gray-400">{formatDate(tx.created_at)}</p>
                       </div>
-                      <div className={`text-sm font-semibold ${tx.amount > 0 ? "text-emerald-400" : "text-red-400"}`}>
+                      <div className={`shrink-0 text-sm font-semibold ${tx.amount > 0 ? "text-emerald-400" : "text-red-400"}`}>
                         {tx.amount > 0 ? "+" : ""}{tx.amount}
                       </div>
                     </div>
@@ -1405,15 +1417,15 @@ export default function Profil() {
           </div>
 
           {/* Galerie Photo */}
-          <div className="glass-strong rounded-2xl border border-white/10 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-200 flex items-center gap-2">
-                <ImageIcon className="w-5 h-5 text-violet-400" />
+          <div className="glass-strong rounded-2xl border border-white/10 p-4 sm:p-6">
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <h3 className="flex items-center gap-2 text-lg font-semibold text-gray-200">
+                <ImageIcon className="h-5 w-5 text-violet-400" />
                 Galerie Photo
               </h3>
               <Link
                 to="/galerie"
-                className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1 transition-colors"
+                className="flex w-fit items-center gap-1 text-xs text-emerald-400 transition-colors hover:text-emerald-300"
               >
                 Voir toute la galerie
                 <ExternalLink className="w-3 h-3" />
@@ -1568,15 +1580,15 @@ export default function Profil() {
             })()}
           </div>
 
-          <div className="glass-strong rounded-2xl border border-white/10 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-200 flex items-center gap-2">
-                <Video className="w-5 h-5 text-yellow-400" />
+          <div className="glass-strong rounded-2xl border border-white/10 p-4 sm:p-6">
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <h3 className="flex items-center gap-2 text-lg font-semibold text-gray-200">
+                <Video className="h-5 w-5 text-yellow-400" />
                 Galerie Vidéo
               </h3>
               <Link
                 to="/galerie"
-                className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1 transition-colors"
+                className="flex w-fit items-center gap-1 text-xs text-emerald-400 transition-colors hover:text-emerald-300"
               >
                 Voir toute la galerie
                 <ExternalLink className="w-3 h-3" />
@@ -1764,7 +1776,7 @@ export default function Profil() {
             })()}
           </div>
 
-          <div className="glass-strong rounded-2xl border border-white/10 p-6">
+          <div className="glass-strong rounded-2xl border border-white/10 p-4 sm:p-6">
             <h3 className="text-lg font-semibold text-gray-200 mb-4 flex items-center gap-2">
               <Clock className="w-5 h-5 text-emerald-400" />
               Historique récent
