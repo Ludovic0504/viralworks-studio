@@ -124,6 +124,8 @@ export default function AuthFormCard({
   showConfirmedBanner = false,
   showPasswordResetSuccess = false,
   initialError = "",
+  /** Évite le chevauchement avec un bouton fermer en haut à droite (ex. modal). */
+  reserveHeaderSpaceForCloseButton = false,
 }) {
   const navigate = useNavigate();
   const [mode, setMode] = useState(initialMode === "signup" ? "signup" : "signin");
@@ -363,7 +365,9 @@ export default function AuthFormCard({
 
   return (
     <div className="w-full max-w-md">
-      <div className="text-center mb-8">
+      <div
+        className={`text-center mb-8${reserveHeaderSpaceForCloseButton ? " pr-10 sm:pr-0" : ""}`}
+      >
         <h1 className="text-3xl font-black mb-2">
           <span className="bg-gradient-to-r from-cyan-300 via-violet-300 to-yellow-300 bg-clip-text text-transparent">
             {mode === "signin" ? "Connexion" : "Créer un compte"}
@@ -499,8 +503,8 @@ export default function AuthFormCard({
           </div>
         </div>
 
-        <div className="flex items-center justify-between">
-          <label className="inline-flex items-center gap-2 text-sm text-gray-400 cursor-not-allowed opacity-80">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-0">
+          <label className="inline-flex min-w-0 items-center gap-2 text-sm text-gray-400 cursor-not-allowed opacity-80">
             <input
               type="checkbox"
               checked={remember}
@@ -515,7 +519,7 @@ export default function AuthFormCard({
               type="button"
               onClick={handleForgotPassword}
               disabled={loading}
-              className="text-sm text-emerald-400 hover:text-emerald-300 transition-colors underline disabled:opacity-50"
+              className="self-end sm:self-auto shrink-0 whitespace-nowrap text-sm text-emerald-400 hover:text-emerald-300 transition-colors underline disabled:opacity-50"
             >
               Mot de passe oublié ?
             </button>

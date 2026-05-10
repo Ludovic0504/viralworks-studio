@@ -23,12 +23,12 @@ export default function AuthModal({
 
   return (
     <div
-      className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 backdrop-blur-sm px-5 py-4 sm:p-4"
       onClick={() => onClose?.()}
       role="presentation"
     >
       <div
-        className="studio-panel relative max-w-md w-full p-5 sm:p-6"
+        className="studio-panel relative max-h-[85dvh] min-w-0 w-full max-w-md overflow-y-auto p-5 sm:p-6"
         onClick={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -42,7 +42,11 @@ export default function AuthModal({
         >
           <X className="w-4 h-4" />
         </button>
-        <AuthFormCard initialMode={initialMode} onAuthSuccess={onAuthSuccess} />
+        <AuthFormCard
+          initialMode={initialMode}
+          onAuthSuccess={onAuthSuccess}
+          reserveHeaderSpaceForCloseButton
+        />
       </div>
     </div>
   );
