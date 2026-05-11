@@ -48,13 +48,13 @@ function canAttemptPexelsFetch(): boolean {
   return false;
 }
 
-function entryKey(apiKey: string, query: string): string {
+function entryKey(apiKey: string, query: string, photoIndex: number): string {
   const mode = import.meta.env.DEV
     ? "dev-proxy"
     : useServerPexelsProxy()
       ? "server-proxy"
       : "direct";
-  return `${mode}\n${apiKey}\n${query.trim()}`;
+  return `${mode}\n${apiKey}\n${query.trim()}\n${photoIndex}`;
 }
 
 function searchUrlAndHeaders(params: URLSearchParams): { url: string; headers: HeadersInit } {
@@ -81,12 +81,16 @@ function searchUrlAndHeaders(params: URLSearchParams): { url: string; headers: H
   };
 }
 
-async function fetchMediumUrlForQuery(query: string): Promise<string | null> {
+async function fetchMediumUrlForQuery(
+  query: string,
+  photoIndex: number = 0
+): Promise<string | null> {
   if (!query.trim()) return null;
   if (!canAttemptPexelsFetch()) return null;
 
+  const idx = Math.max(0, Math.floor(photoIndex));
   const keyForCache = getApiKey() || (useServerPexelsProxy() ? "server-proxy" : "");
-  const eKey = entryKey(keyForCache, query);
+  const eKey = entryKey(keyForCache, query, idx);
   const cached = urlByQuery.get(eKey);
   if (cached !== undefined) return cached === "" ? null : cached;
 
@@ -95,9 +99,10 @@ async function fetchMediumUrlForQuery(query: string): Promise<string | null> {
 
   const promise = (async (): Promise<string | null> => {
     try {
+      const perPage = idx === 0 ? 1 : Math.min(80, idx + 1);
       const params = new URLSearchParams({
         query: query.trim(),
-        per_page: "1",
+        per_page: String(perPage),
         size: "medium",
       });
       const { url, headers } = searchUrlAndHeaders(params);
@@ -118,7 +123,7 @@ async function fetchMediumUrlForQuery(query: string): Promise<string | null> {
       const data = (await res.json()) as {
         photos?: { src?: { medium?: string } }[];
       };
-      const urlMedium = data.photos?.[0]?.src?.medium ?? null;
+      const urlMedium = data.photos?.[idx]?.src?.medium ?? null;
       urlByQuery.set(eKey, urlMedium ?? "");
       return urlMedium || null;
     } catch {
@@ -133,14 +138,19 @@ async function fetchMediumUrlForQuery(query: string): Promise<string | null> {
   return promise;
 }
 
-/** Première image medium pour la requête ; résultat mis en cache (y compris les échecs vides). */
-export async function getCachedPexelsMediumUrl(pexelsQuery: string): Promise<string | null> {
-  const url = await fetchMediumUrlForQuery(pexelsQuery);
+/** Image medium pour la requête (index dans la page de résultats) ; mis en cache (y compris les échecs vides). */
+export async function getCachedPexelsMediumUrl(
+  pexelsQuery: string,
+  photoIndex: number = 0
+): Promise<string | null> {
+  const url = await fetchMediumUrlForQuery(pexelsQuery, photoIndex);
   return url || null;
 }
 
+export type PexelsPrefetchSpec = { query: string; photoIndex?: number };
+
 /** Précharge les formats listés (ex. catégorie visible au premier passage). Les doublons sont dédupliqués via le cache. */
-export function prefetchPexelsQueries(queries: readonly string[]): void {
+export function prefetchPexelsQueries(specs: readonly PexelsPrefetchSpec[]): void {
   if (!canAttemptPexelsFetch()) {
     if (import.meta.env.DEV) {
       console.warn(
@@ -149,8 +159,18 @@ export function prefetchPexelsQueries(queries: readonly string[]): void {
     }
     return;
   }
-  const unique = [...new Set(queries.map((q) => q.trim()).filter(Boolean))];
-  void Promise.allSettled(unique.map((q) => fetchMediumUrlForQuery(q)));
+  const tuples = specs
+    .map((s) => ({ query: s.query.trim(), idx: Math.max(0, Math.floor(s.photoIndex ?? 0)) }))
+    .filter((s) => s.query.length > 0);
+  const seen = new Set<string>();
+  const unique: { query: string; idx: number }[] = [];
+  for (const t of tuples) {
+    const k = `${t.query}\n${t.idx}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    unique.push(t);
+  }
+  void Promise.allSettled(unique.map((t) => fetchMediumUrlForQuery(t.query, t.idx)));
 }
 
 export function hasPexelsApiKey(): boolean {

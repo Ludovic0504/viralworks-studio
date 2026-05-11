@@ -5,8 +5,9 @@ import { FormatCardVisualSvg } from "./FormatCardVisualSvg.jsx";
 /**
  * Zone visuelle carte format : photo Pexels (medium) ou illustration SVG de secours.
  */
-export default function FormatCardVisual({ formatId, categoryId, pexelsQuery }) {
+export default function FormatCardVisual({ formatId, categoryId, pexelsQuery, pexelsPhotoIndex = 0 }) {
   const query = (pexelsQuery || "").trim();
+  const photoIdx = Math.max(0, Math.floor(Number(pexelsPhotoIndex) || 0));
   const [photoUrl, setPhotoUrl] = useState(null);
   const [showSvg, setShowSvg] = useState(() => !query || !hasPexelsApiKey());
 
@@ -22,7 +23,7 @@ export default function FormatCardVisual({ formatId, categoryId, pexelsQuery }) 
     setShowSvg(false);
     setPhotoUrl(null);
 
-    void getCachedPexelsMediumUrl(query).then((url) => {
+    void getCachedPexelsMediumUrl(query, photoIdx).then((url) => {
       if (!alive) return;
       if (url) setPhotoUrl(url);
       else setShowSvg(true);
@@ -31,7 +32,7 @@ export default function FormatCardVisual({ formatId, categoryId, pexelsQuery }) 
     return () => {
       alive = false;
     };
-  }, [query]);
+  }, [query, photoIdx]);
 
   const loading = hasPexelsApiKey() && query && !photoUrl && !showSvg;
 

@@ -208,7 +208,12 @@ export function PanneauChoixFormatVideo({
                     : "border-[#1e1e1e] hover:border-white/20"
                 }`}
               >
-                <FormatCardVisual formatId={f.id} categoryId={f.categoryId} pexelsQuery={f.pexelsQuery} />
+                <FormatCardVisual
+                  formatId={f.id}
+                  categoryId={f.categoryId}
+                  pexelsQuery={f.pexelsQuery}
+                  pexelsPhotoIndex={f.pexelsPhotoIndex ?? 0}
+                />
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
                   <span className="text-[13px] font-medium leading-snug text-slate-100">{f.name}</span>
                   {f.popular ? (

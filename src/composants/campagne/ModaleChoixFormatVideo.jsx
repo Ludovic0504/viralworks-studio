@@ -63,7 +63,9 @@ export default function ModaleChoixFormatVideo({
 
   useEffect(() => {
     if (!open) return;
-    prefetchPexelsQueries(VWS_VIDEO_FORMATS.map((f) => f.pexelsQuery));
+    prefetchPexelsQueries(
+      VWS_VIDEO_FORMATS.map((f) => ({ query: f.pexelsQuery, photoIndex: f.pexelsPhotoIndex }))
+    );
   }, [open]);
 
   useEffect(() => {

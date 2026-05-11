@@ -29,6 +29,8 @@ export type VwsVideoFormatDef = {
   rendering: VwsVideoFormatRenderingPatch;
   /** Requête Pexels (anglais) pour l’image d’aperçu de la carte */
   pexelsQuery: string;
+  /** Index 0-based dans la page de résultats (`per_page` adapté). Défaut : première image. */
+  pexelsPhotoIndex?: number;
 };
 
 export type VwsVideoFormatCategoryDef = {
@@ -193,7 +195,7 @@ const _formats: VwsVideoFormatDef[] = [
     name: "Focus détail produit",
     description: "Zoom extrême sur une matière ou une finition",
     popular: false,
-    pexelsQuery: "product detail texture macro",
+    pexelsQuery: "magnifying glass product inspection detail",
     placeholderIdea: "Quel détail (texture, joint, vernis, couture) et le mouvement de caméra (zoom, travelling court).",
     rendering: { ...PRESET_DEMO, tempo: "slow_motion", cinematicMovement: true },
   },
@@ -361,7 +363,7 @@ const _formats: VwsVideoFormatDef[] = [
     id: "process_avant_apres",
     categoryId: "process",
     name: "Avant / Après",
-    description: "Une pièce ou situation passe de sale / cassé à rénovée / réparée",
+    description: "Une pièce ou une situation passe de sale / cassée à rénovée / réparée",
     popular: true,
     pexelsQuery: "room renovation before after",
     placeholderIdea: "État de départ lisible, même angle pour la révélation finale (réparation ou finition).",
