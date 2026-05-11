@@ -1936,13 +1936,13 @@ export default function ImagePage({
               <span className="truncate">Étape 2 – Votre visuel d&apos;accroche</span>
             </h2>
             <div
-              className="relative grid w-full min-w-0 max-w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5 min-[640px]:gap-2"
+              className="relative grid w-full min-w-0 max-w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5 min-[640px]:inline-flex min-[640px]:w-auto min-[640px]:max-w-full min-[640px]:grid-cols-none min-[640px]:flex-row min-[640px]:flex-nowrap min-[640px]:items-center min-[640px]:justify-start min-[640px]:gap-1"
               ref={historyPanelRef}
             >
               <button
                 type="button"
                 onClick={openVisuelAide}
-                className="vws-campagne-aide-btn box-border flex min-h-[44px] min-w-0 w-full max-w-full flex-row flex-nowrap items-center justify-start gap-1.5 px-2 py-2 text-left text-[11px] font-semibold leading-tight min-[640px]:min-h-0 min-[640px]:gap-2 min-[640px]:px-3 min-[640px]:py-1.5 min-[640px]:text-sm sm:min-h-0"
+                className="vws-campagne-aide-btn box-border flex min-h-[44px] min-w-0 w-full max-w-full flex-row flex-nowrap items-center justify-start gap-1.5 px-2 py-2 text-left text-[11px] font-semibold leading-tight max-[639px]:max-w-full min-[640px]:h-auto min-[640px]:w-auto min-[640px]:min-h-0 min-[640px]:shrink-0 min-[640px]:gap-1.5 min-[640px]:px-2.5 min-[640px]:py-1.5 min-[640px]:text-sm sm:min-h-0"
               >
                 <BookOpen className="vws-campagne-aide-btn__icon h-3.5 w-3.5 shrink-0 min-[640px]:h-[0.875rem] min-[640px]:w-[0.875rem]" />
                 {showVisuelAidePulse ? <span className="pulse-dot shrink-0" aria-hidden="true" /> : null}
@@ -1957,7 +1957,7 @@ export default function ImagePage({
                     ? "Aucune grille enregistrée dans cette session (génère ou modifie d’abord des images)"
                     : "Restaurer une grille ou un état visuel enregistré"
                 }
-                className="studio-toolbar-btn box-border inline-flex min-h-[44px] shrink-0 flex-row items-center justify-center gap-1 px-2 py-2 text-[11px] font-medium leading-tight text-gray-400 hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-gray-400 min-[640px]:min-h-0 min-[640px]:gap-1.5 min-[640px]:px-2.5 min-[640px]:py-2.5 min-[640px]:text-sm"
+                className="studio-toolbar-btn box-border inline-flex min-h-[44px] shrink-0 flex-row items-center justify-center gap-1 px-2 py-2 text-[11px] font-medium leading-tight text-gray-400 hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-gray-400 min-[640px]:min-h-0 min-[640px]:gap-1.5 min-[640px]:px-2.5 min-[640px]:py-1.5 min-[640px]:text-sm"
               >
                 <History className="h-3.5 w-3.5 shrink-0 text-cyan-500/90" />
                 <span className="whitespace-nowrap">Historique</span>
@@ -2017,13 +2017,13 @@ export default function ImagePage({
               <span className="truncate">Étape 2 – Votre visuel d&apos;accroche</span>
             </h2>
             <div
-              className="relative grid w-full min-w-0 max-w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5 min-[640px]:gap-2"
+              className="relative grid w-full min-w-0 max-w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5 min-[640px]:inline-flex min-[640px]:w-auto min-[640px]:max-w-full min-[640px]:grid-cols-none min-[640px]:flex-row min-[640px]:flex-nowrap min-[640px]:items-center min-[640px]:justify-start min-[640px]:gap-1"
               ref={historyPanelRef}
             >
               <button
                 type="button"
                 onClick={openVisuelAide}
-                className="vws-campagne-aide-btn box-border flex min-h-[44px] min-w-0 w-full max-w-full flex-row flex-nowrap items-center justify-start gap-1.5 px-2 py-2 text-left text-[11px] font-semibold leading-tight min-[640px]:min-h-0 min-[640px]:gap-2 min-[640px]:px-3 min-[640px]:py-1.5 min-[640px]:text-sm sm:min-h-0"
+                className="vws-campagne-aide-btn box-border flex min-h-[44px] min-w-0 w-full max-w-full flex-row flex-nowrap items-center justify-start gap-1.5 px-2 py-2 text-left text-[11px] font-semibold leading-tight max-[639px]:max-w-full min-[640px]:h-auto min-[640px]:w-auto min-[640px]:min-h-0 min-[640px]:shrink-0 min-[640px]:gap-1.5 min-[640px]:px-2.5 min-[640px]:py-1.5 min-[640px]:text-sm sm:min-h-0"
               >
                 <BookOpen className="vws-campagne-aide-btn__icon h-3.5 w-3.5 shrink-0 min-[640px]:h-[0.875rem] min-[640px]:w-[0.875rem]" />
                 {showVisuelAidePulse ? <span className="pulse-dot shrink-0" aria-hidden="true" /> : null}
@@ -2038,7 +2038,7 @@ export default function ImagePage({
                     ? "Aucune grille enregistrée dans cette session (génère ou modifie d’abord des images)"
                     : "Restaurer une grille ou un état visuel enregistré"
                 }
-                className="studio-toolbar-btn box-border inline-flex min-h-[44px] shrink-0 flex-row items-center justify-center gap-1 px-2 py-2 text-[11px] font-medium leading-tight text-gray-400 hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-gray-400 min-[640px]:min-h-0 min-[640px]:gap-1.5 min-[640px]:px-2.5 min-[640px]:py-2.5 min-[640px]:text-sm"
+                className="studio-toolbar-btn box-border inline-flex min-h-[44px] shrink-0 flex-row items-center justify-center gap-1 px-2 py-2 text-[11px] font-medium leading-tight text-gray-400 hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-gray-400 min-[640px]:min-h-0 min-[640px]:gap-1.5 min-[640px]:px-2.5 min-[640px]:py-1.5 min-[640px]:text-sm"
               >
                 <History className="h-3.5 w-3.5 shrink-0 text-cyan-500/90" />
                 <span className="whitespace-nowrap">Historique</span>
