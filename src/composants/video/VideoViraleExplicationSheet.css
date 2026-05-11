@@ -40,23 +40,28 @@
   box-sizing: border-box;
 }
 
+/* ===========================================================
+   OVERLAY + PANEL — alignés sur ModaleChoixFormatVideo :
+   • ≤640px : bottom sheet 78dvh, plein écran, bg #0f1420, rounded-t 20px, poignée
+   • 641–1023px : feuille plein écran ancrée en bas, bg #0d0d0d, rounded-t 16px
+   • ≥1024px : modale centrée 900×85vh, bg #0d0d0d, rounded 16px, shadow-2xl
+   =========================================================== */
+
 .vvv-ex-host .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.72);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
   z-index: 100;
   display: none;
+  box-sizing: border-box;
 }
 .vvv-ex-host .overlay.open {
   display: flex;
   flex-direction: column;
+  background: rgba(0, 0, 0, 0.6);
+  align-items: stretch;
   justify-content: flex-end;
-  align-items: center;
-  animation: vvv-fIn 0.18s ease;
-  padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
-  box-sizing: border-box;
+  padding: 0;
+  animation: vvv-fIn 0.22s ease;
 }
 @keyframes vvv-fIn {
   from {
@@ -67,32 +72,34 @@
   }
 }
 
+/* PANEL — défaut = mobile bottom sheet (≤640px) */
 .vvv-ex-host .panel {
   width: 100%;
-  max-width: 660px;
-  max-height: min(92vh, 90dvh);
+  max-width: none;
+  height: 78dvh;
+  max-height: 78dvh;
   min-height: 0;
   flex-shrink: 1;
-  background: var(--s1);
-  border-radius: 22px 22px 0 0;
-  border: 0.5px solid var(--border2);
-  border-bottom: none;
+  background: #0f1420;
+  border: none;
+  border-top: 1px solid #1e2845;
+  border-radius: 20px 20px 0 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  animation: vvv-sUp 0.32s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 -12px 48px rgba(0, 0, 0, 0.4);
+  animation: vvv-sUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: none;
 }
 .vvv-ex-host .panel::before {
   content: "";
   display: block;
-  width: 40px;
+  width: 36px;
   height: 4px;
-  border-radius: 4px;
-  background: var(--muted2);
-  margin: 8px auto 0;
+  border-radius: 2px;
+  background: #2a3560;
+  margin: 10px auto 6px;
   flex-shrink: 0;
-  opacity: 0.85;
+  opacity: 1;
 }
 @keyframes vvv-sUp {
   from {
@@ -102,6 +109,61 @@
   to {
     transform: translateY(0);
     opacity: 1;
+  }
+}
+
+/* ── Tablette / écrans moyens : feuille plein écran ancrée en bas ── */
+@media (min-width: 641px) and (max-width: 1023px) {
+  .vvv-ex-host .panel {
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    max-height: 100dvh;
+    min-height: 100dvh;
+    background: #0d0d0d;
+    border: 1px solid #1e1e1e;
+    border-bottom: none;
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4);
+    animation: vvv-sUp 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .vvv-ex-host .panel::before {
+    display: none;
+  }
+}
+
+/* ── Desktop ≥1024px : modale centrée 900×85vh ── */
+@media (min-width: 1024px) {
+  .vvv-ex-host .overlay.open {
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+  .vvv-ex-host .panel {
+    width: 90vw;
+    max-width: 900px;
+    height: auto;
+    max-height: 85vh;
+    min-height: 0;
+    background: #0d0d0d;
+    border: 1px solid #1e1e1e;
+    border-bottom: 1px solid #1e1e1e;
+    border-radius: 16px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    animation: vvv-fSlide 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .vvv-ex-host .panel::before {
+    display: none;
+  }
+  @keyframes vvv-fSlide {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 }
 
@@ -889,23 +951,8 @@
   stroke-linejoin: round;
 }
 
+/* ── Responsive contenu (≤640px) ────────────────── */
 @media (max-width: 640px) {
-  .vvv-ex-host .overlay {
-    background: rgba(0, 0, 0, 0.78);
-  }
-  .vvv-ex-host .panel {
-    width: calc(100% - 24px);
-    max-width: 660px;
-    max-height: min(78dvh, 78vh);
-    margin: 0 auto;
-    border-radius: 20px;
-    border: 0.5px solid var(--border2);
-    border-bottom: 0.5px solid var(--border2);
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
-  }
-  .vvv-ex-host .panel::before {
-    margin-top: 10px;
-  }
   .vvv-ex-host .tabs {
     overflow-x: auto;
     scrollbar-width: none;
@@ -937,5 +984,15 @@
   .vvv-ex-host .nav {
     flex-wrap: wrap;
     gap: 8px;
+  }
+}
+
+/* Respect des préférences utilisateur (reduced motion) */
+@media (prefers-reduced-motion: reduce) {
+  .vvv-ex-host .overlay.open,
+  .vvv-ex-host .panel,
+  .vvv-ex-host .page,
+  .vvv-ex-host .msg {
+    animation: none !important;
   }
 }
