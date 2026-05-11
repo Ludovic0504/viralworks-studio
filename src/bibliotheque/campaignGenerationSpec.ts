@@ -175,6 +175,8 @@ export interface TraceVideoGeneration {
 export interface TracePersistence {
   prepared_campaign_sig: string | null;
   step1_brain_launched: boolean;
+  /** Idée `core_idea` utilisée lors du dernier « Préparer ma vidéo » réussi (comparaison au prochain clic). */
+  last_prepared_core_idea: string | null;
 }
 
 export interface TraceSection {
@@ -322,6 +324,7 @@ export function createDefaultCampaignGenerationSpec(): CampaignGenerationSpec {
       persistence: {
         prepared_campaign_sig: null,
         step1_brain_launched: false,
+        last_prepared_core_idea: null,
       },
     },
   };
@@ -627,6 +630,11 @@ export function normalizeCampaignGenerationSpec(raw: unknown): CampaignGeneratio
       persistence: {
         prepared_campaign_sig: asNullableString(tracePersistence.prepared_campaign_sig),
         step1_brain_launched: asBoolean(tracePersistence.step1_brain_launched, false),
+        last_prepared_core_idea: (() => {
+          const v = (tracePersistence as Record<string, unknown>).last_prepared_core_idea;
+          const t = typeof v === "string" ? v.trim() : "";
+          return t.length > 0 ? t : null;
+        })(),
       },
     },
   };

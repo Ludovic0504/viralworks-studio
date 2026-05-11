@@ -8,6 +8,8 @@ import {
   clarifyGateNeedsModeAgent,
   inferGlobalIntent,
   runVwsPromptEngine,
+  timelapseCameraPovNeedsQuestion,
+  narrativeContinuityNeedsQuestion,
 } from "../bibliotheque/vwsPromptEngine";
 import { generateResponse } from "@/bibliotheque/openai/chatgpt-client";
 import {
@@ -302,6 +304,12 @@ export default function CampagneVWS({
   const [cameraViewAngle, setCameraViewAngle] = useState(
     campaignData?.cameraViewAngle ?? null
   );
+  const [narrativeContinuity, setNarrativeContinuity] = useState(
+    campaignData?.narrativeContinuity ?? null
+  );
+  const [timelapseCameraPov, setTimelapseCameraPov] = useState(
+    campaignData?.timelapseCameraPov ?? null
+  );
   const [initialStateSelection, setInitialStateSelection] = useState(
     campaignData?.initialStateSelection ?? null
   );
@@ -416,6 +424,8 @@ export default function CampagneVWS({
     causalAgentSelection,
     cameraAerialAngle,
     cameraViewAngle,
+    narrativeContinuity,
+    timelapseCameraPov,
     initialStateSelection,
     gateResult,
     clarifyAnswer,
@@ -467,6 +477,8 @@ export default function CampagneVWS({
     setMicroQuestion(null);
     setCausalAgentSelection(null);
     setCameraAerialAngle(null);
+    setNarrativeContinuity(null);
+    setTimelapseCameraPov(null);
     setInitialStateSelection(null);
     setGateResult(null);
     setClarifyAnswer(null);
@@ -477,6 +489,8 @@ export default function CampagneVWS({
         tempoCompressionDecision: null,
         causalAgentSelection: null,
         cameraAerialAngle: null,
+        narrativeContinuity: null,
+        timelapseCameraPov: null,
         initialStateSelection: null,
         gateResult: null,
         clarifyAnswer: null,
@@ -501,6 +515,8 @@ export default function CampagneVWS({
     if (updates.sequenceType !== undefined) setSequenceType(updates.sequenceType);
     if (updates.causalAgentSelection !== undefined) setCausalAgentSelection(updates.causalAgentSelection);
     if (updates.cameraAerialAngle !== undefined) setCameraAerialAngle(updates.cameraAerialAngle);
+    if (updates.narrativeContinuity !== undefined) setNarrativeContinuity(updates.narrativeContinuity);
+    if (updates.timelapseCameraPov !== undefined) setTimelapseCameraPov(updates.timelapseCameraPov);
     if (updates.cameraViewAngle !== undefined) setCameraViewAngle(updates.cameraViewAngle);
     if (updates.initialStateSelection !== undefined) setInitialStateSelection(updates.initialStateSelection);
     if (updates.gateResult !== undefined) setGateResult(updates.gateResult);
@@ -527,6 +543,8 @@ export default function CampagneVWS({
           updates.causalAgentSelection ?? causalAgentSelection,
         cameraAerialAngle:
           updates.cameraAerialAngle ?? cameraAerialAngle,
+        narrativeContinuity: updates.narrativeContinuity ?? narrativeContinuity,
+        timelapseCameraPov: updates.timelapseCameraPov ?? timelapseCameraPov,
         cameraViewAngle:
           updates.cameraViewAngle ?? cameraViewAngle,
         initialStateSelection:
@@ -576,9 +594,12 @@ export default function CampagneVWS({
     const effectiveProfession = professionLocal || professionLegacy;
     const effectiveFormatId = videoFormatId || campaignData?.videoFormatId || null;
     const inspireFormatDef = effectiveFormatId ? getFormatById(effectiveFormatId) : null;
+    /** Même source que le libellé de format — évite le décalage videoFormatId local vs spec parent (prompt métier vs produit). */
+    const isProductFormatForInspire = inspireFormatDef?.categoryId === "produit";
+    const nomDuProduit = effectiveProfession;
 
-    if (isProductMode) {
-      if (!professionLocal) {
+    if (isProductFormatForInspire) {
+      if (!nomDuProduit) {
         setError("Indique d’abord le nom du produit pour utiliser « M'inspirer ».");
         return;
       }
@@ -596,12 +617,34 @@ export default function CampagneVWS({
     setInspireLoading(true);
     setError("");
     try {
-      const systemPrompt = "Tu appliques strictement le prompt utilisateur et tu réponds uniquement par la scène demandée.";
+      const systemPromptBase =
+        "Tu appliques strictement le prompt utilisateur et tu réponds uniquement par la scène demandée.";
+      const systemPromptProductInspire = `Tu es créatif pour des vidéos très courtes (TikTok, Instagram Reels) : l’accroche doit être comprise en ~2 secondes, avec une tension narrative immédiate.
+
+Chaque idée doit être courte (1–2 phrases max), concrète, filmable, et inclure au moins un de ces leviers : un problème ou un échec visible, une transformation nette, une réaction authentique (soulagement, surprise, incrédulité), ou un twist / moment de surprise.
+
+Évite le ton catalogue ou la description plate (« une personne utilise le produit, c’est bien »). Pas de liste, pas de tonalité publicitaire générique.
+
+Exemples de ton (ne recopie pas les sujets ; imite le niveau de tension et de précision visuelle) :
+
+❌ « Une personne utilise l’appareil photo et prend de belles photos. »
+✅ « Un parent rate tous les moments clés de l’anniversaire de son enfant avec son téléphone flou — puis sort le Nikon et gèle l’instant parfait en un clic. »
+
+❌ « Quelqu’un essaie la crème et trouve que c’est agréable. »
+✅ « Elle grimace devant son reflet terne dans le miroir, applique la crème en un geste sec — coupe : même lumière, même angle, la peau renvoie enfin la lumière et elle reste bouche bée. »
+
+Réponds uniquement par le texte de la scène demandée, sans guillemets ni préambule.`;
+
+      const systemPrompt = isProductFormatForInspire ? systemPromptProductInspire : systemPromptBase;
       const selectedLieu = getLieuOption(lieuTournage);
       const selectedFormatLabel = inspireFormatDef?.name || "Format non défini";
-      const nomDuProduit = professionLocal;
-      const promesseDuProduit = String(idea ?? "").trim();
-      const misEnSceneLabels = stagingChips
+      const stagingForInspire =
+        stagingChips.length > 0
+          ? stagingChips
+          : Array.isArray(campaignData?.stagingChips)
+            ? campaignData.stagingChips
+            : [];
+      const misEnSceneLabels = stagingForInspire
         .map((id) => PRODUCT_STAGING_OPTIONS.find((o) => o.id === id)?.label)
         .filter(Boolean);
       const misEnScene =
@@ -611,33 +654,26 @@ export default function CampagneVWS({
             selectedFormatLabel +
             " », en gardant le produit comme sujet principal";
 
-      const userPrompt = isProductMode
-        ? `Génère une idée de scène vidéo pour promouvoir un produit appelé « ${nomDuProduit} ».
+      const userPrompt = isProductFormatForInspire
+        ? `Produit à mettre en scène (nom exact, ne le remplace pas) : « ${nomDuProduit} ».
 
-Sa promesse : ${
-          promesseDuProduit
-            ? promesseDuProduit
-            : "non encore renseignée — propose une idée visuelle courte centrée sur le produit et son usage concret au quotidien."
-        }
+Tâche : propose UNE idée de scène vidéo très courte, façon Reels/TikTok : on doit sentir le hook dès les premières images — tension, enjeu, puis pivot ou pay-off lié au produit.
+
+Le récit doit porter uniquement sur ce produit. N’utilise aucun autre nom de marque ni une idée importée d’ailleurs : invente à partir du nom ci-dessus + du format + du lieu.
 
 Type de mise en scène souhaité : ${misEnScene}
 
-Lieu / environnement choisi pour la vidéo : ${selectedLieu.sentence}
+Lieu / environnement : ${selectedLieu.sentence}
 
-Format vidéo choisi : « ${selectedFormatLabel} » — sers-toi-en pour le cadrage et le type de plans. Ne décris pas un lieu qui évoquerait un atelier, une boutique spécialisée ou tout décor associé à un corps de métier.
+Format vidéo : « ${selectedFormatLabel} » — respecte le type de plans et l’intention du format. Pas de décor « atelier / boutique métier » sauf si le lieu choisi l’implique déjà.
 
-La scène reste centrée sur le produit et ce qu’il permet de faire ou de montrer, pas sur un profil utilisateur détaillé (âge, situation personnelle ou sociale).
+Figures humaines : si besoin, une personne anonyme sans métier ni titre (pas expert, pas artisan, pas professionnel). Reste sur l’émotion ou le geste, pas sur une fiche socio-démographique.
 
-Si une présence humaine est nécessaire (mise en scène ou format), décris uniquement une personne ou quelqu’un sans qualification professionnelle : figure neutre qui utilise ou teste le produit dans un cadre quotidien. N’emploie jamais les termes expert, artisan, professionnel ni aucune inférence de métier.
-
-Règles strictes :
-- Une action ou un message visuel clair — pas de liste, pas de scène composite
-- Filmable en conditions réelles (pas de studio « pub » artificiel sauf si le format l’implique clairement)
-- Ne jamais utiliser les mots : magnifique, parfait, élégant, sublime,
-  harmonieux, spectaculaire, impressionnant, superbe, splendide,
-  symétrique, esthétique
-- Rédige uniquement la description de la scène, en 1 à 2 phrases maximum
-- Pas d'introduction, pas de conclusion, pas de guillemets`
+Règles :
+- 1 à 2 phrases maximum, une seule ligne narrative (pas de liste d’étapes)
+- Filmable en conditions réelles (sauf si le format impose clairement autre chose)
+- Mots interdits : magnifique, parfait, élégant, sublime, harmonieux, spectaculaire, impressionnant, superbe, splendide, symétrique, esthétique
+- Pas d’intro, pas de conclusion, pas de guillemets autour du texte`
         : `Tu es un expert en création de vidéos courtes pour les réseaux sociaux.
 Génère une idée de scène vidéo de 8 secondes pour un ${metier}
 qui travaille ${selectedLieu.sentence}
@@ -888,6 +924,14 @@ Réponds uniquement en JSON :
         runOverrides?.tempoCompressionDecision !== undefined
           ? runOverrides.tempoCompressionDecision
           : tempoCompressionDecision;
+      const effectiveNarrativeContinuity =
+        runOverrides?.narrativeContinuity !== undefined
+          ? runOverrides.narrativeContinuity
+          : narrativeContinuity;
+      const effectiveTimelapseCameraPov =
+        runOverrides?.timelapseCameraPov !== undefined
+          ? runOverrides.timelapseCameraPov
+          : timelapseCameraPov;
 
       const histParsed = parseClarifyAxesFromHistory(historyLines);
       let axes = {
@@ -1126,6 +1170,45 @@ Réponds uniquement en JSON :
         return;
       }
 
+      const textForContinuityMicro = [safeIdea, precisionsForModifiers].filter(Boolean).join("\n\n");
+      if (narrativeContinuityNeedsQuestion(textForContinuityMicro, "") && !effectiveNarrativeContinuity) {
+        setMicroQuestion({
+          question: "La vidéo doit-elle être continue ou peut-elle avoir des coupures ?",
+          reason: "narrative_continuity",
+          options: [
+            {
+              id: "vws_cont_continuous",
+              label: "Continue, sans coupure (un seul plan ou un seul mouvement de caméra)",
+            },
+            {
+              id: "vws_cont_cuts",
+              label: "Avec coupures entre différents moments ou angles",
+            },
+          ],
+        });
+        setError("Précise la continuité avant de préparer la vidéo.");
+        return;
+      }
+
+      if (
+        effectiveTempo === "timelapse" &&
+        timelapseCameraPovNeedsQuestion(textForContinuityMicro, "", { selfieMode }) &&
+        !effectiveTimelapseCameraPov
+      ) {
+        setMicroQuestion({
+          question: "Quel angle de caméra pour ce timelapse ?",
+          reason: "timelapse_camera_pov",
+          options: [
+            { id: "vws_tl_pov_aerial", label: "Vue aérienne / drone" },
+            { id: "vws_tl_pov_ground", label: "Au sol (niveau humain)" },
+            { id: "vws_tl_pov_both", label: "Les deux (alternance)" },
+          ],
+        });
+        setError("Précise l’angle caméra timelapse avant de préparer la vidéo.");
+        return;
+      }
+
+
       const brain = runVwsPromptEngine({
         profession: safeProfession,
         idea: ideaWithSceneContext,
@@ -1142,6 +1225,8 @@ Réponds uniquement en JSON :
         causalAgentSelection: causalForBrain,
         cameraAerialAngle: cameraAerialForBrain,
         inferredSelfiePov,
+        narrativeContinuity: effectiveNarrativeContinuity ?? null,
+        timelapseCameraPov: effectiveTimelapseCameraPov ?? null,
       });
 
       const globalIntentProfile = preIntent;
@@ -1175,6 +1260,8 @@ Réponds uniquement en JSON :
               dialogueEnabled,
               microAnswer: microForBrain,
               tempoCompressionDecision: effectiveTempoCompressionDecision,
+              narrativeContinuity: effectiveNarrativeContinuity,
+              timelapseCameraPov: effectiveTimelapseCameraPov,
             },
             brain,
           })
@@ -1269,6 +1356,8 @@ Réponds uniquement en JSON :
         tempoCompressionDecision: effectiveTempoCompressionDecision,
         causalAgentSelection: causalForBrain,
         cameraAerialAngle: cameraAerialForBrain,
+        narrativeContinuity: effectiveNarrativeContinuity,
+        timelapseCameraPov: effectiveTimelapseCameraPov,
         cameraViewAngle: effectiveCameraViewAngle,
         initialStateSelection: null,
         gateResult: gate,
@@ -1436,6 +1525,30 @@ Réponds uniquement en JSON :
       );
       setError("");
       void handleRun(null, { cameraViewAngle: nextCameraViewAngle });
+      return;
+    }
+    if (optionId === "vws_cont_continuous" || optionId === "vws_cont_cuts") {
+      const nextCont =
+        optionId === "vws_cont_continuous" ? "continuous_single_take" : "cuts_allowed";
+      setNarrativeContinuity(nextCont);
+      setMicroQuestion(null);
+      onCampaignChange?.(buildCampaignSnapshot({ narrativeContinuity: nextCont }));
+      setError("");
+      void handleRun(null, { narrativeContinuity: nextCont });
+      return;
+    }
+    if (optionId === "vws_tl_pov_aerial" || optionId === "vws_tl_pov_ground" || optionId === "vws_tl_pov_both") {
+      const nextPov =
+        optionId === "vws_tl_pov_aerial"
+          ? "aerial_drone"
+          : optionId === "vws_tl_pov_ground"
+            ? "ground_human"
+            : "both_alternate";
+      setTimelapseCameraPov(nextPov);
+      setMicroQuestion(null);
+      onCampaignChange?.(buildCampaignSnapshot({ timelapseCameraPov: nextPov }));
+      setError("");
+      void handleRun(null, { timelapseCameraPov: nextPov });
       return;
     }
     setMicroAnswer(optionId);

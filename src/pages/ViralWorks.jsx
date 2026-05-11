@@ -35,6 +35,7 @@ import {
   createDefaultCampaignGenerationSpec,
   normalizeCampaignGenerationSpec,
 } from "@/bibliotheque/campaignGenerationSpec";
+import { serializeCampaignSpecForPrepareGate } from "@/bibliotheque/campaignPrepareGateSerialize";
 import { runStudioScriptRefinement } from "@/bibliotheque/studioScriptRefinement";
 import { Check, X } from "lucide-react";
 import { useLocation } from "react-router-dom";
@@ -508,48 +509,8 @@ function appendVisualSnapshotFromStep(step, setVisualSnapshots) {
   scheduleVisualSnapshotFromStep(step, setVisualSnapshots);
 }
 
-/** Aligné sur les champs Campagne VWS utilisés pour « Préparer ma vidéo ». */
 function normalizeTempoForGate(t) {
   return t === "timelapse" || t === "slow_motion" ? t : "real_time";
-}
-
-function serializeCampaignSpecForPrepareGate(spec) {
-  const normalized = normalizeCampaignGenerationSpec(spec);
-  return JSON.stringify({
-    schema_version: normalized.meta.schema_version,
-    profession: String(normalized.campaign.profession ?? "").trim(),
-    lieuTournage: normalized.campaign.location_type ?? "neutre",
-    idea: String(normalized.campaign.core_idea ?? "").trim(),
-    video_format_id: normalized.campaign.video_format_id ?? null,
-    styleDetails: String(normalized.campaign.style_details ?? "").trim(),
-    stagingChips: Array.isArray(normalized.campaign.staging_chips)
-      ? [...normalized.campaign.staging_chips]
-      : [],
-    tempo: normalizeTempoForGate(normalized.rendering.tempo),
-    cameraFixed: Boolean(normalized.rendering.camera.fixed),
-    revealMode: Boolean(normalized.rendering.camera.reveal_mode),
-    cinematicMovement: Boolean(normalized.rendering.camera.cinematic_movement),
-    selfieMode: Boolean(normalized.rendering.camera.selfie_mode),
-    sequenceType: normalized.creative.sequence_type === "three_x_8s" ? "three_x_8s" : "single_8s",
-    dialogueEnabled: normalized.rendering.audio.dialogue_enabled !== false,
-    microAnswer: normalized.campaign.clarification.initial_state ?? null,
-    cameraViewAngle: normalized.campaign.clarification.camera_view_angle ?? null,
-    clarifyAnswer: normalized.campaign.clarification.last_user_freeform_answer ?? null,
-    clarifyMode: normalized.campaign.clarification.mode ?? null,
-    clarifyDiagnostic: normalized.campaign.clarification.diagnostic ?? null,
-    globalIntentProfile: normalized.campaign.intent_profile ?? null,
-    proceedAnyway: normalized.campaign.clarification.proceed_anyway === true,
-    isClarified: normalized.campaign.clarification.is_resolved === true,
-    clarificationHistory: Array.isArray(normalized.campaign.clarification.history)
-      ? normalized.campaign.clarification.history
-      : [],
-    clarifyAxesResolved: {
-      modeAgent: normalized.campaign.clarification.resolved_axes.mode_agent === true,
-      initialT0: normalized.campaign.clarification.resolved_axes.initial_t0 === true,
-      causalAgent: normalized.campaign.clarification.resolved_axes.causal_agent === true,
-      cameraAerialAngle: normalized.campaign.clarification.resolved_axes.camera_aerial_angle === true,
-    },
-  });
 }
 
 function buildLegacyCampaignDataFromSpec(spec) {
@@ -945,6 +906,8 @@ export default function ViralWorks() {
   });
 
   const [visualSnapshots, setVisualSnapshots] = useState(() => loadVisualSnapshotsFromSession());
+  /** Incrémenté quand l’idée de campagne change au « Préparer » : force l’effacement de l’aperçu vidéo (onglet monté en mobile). */
+  const [studioWorkflowSoftResetKey, setStudioWorkflowSoftResetKey] = useState(0);
   const lastSnapshottedUrlsRef = useRef(null);
   const imageStepRef = useRef(imageStep);
   imageStepRef.current = imageStep;
@@ -1083,12 +1046,19 @@ export default function ViralWorks() {
     persistImageStepOnly(s);
   }, []);
 
-  const resetImageStep = useCallback(() => {
+  const resetImageStep = useCallback((opts = {}) => {
+    const preserveVisualHistory = opts?.preserveVisualHistory === true;
+    const stepBefore = imageStepRef.current;
+    if (preserveVisualHistory && stepBefore?.lastGeneratedImages?.length) {
+      appendVisualSnapshotFromStep(stepBefore, setVisualSnapshots);
+    }
     const empty = { ...INITIAL_IMAGE_STEP, image24sDebug: null };
     spaImageStepMemory = cloneImageStep(empty);
     lastSnapshottedUrlsRef.current = null;
-    setVisualSnapshots([]);
-    persistVisualSnapshotsToSession([]);
+    if (!preserveVisualHistory) {
+      setVisualSnapshots([]);
+      persistVisualSnapshotsToSession([]);
+    }
     persistImageStepOnly(empty);
     setImageStep(empty);
     // Empêche Image.jsx de ré-hydrater immédiatement l’ancienne grille via le cache média.
@@ -1293,59 +1263,94 @@ export default function ViralWorks() {
     }
   };
 
-  const handleCampaignBrainReady = useCallback((snapshot) => {
-    const next = applyLegacyCampaignPatchToSpec(
-      createDefaultCampaignGenerationSpec(),
-      snapshot || {}
-    );
-    setPreparedCampaignSig(serializeCampaignSpecForPrepareGate(next));
-    setCampaignGenerationSpec(next);
-    setStep1BrainLaunched(true);
-    lastBrainSnapshotRef.current = snapshot || null;
+  const handleCampaignBrainReady = useCallback(
+    (snapshot) => {
+      const incomingTrim = String(snapshot?.idea ?? "").trim();
+      const specNow = normalizeCampaignGenerationSpec(campaignGenerationSpec);
+      const lastPreparedTrim = String(specNow.trace.persistence.last_prepared_core_idea ?? "").trim();
+      const shouldResetWorkflow =
+        lastPreparedTrim.length > 0 && incomingTrim !== lastPreparedTrim;
 
-    const run = async () => {
-      if (scriptGenInFlightRef.current) return;
-      scriptGenInFlightRef.current = true;
-      setScriptGenStatus("running");
-      try {
-        const result = await runStudioScriptRefinement({
-          idea: String(snapshot?.idea ?? "").trim(),
-          campaignData: snapshot || {},
-          session,
-          persistHistory: true,
-          consumeQuota: true,
-        });
-        if (!result.ok) {
-          if (result.code === "credits") {
-            setScriptQuotaModalMessage(
-              hasActiveSubscriptionVw ? SCRIPT_STEP_VIDEO_QUOTA_MSG : SCRIPT_STEP_NON_SUB_MSG
-            );
-            setShowScriptQuotaModal(true);
-          } else if (result.code === "quota") {
-            setScriptQuotaModalMessage(
-              result.message ||
-                (hasActiveSubscriptionVw ? SCRIPT_STEP_VIDEO_QUOTA_MSG : SCRIPT_STEP_NON_SUB_MSG)
-            );
-            setShowScriptQuotaModal(true);
-          } else if (result.code === "validation") {
-            alert(result.message);
-          } else {
-            alert(result.message || "Impossible de générer le script.");
-          }
-          setScriptGenStatus("error");
-          return;
-        }
-        setScriptPromptForImage(result.payload);
+      if (shouldResetWorkflow) {
+        resetWorkflowUsage();
+        setCurrentStep(1);
+        setValidated(normalizeValidated({}));
+        setScriptPromptForImage(normalizeScriptPayload(""));
         setScriptGenStatus("idle");
-      } catch (e) {
-        setScriptGenStatus("error");
-        alert(e?.message || "Erreur inattendue pendant la génération du script.");
-      } finally {
         scriptGenInFlightRef.current = false;
+        setWorkflowVideoState({
+          status: "idle",
+          videoId: null,
+          lastError: "",
+          provider: "veo3",
+          createdAt: null,
+        });
+        setShowWorkflowRecoveryChoice(false);
+        setStudioWorkflowSoftResetKey((n) => n + 1);
+        resetImageStep({ preserveVisualHistory: true });
       }
-    };
-    void run();
-  }, [session, hasActiveSubscriptionVw]);
+
+      let next = applyLegacyCampaignPatchToSpec(createDefaultCampaignGenerationSpec(), snapshot || {});
+      next = normalizeCampaignGenerationSpec({
+        ...next,
+        trace: {
+          ...next.trace,
+          persistence: {
+            ...next.trace.persistence,
+            last_prepared_core_idea: incomingTrim || null,
+          },
+        },
+      });
+      setPreparedCampaignSig(serializeCampaignSpecForPrepareGate(next));
+      setCampaignGenerationSpec(next);
+      setStep1BrainLaunched(true);
+      lastBrainSnapshotRef.current = snapshot || null;
+
+      const run = async () => {
+        if (scriptGenInFlightRef.current) return;
+        scriptGenInFlightRef.current = true;
+        setScriptGenStatus("running");
+        try {
+          const result = await runStudioScriptRefinement({
+            idea: String(snapshot?.idea ?? "").trim(),
+            campaignData: snapshot || {},
+            session,
+            persistHistory: true,
+            consumeQuota: true,
+          });
+          if (!result.ok) {
+            if (result.code === "credits") {
+              setScriptQuotaModalMessage(
+                hasActiveSubscriptionVw ? SCRIPT_STEP_VIDEO_QUOTA_MSG : SCRIPT_STEP_NON_SUB_MSG
+              );
+              setShowScriptQuotaModal(true);
+            } else if (result.code === "quota") {
+              setScriptQuotaModalMessage(
+                result.message ||
+                  (hasActiveSubscriptionVw ? SCRIPT_STEP_VIDEO_QUOTA_MSG : SCRIPT_STEP_NON_SUB_MSG)
+              );
+              setShowScriptQuotaModal(true);
+            } else if (result.code === "validation") {
+              alert(result.message);
+            } else {
+              alert(result.message || "Impossible de générer le script.");
+            }
+            setScriptGenStatus("error");
+            return;
+          }
+          setScriptPromptForImage(result.payload);
+          setScriptGenStatus("idle");
+        } catch (e) {
+          setScriptGenStatus("error");
+          alert(e?.message || "Erreur inattendue pendant la génération du script.");
+        } finally {
+          scriptGenInFlightRef.current = false;
+        }
+      };
+      void run();
+    },
+    [campaignGenerationSpec, resetImageStep, session, hasActiveSubscriptionVw]
+  );
 
   const handleCampagneFullReset = useCallback(() => {
     clearViralWorksWorkflowStateFromLocal();
@@ -1656,6 +1661,7 @@ export default function ViralWorks() {
                     studioStepActive={studioVideoStepActive}
                     studioOnStartNewCampaign={handleCampagneFullReset}
                     studioOnResetImageStep={resetImageStep}
+                    studioWorkflowSoftResetKey={studioWorkflowSoftResetKey}
                     onWorkflowVideoStateChange={handleVideoWorkflowStateChange}
                     initialWorkflowVideoState={workflowVideoState}
                   />
@@ -1700,6 +1706,7 @@ export default function ViralWorks() {
                       studioStepActive={studioVideoStepActive}
                       studioOnStartNewCampaign={handleCampagneFullReset}
                       studioOnResetImageStep={resetImageStep}
+                      studioWorkflowSoftResetKey={studioWorkflowSoftResetKey}
                       onWorkflowVideoStateChange={handleVideoWorkflowStateChange}
                       initialWorkflowVideoState={workflowVideoState}
                     />

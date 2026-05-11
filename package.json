@@ -9,6 +9,8 @@
     "build:all": "prisma generate --schema=./database/prisma/schema.prisma && vite build",
     "build:prod": "prisma generate --schema=./database/prisma/schema.prisma && vite build && vite preview",
     "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "preview": "vite preview",
     "prisma:generate": "prisma generate --schema=./database/prisma/schema.prisma",
     "prisma:studio": "prisma studio --schema=./database/prisma/schema.prisma",
@@ -66,7 +68,8 @@
     "ts-node-dev": "^2.0.0",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",
-    "vite": "^7.1.7"
+    "vite": "^7.1.7",
+    "vitest": "^3.2.4"
   },
   "prisma": {
     "seed": "tsx database/prisma/seed.ts"

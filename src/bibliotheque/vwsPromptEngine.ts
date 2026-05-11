@@ -39,6 +39,10 @@ export interface UserIdeaInput {
   inferredSelfiePov?: boolean;
   /** Contexte format vidéo choisi (catalogue Campagne VWS), injecté dans la scène sans modifier style_details stocké. */
   videoFormatHint?: string;
+  /** Micro timelapse : angle caméra (complète la gate « vue du dessus »). */
+  timelapseCameraPov?: "aerial_drone" | "ground_human" | "both_alternate" | null;
+  /** Micro continuité : plan unique vs montage avec coupures. */
+  narrativeContinuity?: "continuous_single_take" | "cuts_allowed" | null;
 }
 
 export interface GlobalScene {
@@ -615,6 +619,91 @@ function clean(text: string | undefined | null): string {
   return (text || "").trim();
 }
 
+function combinedIdeaAndStyle(idea: string, styleDetails?: string | null): string {
+  return [clean(idea), clean(styleDetails)].filter(Boolean).join("\n\n");
+}
+
+/**
+ * Timelapse : demander l'angle caméra si l'idée + précisions ne tranchent pas déjà (aérien vs sol vs alternance).
+ * La page n'appelle cela que lorsque le tempo effectif est timelapse.
+ */
+export function timelapseCameraPovNeedsQuestion(
+  idea: string,
+  styleDetails?: string | null,
+  opts?: { selfieMode?: boolean }
+): boolean {
+  if (opts?.selfieMode) return false;
+  const t = combinedIdeaAndStyle(idea, styleDetails).toLowerCase();
+  if (!t || t.length < 8) return false;
+  if (/\b(selfie|face cam[ée]ra|vlog|se filme|filming myself)\b/.test(t)) return false;
+
+  const aerialish =
+    /\b(drone|vue\s*aérienne|vue\s*aerienne|vue\s*du\s*ciel|survol|survoler|aerial\b|from\s*above|high\s*above)\b/.test(
+      t
+    );
+  const groundish =
+    /\b(au\s*sol|niveau\s*humain|hauteur\s*(d['\u2019]œil|des\s*yeux|humaine)|œil|oeil|eye[-\s]?level|caméra\s*au\s*sol|ground[-\s]?level|vue\s*rasante)\b/.test(
+      t
+    );
+  const bothish =
+    /\b(les\s*deux|alternance|alterner|alterne|mix(er)?\s|m[ée]lange|vue\s*drone.*(sol|humain)|(sol|humain).*(drone|aérienne|aerienne))\b/.test(
+      t
+    );
+  if (bothish || (aerialish && groundish)) return false;
+  if (aerialish && !groundish) return false;
+  if (groundish && !aerialish) return false;
+  return true;
+}
+
+/**
+ * Demander la continuité si l'idée (+ précisions) suggère plusieurs temps/lieux/moments sans trancher déjà le montage.
+ */
+export function narrativeContinuityNeedsQuestion(idea: string, styleDetails?: string | null): boolean {
+  const raw = combinedIdeaAndStyle(idea, styleDetails);
+  const t = raw.toLowerCase();
+  if (!t || t.length < 16) return false;
+
+  if (
+    /\b(un seul plan|sans coupure|sans coupures|plan unique|prise unique|un seul mouvement|mouvement unique|one\s*continuous|single\s*take|no\s*cuts)\b/.test(
+      t
+    )
+  ) {
+    return false;
+  }
+  if (
+    /\b(avec\s*coupures?|coupures?\s*(autoris|accept)|montage(\s|$)|jump\s*cuts?|plusieurs\s*plans|plusieurs\s*angles)\b/.test(
+      t
+    ) &&
+    /\b(ok|oui|accept|volontaire|souhaite|veut)\b/.test(t)
+  ) {
+    return false;
+  }
+
+  const words = raw.split(/\s+/).filter(Boolean);
+  const structureHits = (
+    t.match(
+      /\b(puis|ensuite|d'abord|dabord|après|apres|finalement|premi[èe]re\s*fois|deuxi[èe]me|troisi[èe]me|—|→|\/\/)\b/gi
+    ) || []
+  ).length;
+  const multiPlace =
+    /\b(puis\s+(à|chez|dans|en)|d'abord\s+.{8,80}\bpuis\b|chez\s+.{5,60}\bpuis\s+(chez|à|dans))\b/i.test(
+      raw
+    );
+  const timeSpan =
+    /\b((jour|semaine|mois|année)s?\s+(suivant|suivante|après|plus\s*tard)|plusieurs\s*(jours|mois)|fil\s*du\s*temps|au\s*fur\s*et\s*à\s*mesure)\b/i.test(
+      t
+    );
+  const beforeAfter = /\bavant\b.*\b(après|apres)\b|\b(après|apres)\b.*\bavant\b/i.test(t);
+
+  if (beforeAfter && structureHits >= 1) return true;
+  if (multiPlace) return true;
+  if (timeSpan && (structureHits >= 1 || words.length >= 22)) return true;
+  if (structureHits >= 2) return true;
+  if (structureHits >= 1 && words.length >= 32) return true;
+  return false;
+}
+
+
 function clamp01(n: number): number {
   if (!Number.isFinite(n)) return 0;
   return Math.max(0, Math.min(1, n));
@@ -891,10 +980,33 @@ function buildStabilization(input: UserIdeaInput): StabilizationConstraints {
       "Strict first-person selfie POV: front camera at stable eye level ~60–80 cm from the face (tripod or fixed support feel), not an arm extended toward the lens. Do not show the camera-holding hand, wrist, or phone; no limb blob in the foreground corners. Never use a third-person camera filming the subject."
     );
   }
-  if (input.cameraAerialAngle === "top_down") {
+  const tl = input.tempo === "timelapse";
+  const pov = input.timelapseCameraPov;
+  const useTimelapsePov = tl && (pov === "aerial_drone" || pov === "ground_human" || pov === "both_alternate");
+  const gateTopDown =
+    input.cameraAerialAngle === "top_down" &&
+    !(tl && pov === "aerial_drone") &&
+    !(tl && pov === "both_alternate");
+  const gateAngled =
+    input.cameraAerialAngle === "angled" && !useTimelapsePov;
+
+  if (gateTopDown) {
     parts.push("Pure top-down overhead view: camera perpendicular to the ground, no perspective, no visible sides.");
-  } else if (input.cameraAerialAngle === "angled") {
+  } else if (gateAngled) {
     parts.push("High-angle with an oblique tilt: visible perspective and depth, sides/facades readable; avoid orthographic look.");
+  }
+  if (tl && pov === "aerial_drone") {
+    parts.push(
+      "Elevated oblique aerial drone view, positioned high above the site but angled downward from a diagonal perspective, showing the front and sides of the subject — not a strict top-down view."
+    );
+  } else if (tl && pov === "ground_human") {
+    parts.push(
+      "Human-height eye-level camera on the ground relative to the subject, as if filmed on foot with a natural standing horizon; no elevated or map-flat framing."
+    );
+  } else if (tl && pov === "both_alternate") {
+    parts.push(
+      "Alternate between an elevated oblique aerial view that preserves depth and readable facades (diagonal downward angle, not a flat map) and a human-height eye-level view on the ground; keep each viewpoint physically coherent."
+    );
   }
   const cameraDescription =
     parts.length > 0
@@ -1008,6 +1120,15 @@ function buildVideoPrompts(
       importantLines.push("- No visible people, hands, tools, or machines at any time");
     } else if (input.causalAgentSelection === "visible") {
       importantLines.push("- Show visible people or machines causing the transformation (real physical action)");
+    }
+    if (input.narrativeContinuity === "continuous_single_take") {
+      const scope =
+        input.sequenceType === "three_x_8s"
+          ? "For each 8-second segment"
+          : "For the full 8-second clip";
+      importantLines.push(
+        `- ${scope}: one uninterrupted continuous shot with no cuts, no jump cuts, and no edit-driven time skips; exactly one continuous camera movement or a single locked-off take for the entire segment duration`
+      );
     }
     const base = [
       "Ultra realistic cinematic chaotic vlog shot",
@@ -1174,6 +1295,84 @@ export function applyViewpointSafetyGate(text: string, jobTypeLabel: string): st
   return out;
 }
 
+const OPENING_HOOK_MIN_SEED_LEN = 24;
+const OPENING_HOOK_MIN_BEFORE_PIVOT = 12;
+
+/**
+ * Extrait le premier segment narratif (accroche / problème / premier plan),
+ * sans la résolution ni le pay-off après pivot (—, →, puis, etc.).
+ * Exporté pour tests unitaires.
+ */
+export function extractOpeningHookNarrativeSeed(raw: string): string {
+  let t = clean(raw);
+  if (!t) return "";
+
+  const descMatch = t.match(/DESCRIPTION\s+DE\s+LA\s+SCÈNE\s*:\s*/i);
+  if (descMatch && descMatch.index !== undefined) {
+    t = t.slice(descMatch.index + descMatch[0].length).trim();
+  } else {
+    t = t.replace(/^LIEU\s+DE\s+LA\s+SCÈNE\s*:[^\n]*\n*/i, "").trim();
+  }
+
+  const pivot = firstPivotSegmentForHook(t);
+  if (pivot) return pivot;
+
+  const paras = t.split(/\n\n+/).map((p) => p.trim()).filter(Boolean);
+  if (paras[0] && paras[0].length >= OPENING_HOOK_MIN_SEED_LEN && paras[0].length + 40 < t.length) {
+    return paras[0];
+  }
+
+  const sent = firstSentenceForHook(t);
+  if (sent && sent.length >= OPENING_HOOK_MIN_SEED_LEN) return sent;
+
+  return t.slice(0, Math.min(720, t.length)).trim();
+}
+
+/** Fallback si l’extrait est trop court : premier bloc du brief, tronqué. */
+export function truncateOpeningHookFallback(raw: string, maxLen: number): string {
+  const t = clean(raw);
+  if (!t) return "";
+  if (t.length <= maxLen) return t;
+  let cut = t.slice(0, maxLen);
+  const lastSpace = cut.lastIndexOf(" ");
+  if (lastSpace > maxLen * 0.45) cut = cut.slice(0, lastSpace);
+  return `${cut.trim()}…`;
+}
+
+function firstPivotSegmentForHook(s: string): string | null {
+  const patterns: RegExp[] = [
+    /\s[\u2013\u2014]\s/g,
+    /\s→\s/u,
+    /\s+\/\s+/,
+    /\n\s*puis\s+/i,
+  ];
+  let bestIdx = -1;
+  for (const re of patterns) {
+    const m = re.exec(s);
+    if (m && m.index !== undefined && m.index >= OPENING_HOOK_MIN_BEFORE_PIVOT) {
+      if (bestIdx === -1 || m.index < bestIdx) bestIdx = m.index;
+    }
+  }
+  if (bestIdx === -1) return null;
+  return s.slice(0, bestIdx).trim();
+}
+
+function firstSentenceForHook(s: string): string | null {
+  const m = s.match(/^[\s\S]{16,900}?[.!?](?:\s|$)/u);
+  return m ? m[0].trim() : null;
+}
+
+function extractLieuLineFromCampaignIdea(full: string): string {
+  const m = full.match(/(?:^|\n)(LIEU\s+DE\s+LA\s+SCÈNE\s*:[^\n]+)/i);
+  return m ? m[1].trim() : "";
+}
+
+const HOOK_FIRST_INSTANT_DIRECTIVE_FR = [
+  "Consigne « image unique d'accroche » (découpage temporel) :",
+  "Représente uniquement le tout premier instant / le premier plan décrit : la tension initiale, l'échec visible, le problème, la surprise ou l'accroche — pas la résolution, pas la transformation accomplie, pas l'état « après » ni le pay-off final.",
+  "Ne fusionne pas deux moments contradictoires dans une seule image (pas avant+après simultanés sur la même pose). Une seule physique cohérente, figée à T=0.",
+].join(" ");
+
 function freezeVideoScriptForHookStill(scene0: string): string {
   const t = clean(scene0);
   if (!t) return "";
@@ -1210,6 +1409,8 @@ export function buildHookImageApiPrompt(
     cameraViewAngle?: "subjective_portee" | "exterieure_filmee" | null;
     globalIntent?: GlobalIntentProfile | null;
     selfieMode?: boolean;
+    /** Image 1 accroche : premier instant, sans laisser `show_finished_result` désactiver l’état initial. */
+    openingHookStill?: boolean;
   }
 ): string {
   const antiDistortionBlock =
@@ -1217,6 +1418,7 @@ export function buildHookImageApiPrompt(
   const idea = clean(userIdea);
   if (!idea) return idea;
   const lower = idea.toLowerCase();
+  const openingHookStill = options.openingHookStill === true;
   const selfieSignalFromIdea =
     /\b(selfie|face cam[ée]ra|vlog|se filme|se filmant|filming myself)\b/.test(lower);
   const enforceSelfiePov =
@@ -1264,13 +1466,30 @@ export function buildHookImageApiPrompt(
     options.initialStateMode === "from_nothing" ||
     options.revealMode ||
     hasProgressiveTransformationSignal;
-  const forceInitialStateView =
-    options.globalIntent?.hookGoal === "show_finished_result" ? false : forceInitialStateViewByRules;
+  const suppressInitialForFinishedResult =
+    options.globalIntent?.hookGoal === "show_finished_result" && !openingHookStill;
+  const forceInitialStateView = suppressInitialForFinishedResult
+    ? false
+    : forceInitialStateViewByRules;
+
+  let narrativeBody = idea;
+  if (openingHookStill) {
+    let seed = extractOpeningHookNarrativeSeed(userIdea);
+    if (seed.length < OPENING_HOOK_MIN_SEED_LEN) {
+      seed = truncateOpeningHookFallback(userIdea, 480);
+    }
+    const lieuLine = extractLieuLineFromCampaignIdea(userIdea);
+    narrativeBody = [lieuLine, seed].filter(Boolean).join("\n\n") || idea;
+  }
 
   const baseIdea =
     options.initialStateMode === "from_nothing" || explicitEmptyStart
-      ? `Ultra-realistic initial state scene ${inferEnvironment()}, with ${inferOpenSpace()}, natural composition, coherent details, and no visual clutter.`
-      : idea;
+      ? `Ultra-realistic initial state scene ${inferEnvironment()}, with ${inferOpenSpace()}, natural composition, coherent details, and no visual clutter.${
+          openingHookStill
+            ? `\n\nContexte narratif (extrait accroche, premier instant uniquement) :\n${narrativeBody}`
+            : ""
+        }`
+      : narrativeBody;
 
   let assembled: string;
   if (!forceInitialStateView) {
@@ -1329,7 +1548,8 @@ export function buildHookImageApiPrompt(
     withViewpoint = applyViewpointSafetyGate(withViewpoint, options.jobTypeLabel || "");
   }
 
-  return `${withViewpoint}\n\n${antiDistortionBlock}`;
+  const firstInstantBlock = openingHookStill ? `\n\n${HOOK_FIRST_INSTANT_DIRECTIVE_FR}` : "";
+  return `${withViewpoint}${firstInstantBlock}\n\n${antiDistortionBlock}`;
 }
 
 export async function clarifyIdea(input: ClarifyIdeaInput): Promise<ClarifyIdeaResult> {
@@ -1478,9 +1698,15 @@ export function runVwsPromptEngine(input: UserIdeaInput): VwsEngineOutput {
   const rulesLayer = buildRulesLayer();
   const sequences = buildSequences(input.sequenceType, scenarioType);
   const rawIdea = clean(input.idea);
+  const timelapsePovLocksCamera =
+    input.timelapseCameraPov === "aerial_drone" ||
+    input.timelapseCameraPov === "ground_human" ||
+    input.timelapseCameraPov === "both_alternate";
+  const gateAngleForIntent =
+    input.tempo === "timelapse" && timelapsePovLocksCamera ? null : input.cameraAerialAngle ?? null;
   const interpretedIntent = applyCameraAerialAngleToIntent(
     buildInterpretedIntentWithCausalAgent(rawIdea, input.causalAgentSelection ?? null),
-    input.cameraAerialAngle ?? null
+    gateAngleForIntent
   );
   const promptStructure = buildPromptStructure({
     rawIdea: rawIdea || interpretedIntent,

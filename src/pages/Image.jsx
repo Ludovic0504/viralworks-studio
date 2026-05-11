@@ -548,6 +548,7 @@ export default function ImagePage({
           cameraViewAngle: canonicalSpec.campaign.clarification.camera_view_angle,
           globalIntent: getSafeIntentProfile(canonicalSpec),
           selfieMode: canonicalSpec.rendering.camera.selfie_mode === true,
+          openingHookStill: false,
         }
       );
 
@@ -1102,6 +1103,7 @@ export default function ImagePage({
           // Guard: fallback neutre si intent profile absent/incomplet.
           globalIntent: getSafeIntentProfile(canonicalSpec),
           selfieMode: canonicalSpec.rendering.camera.selfie_mode === true,
+          openingHookStill: true,
         }
       );
 
@@ -1669,6 +1671,7 @@ export default function ImagePage({
         cameraViewAngle: canonicalSpec.campaign.clarification.camera_view_angle,
         globalIntent: getSafeIntentProfile(canonicalSpec),
         selfieMode: canonicalSpec.rendering.camera.selfie_mode === true,
+        openingHookStill: true,
       }
     );
 
@@ -1719,6 +1722,7 @@ export default function ImagePage({
           cameraViewAngle: canonicalSpec.campaign.clarification.camera_view_angle,
           globalIntent: getSafeIntentProfile(canonicalSpec),
           selfieMode: canonicalSpec.rendering.camera.selfie_mode === true,
+          openingHookStill: false,
         }
       );
 

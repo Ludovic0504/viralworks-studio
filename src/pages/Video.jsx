@@ -736,6 +736,8 @@ const Video = forwardRef(function Video(
     studioOnResetImageStep,
     onWorkflowVideoStateChange,
     initialWorkflowVideoState,
+    /** Incrémenté par ViralWorks si l’idée change au « Préparer » — réinitialise l’aperçu VEO3 sans l’historique local. */
+    studioWorkflowSoftResetKey = 0,
   } = {},
   ref
 ) {
@@ -862,6 +864,7 @@ const Video = forwardRef(function Video(
               studioOnResetImageStep={studioOnResetImageStep}
               onWorkflowVideoStateChange={onWorkflowVideoStateChange}
               initialWorkflowVideoState={initialWorkflowVideoState}
+              studioWorkflowSoftResetKey={studioWorkflowSoftResetKey}
             />
           ) : (
             <HailuoVideoForm
@@ -1043,6 +1046,7 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
     studioOnResetImageStep,
     onWorkflowVideoStateChange,
     initialWorkflowVideoState,
+    studioWorkflowSoftResetKey = 0,
   },
   ref
 ) {
@@ -2038,6 +2042,30 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
     setNeedsReloadFromCache(false);
     setCopied(false);
   };
+
+  const prevStudioSoftResetRef = useRef(null);
+  useEffect(() => {
+    if (!isStudio) return;
+    const k = Number(studioWorkflowSoftResetKey) || 0;
+    if (prevStudioSoftResetRef.current === null) {
+      prevStudioSoftResetRef.current = k;
+      return;
+    }
+    if (k === prevStudioSoftResetRef.current) return;
+    prevStudioSoftResetRef.current = k;
+    if (k === 0) return;
+    try {
+      abortRef.current?.abort?.();
+    } catch {
+      /* ignore */
+    }
+    prepareAnotherVideoVersion();
+    setLoading(false);
+    setProgress(0);
+    setProgressMessage("");
+    setPipeline24Step(null);
+    setNeedsReloadFromCache(false);
+  }, [isStudio, studioWorkflowSoftResetKey]);
 
   const downloadPromptVideoExport = () => {
     const text = recapInputForHistory().trim();
