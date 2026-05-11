@@ -121,6 +121,28 @@
       box-shadow: none;
       transform: none;
     }
+
+    /* Studio mobile : CTA « Télécharger la vidéo » (secondaire, sous le CTA vert « Générer la vidéo ») */
+    .vws-mobile-flat-download-cta {
+      background: rgba(255, 255, 255, 0.06);
+      color: #e5e7eb;
+      font-weight: 600;
+      font-size: 13px;
+      padding: 11px;
+      border-radius: 22px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      box-shadow: none;
+    }
+
+    .vws-mobile-flat-download-cta:hover:not(:disabled) {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.22);
+    }
+
+    .vws-mobile-flat-download-cta:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 2px var(--vws-focus-ring);
+    }
   }
 
   .btn-vws-secondary {

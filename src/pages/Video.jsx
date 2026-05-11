@@ -1906,6 +1906,8 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
 
   const generateRef = useRef(generate);
   generateRef.current = generate;
+  /** Référence vers `downloadVideoFileExport` (déclaré plus bas) — utilisée par l’imperative handle pour exposer le téléchargement à la barre CTA mobile (ViralWorks). */
+  const downloadVideoRef = useRef(null);
   const openHistoryDrawer = useCallback(() => {
     setHistoryDrawerOpen(true);
     setSelectedHistoryId(null);
@@ -1917,6 +1919,9 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
         void generateRef.current?.();
       },
       openHistory: openHistoryDrawer,
+      downloadVideo: () => {
+        void downloadVideoRef.current?.();
+      },
     }),
     [openHistoryDrawer]
   );
@@ -2293,6 +2298,7 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
       alert("Erreur lors du téléchargement et de l'enregistrement");
     }
   };
+  downloadVideoRef.current = downloadVideoFileExport;
 
   const handleDelete = () => {
     if (confirm("Supprimer cette vidéo ? Elle ne sera pas enregistrée.")) {

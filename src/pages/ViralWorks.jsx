@@ -37,7 +37,7 @@ import {
 } from "@/bibliotheque/campaignGenerationSpec";
 import { serializeCampaignSpecForPrepareGate } from "@/bibliotheque/campaignPrepareGateSerialize";
 import { runStudioScriptRefinement } from "@/bibliotheque/studioScriptRefinement";
-import { Check, X } from "lucide-react";
+import { Check, Download, X } from "lucide-react";
 import { useLocation } from "react-router-dom";
 
 /**
@@ -1719,7 +1719,7 @@ export default function ViralWorks() {
 
         {/* CTA mobile unifié — étape 3 vidéo (étape 2 Visuel : pas de doublon avec « Utiliser cette image » / toolbar) */}
         {currentStep === 3 ? (
-          <div className="hidden max-[640px]:block shrink-0 border-t border-[#171e30] bg-[#0f1420] px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <div className="hidden max-[640px]:flex shrink-0 flex-col gap-2 border-t border-[#171e30] bg-[#0f1420] px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
             <button
               type="button"
               onClick={() => {
@@ -1727,10 +1727,29 @@ export default function ViralWorks() {
                   videoGenerateRef.current?.generate?.();
                 });
               }}
+              disabled={workflowVideoState?.status === "generating"}
               className="vws-mobile-flat-green-cta flex w-full items-center justify-center gap-2 text-center text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <span>✦ Générer la vidéo</span>
+              <span>
+                {workflowVideoState?.status === "done"
+                  ? "✦ Générer une nouvelle version"
+                  : "✦ Générer la vidéo"}
+              </span>
             </button>
+            {workflowVideoState?.status === "done" ? (
+              <button
+                type="button"
+                onClick={() => {
+                  void runWithAuth(async () => {
+                    videoGenerateRef.current?.downloadVideo?.();
+                  });
+                }}
+                className="vws-mobile-flat-download-cta flex w-full items-center justify-center gap-2 text-center"
+              >
+                <Download className="h-4 w-4 shrink-0" />
+                <span>Télécharger la vidéo</span>
+              </button>
+            ) : null}
           </div>
         ) : null}
       </div>
