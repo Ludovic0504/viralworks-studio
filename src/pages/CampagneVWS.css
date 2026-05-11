@@ -187,13 +187,68 @@
   color: rgb(107 114 128);
 }
 
-/* Bouton M'inspirer */
-.vws-campagne-inspire-btn {
-  font-size: 0.875rem;
-  font-weight: 600;
-  padding: 0.5rem 0.75rem;
+/* Bouton M'inspirer — secondaire, fond transparent */
+.vws-campagne-form .vws-campagne-inspire-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 10px;
   border-radius: 10px;
   flex-shrink: 0;
+  background: transparent;
+  border: 1px solid rgba(29, 155, 129, 0.2);
+  color: rgba(29, 155, 129, 0.5);
+  cursor: pointer;
+  box-shadow: none;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease,
+    background 0.15s ease;
+}
+
+.vws-campagne-form .vws-campagne-inspire-btn:hover:not(:disabled) {
+  border-color: rgba(29, 155, 129, 0.35);
+  color: rgba(29, 155, 129, 0.72);
+}
+
+.vws-campagne-form .vws-campagne-inspire-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--vws-field-focus);
+}
+
+.vws-campagne-form .vws-campagne-inspire-btn:disabled {
+  cursor: not-allowed;
+}
+
+.vws-campagne-form .vws-campagne-inspire-btn svg {
+  flex-shrink: 0;
+  color: inherit;
+}
+
+.vws-campagne-form .vws-campagne-inspire-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid rgba(29, 155, 129, 0.25);
+  border-top-color: rgba(29, 155, 129, 0.65);
+  animation: vws-campagne-inspire-spin 0.75s linear infinite;
+}
+
+@keyframes vws-campagne-inspire-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vws-campagne-form .vws-campagne-inspire-spinner {
+    animation: none;
+    border-color: rgba(29, 155, 129, 0.45);
+    border-top-color: rgba(29, 155, 129, 0.65);
+  }
 }
 
 /* Dialogue — ligne tactile */
@@ -375,11 +430,6 @@
     min-height: 72px;
     overflow: hidden;
     resize: none;
-  }
-
-  /* Complète index.css (.vws-mobile-flat-green-cta) si surcharge mobile md–767px sur inspire */
-  .vws-campagne-form .vws-campagne-inspire-btn.vws-mobile-flat-green-cta.btn-vws-primary {
-    min-height: unset;
   }
 
   /* Grille métier / durée : même taille de police et ellipsis sur le métier */

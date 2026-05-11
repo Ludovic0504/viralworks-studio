@@ -731,6 +731,23 @@ const Video = forwardRef(function Video(
   const isStudioPage = Boolean(studioCampaignData || studioCampaignGenerationSpec);
   const { session } = useAuth();
   const [showSystemVideo, setShowSystemVideo] = useState(false);
+  const [showVideoAidePulse, setShowVideoAidePulse] = useState(() => {
+    try {
+      if (typeof window === "undefined") return false;
+      return !window.localStorage.getItem("aide_seen_video");
+    } catch {
+      return true;
+    }
+  });
+  const openVideoAide = useCallback(() => {
+    try {
+      window.localStorage.setItem("aide_seen_video", "1");
+    } catch {
+      /* quota / mode privé */
+    }
+    setShowVideoAidePulse(false);
+    setShowSystemVideo(true);
+  }, []);
 
   useEffect(() => {
     if (session) {
@@ -771,11 +788,12 @@ const Video = forwardRef(function Video(
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3">
             <button
               type="button"
-              onClick={() => setShowSystemVideo(true)}
-              className="studio-toolbar-btn sm:w-auto"
+              onClick={openVideoAide}
+              className="vws-campagne-aide-btn w-full text-sm sm:w-auto"
             >
-              <BookOpen className="w-3.5 h-3.5 text-cyan-400" />
-              Explication du système
+              <BookOpen className="vws-campagne-aide-btn__icon shrink-0" />
+              {showVideoAidePulse ? <span className="pulse-dot" aria-hidden="true" /> : null}
+              Aide pour commencer
             </button>
           </div>
         </div>

@@ -354,6 +354,23 @@ export default function CampagneVWS({
   );
   const [showCampagneExplication, setShowCampagneExplication] = useState(false);
   const closeCampagneExplication = useCallback(() => setShowCampagneExplication(false), []);
+  const [showCampagneAidePulse, setShowCampagneAidePulse] = useState(() => {
+    try {
+      if (typeof window === "undefined") return false;
+      return !window.localStorage.getItem("aide_seen");
+    } catch {
+      return true;
+    }
+  });
+  const handleOpenCampagneAide = useCallback(() => {
+    try {
+      window.localStorage.setItem("aide_seen", "1");
+    } catch {
+      /* quota / mode privé */
+    }
+    setShowCampagneAidePulse(false);
+    setShowCampagneExplication(true);
+  }, []);
   const [showFormatModal, setShowFormatModal] = useState(false);
   const [videoFormatId, setVideoFormatId] = useState(campaignData?.videoFormatId ?? null);
   const [locationConflict, setLocationConflict] = useState(null);
@@ -1526,11 +1543,14 @@ Réponds uniquement en JSON :
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => setShowCampagneExplication(true)}
-            className="studio-toolbar-btn !py-1.5 !px-3 text-sm min-h-[44px] sm:min-h-0"
+            onClick={handleOpenCampagneAide}
+            className="vws-campagne-aide-btn text-sm min-h-[44px] sm:min-h-0"
           >
-            <BookOpen className="w-3.5 h-3.5 text-cyan-400" />
-            Explication du système
+            <BookOpen className="vws-campagne-aide-btn__icon shrink-0" />
+            {showCampagneAidePulse ? (
+              <span className="pulse-dot" aria-hidden="true" />
+            ) : null}
+            Aide pour commencer
           </button>
         </div>
       </div>
@@ -1543,11 +1563,12 @@ Réponds uniquement en JSON :
         </h2>
         <button
           type="button"
-          onClick={() => setShowCampagneExplication(true)}
-          className="studio-toolbar-btn !py-1.5 !px-3 text-sm shrink-0 min-h-[44px]"
+          onClick={handleOpenCampagneAide}
+          className="vws-campagne-aide-btn text-sm shrink-0 min-h-[44px]"
         >
-          <BookOpen className="w-3.5 h-3.5 text-cyan-400" />
-          Explication du système
+          <BookOpen className="vws-campagne-aide-btn__icon shrink-0" />
+          {showCampagneAidePulse ? <span className="pulse-dot" aria-hidden="true" /> : null}
+          Aide pour commencer
         </button>
       </div>
 
@@ -1805,12 +1826,12 @@ Réponds uniquement en JSON :
                       ? "Choisis d’abord un format vidéo."
                       : undefined
                 }
-                className="vws-campagne-inspire-btn vws-mobile-flat-green-cta inline-flex shrink-0 items-center gap-2 btn-vws-primary text-white max-[640px]:text-white disabled:opacity-50 self-center md:min-h-[44px] md:self-auto"
+                className="vws-campagne-inspire-btn inline-flex shrink-0 items-center gap-1.5 disabled:opacity-50 self-center md:self-auto"
               >
                 {inspireLoading ? (
-                  <span className="inline-block w-4 h-4 border-2 border-white/25 border-t-white rounded-full animate-spin" />
+                  <span className="vws-campagne-inspire-spinner shrink-0" aria-hidden />
                 ) : (
-                  <Sparkles className="w-4 h-4" />
+                  <Sparkles className="h-3 w-3 shrink-0" />
                 )}
                 M&apos;inspirer →
               </button>

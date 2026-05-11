@@ -345,6 +345,23 @@ export default function ImagePage({
   const [modifyLoading, setModifyLoading] = useState(false);
   const [modifyError, setModifyError] = useState("");
   const [showSystemVideo, setShowSystemVideo] = useState(false);
+  const [showVisuelAidePulse, setShowVisuelAidePulse] = useState(() => {
+    try {
+      if (typeof window === "undefined") return false;
+      return !window.localStorage.getItem("aide_seen_visuel");
+    } catch {
+      return true;
+    }
+  });
+  const openVisuelAide = useCallback(() => {
+    try {
+      window.localStorage.setItem("aide_seen_visuel", "1");
+    } catch {
+      /* quota / mode privé */
+    }
+    setShowVisuelAidePulse(false);
+    setShowSystemVideo(true);
+  }, []);
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
 
@@ -1964,21 +1981,22 @@ export default function ImagePage({
               >
                 <button
                   type="button"
-                  onClick={() => setShowSystemVideo(true)}
-                  className={`studio-toolbar-btn w-full justify-center ${
+                  onClick={openVisuelAide}
+                  className={`vws-campagne-aide-btn w-full justify-center ${
                     visualStepActive
-                      ? "max-[640px]:flex-1 max-[640px]:py-1.5 max-[640px]:text-[10px] max-[640px]:font-normal max-[640px]:leading-tight"
+                      ? "max-[640px]:flex-1 max-[640px]:py-1.5 max-[640px]:leading-tight"
                       : ""
                   }`}
                 >
                   <BookOpen
-                    className={`w-3.5 h-3.5 shrink-0 text-cyan-400 ${visualStepActive ? "max-[640px]:hidden" : ""}`}
+                    className={`vws-campagne-aide-btn__icon shrink-0 ${visualStepActive ? "max-[640px]:hidden" : ""}`}
                   />
+                  {showVisuelAidePulse ? <span className="pulse-dot" aria-hidden="true" /> : null}
                   <span className="truncate">
                     <span className={visualStepActive ? "hidden max-[640px]:inline" : ""}>
-                      📖 Explication du système
+                      📖 Aide pour commencer
                     </span>
-                    <span className={visualStepActive ? "max-[640px]:hidden" : ""}>Explication du système</span>
+                    <span className={visualStepActive ? "max-[640px]:hidden" : ""}>Aide pour commencer</span>
                   </span>
                 </button>
                 <button

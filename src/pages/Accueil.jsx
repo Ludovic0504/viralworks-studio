@@ -46,7 +46,7 @@ export default function Accueil() {
   const preloadCenter = isMobileLayout ? "metadata" : "auto";
 
   return (
-    <div className="relative flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-x-hidden bg-[#07090f] md:overflow-hidden">
+    <div className="relative flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-x-hidden bg-[#07090f] md:min-h-[calc(100svh-4rem)] md:overflow-hidden">
       <div className="pointer-events-none absolute inset-0 z-0">
         <div
           className="absolute inset-0 bg-[#07090f]"
@@ -72,7 +72,7 @@ export default function Accueil() {
         />
       </div>
 
-      <div className="relative z-[1] flex min-h-0 w-full min-w-0 flex-1 flex-col max-md:min-h-[min(100%,calc(100svh-4rem))] max-md:overflow-x-hidden md:overflow-hidden">
+      <div className="relative z-[1] flex min-h-0 w-full min-w-0 flex-1 flex-col max-md:min-h-[min(100%,calc(100svh-4rem))] max-md:overflow-x-hidden md:min-h-full md:overflow-hidden">
         <section className="relative flex min-h-0 w-full min-w-0 flex-1 flex-col items-center max-md:justify-start max-md:overflow-x-hidden md:justify-center md:overflow-hidden">
           <div className="relative z-10 mx-auto flex w-full min-w-0 max-w-[1100px] flex-col items-center gap-3 px-6 sm:px-8 md:gap-4 md:px-12 xl:px-16">
             <div className="flex min-h-0 w-full min-w-0 flex-col items-center gap-0 max-md:pt-8 md:flex-row md:items-center md:gap-12">
