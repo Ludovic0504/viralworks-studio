@@ -151,7 +151,7 @@ export default function Accueil() {
             </div>
 
             <div className="accueil-fade-up accueil-fade-up-d5 flex w-full min-w-0 max-md:mt-0 max-md:flex-none max-md:items-center max-md:justify-start max-md:py-0 max-md:overflow-hidden md:mt-0 md:flex-1 md:items-center md:justify-end">
-              <div className="relative mx-auto aspect-[260/340] max-md:h-[clamp(240px,min(36dvh,400px),440px)] w-auto max-w-full shrink-0 overflow-hidden md:h-[clamp(240px,min(48vw,44vh),520px)] md:max-w-[min(96vw,440px)] md:overflow-visible">
+              <div className="relative mx-auto aspect-[260/340] max-md:h-[clamp(240px,min(36lvh,400px),440px)] w-auto max-w-full shrink-0 overflow-hidden md:h-[clamp(240px,min(48vw,44vh),520px)] md:max-w-[min(96vw,440px)] md:overflow-visible">
                 <div
                   className="pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 rounded-full bg-[rgba(33,243,185,0.08)] blur-[clamp(18px,4vw,28px)]"
                   style={{
@@ -219,7 +219,7 @@ export default function Accueil() {
             </div>
           </div>
 
-          <div className="relative z-[1] mx-auto flex w-full shrink-0 items-center gap-3.5 pb-0 pt-1 max-md:mt-7 max-md:pt-3 md:mt-0 md:pt-1">
+          <div className="relative z-[1] mx-auto flex w-full shrink-0 items-center gap-3.5 pb-4 pt-1 max-md:mt-7 max-md:pt-3 md:mt-0 md:pt-1">
             <div
               className="div-line-accueil-l h-px max-w-[90px] flex-1"
               style={{
