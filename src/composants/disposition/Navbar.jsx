@@ -24,7 +24,9 @@ export default function SidebarShell({
 
   useEffect(() => {
     // Close only after a real route change (not when `open` flips to true).
-    if (previousPathRef.current !== location.pathname && open) {
+    const prev = previousPathRef.current;
+    const cur = location.pathname;
+    if (prev !== cur && open) {
       onCloseMenu?.();
     }
     previousPathRef.current = location.pathname;
@@ -47,7 +49,9 @@ export default function SidebarShell({
       const html = document.documentElement;
       const prev = html.style.overflow;
       html.style.overflow = "hidden";
-      return () => { html.style.overflow = prev; };
+      return () => {
+        html.style.overflow = prev;
+      };
     }
   }, [open]);
 

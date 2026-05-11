@@ -1,5 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react";
-import { useLocation } from "react-router-dom";
+import { useState, useMemo } from "react";
 import { ArrowRight } from "lucide-react";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
@@ -12,9 +11,7 @@ export default function Accueil() {
   const { session } = useAuth();
   const { openAuthModal } = useRequireAuthAction();
   const hasSession = Boolean(session?.user?.id);
-  const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
-  const didLogLoginParamRef = useRef(false);
 
   const demoVideoChantierUrl = (import.meta.env.VITE_DEMO_VIDEO_CHANTIER_URL || "").trim();
   const demoVideoMoteurUrl = (import.meta.env.VITE_DEMO_VIDEO_MOTEUR_URL || "").trim();
@@ -28,23 +25,6 @@ export default function Accueil() {
     ],
     [demoVideoChantierUrl, demoVideoMoteurUrl, demoVideoYachtUrl]
   );
-
-  useEffect(() => {
-    if (didLogLoginParamRef.current) return;
-    didLogLoginParamRef.current = true;
-    const sp = new URLSearchParams(location.search);
-    const wantsLogin = sp.get("login") === "1";
-    // #region agent log
-    fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'0480cf'},body:JSON.stringify({sessionId:'0480cf',runId:'auth-bug',hypothesisId:'H2',location:'src/pages/Accueil.jsx:loginParam',message:'Accueil mounted',data:{path:location.pathname,search:location.search,wantsLogin,hasSession},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-    if (wantsLogin) {
-      // #region agent log
-      fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'0480cf'},body:JSON.stringify({sessionId:'0480cf',runId:'auth-bug',hypothesisId:'H3',location:'src/pages/Accueil.jsx:openAuthModal',message:'Would openAuthModal for login=1',data:{},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-      // Note: on n'ouvre pas encore ici, instrumentation only (fix après preuve).
-      void openAuthModal;
-    }
-  }, [location.pathname, location.search, hasSession, openAuthModal]);
 
   return (
     <div className="relative flex min-h-[100dvh] flex-col bg-[#07090f] max-md:overflow-x-hidden max-md:overflow-y-auto md:h-[100dvh] md:max-h-[100dvh] md:overflow-hidden">

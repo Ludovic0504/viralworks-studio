@@ -116,9 +116,6 @@ function LoginRedirect() {
   const sp = new URLSearchParams(location.search);
   sp.set("login", "1");
   const search = sp.toString();
-  // #region agent log
-  fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'0480cf'},body:JSON.stringify({sessionId:'0480cf',runId:'auth-bug',hypothesisId:'H1',location:'src/Application.jsx:LoginRedirect',message:'LoginRedirect invoked',data:{fromPath:location.pathname,fromSearch:location.search,toSearch:search},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   return <Navigate to={`/${search ? `?${search}` : ""}`} replace />;
 }
 
