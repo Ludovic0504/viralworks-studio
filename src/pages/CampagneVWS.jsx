@@ -30,6 +30,10 @@ import {
   formatVideoFormatParamsPromptAppendix,
   getVideoFormatConfigForCatalogId,
 } from "@/config/videoFormats";
+import {
+  parseLegacyProductStyleDetails,
+  stripLegacyProductStyleDetailsPrefix,
+} from "../bibliotheque/vwsProductStaging";
 
 const VALID_TEMPOS = new Set(["real_time", "timelapse", "slow_motion"]);
 
@@ -129,59 +133,12 @@ const PROFESSION_TO_LIEU_TOURNAGE = {
   "Architecte / architecte d'intérieur": "neutre",
 };
 
-const PRODUCT_STAGING_PREFIX = "__VWS_PRODUCT_STAGING__:";
-
 const PRODUCT_STAGING_OPTIONS = [
   { id: "situation_reelle", label: "En situation réelle" },
   { id: "avant_apres", label: "Avant / Après" },
   { id: "test_direct", label: "Test en direct" },
   { id: "temoignage", label: "Témoignage" },
 ];
-
-function parseProductStaging(styleDetails) {
-  const raw = String(styleDetails ?? "");
-  if (!raw.startsWith(PRODUCT_STAGING_PREFIX)) {
-    return { stagingKeys: [], precisionsText: raw };
-  }
-  const rest = raw.slice(PRODUCT_STAGING_PREFIX.length);
-  const nl = rest.indexOf("\n");
-  if (nl === -1) {
-    try {
-      const j = JSON.parse(rest);
-      return {
-        stagingKeys: Array.isArray(j.staging) ? j.staging : [],
-        precisionsText: "",
-      };
-    } catch {
-      return { stagingKeys: [], precisionsText: raw };
-    }
-  }
-  const jsonLine = rest.slice(0, nl);
-  const precisionsText = rest.slice(nl + 1);
-  try {
-    const j = JSON.parse(jsonLine);
-    return {
-      stagingKeys: Array.isArray(j.staging) ? j.staging : [],
-      precisionsText,
-    };
-  } catch {
-    return { stagingKeys: [], precisionsText: raw };
-  }
-}
-
-function mergeProductStaging(_styleDetails, nextStagingKeys, nextPrecisionsText) {
-  const payload = JSON.stringify({ staging: nextStagingKeys });
-  return `${PRODUCT_STAGING_PREFIX}${payload}\n${nextPrecisionsText}`;
-}
-
-function stripProductStagingPrefix(styleDetails) {
-  const raw = String(styleDetails ?? "");
-  if (!raw.startsWith(PRODUCT_STAGING_PREFIX)) return raw;
-  const rest = raw.slice(PRODUCT_STAGING_PREFIX.length);
-  const nl = rest.indexOf("\n");
-  if (nl === -1) return "";
-  return rest.slice(nl + 1);
-}
 
 function getLieuOption(value) {
   return LIEU_TOURNAGE_OPTIONS.find((opt) => opt.value === value) || LIEU_TOURNAGE_OPTIONS[2];
@@ -319,7 +276,14 @@ export default function CampagneVWS({
       : "neutre"
   );
   const [idea, setIdeaState] = useState(campaignData?.idea ?? "");
-  const [styleDetails, setStyleDetails] = useState(campaignData?.styleDetails ?? "");
+  const [styleDetails, setStyleDetails] = useState(() =>
+    stripLegacyProductStyleDetailsPrefix(String(campaignData?.styleDetails ?? ""))
+  );
+  const [stagingChips, setStagingChips] = useState(() =>
+    Array.isArray(campaignData?.stagingChips)
+      ? [...campaignData.stagingChips]
+      : parseLegacyProductStyleDetails(String(campaignData?.styleDetails ?? "")).chipIds
+  );
   const [tempo, setTempo] = useState(() => normalizeTempo(campaignData?.tempo ?? "real_time"));
   const [cameraFixed, setCameraFixed] = useState(campaignData?.cameraFixed ?? true);
   const [sequenceType, setSequenceType] = useState(campaignData?.sequenceType ?? "single_8s");
@@ -430,22 +394,9 @@ export default function CampagneVWS({
     metierProfile?.stylePlaceholder ??
     "Ex. : ambiance, lumière, style visuel, matériaux…";
 
-  const precisionsFieldValue = useMemo(
-    () => (isProductMode ? parseProductStaging(styleDetails).precisionsText : styleDetails),
-    [isProductMode, styleDetails]
-  );
-
-  const productStagingSelectedKeys = useMemo(
-    () => parseProductStaging(styleDetails).stagingKeys,
-    [styleDetails]
-  );
-
   useEffect(() => {
     if (isProductMode) return;
-    setStyleDetails((prev) => {
-      const stripped = stripProductStagingPrefix(prev);
-      return stripped === prev ? prev : stripped;
-    });
+    setStagingChips([]);
   }, [isProductMode]);
 
   const buildCampaignSnapshot = (overrides = {}) => ({
@@ -480,6 +431,7 @@ export default function CampagneVWS({
     globalIntentProfile: campaignData?.globalIntentProfile ?? null,
     isClarified: false,
     videoFormatId,
+    stagingChips,
     ...overrides,
   });
 
@@ -497,13 +449,11 @@ export default function CampagneVWS({
   };
 
   const toggleProductStagingChip = (chipId) => {
-    const { stagingKeys, precisionsText } = parseProductStaging(styleDetails);
-    const nextKeys = stagingKeys.includes(chipId)
-      ? stagingKeys.filter((k) => k !== chipId)
-      : [...stagingKeys, chipId];
-    const merged = mergeProductStaging(styleDetails, nextKeys, precisionsText);
-    setStyleDetails(merged);
-    onCampaignChange?.(buildCampaignSnapshot({ styleDetails: merged }));
+    const nextKeys = stagingChips.includes(chipId)
+      ? stagingChips.filter((k) => k !== chipId)
+      : [...stagingChips, chipId];
+    setStagingChips(nextKeys);
+    onCampaignChange?.(buildCampaignSnapshot({ stagingChips: nextKeys }));
   };
   const setLieuTournage = (v) => {
     const next = v === "chez_client" || v === "etablissement" || v === "neutre" ? v : "neutre";
@@ -542,6 +492,7 @@ export default function CampagneVWS({
     if (updates.lieuTournage !== undefined) setLieuTournageState(updates.lieuTournage);
     if (updates.idea !== undefined) setIdeaState(updates.idea);
     if (updates.styleDetails !== undefined) setStyleDetails(updates.styleDetails);
+    if (updates.stagingChips !== undefined) setStagingChips([...updates.stagingChips]);
     if (updates.tempo !== undefined) setTempo(normalizeTempo(updates.tempo));
     if (updates.cameraFixed !== undefined) setCameraFixed(updates.cameraFixed);
     if (updates.revealMode !== undefined) setRevealMode(updates.revealMode);
@@ -561,6 +512,7 @@ export default function CampagneVWS({
         lieuTournage: updates.lieuTournage ?? lieuTournage,
         idea: updates.idea ?? idea,
         styleDetails: updates.styleDetails ?? styleDetails,
+        stagingChips: updates.stagingChips ?? stagingChips,
         tempo: normalizeTempo(updates.tempo ?? tempo),
         cameraFixed: updates.cameraFixed ?? cameraFixed,
         revealMode: updates.revealMode ?? revealMode,
@@ -649,8 +601,7 @@ export default function CampagneVWS({
       const selectedFormatLabel = inspireFormatDef?.name || "Format non défini";
       const nomDuProduit = professionLocal;
       const promesseDuProduit = String(idea ?? "").trim();
-      const { stagingKeys } = parseProductStaging(styleDetails);
-      const misEnSceneLabels = stagingKeys
+      const misEnSceneLabels = stagingChips
         .map((id) => PRODUCT_STAGING_OPTIONS.find((o) => o.id === id)?.label)
         .filter(Boolean);
       const misEnScene =
@@ -870,12 +821,9 @@ Réponds uniquement en JSON : { "person_visible": true/false }`;
           : lieuTournage;
       const selectedLieu = getLieuOption(effectiveLieuValue);
       const isProductModeRun = catalogFormatDef?.categoryId === "produit";
-      const stagingParsedRun = parseProductStaging(styleDetails);
-      const precisionsForModifiers = (
-        isProductModeRun ? stagingParsedRun.precisionsText : String(styleDetails ?? "")
-      ).trim();
+      const precisionsForModifiers = String(styleDetails ?? "").trim();
       const stagingLabelsRun = isProductModeRun
-        ? stagingParsedRun.stagingKeys
+        ? stagingChips
             .map((id) => PRODUCT_STAGING_OPTIONS.find((o) => o.id === id)?.label)
             .filter(Boolean)
         : [];
@@ -1247,6 +1195,7 @@ Réponds uniquement en JSON :
           location_type: selectedLieu.value,
           core_idea: ideaWithSceneContext,
           style_details: precisionsForModifiers || "",
+          staging_chips: [...stagingChips],
           intent_profile: globalIntentProfile ?? buildMinimalIntentFallback({ idea: ideaWithSceneContext, selfieMode }),
           clarification: {
             ...createDefaultCampaignGenerationSpec().campaign.clarification,
@@ -1307,6 +1256,7 @@ Réponds uniquement en JSON :
         lieuTournage: selectedLieu.value,
         idea: ideaWithSceneContext,
         styleDetails: precisionsForModifiers || "",
+        stagingChips: [...stagingChips],
         videoFormatId,
         tempo: effectiveTempo,
         cameraFixed,
@@ -1710,20 +1660,7 @@ Réponds uniquement en JSON :
                     fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'0480cf'},body:JSON.stringify(__dbgA)}).catch((e)=>{console.debug("[debug-0480cf] ingest failed", e?.message||String(e));});
                     // #endregion agent log
                     setSequenceType(v);
-                    onCampaignChange?.({
-                      profession,
-                      idea,
-                      styleDetails,
-                      tempo,
-                      cameraFixed,
-                      revealMode,
-                      cinematicMovement,
-                      selfieMode,
-                      sequenceType: v,
-                      dialogueEnabled,
-                      microAnswer,
-                      tempoCompressionDecision,
-                    });
+                    onCampaignChange?.(buildCampaignSnapshot({ sequenceType: v }));
                   }}
                   className="vws-campagne-field vws-campagne-select vws-campagne-field--touch vws-campagne-select-grid-mobile"
                 >
@@ -1853,7 +1790,7 @@ Réponds uniquement en JSON :
                   <span className="vws-campagne-label mb-2 block">Mise en scène</span>
                   <div className="flex flex-wrap gap-2">
                     {PRODUCT_STAGING_OPTIONS.map((opt) => {
-                      const selected = productStagingSelectedKeys.includes(opt.id);
+                      const selected = stagingChips.includes(opt.id);
                       return (
                         <button
                           key={opt.id}
@@ -1897,44 +1834,11 @@ Réponds uniquement en JSON :
               <input
                 id="campagne-precisions"
                 type="text"
-                value={precisionsFieldValue}
+                value={styleDetails}
                 onChange={(e) => {
                   const nextVal = e.target.value;
-                  if (isProductMode) {
-                    const { stagingKeys } = parseProductStaging(styleDetails);
-                    const merged = mergeProductStaging(styleDetails, stagingKeys, nextVal);
-                    setStyleDetails(merged);
-                    onCampaignChange?.({
-                      profession,
-                      idea,
-                      styleDetails: merged,
-                      tempo,
-                      cameraFixed,
-                      revealMode,
-                      cinematicMovement,
-                      selfieMode,
-                      sequenceType,
-                      dialogueEnabled,
-                      microAnswer,
-                      tempoCompressionDecision,
-                    });
-                  } else {
-                    setStyleDetails(nextVal);
-                    onCampaignChange?.({
-                      profession,
-                      idea,
-                      styleDetails: nextVal,
-                      tempo,
-                      cameraFixed,
-                      revealMode,
-                      cinematicMovement,
-                      selfieMode,
-                      sequenceType,
-                      dialogueEnabled,
-                      microAnswer,
-                      tempoCompressionDecision,
-                    });
-                  }
+                  setStyleDetails(nextVal);
+                  onCampaignChange?.(buildCampaignSnapshot({ styleDetails: nextVal }));
                 }}
                 className="vws-campagne-field vws-campagne-field--touch"
                 placeholder={stylePlaceholder}
@@ -1952,20 +1856,7 @@ Réponds uniquement en JSON :
                 onClick={() => {
                   const next = !dialogueEnabled;
                   setDialogueEnabled(next);
-                  onCampaignChange?.({
-                    profession,
-                    idea,
-                    styleDetails,
-                    tempo,
-                    cameraFixed,
-                    revealMode,
-                    cinematicMovement,
-                    selfieMode,
-                    sequenceType,
-                    dialogueEnabled: next,
-                    microAnswer,
-                    tempoCompressionDecision,
-                  });
+                  onCampaignChange?.(buildCampaignSnapshot({ dialogueEnabled: next }));
                 }}
                 className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors ${
                   dialogueEnabled ? "bg-emerald-500/80" : "bg-white/20"

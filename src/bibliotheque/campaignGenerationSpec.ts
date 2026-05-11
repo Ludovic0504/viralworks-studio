@@ -1,4 +1,5 @@
 import type { GlobalIntentProfile } from "./vwsPromptEngine";
+import { parseLegacyProductStyleDetails, stripLegacyProductStyleDetailsPrefix } from "./vwsProductStaging";
 
 export const CAMPAIGN_GENERATION_SPEC_VERSION = "1.0.0";
 
@@ -49,6 +50,8 @@ export interface CampaignSection {
   location_type: "chez_client" | "etablissement" | "neutre";
   core_idea: string;
   style_details: string;
+  /** Chips « mise en scène » (ids) — mode produit Campagne VWS ; vide sinon. */
+  staging_chips: string[];
   intent_profile: GlobalIntentProfile | null;
   clarification: CampaignClarification;
 }
@@ -205,6 +208,7 @@ export function createDefaultCampaignGenerationSpec(): CampaignGenerationSpec {
       location_type: "neutre",
       core_idea: "",
       style_details: "",
+      staging_chips: [],
       intent_profile: null,
       clarification: {
         mode: null,
@@ -438,6 +442,22 @@ export function normalizeCampaignGenerationSpec(raw: unknown): CampaignGeneratio
   const traceVideoGeneration = isObjectRecord(trace.video_generation) ? trace.video_generation : {};
   const tracePersistence = isObjectRecord(trace.persistence) ? trace.persistence : {};
 
+  const campaignRec = campaign as Record<string, unknown>;
+  const rawStyleDetails = asString(campaign.style_details, asString(campaign.styleDetails));
+  const hasExplicitStagingChips =
+    ("staging_chips" in campaignRec && campaignRec.staging_chips !== undefined) ||
+    ("stagingChips" in campaignRec && campaignRec.stagingChips !== undefined);
+  let normalizedStyleDetails: string;
+  let normalizedStagingChips: string[];
+  if (hasExplicitStagingChips) {
+    normalizedStagingChips = asArrayOfStrings(campaignRec.staging_chips ?? campaignRec.stagingChips);
+    normalizedStyleDetails = stripLegacyProductStyleDetailsPrefix(rawStyleDetails);
+  } else {
+    const legacy = parseLegacyProductStyleDetails(rawStyleDetails);
+    normalizedStagingChips = legacy.chipIds;
+    normalizedStyleDetails = legacy.freeText;
+  }
+
   return {
     meta: {
       schema_version: asString(meta.schema_version, CAMPAIGN_GENERATION_SPEC_VERSION),
@@ -456,7 +476,8 @@ export function normalizeCampaignGenerationSpec(raw: unknown): CampaignGeneratio
         "neutre"
       ),
       core_idea: asString(campaign.core_idea, asString(campaign.idea)),
-      style_details: asString(campaign.style_details, asString(campaign.styleDetails)),
+      style_details: normalizedStyleDetails,
+      staging_chips: normalizedStagingChips,
       intent_profile: normalizeIntentProfile(campaign.intent_profile ?? campaign.globalIntentProfile),
       clarification: {
         mode: asOneOf(clarification.mode ?? campaign.clarifyMode, ["MODE_A", "MODE_B", null] as const, null),

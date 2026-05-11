@@ -522,6 +522,9 @@ function serializeCampaignSpecForPrepareGate(spec) {
     idea: String(normalized.campaign.core_idea ?? "").trim(),
     video_format_id: normalized.campaign.video_format_id ?? null,
     styleDetails: String(normalized.campaign.style_details ?? "").trim(),
+    stagingChips: Array.isArray(normalized.campaign.staging_chips)
+      ? [...normalized.campaign.staging_chips]
+      : [],
     tempo: normalizeTempoForGate(normalized.rendering.tempo),
     cameraFixed: Boolean(normalized.rendering.camera.fixed),
     revealMode: Boolean(normalized.rendering.camera.reveal_mode),
@@ -557,6 +560,7 @@ function buildLegacyCampaignDataFromSpec(spec) {
     idea: s.campaign.core_idea ?? "",
     videoFormatId: s.campaign.video_format_id ?? null,
     styleDetails: s.campaign.style_details ?? "",
+    stagingChips: Array.isArray(s.campaign.staging_chips) ? [...s.campaign.staging_chips] : [],
     tempo: normalizeTempoForGate(s.rendering.tempo),
     cameraFixed: Boolean(s.rendering.camera.fixed),
     revealMode: Boolean(s.rendering.camera.reveal_mode),
@@ -613,6 +617,12 @@ function applyLegacyCampaignPatchToSpec(prevSpec, patch) {
             : null
           : prev.campaign.video_format_id,
       style_details: patch?.styleDetails ?? prev.campaign.style_details,
+      staging_chips:
+        patch?.stagingChips !== undefined
+          ? Array.isArray(patch.stagingChips)
+            ? patch.stagingChips.filter((x) => typeof x === "string")
+            : prev.campaign.staging_chips
+          : prev.campaign.staging_chips,
       intent_profile:
         patch?.globalIntentProfile !== undefined ? patch.globalIntentProfile : prev.campaign.intent_profile,
       clarification: {
