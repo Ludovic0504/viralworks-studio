@@ -1535,12 +1535,12 @@ Réponds uniquement en JSON :
           : ""
       }`}
     >
-      <div className="hidden min-[641px]:flex flex-wrap items-center justify-between gap-4 mb-8 md:mb-10">
-        <h2 className="text-sm font-semibold text-gray-200 flex items-center gap-2 sm:text-base">
-          <Sparkles className="w-4 h-4 text-cyan-400 shrink-0" />
+      <div className="mb-8 hidden min-[641px]:flex flex-col gap-3 md:mb-10">
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-200 sm:text-base">
+          <Sparkles className="h-4 w-4 shrink-0 text-cyan-400" />
           Étape 1 – Votre campagne vidéo
         </h2>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex justify-start">
           <button
             type="button"
             onClick={handleOpenCampagneAide}
@@ -1555,21 +1555,23 @@ Réponds uniquement en JSON :
         </div>
       </div>
 
-      {/* Même action que sur desktop : sur mobile le titre desktop est masqué, sans bouton on ne pouvait pas ouvrir le bottom sheet */}
-      <div className="flex min-[641px]:hidden flex-wrap items-center justify-between gap-3 mb-6">
-        <h2 className="text-sm font-semibold text-gray-200 flex items-center gap-2 min-w-0">
-          <Sparkles className="w-4 h-4 text-cyan-400 shrink-0" />
+      {/* Aligné horizontalement avec .vws-campagne-form-scroll (padding 1rem sous 768px) */}
+      <div className="mb-6 flex min-[641px]:hidden flex-col gap-3 px-4">
+        <h2 className="flex min-w-0 items-center gap-2 text-sm font-semibold text-gray-200">
+          <Sparkles className="h-4 w-4 shrink-0 text-cyan-400" />
           <span className="truncate">Étape 1 – Votre campagne vidéo</span>
         </h2>
-        <button
-          type="button"
-          onClick={handleOpenCampagneAide}
-          className="vws-campagne-aide-btn text-sm shrink-0 min-h-[44px]"
-        >
-          <BookOpen className="vws-campagne-aide-btn__icon shrink-0" />
-          {showCampagneAidePulse ? <span className="pulse-dot" aria-hidden="true" /> : null}
-          Aide pour commencer
-        </button>
+        <div className="flex min-w-0 justify-start">
+          <button
+            type="button"
+            onClick={handleOpenCampagneAide}
+            className="vws-campagne-aide-btn min-w-0 max-w-full text-sm min-h-[44px]"
+          >
+            <BookOpen className="vws-campagne-aide-btn__icon shrink-0" />
+            {showCampagneAidePulse ? <span className="pulse-dot" aria-hidden="true" /> : null}
+            <span className="truncate">Aide pour commencer</span>
+          </button>
+        </div>
       </div>
 
       <div className="vws-campagne-form max-[640px]:pb-4">

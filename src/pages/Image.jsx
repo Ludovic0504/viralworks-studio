@@ -27,7 +27,6 @@ import {
   normalizeCampaignGenerationSpec,
 } from "@/bibliotheque/campaignGenerationSpec";
 import { STUDIO_24S_TEMPORAL_HOOK_IMAGES_ENABLED } from "@/bibliotheque/studio24sTemporalHookImages";
-import PageTitle from "../composants/interface/TitrePage";
 import VisuelAccrocheExplicationSheet from "../composants/image/VisuelAccrocheExplicationSheet";
 import {
   modifyImageWithNanoBanana,
@@ -1932,197 +1931,164 @@ export default function ImagePage({
       >
         {visualStepActive ? (
           <div className="flex min-w-0 w-full flex-col gap-3 max-[640px]:gap-3">
-            <div className="flex min-w-0 w-full flex-row items-start justify-between gap-3">
-              <div className="min-w-0 flex-1 [&_header]:mb-3">
-                <PageTitle
-                  green="Visuel"
-                  white="d'accroche"
-                  subtitle="Choisis l'image qui arrête le scroll avant ta vidéo."
-                />
-              </div>
-              <div className="relative flex w-max min-w-0 shrink-0 flex-col gap-2 self-start" ref={historyPanelRef}>
-                <button
-                  type="button"
-                  onClick={openVisuelAide}
-                  className="vws-campagne-aide-btn w-full justify-center text-sm"
-                >
-                  <BookOpen className="vws-campagne-aide-btn__icon shrink-0" />
-                  {showVisuelAidePulse ? <span className="pulse-dot" aria-hidden="true" /> : null}
-                  <span className="truncate">Aide pour commencer</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setHistoryOpen((o) => !o)}
-                  disabled={!onRestoreVisualSnapshot || visualSnapshots.length === 0}
-                  title={
-                    visualSnapshots.length === 0
-                      ? "Aucune grille enregistrée dans cette session (génère ou modifie d’abord des images)"
-                      : "Restaurer une grille ou un état visuel enregistré"
-                  }
-                  className="studio-toolbar-btn inline-flex w-full items-center justify-center gap-1.5 px-2.5 py-2.5 text-[11px] font-medium text-gray-400 hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-gray-400"
-                >
-                  <History className="h-3.5 w-3.5 text-cyan-500/90" />
-                  <span>Historique</span>
-                </button>
-                {historyOpen && visualSnapshots.length > 0 && (
-                  <div className="absolute right-0 top-full z-30 mt-1 w-full max-w-[280px] rounded-xl border border-white/12 bg-gray-950/95 p-2 shadow-xl shadow-black/50 backdrop-blur-md">
-                    <p className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-                      Sessions visuelles
-                    </p>
-                    <ul className="max-h-64 space-y-1 overflow-y-auto">
-                      {visualSnapshots.map((entry) => {
-                        const thumb = entry.step?.lastGeneratedImages?.[0];
-                        const n = entry.step?.lastGeneratedImages?.length ?? 0;
-                        return (
-                          <li key={entry.id}>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                onRestoreVisualSnapshot(entry);
-                                setHistoryOpen(false);
-                              }}
-                              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition hover:bg-white/[0.06]"
-                            >
-                              {thumb ? (
-                                <img
-                                  src={thumb}
-                                  alt=""
-                                  className="h-10 w-10 shrink-0 rounded-md border border-white/10 object-cover"
-                                />
-                              ) : (
-                                <div className="h-10 w-10 shrink-0 rounded-md border border-white/10 bg-white/5" />
-                              )}
-                              <span className="min-w-0 flex-1">
-                                <span className="block text-xs font-medium text-gray-200">
-                                  {formatVisualSnapshotLabel(entry.t)}
-                                </span>
-                                <span className="block text-[10px] text-gray-500">
-                                  {n} variante{n > 1 ? "s" : ""}
-                                  {typeof entry.step?.selectedImageIndex === "number"
-                                    ? ` · sélection #${(entry.step.selectedImageIndex ?? 0) + 1}`
-                                    : ""}
-                                </span>
-                              </span>
-                            </button>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="w-full min-w-0 shrink-0 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-gray-300">
-                  Étape 2 sur 3 - Visuel d&apos;accroche
-                </span>
-              </div>
-              <div
-                className="hidden max-[640px]:block h-[3px] w-full overflow-hidden rounded-full"
-                style={{ backgroundColor: "#1e2845" }}
+            <h2 className="flex min-w-0 items-center gap-2 text-sm font-semibold text-gray-200">
+              <Sparkles className="h-4 w-4 shrink-0 text-cyan-400" />
+              <span className="truncate">Étape 2 – Votre visuel d&apos;accroche</span>
+            </h2>
+            <div
+              className="relative grid w-full min-w-0 max-w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5 min-[640px]:gap-2"
+              ref={historyPanelRef}
+            >
+              <button
+                type="button"
+                onClick={openVisuelAide}
+                className="vws-campagne-aide-btn box-border flex min-h-[44px] min-w-0 w-full max-w-full flex-row flex-nowrap items-center justify-start gap-1.5 px-2 py-2 text-left text-[11px] font-semibold leading-tight min-[640px]:min-h-0 min-[640px]:gap-2 min-[640px]:px-3 min-[640px]:py-1.5 min-[640px]:text-sm sm:min-h-0"
               >
-                <div
-                  className="h-full w-2/3 rounded-full"
-                  style={{ backgroundColor: "#00d4a0" }}
-                />
-              </div>
-              <div className="w-full max-[640px]:hidden studio-step-rail">
-                <div className="h-full w-2/3 studio-step-rail-fill" />
-              </div>
+                <BookOpen className="vws-campagne-aide-btn__icon h-3.5 w-3.5 shrink-0 min-[640px]:h-[0.875rem] min-[640px]:w-[0.875rem]" />
+                {showVisuelAidePulse ? <span className="pulse-dot shrink-0" aria-hidden="true" /> : null}
+                <span className="min-w-0 whitespace-nowrap">Aide pour commencer</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setHistoryOpen((o) => !o)}
+                disabled={!onRestoreVisualSnapshot || visualSnapshots.length === 0}
+                title={
+                  visualSnapshots.length === 0
+                    ? "Aucune grille enregistrée dans cette session (génère ou modifie d’abord des images)"
+                    : "Restaurer une grille ou un état visuel enregistré"
+                }
+                className="studio-toolbar-btn box-border inline-flex min-h-[44px] shrink-0 flex-row items-center justify-center gap-1 px-2 py-2 text-[11px] font-medium leading-tight text-gray-400 hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-gray-400 min-[640px]:min-h-0 min-[640px]:gap-1.5 min-[640px]:px-2.5 min-[640px]:py-2.5 min-[640px]:text-sm"
+              >
+                <History className="h-3.5 w-3.5 shrink-0 text-cyan-500/90" />
+                <span className="whitespace-nowrap">Historique</span>
+              </button>
+              {historyOpen && visualSnapshots.length > 0 && (
+                <div className="absolute right-0 top-full z-30 mt-1 w-[min(100%,18rem)] max-w-[min(280px,calc(100vw-1.5rem))] rounded-xl border border-white/12 bg-gray-950/95 p-2 shadow-xl shadow-black/50 backdrop-blur-md">
+                  <p className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                    Sessions visuelles
+                  </p>
+                  <ul className="max-h-64 space-y-1 overflow-y-auto">
+                    {visualSnapshots.map((entry) => {
+                      const thumb = entry.step?.lastGeneratedImages?.[0];
+                      const n = entry.step?.lastGeneratedImages?.length ?? 0;
+                      return (
+                        <li key={entry.id}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onRestoreVisualSnapshot(entry);
+                              setHistoryOpen(false);
+                            }}
+                            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition hover:bg-white/[0.06]"
+                          >
+                            {thumb ? (
+                              <img
+                                src={thumb}
+                                alt=""
+                                className="h-10 w-10 shrink-0 rounded-md border border-white/10 object-cover"
+                              />
+                            ) : (
+                              <div className="h-10 w-10 shrink-0 rounded-md border border-white/10 bg-white/5" />
+                            )}
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-xs font-medium text-gray-200">
+                                {formatVisualSnapshotLabel(entry.t)}
+                              </span>
+                              <span className="block text-[10px] text-gray-500">
+                                {n} variante{n > 1 ? "s" : ""}
+                                {typeof entry.step?.selectedImageIndex === "number"
+                                  ? ` · sélection #${(entry.step.selectedImageIndex ?? 0) + 1}`
+                                  : ""}
+                              </span>
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
             </div>
           </div>
         ) : (
-          <div className="flex min-w-0 w-full flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-            <div className="min-w-0 flex-1 [&_header]:mb-3">
-              <PageTitle
-                green="Visuel"
-                white="d'accroche"
-                subtitle="Choisis l'image qui arrête le scroll avant ta vidéo."
-              />
-            </div>
-            <div className="w-full lg:w-72 shrink-0 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-gray-300">
-                  Étape 2 sur 3 - Visuel d&apos;accroche
-                </span>
-              </div>
-              <div className="w-full studio-step-rail">
-                <div className="h-full w-2/3 studio-step-rail-fill" />
-              </div>
-              <div className="relative flex flex-col gap-2" ref={historyPanelRef}>
-                <div className="flex flex-col gap-2">
-                  <button
-                    type="button"
-                    onClick={openVisuelAide}
-                    className="vws-campagne-aide-btn w-full justify-center text-sm"
-                  >
-                    <BookOpen className="vws-campagne-aide-btn__icon shrink-0" />
-                    {showVisuelAidePulse ? <span className="pulse-dot" aria-hidden="true" /> : null}
-                    <span className="truncate">Aide pour commencer</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setHistoryOpen((o) => !o)}
-                    disabled={!onRestoreVisualSnapshot || visualSnapshots.length === 0}
-                    title={
-                      visualSnapshots.length === 0
-                        ? "Aucune grille enregistrée dans cette session (génère ou modifie d’abord des images)"
-                        : "Restaurer une grille ou un état visuel enregistré"
-                    }
-                    className="studio-toolbar-btn inline-flex w-full items-center justify-center gap-1.5 px-2.5 py-2.5 text-[11px] font-medium text-gray-400 hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-gray-400"
-                  >
-                    <History className="h-3.5 w-3.5 text-cyan-500/90" />
-                    <span>Historique</span>
-                  </button>
-                </div>
-                {historyOpen && visualSnapshots.length > 0 && (
-                  <div className="absolute right-0 top-full z-30 mt-1 w-full max-w-[280px] rounded-xl border border-white/12 bg-gray-950/95 p-2 shadow-xl shadow-black/50 backdrop-blur-md">
-                    <p className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-                      Sessions visuelles
-                    </p>
-                    <ul className="max-h-64 space-y-1 overflow-y-auto">
-                      {visualSnapshots.map((entry) => {
-                        const thumb = entry.step?.lastGeneratedImages?.[0];
-                        const n = entry.step?.lastGeneratedImages?.length ?? 0;
-                        return (
-                          <li key={entry.id}>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                onRestoreVisualSnapshot(entry);
-                                setHistoryOpen(false);
-                              }}
-                              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition hover:bg-white/[0.06]"
-                            >
-                              {thumb ? (
-                                <img
-                                  src={thumb}
-                                  alt=""
-                                  className="h-10 w-10 shrink-0 rounded-md border border-white/10 object-cover"
-                                />
-                              ) : (
-                                <div className="h-10 w-10 shrink-0 rounded-md border border-white/10 bg-white/5" />
-                              )}
-                              <span className="min-w-0 flex-1">
-                                <span className="block text-xs font-medium text-gray-200">
-                                  {formatVisualSnapshotLabel(entry.t)}
-                                </span>
-                                <span className="block text-[10px] text-gray-500">
-                                  {n} variante{n > 1 ? "s" : ""}
-                                  {typeof entry.step?.selectedImageIndex === "number"
-                                    ? ` · sélection #${(entry.step.selectedImageIndex ?? 0) + 1}`
-                                    : ""}
-                                </span>
+          <div className="flex min-w-0 w-full flex-col gap-3">
+            <h2 className="flex min-w-0 items-center gap-2 text-sm font-semibold text-gray-200">
+              <Sparkles className="h-4 w-4 shrink-0 text-cyan-400" />
+              <span className="truncate">Étape 2 – Votre visuel d&apos;accroche</span>
+            </h2>
+            <div
+              className="relative grid w-full min-w-0 max-w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5 min-[640px]:gap-2"
+              ref={historyPanelRef}
+            >
+              <button
+                type="button"
+                onClick={openVisuelAide}
+                className="vws-campagne-aide-btn box-border flex min-h-[44px] min-w-0 w-full max-w-full flex-row flex-nowrap items-center justify-start gap-1.5 px-2 py-2 text-left text-[11px] font-semibold leading-tight min-[640px]:min-h-0 min-[640px]:gap-2 min-[640px]:px-3 min-[640px]:py-1.5 min-[640px]:text-sm sm:min-h-0"
+              >
+                <BookOpen className="vws-campagne-aide-btn__icon h-3.5 w-3.5 shrink-0 min-[640px]:h-[0.875rem] min-[640px]:w-[0.875rem]" />
+                {showVisuelAidePulse ? <span className="pulse-dot shrink-0" aria-hidden="true" /> : null}
+                <span className="min-w-0 whitespace-nowrap">Aide pour commencer</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setHistoryOpen((o) => !o)}
+                disabled={!onRestoreVisualSnapshot || visualSnapshots.length === 0}
+                title={
+                  visualSnapshots.length === 0
+                    ? "Aucune grille enregistrée dans cette session (génère ou modifie d’abord des images)"
+                    : "Restaurer une grille ou un état visuel enregistré"
+                }
+                className="studio-toolbar-btn box-border inline-flex min-h-[44px] shrink-0 flex-row items-center justify-center gap-1 px-2 py-2 text-[11px] font-medium leading-tight text-gray-400 hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-gray-400 min-[640px]:min-h-0 min-[640px]:gap-1.5 min-[640px]:px-2.5 min-[640px]:py-2.5 min-[640px]:text-sm"
+              >
+                <History className="h-3.5 w-3.5 shrink-0 text-cyan-500/90" />
+                <span className="whitespace-nowrap">Historique</span>
+              </button>
+              {historyOpen && visualSnapshots.length > 0 && (
+                <div className="absolute right-0 top-full z-30 mt-1 w-[min(100%,18rem)] max-w-[min(280px,calc(100vw-1.5rem))] rounded-xl border border-white/12 bg-gray-950/95 p-2 shadow-xl shadow-black/50 backdrop-blur-md">
+                  <p className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                    Sessions visuelles
+                  </p>
+                  <ul className="max-h-64 space-y-1 overflow-y-auto">
+                    {visualSnapshots.map((entry) => {
+                      const thumb = entry.step?.lastGeneratedImages?.[0];
+                      const n = entry.step?.lastGeneratedImages?.length ?? 0;
+                      return (
+                        <li key={entry.id}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onRestoreVisualSnapshot(entry);
+                              setHistoryOpen(false);
+                            }}
+                            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition hover:bg-white/[0.06]"
+                          >
+                            {thumb ? (
+                              <img
+                                src={thumb}
+                                alt=""
+                                className="h-10 w-10 shrink-0 rounded-md border border-white/10 object-cover"
+                              />
+                            ) : (
+                              <div className="h-10 w-10 shrink-0 rounded-md border border-white/10 bg-white/5" />
+                            )}
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-xs font-medium text-gray-200">
+                                {formatVisualSnapshotLabel(entry.t)}
                               </span>
-                            </button>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
-                )}
-              </div>
+                              <span className="block text-[10px] text-gray-500">
+                                {n} variante{n > 1 ? "s" : ""}
+                                {typeof entry.step?.selectedImageIndex === "number"
+                                  ? ` · sélection #${(entry.step.selectedImageIndex ?? 0) + 1}`
+                                  : ""}
+                              </span>
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
             </div>
           </div>
         )}

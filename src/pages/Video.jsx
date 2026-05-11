@@ -765,39 +765,64 @@ const Video = forwardRef(function Video(
 
   return (
     <div className="w-full min-w-0">
-      <div
-        className={`flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-8 ${
-          isStudioPage ? "max-[640px]:hidden" : ""
-        }`}
-      >
-        <PageTitle
-          green="Vidéos"
-          white="Génération"
-          subtitle="Crée des vidéos avec l'intelligence artificielle."
-        />
-        
-        <div className="w-full sm:w-[340px] space-y-3">
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-gray-300">Étape 3 sur 3 · Vidéo finale</span>
-            </div>
-            <div className="w-full studio-step-rail">
-              <div className="h-full w-full studio-step-rail-fill" />
-            </div>
-          </div>
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3">
+      {isStudioPage ? (
+        <div className="mb-6 space-y-3 md:mb-8">
+          <h2 className="flex min-w-0 items-center gap-2 text-sm font-semibold text-gray-200 sm:text-base">
+            <Sparkles className="h-4 w-4 shrink-0 text-cyan-400" />
+            <span className="truncate">Étape 3 – Votre vidéo virale</span>
+          </h2>
+          <div className="relative grid w-full min-w-0 max-w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5 min-[640px]:gap-3">
             <button
               type="button"
               onClick={openVideoAide}
-              className="vws-campagne-aide-btn w-full text-sm sm:w-auto"
+              className="vws-campagne-aide-btn box-border flex min-h-[44px] min-w-0 w-full max-w-full flex-row flex-nowrap items-center justify-start gap-1.5 px-2 py-2 text-left text-[11px] font-semibold leading-tight min-[640px]:min-h-0 min-[640px]:gap-2 min-[640px]:px-3 min-[640px]:py-1.5 min-[640px]:text-sm sm:min-h-0"
             >
-              <BookOpen className="vws-campagne-aide-btn__icon shrink-0" />
-              {showVideoAidePulse ? <span className="pulse-dot" aria-hidden="true" /> : null}
-              Aide pour commencer
+              <BookOpen className="vws-campagne-aide-btn__icon h-3.5 w-3.5 shrink-0 min-[640px]:h-[0.875rem] min-[640px]:w-[0.875rem]" />
+              {showVideoAidePulse ? <span className="pulse-dot shrink-0" aria-hidden="true" /> : null}
+              <span className="min-w-0 whitespace-nowrap">Aide pour commencer</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => ref?.current?.openHistory?.()}
+              className="studio-toolbar-btn box-border inline-flex min-h-[44px] shrink-0 flex-row items-center justify-center gap-1 px-2 py-2 text-[11px] font-medium leading-tight min-[640px]:min-h-0 min-[640px]:gap-1.5 min-[640px]:px-3 min-[640px]:py-2 min-[640px]:text-sm"
+            >
+              <History className="h-3.5 w-3.5 shrink-0 text-cyan-400" />
+              <span className="whitespace-nowrap">Historique</span>
             </button>
           </div>
         </div>
-      </div>
+      ) : null}
+      {!isStudioPage ? (
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <PageTitle
+            green="Vidéos"
+            white="Génération"
+            subtitle="Crée des vidéos avec l'intelligence artificielle."
+          />
+
+          <div className="w-full space-y-3 sm:w-[340px]">
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-xs font-medium text-gray-300">Étape 3 sur 3 · Vidéo finale</span>
+              </div>
+              <div className="w-full studio-step-rail">
+                <div className="h-full w-full studio-step-rail-fill" />
+              </div>
+            </div>
+            <div className="flex flex-col items-stretch justify-end gap-3 sm:flex-row sm:items-center">
+              <button
+                type="button"
+                onClick={openVideoAide}
+                className="vws-campagne-aide-btn w-full text-sm sm:w-auto"
+              >
+                <BookOpen className="vws-campagne-aide-btn__icon shrink-0" />
+                {showVideoAidePulse ? <span className="pulse-dot" aria-hidden="true" /> : null}
+                Aide pour commencer
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
@@ -1856,14 +1881,19 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
 
   const generateRef = useRef(generate);
   generateRef.current = generate;
+  const openHistoryDrawer = useCallback(() => {
+    setHistoryDrawerOpen(true);
+    setSelectedHistoryId(null);
+  }, []);
   useImperativeHandle(
     ref,
     () => ({
       generate: () => {
         void generateRef.current?.();
       },
+      openHistory: openHistoryDrawer,
     }),
-    []
+    [openHistoryDrawer]
   );
 
   useEffect(() => {
@@ -3299,35 +3329,6 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
       {isStudio ? (
         <div className="relative min-h-0 max-[640px]:block min-[641px]:hidden">
           <div className="space-y-4">
-            <div className="flex flex-col gap-3 rounded-xl border border-white/[0.08] bg-gradient-to-br from-[#12182a]/90 to-[#0a0f18] p-4 ring-1 ring-white/[0.06]">
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <h2 className="text-base font-semibold text-white">
-                    Vidéo · <span className="text-emerald-300">virale</span>
-                  </h2>
-                  <p className="mt-0.5 text-[11px]" style={{ color: "#5a6490" }}>
-                    Étape finale — génération
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setHistoryDrawerOpen(true);
-                      setSelectedHistoryId(null);
-                    }}
-                    className="studio-toolbar-btn px-3 py-2 text-[11px]"
-                  >
-                    <History className="h-3.5 w-3.5 text-cyan-400" />
-                    Historique
-                  </button>
-                </div>
-              </div>
-              <div className="h-[3px] w-full overflow-hidden rounded-full" style={{ backgroundColor: "#1e2845" }}>
-                <div className="h-full w-full rounded-full" style={{ backgroundColor: "#00d4a0" }} />
-              </div>
-            </div>
-
             <div className="rounded-2xl border border-cyan-500/20 bg-gradient-to-b from-white/[0.07] to-transparent p-4 shadow-[0_0_24px_rgba(0,212,160,0.08)]">
               <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
                 Sources de la vidéo
