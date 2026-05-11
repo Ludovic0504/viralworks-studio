@@ -108,7 +108,7 @@ export default function Accueil() {
                 <strong className="font-medium text-white/[0.58]">sans y passer des heures.</strong>
               </p>
 
-              <div className="accueil-fade-up accueil-fade-up-d4 mb-3 flex flex-wrap items-center gap-2 max-md:gap-2 md:mb-4 md:gap-2.5 max-[580px]:justify-center">
+              <div className="accueil-fade-up accueil-fade-up-d4 mb-3 flex flex-wrap items-center gap-2 max-md:mb-2 max-md:gap-2 md:mb-4 md:gap-2.5 max-[580px]:justify-center">
                 {session ? (
                   <LienNavSync
                     to="/viralworks"
@@ -135,7 +135,7 @@ export default function Accueil() {
                 </LienNavSync>
               </div>
 
-              <div className="accueil-fade-up accueil-fade-up-d4 mb-2 flex flex-wrap items-center gap-2 text-[10px] font-medium text-white/25 max-md:mb-0 max-[580px]:justify-center md:mb-0 md:gap-3">
+              <div className="accueil-fade-up accueil-fade-up-d4 mb-2 flex flex-wrap items-center gap-2 text-[10px] font-medium text-white/25 max-md:-mb-2 max-[580px]:justify-center md:mb-0 md:gap-3">
                 <span className="inline-flex items-center gap-1.5">
                   <span className="text-[#21f3b9]">✓</span> Sans abonnement caché
                 </span>
@@ -150,8 +150,8 @@ export default function Accueil() {
               </div>
             </div>
 
-            <div className="accueil-fade-up accueil-fade-up-d5 flex w-full min-w-0 max-md:mt-0 max-md:flex-none max-md:items-center max-md:justify-start max-md:py-0 max-md:overflow-hidden md:mt-0 md:flex-1 md:items-center md:justify-end">
-              <div className="relative mx-auto aspect-[260/340] max-md:h-[clamp(240px,min(36lvh,400px),440px)] w-auto max-w-full shrink-0 overflow-hidden md:h-[clamp(240px,min(48vw,44vh),520px)] md:max-w-[min(96vw,440px)] md:overflow-visible">
+            <div className="accueil-fade-up accueil-fade-up-d5 flex w-full min-w-0 max-md:-mt-10 max-md:flex-none max-md:items-center max-md:justify-start max-md:py-0 max-md:overflow-hidden md:mt-0 md:flex-1 md:items-center md:justify-end">
+              <div className="relative mx-auto aspect-[260/340] max-md:h-[clamp(280px,min(50lvh,520px),560px)] w-auto max-w-full shrink-0 overflow-hidden md:h-[clamp(240px,min(48vw,44vh),520px)] md:max-w-[min(96vw,440px)] md:overflow-visible">
                 <div
                   className="pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 rounded-full bg-[rgba(33,243,185,0.08)] blur-[clamp(18px,4vw,28px)]"
                   style={{
