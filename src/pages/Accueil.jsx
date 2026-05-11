@@ -75,7 +75,7 @@ export default function Accueil() {
       <div className="relative z-[1] flex min-h-0 w-full min-w-0 flex-1 flex-col max-md:min-h-[min(100%,calc(100svh-4rem))] max-md:overflow-x-hidden md:overflow-hidden">
         <section className="relative flex min-h-0 w-full min-w-0 flex-1 flex-col items-center max-md:justify-start max-md:overflow-x-hidden md:justify-center md:overflow-hidden">
           <div className="relative z-10 mx-auto flex w-full min-w-0 max-w-[1100px] flex-col items-center gap-3 px-6 sm:px-8 md:gap-4 md:px-12 xl:px-16">
-            <div className="flex min-h-0 w-full min-w-0 flex-col items-center gap-0 md:flex-row md:items-center md:gap-12">
+            <div className="flex min-h-0 w-full min-w-0 flex-col items-center gap-0 max-md:pt-8 md:flex-row md:items-center md:gap-12">
               <div className="w-full min-w-0 flex-[1.1] max-md:flex-none text-left max-[580px]:text-center md:pr-2 xl:pr-6">
                 <div className="accueil-fade-up accueil-fade-up-d1 mb-3 inline-flex max-md:mb-2 max-[580px]:mx-auto max-[580px]:w-full max-[580px]:justify-center md:mb-4">
                   <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5">
