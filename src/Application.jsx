@@ -137,10 +137,10 @@ const router = createBrowserRouter([
       { path: "/auth/callback", element: <RappelAuth /> },
       { path: "/auth/confirm", element: <ConfirmerEmail /> },
       { path: "/reset-password", element: <ReinitialiserMotDePasse /> },
-      { path: "/", element: <Accueil /> },
       {
         element: <DashboardLayout />,
         children: [
+          { path: "/", element: <Accueil /> },
           { path: "/lab", element: <Lab /> },
           // Backward compatibility: ancienne route supprimée → retour accueil.
           { path: "/a-savoir", element: <Navigate to="/" replace /> },
