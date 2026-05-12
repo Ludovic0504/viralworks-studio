@@ -27,12 +27,41 @@ export function useStripePayment() {
         ? { Authorization: `Bearer ${accessToken}` }
         : undefined;
 
+      const { billedAmount: _billedForClientOnly, ...checkoutBody } = payload;
       const { data, error: fnError } = await supabase.functions.invoke("stripe-payment", {
-        body: { ...payload, origin: window.location.origin },
+        body: { ...checkoutBody, origin: window.location.origin },
         ...(headers ? { headers } : {}),
       });
       if (fnError) throw new Error(fnError.message || "Erreur lors du paiement");
       if (!data?.url) throw new Error("URL de paiement manquante dans la réponse");
+
+      try {
+        const billedAmount =
+          typeof payload.billedAmount === "number"
+            ? payload.billedAmount
+            : payload.amount;
+        sessionStorage.setItem(
+          "onetool_last_checkout",
+          JSON.stringify({
+            amount: billedAmount,
+            ...(typeof payload.billedAmount === "number"
+              ? {
+                  billedAmount: payload.billedAmount,
+                  catalogAmount: payload.amount,
+                }
+              : {}),
+            credits: payload.credits,
+            type: payload.type,
+            ...(payload.subscriptionPlan
+              ? { subscriptionPlan: payload.subscriptionPlan }
+              : {}),
+            currency: "EUR",
+          }),
+        );
+      } catch {
+        // no-op
+      }
+
       window.location.href = data.url;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Une erreur est survenue");
@@ -45,6 +74,19 @@ export function useStripePayment() {
   return { loading, error, startPayment };
 }
 
-export const payMonthly    = () => ({ type: "subscription", subscriptionPlan: "monthly", amount: 129,       credits: 30 });
-export const payYearly     = () => ({ type: "subscription", subscriptionPlan: "yearly",  amount: 107 * 12, credits: 30 });
+export const payMonthly = () => ({
+  type: "subscription",
+  subscriptionPlan: "monthly",
+  amount: 129,
+  billedAmount: 64.5,
+  credits: 30,
+});
+
+export const payYearly = () => ({
+  type: "subscription",
+  subscriptionPlan: "yearly",
+  amount: 107 * 12,
+  billedAmount: 1230.5,
+  credits: 30,
+});
 export const payVideoPack  = (pack) => ({ type: "credits", credits: pack.videos, amount: pack.amount });

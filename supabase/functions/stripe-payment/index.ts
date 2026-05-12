@@ -135,6 +135,35 @@ serve(async (req) => {
       }
     }
 
+    // Coupons launch (a definir dans les secrets Edge Functions, un seul coupon par session)
+    // STRIPE_COUPON_LAUNCH_MONTHLY_TEST=<id coupon mensuel mode test>
+    // STRIPE_COUPON_LAUNCH_YEARLY_TEST=<id coupon annuel mode test>
+    // STRIPE_COUPON_LAUNCH_MONTHLY_LIVE=<id coupon mensuel mode live>
+    // STRIPE_COUPON_LAUNCH_YEARLY_LIVE=<id coupon annuel mode live>
+    let launchDiscountCoupon: string | null = null;
+    if (type === "subscription") {
+      const monthlyEnvName =
+        stripeMode === "live"
+          ? "STRIPE_COUPON_LAUNCH_MONTHLY_LIVE"
+          : "STRIPE_COUPON_LAUNCH_MONTHLY_TEST";
+      const yearlyEnvName =
+        stripeMode === "live"
+          ? "STRIPE_COUPON_LAUNCH_YEARLY_LIVE"
+          : "STRIPE_COUPON_LAUNCH_YEARLY_TEST";
+      const monthlyCoupon = Deno.env.get(monthlyEnvName)?.trim() ?? "";
+      const yearlyCoupon = Deno.env.get(yearlyEnvName)?.trim() ?? "";
+      if (planKey === "monthly" && monthlyCoupon) {
+        launchDiscountCoupon = monthlyCoupon;
+      } else if (planKey === "yearly" && yearlyCoupon) {
+        launchDiscountCoupon = yearlyCoupon;
+      }
+      if (launchDiscountCoupon) {
+        console.log(`Launch discount applied: ${launchDiscountCoupon}`);
+      } else {
+        console.log("No launch discount (env not set)");
+      }
+    }
+
     const boutiqueShippingCountries = [
       "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR",
       "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK",
@@ -226,6 +255,9 @@ serve(async (req) => {
       const session = await stripe.checkout.sessions.create({
         customer: customerId,
         payment_method_types: ["card"],
+        ...(launchDiscountCoupon
+          ? { discounts: [{ coupon: launchDiscountCoupon }] }
+          : {}),
         line_items: [
           {
             price_data: {

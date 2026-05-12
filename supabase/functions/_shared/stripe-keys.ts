@@ -7,14 +7,16 @@ export function getStripeCheckoutMode(): StripeMode {
 
 export function getStripeSecretKeyForCheckout(): string | null {
   const mode = getStripeCheckoutMode();
-  if (mode === "live") {
-    return (
-      Deno.env.get("STRIPE_SECRET_KEY_LIVE") ||
-      Deno.env.get("STRIPE_SECRET_KEY") ||
-      null
-    );
-  }
-  return Deno.env.get("STRIPE_SECRET_KEY_TEST") || null;
+  const key =
+    mode === "live"
+      ? Deno.env.get("STRIPE_SECRET_KEY_LIVE") ||
+        Deno.env.get("STRIPE_SECRET_KEY") ||
+        null
+      : Deno.env.get("STRIPE_SECRET_KEY_TEST") || null;
+  console.log(
+    `getStripeSecretKeyForCheckout: ${key ? key.slice(0, 12) : "(null)"}`,
+  );
+  return key;
 }
 
 export function getStripeSecretKeyForEventLivemode(livemode: boolean): string | null {

@@ -78,7 +78,7 @@ const SUBSCRIPTION_PLANS = [
       "Accès à toutes les fonctionnalités",
       "Support prioritaire",
     ],
-    savings: "Économisez 17%",
+    savings: "Économisez environ 17 % par rapport au mensuel",
   },
 ];
 
@@ -406,9 +406,24 @@ export default function Boutique() {
                     : "Jusqu’à 30 vidéos / mois"}
                 </div>
                 <div className="text-2xl font-bold text-violet-400 mb-1">
-                  {plan.id === "monthly"
-                    ? `${plan.price.toFixed(0)} € / mois`
-                    : "107 € / mois, facturé annuellement"}
+                  {plan.id === "monthly" ? (
+                    <>
+                      64,50 €
+                      <span className="block text-sm font-normal text-gray-400 mt-1">
+                        −50 % le 1er mois — offre de lancement
+                      </span>
+                      <span className="block text-base font-semibold text-gray-200 mt-2">
+                        puis 129 €/mois
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      107 €/mois
+                      <span className="block text-sm font-normal text-gray-400 mt-1">
+                        Engagement annuel - 50 % le 1er mois
+                      </span>
+                    </>
+                  )}
                 </div>
                 {plan.savings && (
                   <div className="text-sm text-emerald-400 font-medium mt-2">
