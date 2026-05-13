@@ -1147,7 +1147,7 @@ Réponds uniquement en JSON :
           question: "Cette présentation semble assez courte. Veux-tu partir sur une vidéo plus longue de 24 secondes ?",
           reason: "presentation_duration",
           info:
-            "Passer en 24 secondes active 3 scènes (3 x 8s) et consomme 3 crédits au total au lieu de 1.",
+            "Passer en 24 secondes active 3 scènes (3 x 8s) et consomme 3 vidéos au total au lieu de 1.",
           options: [
             { id: "switch_24s", label: "Oui, passer en 24 sec" },
             { id: "keep_8s", label: "Non, garder 8 sec" },

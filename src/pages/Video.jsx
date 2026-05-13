@@ -2224,7 +2224,7 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
         if (!debitResult.success) {
           alert(
             debitResult.error ||
-              "Impossible de débiter le crédit vidéo. Vérifie tes crédits puis réessaie."
+              "Impossible de débiter la vidéo sur ton solde. Vérifie tes vidéos disponibles puis réessaie."
           );
           return;
         }
@@ -4357,7 +4357,7 @@ function HailuoVideoForm({
         if (!debitResult.success) {
           alert(
             debitResult.error ||
-              "Impossible de débiter le crédit vidéo. Vérifie tes crédits puis réessaie."
+              "Impossible de débiter la vidéo sur ton solde. Vérifie tes vidéos disponibles puis réessaie."
           );
           return;
         }
@@ -4667,7 +4667,7 @@ function HailuoVideoForm({
           </div>
           <div className="flex items-center justify-end text-xs text-gray-400 mt-2">
             <span>
-              Crédit vidéo :{" "}
+              Vidéos (solde) :{" "}
               <span className="text-emerald-400 font-semibold">déduit à « Valider et enregistrer »</span>
             </span>
           </div>

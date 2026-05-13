@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { nextVideoDisplayCap } from "../_shared/video-display-cap.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -92,7 +93,7 @@ serve(async (req) => {
       // Crédits workflow vidéo (solde principal historique)
       const { data: creditsData, error: creditsError } = await supabaseAdminClient
         .from("user_credits")
-        .select("credits")
+        .select("credits, video_display_cap")
         .eq("user_id", target_user_id)
         .single();
 
@@ -108,10 +109,23 @@ serve(async (req) => {
         );
       }
 
+      const payload =
+        amount > 0
+          ? {
+              credits: newCredits,
+              video_display_cap: nextVideoDisplayCap({
+                balanceBefore: currentCredits,
+                oldCap: creditsData?.video_display_cap,
+                purchaseQty: amount,
+                balanceAfter: newCredits,
+              }),
+            }
+          : { credits: newCredits };
+
       if (creditsError && creditsError.code === "PGRST116") {
         const { error: insertError } = await supabaseAdminClient
           .from("user_credits")
-          .insert({ user_id: target_user_id, credits: newCredits });
+          .insert({ user_id: target_user_id, ...payload });
 
         if (insertError) {
           throw insertError;
@@ -121,7 +135,7 @@ serve(async (req) => {
       } else {
         const { error: updateError } = await supabaseAdminClient
           .from("user_credits")
-          .update({ credits: newCredits })
+          .update(payload)
           .eq("user_id", target_user_id);
 
         if (updateError) {

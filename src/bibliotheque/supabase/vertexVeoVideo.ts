@@ -269,7 +269,7 @@ function formatVertexVeoFailureMessage(raw: string | undefined): string {
     lower.includes("cannot process your request") ||
     lower.includes("try again later")
   ) {
-    return "Le service vidéo est temporairement saturé (côté fournisseur). Réessaie dans quelques minutes. Tes crédits ne sont pas débités tant que tu n’as pas validé et enregistré la vidéo.";
+    return "Le service vidéo est temporairement saturé (côté fournisseur). Réessaie dans quelques minutes. Ton solde vidéo n’est pas débité tant que tu n’as pas validé et enregistré la vidéo.";
   }
   return msg;
 }

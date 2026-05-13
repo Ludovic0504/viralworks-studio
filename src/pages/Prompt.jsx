@@ -461,7 +461,12 @@ function VEO3Generator({ initialIdea = "" }) {
       }
       console.error("❌ [Prompt VEO3] Erreur génération prompt:", err);
       
-      if (err?.message?.includes("crédit") || err?.message?.includes("Crédits")) {
+      if (
+        err?.message?.includes("crédit") ||
+        err?.message?.includes("Crédits") ||
+        err?.message?.includes("vidéo") ||
+        err?.message?.includes("Vidéos")
+      ) {
         alert("Ton quota ne permet pas de lancer cette génération. Tu peux ajuster ton offre dans la Boutique.");
         return;
       }
@@ -1236,7 +1241,10 @@ function ScriptPromptGenerator({
         let errorMessage = result.message || "Erreur lors de la génération";
         if (
           result.code === "refine" &&
-          (errorMessage.includes("crédit") || errorMessage.includes("Crédits"))
+          (errorMessage.includes("crédit") ||
+            errorMessage.includes("Crédits") ||
+            errorMessage.includes("vidéo") ||
+            errorMessage.includes("Vidéos"))
         ) {
           openQuotaModal();
           return;
@@ -1276,7 +1284,12 @@ function ScriptPromptGenerator({
     } catch (err) {
       console.error("❌ [Prompt Script] Erreur génération prompt:", err);
 
-      if (err?.message?.includes("crédit") || err?.message?.includes("Crédits")) {
+      if (
+        err?.message?.includes("crédit") ||
+        err?.message?.includes("Crédits") ||
+        err?.message?.includes("vidéo") ||
+        err?.message?.includes("Vidéos")
+      ) {
         openQuotaModal();
         return;
       }

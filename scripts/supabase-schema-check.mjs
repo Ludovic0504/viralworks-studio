@@ -50,7 +50,7 @@ const tables = {
     "updated_at",
     "role",
   ],
-  user_credits: ["user_id", "credits", "created_at", "updated_at"],
+  user_credits: ["user_id", "credits", "video_display_cap", "created_at", "updated_at"],
   credit_transactions: ["user_id", "amount", "type", "reason", "metadata", "created_by", "created_at"],
   stripe_customers: ["user_id", "stripe_customer_id", "email"],
   stripe_payments: ["user_id", "stripe_session_id", "stripe_customer_id", "amount", "currency", "status", "metadata", "created_at", "updated_at"],

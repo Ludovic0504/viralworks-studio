@@ -3,15 +3,13 @@ import { createPortal } from "react-dom";
 import { ChevronDown } from "lucide-react";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import LienNavSync from "@/composants/disposition/LienNavSync";
-import { getUserCredits, USER_CREDITS_UPDATED_EVENT } from "@/bibliotheque/supabase/credits";
+import { getUserWorkflowVideoWallet, USER_CREDITS_UPDATED_EVENT } from "@/bibliotheque/supabase/credits";
+import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
 import { getUserProfile } from "@/bibliotheque/supabase/profil";
 import { getUserSubscription } from "@/bibliotheque/supabase/stripe";
 
 const RING_R = 17;
 const RING_C = 2 * Math.PI * RING_R;
-
-/** Quota mensuel affiché pour l’anneau et la barre (vidéos / mois). */
-const MONTHLY_VIDEO_QUOTA = 30;
 
 const TALLY_COACHING_URL = "https://tally.so/r/jaGPrQ";
 
@@ -50,22 +48,25 @@ export default function MenuProfilConnecte({ onLogout, signingOut }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [coachingOpen, setCoachingOpen] = useState(false);
   const [creditsRemaining, setCreditsRemaining] = useState(null);
+  const [videoDisplayCap, setVideoDisplayCap] = useState(null);
   const [hasSubscription, setHasSubscription] = useState(false);
   const [profile, setProfile] = useState(null);
 
   const loadWallet = useCallback(async () => {
     if (!session?.user?.id) return;
     try {
-      const [bal, sub, prof] = await Promise.all([
-        getUserCredits(),
+      const [wallet, sub, prof] = await Promise.all([
+        getUserWorkflowVideoWallet(),
         getUserSubscription(),
         getUserProfile(),
       ]);
-      setCreditsRemaining(typeof bal === "number" ? bal : Number(bal) || 0);
+      setCreditsRemaining(typeof wallet.balance === "number" ? wallet.balance : Number(wallet.balance) || 0);
+      setVideoDisplayCap(typeof wallet.cap === "number" ? wallet.cap : Number(wallet.cap) || 30);
       setHasSubscription(Boolean(sub));
       setProfile(prof);
     } catch {
       setCreditsRemaining(0);
+      setVideoDisplayCap(30);
       setHasSubscription(false);
     }
   }, [session?.user?.id]);
@@ -81,6 +82,27 @@ export default function MenuProfilConnecte({ onLogout, signingOut }) {
     window.addEventListener(USER_CREDITS_UPDATED_EVENT, onCreditsUpdated);
     return () => window.removeEventListener(USER_CREDITS_UPDATED_EVENT, onCreditsUpdated);
   }, [loadWallet]);
+
+  useEffect(() => {
+    const userId = session?.user?.id;
+    if (!userId) return;
+
+    const supabase = getBrowserSupabase();
+    const channel = supabase
+      .channel(`menu-profil-wallet-${userId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "user_credits", filter: `user_id=eq.${userId}` },
+        () => {
+          void loadWallet();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [session?.user?.id, loadWallet]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -114,13 +136,15 @@ export default function MenuProfilConnecte({ onLogout, signingOut }) {
   const planLabel = hasSubscription ? "Premium" : "Free Plan";
 
   const remaining = creditsRemaining ?? 0;
-  const total = MONTHLY_VIDEO_QUOTA;
+  const total = Math.max(1, videoDisplayCap ?? 30);
   const ratio =
     total > 0 ? Math.min(1, Math.max(0, remaining / total)) : 0;
   const strokeDashoffset = RING_C * (1 - ratio);
 
   const exhausted = remaining <= 0;
-  const accentColor = exhausted ? "#f0605a" : "#3ef5c0";
+  const ringStrokeColor = "#3ef5c0";
+  const barFillColor = exhausted ? "#f0605a" : "#3ef5c0";
+  const barFillPercent = exhausted && total > 0 ? 100 : ratio * 100;
 
   const closeMenu = () => setMenuOpen(false);
 
@@ -225,7 +249,7 @@ export default function MenuProfilConnecte({ onLogout, signingOut }) {
                 cy="20"
                 r={RING_R}
                 fill="none"
-                stroke={accentColor}
+                stroke={ringStrokeColor}
                 strokeWidth="2.5"
                 strokeLinecap="round"
                 strokeDasharray={RING_C}
@@ -263,7 +287,7 @@ export default function MenuProfilConnecte({ onLogout, signingOut }) {
             <div
               className={`mb-[5px] flex justify-between text-[11px] ${exhausted ? "text-[#f0605a]" : "text-white/50"}`}
             >
-              <span>{exhausted ? "Crédits épuisés" : "Crédits"}</span>
+              <span>{exhausted ? "Vidéos épuisées" : "Vidéos"}</span>
               <span>
                 {remaining} / {total}
               </span>
@@ -272,8 +296,8 @@ export default function MenuProfilConnecte({ onLogout, signingOut }) {
               <div
                 className="h-full rounded-full transition-all"
                 style={{
-                  width: `${ratio * 100}%`,
-                  backgroundColor: accentColor,
+                  width: `${barFillPercent}%`,
+                  backgroundColor: barFillColor,
                 }}
               />
             </div>
@@ -325,7 +349,7 @@ export default function MenuProfilConnecte({ onLogout, signingOut }) {
               <circle cx="8" cy="8" r="5.5" stroke="rgba(255,255,255,0.7)" strokeWidth="1.2" />
               <circle cx="8" cy="8" r="2" stroke="rgba(255,255,255,0.7)" strokeWidth="1.2" />
             </svg>
-            <span>Acheter des crédits</span>
+            <span>Acheter des vidéos</span>
           </LienNavSync>
 
           <button

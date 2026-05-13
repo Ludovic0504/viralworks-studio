@@ -23,7 +23,7 @@ const SUBSCRIPTION_PLANS = [
     price: 29.99,
     period: "mois",
     popular: true,
-    features: ["1000 crédits/mois", "Support prioritaire", "Accès à toutes les fonctionnalités"],
+    features: ["1000 vidéos finales / mois (abonnement)", "Support prioritaire", "Accès à toutes les fonctionnalités"],
   },
   {
     id: "yearly",
@@ -32,7 +32,7 @@ const SUBSCRIPTION_PLANS = [
     price: 299.99,
     period: "an",
     popular: false,
-    features: ["12000 crédits/an", "Économisez 17%", "Support prioritaire", "Accès à toutes les fonctionnalités"],
+    features: ["12000 vidéos finales / an (abonnement)", "Économisez 17%", "Support prioritaire", "Accès à toutes les fonctionnalités"],
   },
 ];
 
@@ -136,7 +136,7 @@ export default function Paiements() {
       {paymentStatus === "success" && (
         <div className="mb-6 p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center gap-3">
           <CheckCircle className="w-5 h-5 text-emerald-400" />
-          <p className="text-emerald-300">Paiement réussi ! Vos crédits ont été ajoutés à votre compte.</p>
+          <p className="text-emerald-300">Paiement réussi ! Tes vidéos ont été ajoutées à ton compte.</p>
         </div>
       )}
 
@@ -156,12 +156,12 @@ export default function Paiements() {
           <ArrowLeft className="w-4 h-4" />
           Retour au profil
         </button>
-        <h1 className="text-3xl font-bold text-gray-200 mb-2">Acheter des crédits</h1>
+        <h1 className="text-3xl font-bold text-gray-200 mb-2">Acheter des vidéos</h1>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
             <Coins className="w-5 h-5 text-emerald-400" />
             <span className="text-lg font-semibold text-gray-200">
-              {credits !== null ? credits : "..."} crédits disponibles
+              {credits !== null ? credits : "..."} vidéos disponibles
             </span>
           </div>
           {subscription && (
@@ -183,7 +183,7 @@ export default function Paiements() {
               : "text-gray-400 hover:text-gray-200"
           }`}
         >
-          Achat de crédits
+          Achat de vidéos
         </button>
         <button
           onClick={() => setActiveTab("subscription")}
@@ -221,13 +221,13 @@ export default function Paiements() {
                 <h3 className="text-xl font-bold text-gray-200 mb-2">{pkg.name}</h3>
                 <div className="mb-4">
                   <span className="text-3xl font-bold text-gray-200">{pkg.credits}</span>
-                  <span className="text-gray-400 ml-2">crédits</span>
+                  <span className="text-gray-400 ml-2">vidéos</span>
                 </div>
                 <div className="text-2xl font-bold text-emerald-400 mb-1">
                   {pkg.price.toFixed(2)} €
                 </div>
                 <div className="text-sm text-gray-400">
-                  {(pkg.price / pkg.credits).toFixed(3)} € / crédit
+                  {(pkg.price / pkg.credits).toFixed(3)} € / vidéo
                 </div>
               </div>
               <button
@@ -273,7 +273,7 @@ export default function Paiements() {
                 <h3 className="text-xl font-bold text-gray-200 mb-2">{plan.name}</h3>
                 <div className="mb-4">
                   <span className="text-3xl font-bold text-gray-200">{plan.credits}</span>
-                  <span className="text-gray-400 ml-2">crédits</span>
+                  <span className="text-gray-400 ml-2">vidéos</span>
                 </div>
                 <div className="text-2xl font-bold text-violet-400 mb-1">
                   {plan.price.toFixed(2)} € / {plan.period}

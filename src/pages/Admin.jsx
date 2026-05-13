@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useLocation } from "react-router-dom";
 import { useAuth } from "@/contexte/FournisseurAuth";
-import { isAdmin } from "@/bibliotheque/supabase/credits";
+import { isAdmin, notifyUserCreditsUpdated } from "@/bibliotheque/supabase/credits";
 import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
 import PageTitle from "../composants/interface/TitrePage";
 import {
@@ -251,6 +251,10 @@ export default function Admin() {
         throw new Error(error.message);
       }
 
+      if (creditCategory === "workflow_video" && targetUserId === currentSession.user.id) {
+        notifyUserCreditsUpdated();
+      }
+
       alert(`✅ ${creditAmount} crédit(s) "${selectedCreditCategoryLabel}" ajouté(s) avec succès !`);
       setCreditAmount("");
       setCreditCategory("workflow_video");
@@ -300,6 +304,10 @@ export default function Admin() {
 
       if (error) {
         throw new Error(error.message);
+      }
+
+      if (creditCategory === "workflow_video" && targetUserId === currentSession.user.id) {
+        notifyUserCreditsUpdated();
       }
 
       alert(`✅ ${creditAmount} crédit(s) "${selectedCreditCategoryLabel}" retiré(s) avec succès !`);

@@ -678,8 +678,8 @@ export default function ImagePage({
           patchImageStep({
             sceneHookStatus: {
               ...(sceneHookStatus || {}),
-              scene2: has2 ? (sceneHookStatus?.scene2 || { status: "idle", message: "" }) : { status: "error", message: "Crédits insuffisants pour générer les images (Hailuo)." },
-              scene3: has3 ? (sceneHookStatus?.scene3 || { status: "idle", message: "" }) : { status: "error", message: "Crédits insuffisants pour générer les images (Hailuo)." },
+              scene2: has2 ? (sceneHookStatus?.scene2 || { status: "idle", message: "" }) : { status: "error", message: "Vidéos insuffisantes pour générer les images (Hailuo)." },
+              scene3: has3 ? (sceneHookStatus?.scene3 || { status: "idle", message: "" }) : { status: "error", message: "Vidéos insuffisantes pour générer les images (Hailuo)." },
             },
             sceneHookAutoKey: key,
           });
@@ -692,6 +692,7 @@ export default function ImagePage({
             msg.includes("kie") ||
             msg.includes("credits") ||
             msg.includes("crédits") ||
+            msg.includes("vidéos") ||
             msg.includes("insuffisant") ||
             msg.includes("insufficient") ||
             msg.includes("payment required") ||

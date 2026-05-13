@@ -24,6 +24,7 @@ export interface UserCredits {
   id: string;
   user_id: string;
   credits: number;
+  video_display_cap?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -75,6 +76,50 @@ export async function getUserCredits(): Promise<number> {
 
   if (!rows?.length) return 0;
   return rows.reduce((sum, r) => sum + Number(r.credits ?? 0), 0);
+}
+
+/** Solde workflow + plafond affiché (menu profil « restant / total »). */
+export async function getUserWorkflowVideoWallet(): Promise<{ balance: number; cap: number }> {
+  const supabase = getBrowserSupabase();
+
+  const {
+    data: { user },
+    error: userErr,
+  } = await supabase.auth.getUser();
+  if (userErr || !user) {
+    return { balance: 0, cap: 30 };
+  }
+
+  try {
+    await supabase.functions.invoke("sync-subscription-credits", { body: {} });
+  } catch {
+    // no-op
+  }
+
+  const { data: rows, error } = await supabase
+    .from("user_credits")
+    .select("credits, video_display_cap")
+    .eq("user_id", user.id);
+
+  if (error) {
+    console.error("Erreur récupération wallet vidéo:", error);
+    return { balance: 0, cap: 30 };
+  }
+
+  if (!rows?.length) {
+    return { balance: 0, cap: 30 };
+  }
+
+  const balance = rows.reduce((sum, r) => sum + Number(r.credits ?? 0), 0);
+  const maxCap = rows.reduce((m, r) => {
+    const c = r.video_display_cap;
+    if (c == null || Number.isNaN(Number(c))) return m;
+    return Math.max(m, Number(c));
+  }, 0);
+  const capBase = maxCap > 0 ? maxCap : 30;
+  const cap = Math.max(capBase, balance, 1);
+
+  return { balance, cap };
 }
 
 /**
@@ -153,7 +198,7 @@ export async function debitCredits(
 
   if (error) {
     console.error("Erreur débit crédits:", error);
-    let message = error.message || "Erreur lors du débit des crédits";
+    let message = error.message || "Erreur lors du débit (solde vidéo)";
     try {
       const ctx = error.context as { body?: string } | undefined;
       if (ctx?.body && typeof ctx.body === "string") {
@@ -172,7 +217,7 @@ export async function debitCredits(
     "error" in data &&
     (data as { success?: boolean }).success !== true
   ) {
-    const errMsg = String((data as { error?: string }).error || "Erreur lors du débit des crédits");
+    const errMsg = String((data as { error?: string }).error || "Erreur lors du débit (solde vidéo)");
     return { success: false, error: errMsg };
   }
 

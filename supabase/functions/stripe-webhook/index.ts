@@ -7,6 +7,7 @@ import {
   getStripeSecretKeyForEventLivemode,
   getStripeWebhookSigningSecrets,
 } from "../_shared/stripe-keys.ts";
+import { nextVideoDisplayCap } from "../_shared/video-display-cap.ts";
 
 function makeStripe(apiKey: string): Stripe {
   return new Stripe(apiKey, {
@@ -238,12 +239,18 @@ serve(async (req) => {
         // Récupérer les crédits actuels
         const { data: creditsData } = await supabaseClient
           .from("user_credits")
-          .select("credits")
+          .select("credits, video_display_cap")
           .eq("user_id", userId)
           .single();
 
         const currentCredits = creditsData?.credits || 0;
         const newCredits = currentCredits + monthlyCredits;
+        const nextCap = nextVideoDisplayCap({
+          balanceBefore: currentCredits,
+          oldCap: creditsData?.video_display_cap,
+          purchaseQty: monthlyCredits,
+          balanceAfter: newCredits,
+        });
 
         // Mettre à jour les crédits
         // Utiliser UPDATE puis INSERT si nécessaire pour éviter les erreurs de contrainte unique
@@ -251,7 +258,7 @@ serve(async (req) => {
           // L'entrée existe, faire un UPDATE
           await supabaseClient
             .from("user_credits")
-            .update({ credits: newCredits })
+            .update({ credits: newCredits, video_display_cap: nextCap })
             .eq("user_id", userId);
         } else {
           // L'entrée n'existe pas, faire un INSERT
@@ -260,6 +267,7 @@ serve(async (req) => {
             .insert({
               user_id: userId,
               credits: newCredits,
+              video_display_cap: nextCap,
             });
         }
 
@@ -330,7 +338,7 @@ serve(async (req) => {
         // Récupérer les crédits actuels (ou créer l'entrée si elle n'existe pas)
         const { data: creditsData, error: creditsError } = await supabaseClient
           .from("user_credits")
-          .select("credits")
+          .select("credits, video_display_cap")
           .eq("user_id", userId)
           .single();
 
@@ -343,6 +351,12 @@ serve(async (req) => {
         }
 
         const newCredits = currentCredits + credits;
+        const nextCapPack = nextVideoDisplayCap({
+          balanceBefore: currentCredits,
+          oldCap: creditsData?.video_display_cap,
+          purchaseQty: credits,
+          balanceAfter: newCredits,
+        });
 
         // Mettre à jour ou créer les crédits
         // Utiliser UPDATE puis INSERT si nécessaire pour éviter les erreurs de contrainte unique
@@ -351,7 +365,7 @@ serve(async (req) => {
           // L'entrée existe, faire un UPDATE
           const { error } = await supabaseClient
             .from("user_credits")
-            .update({ credits: newCredits })
+            .update({ credits: newCredits, video_display_cap: nextCapPack })
             .eq("user_id", userId);
           updateError = error;
         } else {
@@ -361,6 +375,7 @@ serve(async (req) => {
             .insert({
               user_id: userId,
               credits: newCredits,
+              video_display_cap: nextCapPack,
             });
           updateError = error;
         }
@@ -487,7 +502,7 @@ serve(async (req) => {
       // Récupérer les crédits actuels (ou créer l'entrée si elle n'existe pas)
       const { data: creditsData, error: creditsError } = await supabaseClient
         .from("user_credits")
-        .select("credits")
+        .select("credits, video_display_cap")
         .eq("user_id", userId)
         .single();
 
@@ -499,6 +514,12 @@ serve(async (req) => {
       }
 
       const newCredits = currentCredits + monthlyCredits;
+      const nextCapRenewal = nextVideoDisplayCap({
+        balanceBefore: currentCredits,
+        oldCap: creditsData?.video_display_cap,
+        purchaseQty: monthlyCredits,
+        balanceAfter: newCredits,
+      });
 
       // Mettre à jour ou créer les crédits
       // Utiliser UPDATE puis INSERT si nécessaire pour éviter les erreurs de contrainte unique
@@ -507,7 +528,7 @@ serve(async (req) => {
         // L'entrée existe, faire un UPDATE
         const { error } = await supabaseClient
           .from("user_credits")
-          .update({ credits: newCredits })
+          .update({ credits: newCredits, video_display_cap: nextCapRenewal })
           .eq("user_id", userId);
         updateError = error;
       } else {
@@ -517,6 +538,7 @@ serve(async (req) => {
           .insert({
             user_id: userId,
             credits: newCredits,
+            video_display_cap: nextCapRenewal,
           });
         updateError = error;
       }

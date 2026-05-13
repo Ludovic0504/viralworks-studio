@@ -778,7 +778,7 @@ export default function Profil() {
               <p className="text-[11px] text-gray-500 px-0.5">
                 Les « restants » tiennent compte de ton utilisation dans ViralWorks Studio (compteur local,
                 mois en cours). Le solde workflow serveur (carte ci-dessus) ne diminue qu’à la fin du
-                parcours lorsque le crédit est débité. Les bonus admin s’ajoutent par catégorie.
+                parcours lorsque la vidéo est débitée du solde. Les bonus admin s’ajoutent par catégorie.
               </p>
               <div className="rounded-lg border border-cyan-500/25 bg-cyan-500/10 p-3">
                 <p className="text-sm text-cyan-100">Texte - génération</p>
@@ -866,7 +866,7 @@ export default function Profil() {
             className="mt-1.5 flex w-full items-center justify-center gap-0.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-1 py-1 text-center text-[9px] font-medium leading-tight text-emerald-300 transition-all hover:bg-emerald-500/20 sm:mt-3 sm:gap-2 sm:rounded-lg sm:px-3 sm:py-1.5 sm:text-sm"
           >
             <ShoppingBag className="h-3 w-3 shrink-0 sm:h-4 sm:w-4" />
-            <span className="line-clamp-2 sm:line-clamp-none">Acheter des crédits</span>
+            <span className="line-clamp-2 sm:line-clamp-none">Acheter des vidéos</span>
           </Link>
         </div>
 
@@ -1233,7 +1233,7 @@ export default function Profil() {
                         </div>
                         <p className="text-xs text-gray-400">
                           {formatDate(payment.created_at)}
-                          {payment.metadata?.credits && ` • ${payment.metadata.credits} crédits`}
+                          {payment.metadata?.credits && ` • ${payment.metadata.credits} vidéos`}
                         </p>
                       </div>
                     </div>
@@ -1358,7 +1358,7 @@ export default function Profil() {
           <div className="glass-strong rounded-2xl border border-white/10 p-4 sm:p-6">
             <h3 className="text-lg font-semibold text-gray-200 mb-4 flex items-center gap-2">
               <Coins className="w-5 h-5 text-emerald-400" />
-              Transactions de crédits
+              Transactions vidéo
             </h3>
             {transactions.length > 0 ? (
               <>
@@ -1374,12 +1374,12 @@ export default function Profil() {
                           {tx.reason === "image_generation" && "Génération d'image"}
                           {tx.reason === "video_generation" && "Génération de vidéo"}
                           {tx.reason === "admin_manual" && "Ajout manuel"}
-                          {tx.reason === "admin_manual_workflow_video" && "Admin - crédits workflow vidéo"}
-                          {tx.reason === "admin_manual_text_generation" && "Admin - crédits texte"}
-                          {tx.reason === "admin_manual_image_generation" && "Admin - crédits image (génération)"}
-                          {tx.reason === "admin_manual_image_modification" && "Admin - crédits image (modification)"}
-                          {tx.reason === "admin_manual_video_generation" && "Admin - crédits vidéo (génération)"}
-                          {tx.reason === "stripe_payment" && "Achat de crédits"}
+                          {tx.reason === "admin_manual_workflow_video" && "Admin - vidéos workflow"}
+                          {tx.reason === "admin_manual_text_generation" && "Admin - quota texte"}
+                          {tx.reason === "admin_manual_image_generation" && "Admin - quota image (génération)"}
+                          {tx.reason === "admin_manual_image_modification" && "Admin - quota image (modification)"}
+                          {tx.reason === "admin_manual_video_generation" && "Admin - quota vidéo (génération)"}
+                          {tx.reason === "stripe_payment" && "Achat de vidéos"}
                           {tx.reason === "subscription_payment" && "Abonnement"}
                           {tx.reason === "subscription_renewal" && "Renouvellement abonnement"}
                           {!tx.reason && "Transaction"}

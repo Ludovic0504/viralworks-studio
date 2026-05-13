@@ -8,7 +8,7 @@ export const IMAGE_EDIT_BUSY_MESSAGE =
   "Les serveurs sont saturés, réessaye dans quelques instants.";
 
 const KIE_CREDITS_HINT_FR =
-  "Crédits Kie AI insuffisants sur ton compte Kie (kie.ai). Recharge ton solde puis réessaie.";
+  "Solde Kie AI insuffisant sur ton compte Kie (kie.ai). Recharge puis réessaie.";
 
 export type GeminiImageEditAuth = {
   accessToken: string;

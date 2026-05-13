@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { nextVideoDisplayCap } from "../_shared/video-display-cap.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -99,21 +100,28 @@ serve(async (req) => {
 
     const { data: creditsData } = await admin
       .from("user_credits")
-      .select("credits")
+      .select("credits, video_display_cap")
       .eq("user_id", user.id)
       .single();
 
-    const newCredits = Number(creditsData?.credits || 0) + creditsToGrant;
+    const balanceBefore = Number(creditsData?.credits || 0);
+    const newCredits = balanceBefore + creditsToGrant;
+    const nextCap = nextVideoDisplayCap({
+      balanceBefore,
+      oldCap: creditsData?.video_display_cap,
+      purchaseQty: creditsToGrant,
+      balanceAfter: newCredits,
+    });
 
     if (creditsData) {
       await admin
         .from("user_credits")
-        .update({ credits: newCredits })
+        .update({ credits: newCredits, video_display_cap: nextCap })
         .eq("user_id", user.id);
     } else {
       await admin
         .from("user_credits")
-        .insert({ user_id: user.id, credits: newCredits });
+        .insert({ user_id: user.id, credits: newCredits, video_display_cap: nextCap });
     }
 
     await admin
