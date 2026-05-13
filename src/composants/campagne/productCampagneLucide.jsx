@@ -1,0 +1,62 @@
+import {
+  Aperture,
+  Briefcase,
+  Building2,
+  Car,
+  CassetteTape,
+  ChefHat,
+  Dumbbell,
+  Eye,
+  Flame,
+  Frown,
+  GitBranch,
+  Home,
+  LayoutGrid,
+  MapPin,
+  Mic2,
+  PanelBottom,
+  Scan,
+  Shuffle,
+  Snowflake,
+  Sun,
+  Train,
+  Trees,
+  TrendingDown,
+  User,
+  Video,
+  Zap,
+} from "lucide-react";
+
+const BY_NAME = {
+  Scan,
+  Home,
+  Trees,
+  MapPin,
+  Dumbbell,
+  Briefcase,
+  Car,
+  ChefHat,
+  Building2,
+  Sun,
+  Flame,
+  Train,
+  Zap,
+  TrendingDown,
+  Snowflake,
+  Video,
+  Shuffle,
+  Frown,
+  Mic2,
+  CassetteTape,
+  Eye,
+  Aperture,
+  User,
+  GitBranch,
+  PanelBottom,
+};
+
+/** Icônes catalogue produit Campagne (noms alignés sur `vwsProductCampagneCatalog`). */
+export function ProductCampagneLucideIcon({ name, className, ...rest }) {
+  const Comp = BY_NAME[name] || LayoutGrid;
+  return <Comp className={className} aria-hidden {...rest} />;
+}

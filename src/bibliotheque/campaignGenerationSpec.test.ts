@@ -41,6 +41,17 @@ describe("normalizeCampaignGenerationSpec — staging produit", () => {
     expect(n.campaign.staging_chips).toEqual(chips);
   });
 
+  it("product_scene_decor_id et product_opening_hook_id (alias camelCase) sont normalisés", () => {
+    const n = normalizeCampaignGenerationSpec({
+      campaign: {
+        productSceneDecorId: "nature",
+        product_opening_hook_id: "spicy",
+      },
+    });
+    expect(n.campaign.product_scene_decor_id).toBe("nature");
+    expect(n.campaign.product_opening_hook_id).toBe("spicy");
+  });
+
   it("trace.persistence.last_prepared_core_idea est conservé après normalisation", () => {
     const n = normalizeCampaignGenerationSpec({
       trace: {

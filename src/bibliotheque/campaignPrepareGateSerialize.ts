@@ -20,6 +20,8 @@ export function serializeCampaignSpecForPrepareGate(spec: unknown): string {
     stagingChips: Array.isArray(normalized.campaign.staging_chips)
       ? [...normalized.campaign.staging_chips]
       : [],
+    productSceneDecorId: normalized.campaign.product_scene_decor_id ?? null,
+    productOpeningHookId: normalized.campaign.product_opening_hook_id ?? null,
     tempo: normalizeTempoForPrepareGate(normalized.rendering.tempo),
     cameraFixed: Boolean(normalized.rendering.camera.fixed),
     revealMode: Boolean(normalized.rendering.camera.reveal_mode),

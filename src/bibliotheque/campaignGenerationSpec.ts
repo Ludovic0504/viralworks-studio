@@ -52,6 +52,10 @@ export interface CampaignSection {
   style_details: string;
   /** Chips « mise en scène » (ids) — mode produit Campagne VWS ; vide sinon. */
   staging_chips: string[];
+  /** Décor visuel — formats produit étape Campagne ; `null` = pas de décor spécifique. */
+  product_scene_decor_id: string | null;
+  /** Hook d’accroche (3 s) — formats produit ; `null` = pas de hook. */
+  product_opening_hook_id: string | null;
   intent_profile: GlobalIntentProfile | null;
   clarification: CampaignClarification;
 }
@@ -211,6 +215,8 @@ export function createDefaultCampaignGenerationSpec(): CampaignGenerationSpec {
       core_idea: "",
       style_details: "",
       staging_chips: [],
+      product_scene_decor_id: null,
+      product_opening_hook_id: null,
       intent_profile: null,
       clarification: {
         mode: null,
@@ -481,6 +487,12 @@ export function normalizeCampaignGenerationSpec(raw: unknown): CampaignGeneratio
       core_idea: asString(campaign.core_idea, asString(campaign.idea)),
       style_details: normalizedStyleDetails,
       staging_chips: normalizedStagingChips,
+      product_scene_decor_id: asNullableString(
+        campaignRec.product_scene_decor_id ?? campaignRec.productSceneDecorId
+      ),
+      product_opening_hook_id: asNullableString(
+        campaignRec.product_opening_hook_id ?? campaignRec.productOpeningHookId
+      ),
       intent_profile: normalizeIntentProfile(campaign.intent_profile ?? campaign.globalIntentProfile),
       clarification: {
         mode: asOneOf(clarification.mode ?? campaign.clarifyMode, ["MODE_A", "MODE_B", null] as const, null),

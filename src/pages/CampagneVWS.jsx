@@ -21,8 +21,11 @@ import {
   stampCampaignGenerationMeta,
 } from "@/bibliotheque/campaignGenerationSpec";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
-import { Sparkles, BookOpen, X, Clapperboard } from "lucide-react";
+import { Sparkles, BookOpen, X, Clapperboard, MapPin, ChevronRight, Zap } from "lucide-react";
 import ModaleChoixFormatVideo from "../composants/campagne/ModaleChoixFormatVideo.jsx";
+import ModaleChoixDecorProduit from "../composants/campagne/ModaleChoixDecorProduit.jsx";
+import ModaleChoixHookProduit from "../composants/campagne/ModaleChoixHookProduit.jsx";
+import { ProductCampagneLucideIcon } from "../composants/campagne/productCampagneLucide.jsx";
 import CampagneVwsExplicationSheet from "../composants/campagne/CampagneVwsExplicationSheet.jsx";
 import {
   getFormatById,
@@ -36,8 +39,51 @@ import {
   parseLegacyProductStyleDetails,
   stripLegacyProductStyleDetailsPrefix,
 } from "../bibliotheque/vwsProductStaging";
+import {
+  buildProductOpeningHookSentence,
+  buildProductSceneDecorSentence,
+  decorCategoryLabelFr,
+  getDialogueDefaultForMiseId,
+  getProductDecorById,
+  getProductHookById,
+  getProductMiseDef,
+  getProductMiseOptionsForFormat,
+  hookCategoryLabelFr,
+  locationTypeFromProductDecor,
+  normalizeProductStagingChipsForFormat,
+} from "../bibliotheque/vwsProductCampagneCatalog";
+
+const VWS_INSPIRE_PROMESSE_PRODUCT_SYSTEM = `Tu génères une promesse courte pour une vidéo publicitaire produit.
+Format de sortie : soit 3 à 6 mots séparés par des virgules (style moodboard), soit une phrase unique de 15 mots maximum.
+Jamais les deux en même temps. Choisis le format le plus percutant selon le produit et l'ambiance.
+Pas de ponctuation superflue. Pas d'explication. Juste la promesse, rien d'autre.`;
 
 const VALID_TEMPOS = new Set(["real_time", "timelapse", "slow_motion"]);
+
+function getMissingInspireProductNomDecor({ nomDuProduit, productSceneDecorId }) {
+  const missing = [];
+  if (!nomDuProduit) missing.push("nom");
+  if (!productSceneDecorId) missing.push("decor");
+  return missing;
+}
+
+function formatInspirePromesseHint(missingKeys) {
+  if (!missingKeys.length) return "";
+  if (missingKeys.length === 1) {
+    switch (missingKeys[0]) {
+      case "nom":
+        return "Ajoute le nom du produit pour générer une promesse.";
+      case "decor":
+        return "Ajoute un décor pour générer une promesse cohérente.";
+      default:
+        return "";
+    }
+  }
+  if (missingKeys.length === 2) {
+    return "Il manque : le nom du produit et le décor.";
+  }
+  return "";
+}
 
 function normalizeTempo(t) {
   return VALID_TEMPOS.has(t) ? t : "real_time";
@@ -134,13 +180,6 @@ const PROFESSION_TO_LIEU_TOURNAGE = {
   "Couvreur": "neutre",
   "Architecte / architecte d'intérieur": "neutre",
 };
-
-const PRODUCT_STAGING_OPTIONS = [
-  { id: "situation_reelle", label: "En situation réelle" },
-  { id: "avant_apres", label: "Avant / Après" },
-  { id: "test_direct", label: "Test en direct" },
-  { id: "temoignage", label: "Témoignage" },
-];
 
 function getLieuOption(value) {
   return LIEU_TOURNAGE_OPTIONS.find((opt) => opt.value === value) || LIEU_TOURNAGE_OPTIONS[2];
@@ -286,6 +325,16 @@ export default function CampagneVWS({
       ? [...campaignData.stagingChips]
       : parseLegacyProductStyleDetails(String(campaignData?.styleDetails ?? "")).chipIds
   );
+  const [productSceneDecorId, setProductSceneDecorId] = useState(() =>
+    campaignData?.productSceneDecorId && String(campaignData.productSceneDecorId).trim()
+      ? String(campaignData.productSceneDecorId).trim()
+      : null
+  );
+  const [productOpeningHookId, setProductOpeningHookId] = useState(() =>
+    campaignData?.productOpeningHookId && String(campaignData.productOpeningHookId).trim()
+      ? String(campaignData.productOpeningHookId).trim()
+      : null
+  );
   const [tempo, setTempo] = useState(() => normalizeTempo(campaignData?.tempo ?? "real_time"));
   const [cameraFixed, setCameraFixed] = useState(campaignData?.cameraFixed ?? true);
   const [sequenceType, setSequenceType] = useState(campaignData?.sequenceType ?? "single_8s");
@@ -318,6 +367,12 @@ export default function CampagneVWS({
 
   const [loading, setLoading] = useState(false);
   const [inspireLoading, setInspireLoading] = useState(false);
+  /** Pendant un appel « promesse » produit : le spinner n’apparaît qu’après 2 s. */
+  const [inspireProductAwaitingDelayedSpinner, setInspireProductAwaitingDelayedSpinner] =
+    useState(false);
+  const [inspireDelayedSpinnerVisible, setInspireDelayedSpinnerVisible] = useState(false);
+  const inspireSpinnerDelayTimerRef = useRef(null);
+  const [inspirePromesseHint, setInspirePromesseHint] = useState("");
   const [error, setError] = useState("");
   const [microQuestion, setMicroQuestion] = useState(null);
   const [microAnswer, setMicroAnswer] = useState(campaignData?.microAnswer ?? null);
@@ -344,8 +399,18 @@ export default function CampagneVWS({
     setShowCampagneExplication(true);
   }, []);
   const [showFormatModal, setShowFormatModal] = useState(false);
+  const [showDecorModal, setShowDecorModal] = useState(false);
+  const [showHookModal, setShowHookModal] = useState(false);
   const [videoFormatId, setVideoFormatId] = useState(campaignData?.videoFormatId ?? null);
   const [locationConflict, setLocationConflict] = useState(null);
+
+  useEffect(() => {
+    return () => {
+      if (inspireSpinnerDelayTimerRef.current != null) {
+        clearTimeout(inspireSpinnerDelayTimerRef.current);
+      }
+    };
+  }, []);
 
   /** Parent (spec / brouillon) peut hydrater après le 1er rendu — évite métier vide alors que la campagne en a un. */
   useEffect(() => {
@@ -372,7 +437,24 @@ export default function CampagneVWS({
     setCameraViewAngle((prev) => (prev === incoming ? prev : incoming));
   }, [campaignData?.cameraViewAngle]);
 
+  useEffect(() => {
+    const incoming = campaignData?.productSceneDecorId;
+    const next =
+      incoming && String(incoming).trim() ? String(incoming).trim() : null;
+    setProductSceneDecorId((prev) => (prev === next ? prev : next));
+  }, [campaignData?.productSceneDecorId]);
+
+  useEffect(() => {
+    const incoming = campaignData?.productOpeningHookId;
+    const next =
+      incoming && String(incoming).trim() ? String(incoming).trim() : null;
+    setProductOpeningHookId((prev) => (prev === next ? prev : next));
+  }, [campaignData?.productOpeningHookId]);
+
   const ideaTextareaRef = useRef(null);
+  const stagingChipsRef = useRef(stagingChips);
+  stagingChipsRef.current = stagingChips;
+
   const adjustIdeaTextareaHeightMobile = () => {
     const el = ideaTextareaRef.current;
     if (!el || typeof window === "undefined") return;
@@ -388,6 +470,40 @@ export default function CampagneVWS({
   const selectedFormatDef = useMemo(() => getFormatById(videoFormatId), [videoFormatId]);
   const selectedFormat = selectedFormatDef;
   const isProductMode = selectedFormat?.categoryId === "produit";
+
+  useEffect(() => {
+    if (!isProductMode) {
+      setInspirePromesseHint("");
+      return;
+    }
+    const professionLocal = String(profession ?? "").trim();
+    const professionLegacy = String(campaignData?.profession ?? "").trim();
+    const nomOk = professionLocal || professionLegacy;
+    if (nomOk && productSceneDecorId) {
+      setInspirePromesseHint("");
+    }
+  }, [isProductMode, profession, campaignData?.profession, productSceneDecorId]);
+
+  const productMiseOptions = useMemo(
+    () => (isProductMode && videoFormatId ? getProductMiseOptionsForFormat(videoFormatId) : []),
+    [isProductMode, videoFormatId]
+  );
+  const productMiseNotice = useMemo(
+    () => (isProductMode ? getProductMiseDef(stagingChips[0])?.notice ?? "" : ""),
+    [isProductMode, stagingChips]
+  );
+  const selectedProductDecor = useMemo(
+    () => (productSceneDecorId ? getProductDecorById(productSceneDecorId) : null),
+    [productSceneDecorId]
+  );
+  const selectedProductHook = useMemo(
+    () =>
+      productOpeningHookId && productOpeningHookId !== "none"
+        ? getProductHookById(productOpeningHookId)
+        : null,
+    [productOpeningHookId]
+  );
+  const isExplicitNoProductHook = productOpeningHookId === "none";
 
   useLayoutEffect(() => {
     if (isProductMode) return;
@@ -407,43 +523,72 @@ export default function CampagneVWS({
     setStagingChips([]);
   }, [isProductMode]);
 
-  const buildCampaignSnapshot = (overrides = {}) => ({
-    profession,
-    lieuTournage,
-    idea,
-    styleDetails,
-    tempo,
-    cameraFixed,
-    revealMode,
-    cinematicMovement,
-    selfieMode,
-    sequenceType,
-    dialogueEnabled,
-    microAnswer,
-    tempoCompressionDecision,
-    causalAgentSelection,
-    cameraAerialAngle,
-    cameraViewAngle,
-    narrativeContinuity,
-    timelapseCameraPov,
-    initialStateSelection,
-    gateResult,
-    clarifyAnswer,
-    clarificationHistory: Array.isArray(campaignData?.clarificationHistory)
-      ? campaignData.clarificationHistory
-      : [],
-    clarifyAxesResolved: {
-      modeAgent: campaignData?.clarifyAxesResolved?.modeAgent === true,
-      initialT0: campaignData?.clarifyAxesResolved?.initialT0 === true,
-      causalAgent: campaignData?.clarifyAxesResolved?.causalAgent === true,
-      cameraAerialAngle: campaignData?.clarifyAxesResolved?.cameraAerialAngle === true,
-    },
-    globalIntentProfile: campaignData?.globalIntentProfile ?? null,
-    isClarified: false,
-    videoFormatId,
-    stagingChips,
-    ...overrides,
-  });
+  const buildCampaignSnapshot = (overrides = {}) => {
+    const base = {
+      profession,
+      lieuTournage,
+      idea,
+      styleDetails,
+      tempo,
+      cameraFixed,
+      revealMode,
+      cinematicMovement,
+      selfieMode,
+      sequenceType,
+      dialogueEnabled,
+      microAnswer,
+      tempoCompressionDecision,
+      causalAgentSelection,
+      cameraAerialAngle,
+      cameraViewAngle,
+      narrativeContinuity,
+      timelapseCameraPov,
+      initialStateSelection,
+      gateResult,
+      clarifyAnswer,
+      clarificationHistory: Array.isArray(campaignData?.clarificationHistory)
+        ? campaignData.clarificationHistory
+        : [],
+      clarifyAxesResolved: {
+        modeAgent: campaignData?.clarifyAxesResolved?.modeAgent === true,
+        initialT0: campaignData?.clarifyAxesResolved?.initialT0 === true,
+        causalAgent: campaignData?.clarifyAxesResolved?.causalAgent === true,
+        cameraAerialAngle: campaignData?.clarifyAxesResolved?.cameraAerialAngle === true,
+      },
+      globalIntentProfile: campaignData?.globalIntentProfile ?? null,
+      isClarified: false,
+      videoFormatId,
+      stagingChips,
+      productSceneDecorId,
+      productOpeningHookId,
+    };
+    const merged = { ...base, ...overrides };
+    const effId = merged.videoFormatId ?? videoFormatId;
+    const effProduct = getFormatById(effId)?.categoryId === "produit";
+    if (!effProduct) {
+      merged.productSceneDecorId = null;
+      merged.productOpeningHookId = null;
+    }
+    return merged;
+  };
+
+  useEffect(() => {
+    if (!isProductMode || !videoFormatId) return;
+    const prev = stagingChipsRef.current;
+    const normalized = normalizeProductStagingChipsForFormat(videoFormatId, prev);
+    const unchanged =
+      prev.length === normalized.length && prev.every((x, i) => x === normalized[i]);
+    if (unchanged) return;
+    setStagingChips(normalized);
+    const d = getDialogueDefaultForMiseId(normalized[0]);
+    setDialogueEnabled(d);
+    onCampaignChange?.(
+      buildCampaignSnapshot({
+        stagingChips: normalized,
+        dialogueEnabled: d,
+      })
+    );
+  }, [isProductMode, videoFormatId]);
 
   const setProfession = (v) => {
     setProfessionState(v);
@@ -458,12 +603,12 @@ export default function CampagneVWS({
     onCampaignChange?.(buildCampaignSnapshot({ profession: v }));
   };
 
-  const toggleProductStagingChip = (chipId) => {
-    const nextKeys = stagingChips.includes(chipId)
-      ? stagingChips.filter((k) => k !== chipId)
-      : [...stagingChips, chipId];
-    setStagingChips(nextKeys);
-    onCampaignChange?.(buildCampaignSnapshot({ stagingChips: nextKeys }));
+  const selectProductMiseEnScene = (miseId) => {
+    const next = [miseId];
+    const d = getDialogueDefaultForMiseId(miseId);
+    setStagingChips(next);
+    setDialogueEnabled(d);
+    onCampaignChange?.(buildCampaignSnapshot({ stagingChips: next, dialogueEnabled: d }));
   };
   const setLieuTournage = (v) => {
     const next = v === "chez_client" || v === "etablissement" || v === "neutre" ? v : "neutre";
@@ -507,6 +652,8 @@ export default function CampagneVWS({
     if (updates.idea !== undefined) setIdeaState(updates.idea);
     if (updates.styleDetails !== undefined) setStyleDetails(updates.styleDetails);
     if (updates.stagingChips !== undefined) setStagingChips([...updates.stagingChips]);
+    if (updates.productSceneDecorId !== undefined) setProductSceneDecorId(updates.productSceneDecorId);
+    if (updates.productOpeningHookId !== undefined) setProductOpeningHookId(updates.productOpeningHookId);
     if (updates.tempo !== undefined) setTempo(normalizeTempo(updates.tempo));
     if (updates.cameraFixed !== undefined) setCameraFixed(updates.cameraFixed);
     if (updates.revealMode !== undefined) setRevealMode(updates.revealMode);
@@ -644,84 +791,99 @@ export default function CampagneVWS({
     /** Même source que le libellé de format — évite le décalage videoFormatId local vs spec parent (prompt métier vs produit). */
     const isProductFormatForInspire = inspireFormatDef?.categoryId === "produit";
     const nomDuProduit = effectiveProfession;
+    const precisionsTrim = String(styleDetails ?? "").trim();
+
+    if (!effectiveFormatId || !getFormatById(effectiveFormatId)) {
+      setError("Choisis d’abord un format vidéo avec « Choisir un format ».");
+      return;
+    }
 
     if (isProductFormatForInspire) {
-      if (!nomDuProduit) {
-        setError("Indique d’abord le nom du produit pour utiliser « M'inspirer ».");
+      const missingNomDecor = getMissingInspireProductNomDecor({
+        nomDuProduit,
+        productSceneDecorId,
+      });
+      if (missingNomDecor.length > 0) {
+        setInspirePromesseHint(formatInspirePromesseHint(missingNomDecor));
         return;
       }
-    } else if (!effectiveProfession) {
+      if (productOpeningHookId === null) {
+        setInspirePromesseHint(
+          "Indique comment gérer les 3 premières secondes via le sélecteur sous la promesse."
+        );
+        return;
+      }
+      setInspirePromesseHint("");
+      setError("");
+
+      const decorDef = getProductDecorById(productSceneDecorId);
+      const decorPhrase = decorDef?.description?.trim() || "";
+      const promptBlocks = [`Produit : ${nomDuProduit}`, `Décor : ${decorPhrase}`];
+      if (productOpeningHookId && productOpeningHookId !== "none") {
+        const hookName = getProductHookById(productOpeningHookId)?.name?.trim();
+        if (hookName) promptBlocks.push(`Hook : ${hookName}`);
+      }
+      if (precisionsTrim) {
+        promptBlocks.push(`Précisions : ${precisionsTrim}`);
+      }
+      const userPromptProduct = `${promptBlocks.join("\n")}\n\nGénère une promesse pour ce produit dans cet univers.`;
+
+      setInspireProductAwaitingDelayedSpinner(true);
+      setInspireDelayedSpinnerVisible(false);
+      if (inspireSpinnerDelayTimerRef.current != null) {
+        clearTimeout(inspireSpinnerDelayTimerRef.current);
+        inspireSpinnerDelayTimerRef.current = null;
+      }
+      inspireSpinnerDelayTimerRef.current = setTimeout(() => {
+        inspireSpinnerDelayTimerRef.current = null;
+        setInspireDelayedSpinnerVisible(true);
+      }, 2000);
+
+      setInspireLoading(true);
+      try {
+        const text = await generateResponse(userPromptProduct, VWS_INSPIRE_PROMESSE_PRODUCT_SYSTEM, {
+          model: "gpt-4o-mini",
+          max_tokens: 120,
+          temperature: 0.9,
+        });
+        const trimmed = String(text || "").trim();
+        if (trimmed) setIdea(trimmed);
+      } catch (e) {
+        setError(e?.message || "Impossible de générer l'inspiration.");
+      } finally {
+        if (inspireSpinnerDelayTimerRef.current != null) {
+          clearTimeout(inspireSpinnerDelayTimerRef.current);
+          inspireSpinnerDelayTimerRef.current = null;
+        }
+        setInspireDelayedSpinnerVisible(false);
+        setInspireProductAwaitingDelayedSpinner(false);
+        setInspireLoading(false);
+      }
+      return;
+    }
+
+    if (!effectiveProfession) {
       setError(
         "Sélectionne d’abord ton métier dans la liste « Ton métier » pour utiliser « M'inspirer »."
       );
       return;
     }
-    if (!effectiveFormatId || !getFormatById(effectiveFormatId)) {
-      setError("Choisis d’abord un format vidéo avec « Choisir un format ».");
-      return;
-    }
+
     const metier = effectiveProfession;
+    setInspireProductAwaitingDelayedSpinner(false);
+    setInspireDelayedSpinnerVisible(false);
+    if (inspireSpinnerDelayTimerRef.current != null) {
+      clearTimeout(inspireSpinnerDelayTimerRef.current);
+      inspireSpinnerDelayTimerRef.current = null;
+    }
     setInspireLoading(true);
     setError("");
     try {
       const systemPromptBase =
         "Tu appliques strictement le prompt utilisateur et tu réponds uniquement par la scène demandée.";
-      const systemPromptProductInspire = `Tu es créatif pour des vidéos très courtes (TikTok, Instagram Reels) : l’accroche doit être comprise en ~2 secondes, avec une tension narrative immédiate.
-
-Chaque idée doit être courte (1–2 phrases max), concrète, filmable, et inclure au moins un de ces leviers : un problème ou un échec visible, une transformation nette, une réaction authentique (soulagement, surprise, incrédulité), ou un twist / moment de surprise.
-
-Évite le ton catalogue ou la description plate (« une personne utilise le produit, c’est bien »). Pas de liste, pas de tonalité publicitaire générique.
-
-Exemples de ton (ne recopie pas les sujets ; imite le niveau de tension et de précision visuelle) :
-
-❌ « Une personne utilise l’appareil photo et prend de belles photos. »
-✅ « Un parent rate tous les moments clés de l’anniversaire de son enfant avec son téléphone flou — puis sort le Nikon et gèle l’instant parfait en un clic. »
-
-❌ « Quelqu’un essaie la crème et trouve que c’est agréable. »
-✅ « Elle grimace devant son reflet terne dans le miroir, applique la crème en un geste sec — coupe : même lumière, même angle, la peau renvoie enfin la lumière et elle reste bouche bée. »
-
-Réponds uniquement par le texte de la scène demandée, sans guillemets ni préambule.`;
-
-      const systemPrompt = isProductFormatForInspire ? systemPromptProductInspire : systemPromptBase;
       const selectedLieu = getLieuOption(lieuTournage);
       const selectedFormatLabel = inspireFormatDef?.name || "Format non défini";
-      const stagingForInspire =
-        stagingChips.length > 0
-          ? stagingChips
-          : Array.isArray(campaignData?.stagingChips)
-            ? campaignData.stagingChips
-            : [];
-      const misEnSceneLabels = stagingForInspire
-        .map((id) => PRODUCT_STAGING_OPTIONS.find((o) => o.id === id)?.label)
-        .filter(Boolean);
-      const misEnScene =
-        misEnSceneLabels.length > 0
-          ? misEnSceneLabels.join(", ")
-          : "non précisée — déduis une mise en scène cohérente avec le format « " +
-            selectedFormatLabel +
-            " », en gardant le produit comme sujet principal";
-
-      const userPrompt = isProductFormatForInspire
-        ? `Produit à mettre en scène (nom exact, ne le remplace pas) : « ${nomDuProduit} ».
-
-Tâche : propose UNE idée de scène vidéo très courte, façon Reels/TikTok : on doit sentir le hook dès les premières images — tension, enjeu, puis pivot ou pay-off lié au produit.
-
-Le récit doit porter uniquement sur ce produit. N’utilise aucun autre nom de marque ni une idée importée d’ailleurs : invente à partir du nom ci-dessus + du format + du lieu.
-
-Type de mise en scène souhaité : ${misEnScene}
-
-Lieu / environnement : ${selectedLieu.sentence}
-
-Format vidéo : « ${selectedFormatLabel} » — respecte le type de plans et l’intention du format. Pas de décor « atelier / boutique métier » sauf si le lieu choisi l’implique déjà.
-
-Figures humaines : si besoin, une personne anonyme sans métier ni titre (pas expert, pas artisan, pas professionnel). Reste sur l’émotion ou le geste, pas sur une fiche socio-démographique.
-
-Règles :
-- 1 à 2 phrases maximum, une seule ligne narrative (pas de liste d’étapes)
-- Filmable en conditions réelles (sauf si le format impose clairement autre chose)
-- Mots interdits : magnifique, parfait, élégant, sublime, harmonieux, spectaculaire, impressionnant, superbe, splendide, symétrique, esthétique
-- Pas d’intro, pas de conclusion, pas de guillemets autour du texte`
-        : `Tu es un expert en création de vidéos courtes pour les réseaux sociaux.
+      const userPrompt = `Tu es un expert en création de vidéos courtes pour les réseaux sociaux.
 Génère une idée de scène vidéo de 8 secondes pour un ${metier}
 qui travaille ${selectedLieu.sentence}
 
@@ -751,7 +913,7 @@ Règles strictes :
   symétrique, esthétique
 - Rédige uniquement la description de la scène, en 1 à 2 phrases maximum
 - Pas d'introduction, pas de conclusion, pas de guillemets`;
-      const response = await generateResponse(userPrompt, systemPrompt, {
+      const response = await generateResponse(userPrompt, systemPromptBase, {
         max_tokens: 140,
         temperature: 0.42,
       });
@@ -904,22 +1066,33 @@ Réponds uniquement en JSON : { "person_visible": true/false }`;
           : lieuTournage;
       const selectedLieu = getLieuOption(effectiveLieuValue);
       const isProductModeRun = catalogFormatDef?.categoryId === "produit";
+      const effectiveLocationType = isProductModeRun
+        ? locationTypeFromProductDecor(productSceneDecorId)
+        : selectedLieu.value;
+      const lieuForSpec = getLieuOption(effectiveLocationType);
       const precisionsForModifiers = String(styleDetails ?? "").trim();
       const stagingLabelsRun = isProductModeRun
         ? stagingChips
-            .map((id) => PRODUCT_STAGING_OPTIONS.find((o) => o.id === id)?.label)
+            .map((id) => getProductMiseDef(id)?.label)
             .filter(Boolean)
         : [];
       const sceneDescriptionBody =
         isProductModeRun && stagingLabelsRun.length > 0
           ? `${safeIdea}\n\nMise en scène souhaitée : ${stagingLabelsRun.join(", ")}`
           : safeIdea;
-      const ideaWithSceneContext = `LIEU DE LA SCÈNE : ${selectedLieu.sentence}
+      const decorLine = buildProductSceneDecorSentence(productSceneDecorId);
+      const hookLineRun = buildProductOpeningHookSentence(productOpeningHookId);
+      const sceneContextHeading = isProductModeRun
+        ? [decorLine, hookLineRun].filter(Boolean).join("\n\n") ||
+          "Environnement / décor : à déduire de la promesse produit et du format."
+        : `LIEU DE LA SCÈNE : ${selectedLieu.sentence}`;
+      const ideaWithSceneContext = `${sceneContextHeading}
 
 DESCRIPTION DE LA SCÈNE : ${sceneDescriptionBody}`;
+      const lieuSentenceForGate = isProductModeRun ? decorLine : selectedLieu.sentence;
 
       const shouldSkipContradictionCheck = flowOptions?.skipContradictionCheck === true;
-      if (!shouldSkipContradictionCheck && safeIdea) {
+      if (!shouldSkipContradictionCheck && safeIdea && !isProductModeRun) {
         const contradictionPrompt = `Tu es un assistant qui analyse si la description d'une scène vidéo contredit le lieu sélectionné par l'utilisateur.
 Lieu sélectionné : ${selectedLieu.label}
 Description de la scène : ${safeIdea}
@@ -1067,7 +1240,7 @@ Réponds uniquement en JSON :
         if (gate.status === "NEEDS_CLARIFICATION") {
           const precheck = await checkGateQuestionAlreadyAnswered({
             formatLabel: selectedFormatLabel,
-            lieuSentence: selectedLieu.sentence,
+            lieuSentence: lieuSentenceForGate,
             ideaText: safeIdea,
             questionLabel: gate.question,
           });
@@ -1326,10 +1499,12 @@ Réponds uniquement en JSON :
           ...createDefaultCampaignGenerationSpec().campaign,
           profession: safeProfession,
           video_format_id: videoFormatId,
-          location_type: selectedLieu.value,
+          location_type: lieuForSpec.value,
           core_idea: ideaWithSceneContext,
           style_details: precisionsForModifiers || "",
           staging_chips: [...stagingChips],
+          product_scene_decor_id: isProductModeRun ? productSceneDecorId : null,
+          product_opening_hook_id: isProductModeRun ? productOpeningHookId : null,
           intent_profile: globalIntentProfile ?? buildMinimalIntentFallback({ idea: ideaWithSceneContext, selfieMode }),
           clarification: {
             ...createDefaultCampaignGenerationSpec().campaign.clarification,
@@ -1387,10 +1562,12 @@ Réponds uniquement en JSON :
       });
       const finalPayload = {
         profession: safeProfession,
-        lieuTournage: selectedLieu.value,
+        lieuTournage: lieuForSpec.value,
         idea: ideaWithSceneContext,
         styleDetails: precisionsForModifiers || "",
         stagingChips: [...stagingChips],
+        productSceneDecorId: isProductModeRun ? productSceneDecorId : null,
+        productOpeningHookId: isProductModeRun ? productOpeningHookId : null,
         videoFormatId,
         tempo: effectiveTempo,
         cameraFixed,
@@ -1841,48 +2018,120 @@ Réponds uniquement en JSON :
             ) : null}
           </div>
 
-          <div
-            className="h-px w-full bg-white/10"
-            style={{ marginTop: "32px", marginBottom: "16px" }}
-            aria-hidden="true"
-          />
+          {!isProductMode ? (
+            <>
+              <div
+                className="h-px w-full bg-white/10"
+                style={{ marginTop: "32px", marginBottom: "16px" }}
+                aria-hidden="true"
+              />
 
-          <div className="vws-campagne-block">
-            <div className="flex items-center gap-2">
-              <label className="vws-campagne-label !mb-0" htmlFor="campagne-lieu-tournage">
-                Où se passe la vidéo ?
-              </label>
-              <span className="relative inline-flex items-center group shrink-0">
-                <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-cyan-500/35 bg-cyan-500/10 text-[10px] font-semibold text-cyan-200 cursor-help">
-                  i
-                </span>
-                <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 hidden w-72 -translate-x-1/2 rounded-lg border border-cyan-500/25 bg-[#0d1a22] px-2.5 py-2 text-[11px] leading-snug text-cyan-100 shadow-lg group-hover:block">
-                  Le lieu du menu est la source officielle utilisée dans la génération.
-                </span>
-              </span>
-            </div>
-            <select
-              id="campagne-lieu-tournage"
-              value={lieuTournage}
-              onChange={(e) => setLieuTournage(e.target.value)}
-              className="vws-campagne-field vws-campagne-select vws-campagne-field--touch"
-            >
-              {LIEU_TOURNAGE_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-            <p className="text-xs text-gray-400" style={{ marginTop: "6px", marginBottom: "12px" }}>
-              Sélectionne l'environnement principal de la scène. Le texte d'idée enrichit la scène sans redéfinir ce lieu.
-            </p>
-          </div>
+              <div className="vws-campagne-block">
+                <div className="flex items-center gap-2">
+                  <label className="vws-campagne-label !mb-0" htmlFor="campagne-lieu-tournage">
+                    Où se passe la vidéo ?
+                  </label>
+                  <span className="relative inline-flex items-center group shrink-0">
+                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-cyan-500/35 bg-cyan-500/10 text-[10px] font-semibold text-cyan-200 cursor-help">
+                      i
+                    </span>
+                    <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 hidden w-72 -translate-x-1/2 rounded-lg border border-cyan-500/25 bg-[#0d1a22] px-2.5 py-2 text-[11px] leading-snug text-cyan-100 shadow-lg group-hover:block">
+                      Le lieu du menu est la source officielle utilisée dans la génération.
+                    </span>
+                  </span>
+                </div>
+                <select
+                  id="campagne-lieu-tournage"
+                  value={lieuTournage}
+                  onChange={(e) => setLieuTournage(e.target.value)}
+                  className="vws-campagne-field vws-campagne-select vws-campagne-field--touch"
+                >
+                  {LIEU_TOURNAGE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-400" style={{ marginTop: "6px", marginBottom: "12px" }}>
+                  Sélectionne l'environnement principal de la scène. Le texte d'idée enrichit la scène sans redéfinir ce lieu.
+                </p>
+              </div>
 
-          <div
-            className="h-px w-full bg-white/10"
-            style={{ marginBottom: "16px" }}
-            aria-hidden="true"
-          />
+              <div
+                className="h-px w-full bg-white/10"
+                style={{ marginBottom: "16px" }}
+                aria-hidden="true"
+              />
+            </>
+          ) : (
+            <>
+              <div
+                className="h-px w-full bg-white/10"
+                style={{ marginTop: "32px", marginBottom: "16px" }}
+                aria-hidden="true"
+              />
+              <div className="vws-campagne-block" style={{ marginBottom: "12px" }}>
+                <div className="vws-campagne-label mb-2">Décor de la scène</div>
+                {!selectedProductDecor ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowDecorModal(true)}
+                    className="flex w-full cursor-pointer items-center gap-2.5 rounded-[10px] border border-dashed border-white/25 bg-[#161d2e] px-3 py-2.5 text-left transition-colors hover:border-emerald-500/50"
+                  >
+                    <div
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-sky-500/20 bg-sky-500/10"
+                      aria-hidden
+                    >
+                      <MapPin className="h-4 w-4 text-sky-400" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[12px] font-medium text-gray-100">
+                        Choisir un décor — Chambre, nature, rue, désert…
+                      </div>
+                    </div>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-gray-500" aria-hidden />
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2.5 rounded-[10px] border border-emerald-500/45 bg-[#161d2e] px-3 py-2.5">
+                    <div
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-sky-500/20 bg-sky-500/10"
+                      aria-hidden
+                    >
+                      <ProductCampagneLucideIcon
+                        name={selectedProductDecor.iconId}
+                        className="h-4 w-4 text-sky-400"
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-400/95">
+                        {decorCategoryLabelFr(selectedProductDecor.category)}
+                      </div>
+                      <div className="text-[12px] font-semibold text-white">{selectedProductDecor.name}</div>
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-0.5 text-[11px] font-medium">
+                      <button
+                        type="button"
+                        className="text-emerald-400 hover:underline"
+                        onClick={() => setShowDecorModal(true)}
+                      >
+                        Changer
+                      </button>
+                      <button
+                        type="button"
+                        className="text-gray-500 hover:text-red-400"
+                        onClick={() => {
+                          setProductSceneDecorId(null);
+                          onCampaignChange?.(buildCampaignSnapshot({ productSceneDecorId: null }));
+                        }}
+                      >
+                        Retirer
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
 
           {/* Bloc 3 — Idée principale */}
           <div
@@ -1927,7 +2176,8 @@ Réponds uniquement en JSON :
                 }
                 className="vws-campagne-inspire-btn inline-flex shrink-0 items-center gap-1.5 disabled:opacity-50 self-center md:self-auto"
               >
-                {inspireLoading ? (
+                {inspireLoading &&
+                (!inspireProductAwaitingDelayedSpinner || inspireDelayedSpinnerVisible) ? (
                   <span className="vws-campagne-inspire-spinner shrink-0" aria-hidden />
                 ) : (
                   <Sparkles className="h-3 w-3 shrink-0" />
@@ -1946,27 +2196,149 @@ Réponds uniquement en JSON :
                   placeholder={productPromessePlaceholder}
                   autoComplete="off"
                 />
-                <div className="mt-4 mb-8 max-[640px]:mb-6 md:mb-10">
+                {inspirePromesseHint ? (
+                  <p className="mt-1.5 text-[11px] leading-snug text-gray-500">{inspirePromesseHint}</p>
+                ) : null}
+                <hr className="my-6 border-0 border-t border-white/10 max-[640px]:my-4" />
+                <div className="mb-2">
+                  <div className="vws-campagne-label mb-2 flex flex-wrap items-center gap-2">
+                    <span>Hook d&apos;accroche</span>
+                    <span className="rounded-md border border-white/10 bg-[#161d2e] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-[#8a8f9a]">
+                      optionnel
+                    </span>
+                  </div>
+                  {selectedProductHook ? (
+                    <div className="flex items-center gap-2.5 rounded-[10px] border border-emerald-500/45 bg-[#161d2e] px-3 py-2.5">
+                      <div
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-emerald-500/20 bg-emerald-500/10"
+                        aria-hidden
+                      >
+                        <ProductCampagneLucideIcon
+                          name={selectedProductHook.iconId}
+                          className="h-4 w-4 text-emerald-400"
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div
+                          className={`text-[11px] font-semibold uppercase tracking-wide ${
+                            selectedProductHook.category === "stunt"
+                              ? "text-red-400/90"
+                              : "text-violet-400/90"
+                          }`}
+                        >
+                          {hookCategoryLabelFr(selectedProductHook.category)}
+                        </div>
+                        <div className="text-[12px] font-semibold text-white">{selectedProductHook.name}</div>
+                      </div>
+                      <div className="flex shrink-0 flex-col items-end gap-0.5 text-[11px] font-medium">
+                        <button
+                          type="button"
+                          className="text-emerald-400 hover:underline"
+                          onClick={() => setShowHookModal(true)}
+                        >
+                          Changer
+                        </button>
+                        <button
+                          type="button"
+                          className="text-gray-500 hover:text-red-400"
+                          onClick={() => {
+                            setProductOpeningHookId(null);
+                            onCampaignChange?.(buildCampaignSnapshot({ productOpeningHookId: null }));
+                          }}
+                        >
+                          Retirer
+                        </button>
+                      </div>
+                    </div>
+                  ) : isExplicitNoProductHook ? (
+                    <div className="flex items-center gap-2.5 rounded-[10px] border border-emerald-500/35 bg-[#161d2e] px-3 py-2.5">
+                      <div
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-[#0f1420]"
+                        aria-hidden
+                      >
+                        <Zap className="h-4 w-4 text-gray-500" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-[#8a8f9a]">
+                          Optionnel
+                        </div>
+                        <div className="text-[12px] font-semibold text-white">Pas de hook</div>
+                      </div>
+                      <div className="flex shrink-0 flex-col items-end gap-0.5 text-[11px] font-medium">
+                        <button
+                          type="button"
+                          className="text-emerald-400 hover:underline"
+                          onClick={() => setShowHookModal(true)}
+                        >
+                          Changer
+                        </button>
+                        <button
+                          type="button"
+                          className="text-gray-500 hover:text-red-400"
+                          onClick={() => {
+                            setProductOpeningHookId(null);
+                            onCampaignChange?.(buildCampaignSnapshot({ productOpeningHookId: null }));
+                          }}
+                        >
+                          Retirer
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setShowHookModal(true)}
+                      className="flex w-full cursor-pointer items-center gap-2.5 rounded-[10px] border border-dashed border-white/25 bg-[#161d2e] px-3 py-2.5 text-left transition-colors hover:border-emerald-500/50"
+                    >
+                      <div
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-emerald-500/20 bg-emerald-500/10"
+                        aria-hidden
+                      >
+                        <Zap className="h-4 w-4 text-emerald-400" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[12px] font-medium text-gray-100">
+                          Choisir un hook pour les 3 premières secondes
+                        </div>
+                        <div className="mt-0.5 text-[10px] leading-snug text-[#8a8f9a]">
+                          Les 3 premières secondes décident si la vidéo est regardée ou skippée.
+                        </div>
+                      </div>
+                      <ChevronRight className="h-4 w-4 shrink-0 text-gray-500" aria-hidden />
+                    </button>
+                  )}
+                </div>
+                <hr className="my-6 border-0 border-t border-white/10 max-[640px]:my-4" />
+                <div className="mt-0 mb-8 max-[640px]:mb-6 md:mb-10">
                   <span className="vws-campagne-label mb-2 block">Mise en scène</span>
                   <div className="flex flex-wrap gap-2">
-                    {PRODUCT_STAGING_OPTIONS.map((opt) => {
-                      const selected = stagingChips.includes(opt.id);
+                    {productMiseOptions.map((opt) => {
+                      const selected = stagingChips[0] === opt.id;
                       return (
                         <button
                           key={opt.id}
                           type="button"
-                          onClick={() => toggleProductStagingChip(opt.id)}
-                          className={`rounded-full border px-3 py-1.5 text-xs transition-all duration-150 ${
+                          onClick={() => selectProductMiseEnScene(opt.id)}
+                          className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition-all duration-150 ${
                             selected
                               ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-200"
                               : "border-[#1e2845] bg-[#161d2e] text-gray-300 hover:border-[#2a3555]"
                           }`}
                         >
+                          <ProductCampagneLucideIcon name={opt.iconId} className="h-3.5 w-3.5 shrink-0 opacity-90" />
                           {opt.label}
                         </button>
                       );
                     })}
                   </div>
+                  {productMiseNotice ? (
+                    <p className="mt-2 flex gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.07] px-2.5 py-2 text-[11px] leading-snug text-emerald-100/90">
+                      <span className="shrink-0 text-emerald-400" aria-hidden>
+                        ℹ
+                      </span>
+                      <span>{productMiseNotice}</span>
+                    </p>
+                  ) : null}
                 </div>
               </>
             ) : (
@@ -2007,7 +2379,17 @@ Réponds uniquement en JSON :
             <div className="vws-campagne-dialogue-row border border-[#222] rounded-xl bg-[#111]">
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-gray-200">Dialogue activé</p>
-                <p className="text-sm text-gray-500 mt-0.5">(modifiable dans Vidéo virale)</p>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  {isProductMode ? (
+                    getDialogueDefaultForMiseId(stagingChips[0]) ? (
+                      <>ON par défaut — modifiable</>
+                    ) : (
+                      <>OFF par défaut — modifiable</>
+                    )
+                  ) : (
+                    <>Modifiable dans Vidéo virale</>
+                  )}
+                </p>
               </div>
               <button
                 type="button"
@@ -2131,6 +2513,27 @@ Réponds uniquement en JSON :
         professionLabel={profession}
         onConfirm={applyVideoFormatChoice}
         presentation={formatPickerPresentation === "studioOverlay" ? "studioOverlay" : "portal"}
+      />
+      <ModaleChoixDecorProduit
+        open={showDecorModal}
+        onClose={() => setShowDecorModal(false)}
+        presentation={formatPickerPresentation === "studioOverlay" ? "studioOverlay" : "portal"}
+        currentId={productSceneDecorId}
+        onSelect={(id) => {
+          setProductSceneDecorId(id);
+          onCampaignChange?.(buildCampaignSnapshot({ productSceneDecorId: id }));
+        }}
+      />
+      <ModaleChoixHookProduit
+        open={showHookModal}
+        onClose={() => setShowHookModal(false)}
+        presentation={formatPickerPresentation === "studioOverlay" ? "studioOverlay" : "portal"}
+        currentId={productOpeningHookId === "none" ? null : productOpeningHookId}
+        onSelect={(id) => {
+          const next = id === null ? "none" : id;
+          setProductOpeningHookId(next);
+          onCampaignChange?.(buildCampaignSnapshot({ productOpeningHookId: next }));
+        }}
       />
     </div>
 
