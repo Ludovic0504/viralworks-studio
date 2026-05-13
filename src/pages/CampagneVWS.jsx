@@ -513,6 +513,10 @@ export default function CampagneVWS({
     if (updates.cinematicMovement !== undefined) setCinematicMovement(updates.cinematicMovement);
     if (updates.selfieMode !== undefined) setSelfieMode(updates.selfieMode);
     if (updates.sequenceType !== undefined) setSequenceType(updates.sequenceType);
+    if (updates.microAnswer !== undefined) setMicroAnswer(updates.microAnswer);
+    if (updates.tempoCompressionDecision !== undefined) {
+      setTempoCompressionDecision(updates.tempoCompressionDecision);
+    }
     if (updates.causalAgentSelection !== undefined) setCausalAgentSelection(updates.causalAgentSelection);
     if (updates.cameraAerialAngle !== undefined) setCameraAerialAngle(updates.cameraAerialAngle);
     if (updates.narrativeContinuity !== undefined) setNarrativeContinuity(updates.narrativeContinuity);
@@ -553,6 +557,15 @@ export default function CampagneVWS({
         clarifyAnswer: updates.clarifyAnswer ?? clarifyAnswer,
         isClarified: updates.isClarified ?? false,
         videoFormatId: updates.videoFormatId !== undefined ? updates.videoFormatId : videoFormatId,
+        ...(updates.clarificationHistory !== undefined
+          ? { clarificationHistory: updates.clarificationHistory }
+          : {}),
+        ...(updates.globalIntentProfile !== undefined
+          ? { globalIntentProfile: updates.globalIntentProfile }
+          : {}),
+        ...(updates.clarifyAxesResolved !== undefined
+          ? { clarifyAxesResolved: updates.clarifyAxesResolved }
+          : {}),
       })
     );
   };
@@ -560,6 +573,7 @@ export default function CampagneVWS({
   const applyVideoFormatChoice = (formatId) => {
     const fmt = getFormatById(formatId);
     if (!fmt) return;
+    if (formatId === videoFormatId) return;
     const prevFmt = getFormatById(videoFormatId);
     const wasProduct = prevFmt?.categoryId === "produit";
     const willBeProduct = fmt.categoryId === "produit";
@@ -580,7 +594,29 @@ export default function CampagneVWS({
         payload.profession = "";
       }
     }
-    syncState(payload);
+    const ideaPipelineReset = {
+      idea: "",
+      microAnswer: null,
+      tempoCompressionDecision: null,
+      causalAgentSelection: null,
+      cameraAerialAngle: null,
+      narrativeContinuity: null,
+      timelapseCameraPov: null,
+      initialStateSelection: null,
+      gateResult: null,
+      clarifyAnswer: null,
+      globalIntentProfile: null,
+      clarificationHistory: [],
+      clarifyAxesResolved: {
+        modeAgent: false,
+        initialT0: false,
+        causalAgent: false,
+        cameraAerialAngle: false,
+      },
+      isClarified: false,
+    };
+    setMicroQuestion(null);
+    syncState({ ...payload, ...ideaPipelineReset });
   };
 
   const isIdeaTooDenseForRealtime = (text) => {
