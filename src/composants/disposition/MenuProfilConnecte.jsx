@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { ChevronDown } from "lucide-react";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import LienNavSync from "@/composants/disposition/LienNavSync";
 import { getUserCredits, USER_CREDITS_UPDATED_EVENT } from "@/bibliotheque/supabase/credits";
@@ -205,36 +206,47 @@ export default function MenuProfilConnecte({ onLogout, signingOut }) {
             setMenuOpen((v) => !v);
           }}
         >
-          <svg
-            className="pointer-events-none absolute left-0 top-0 h-10 w-10"
-            viewBox="0 0 40 40"
-            aria-hidden
-          >
-            <circle
-              cx="20"
-              cy="20"
-              r={RING_R}
-              fill="none"
-              stroke="rgba(255,255,255,0.08)"
-              strokeWidth="2.5"
-            />
-            <circle
-              cx="20"
-              cy="20"
-              r={RING_R}
-              fill="none"
-              stroke={accentColor}
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeDasharray={RING_C}
-              strokeDashoffset={strokeDashoffset}
-              transform="rotate(-90 20 20)"
-            />
-          </svg>
-          <span
-            className="relative z-[1] flex h-[34px] w-[34px] items-center justify-center rounded-full border-2 border-white/[0.15] bg-[#f5d84e] text-[13px] font-semibold text-[#0d0f17]"
-          >
-            {initials}
+          <span className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center">
+            <svg
+              className="pointer-events-none absolute left-0 top-0 h-10 w-10"
+              viewBox="0 0 40 40"
+              aria-hidden
+            >
+              <circle
+                cx="20"
+                cy="20"
+                r={RING_R}
+                fill="none"
+                stroke="rgba(255,255,255,0.08)"
+                strokeWidth="2.5"
+              />
+              <circle
+                cx="20"
+                cy="20"
+                r={RING_R}
+                fill="none"
+                stroke={accentColor}
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeDasharray={RING_C}
+                strokeDashoffset={strokeDashoffset}
+                transform="rotate(-90 20 20)"
+              />
+            </svg>
+            <span
+              className="relative z-[1] flex h-[34px] w-[34px] items-center justify-center rounded-full border-2 border-white/[0.15] bg-[#f5d84e] text-[13px] font-semibold text-[#0d0f17]"
+            >
+              {initials}
+            </span>
+            <span
+              aria-hidden
+              className="pointer-events-none absolute bottom-0 right-0 z-[2] flex h-[13px] w-[13px] items-center justify-center rounded-[3px] border border-white/25 bg-[#0c0d10] shadow-[0_1px_2px_rgba(0,0,0,0.45)]"
+            >
+              <ChevronDown
+                className={`h-[11px] w-[11px] shrink-0 text-gray-200 transition-transform duration-200 ease-out ${menuOpen ? "rotate-180" : ""}`}
+                strokeWidth={2.25}
+              />
+            </span>
           </span>
         </button>
 
