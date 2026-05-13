@@ -1,0 +1,126 @@
+-- Journal des événements (/lab) : jeu de données de référence (7 entrées, mai 2026).
+-- Remplace tout le contenu de la table pour aligner titres, dates et compteurs produit.
+
+delete from public.nouveautes;
+
+insert into public.nouveautes (
+  id,
+  title,
+  description,
+  type,
+  category,
+  redirect_path,
+  redirect_label,
+  icon_name,
+  is_active,
+  created_by,
+  published_at,
+  created_at,
+  updated_at
+)
+values
+  (
+    gen_random_uuid(),
+    'Mode Produit : mets ton produit en avant',
+    $d$Tu peux maintenant créer une vidéo centrée sur un produit spécifique. Quand tu choisis un format "Produit", les champs s'adaptent automatiquement : tu renseignes le nom de ton produit et l'app construit la scène autour de lui pour un rendu encore plus pro et engageant.$d$,
+    'feature',
+    'Création',
+    null,
+    null,
+    'Rocket',
+    true,
+    null,
+    timestamptz '2026-05-13 12:00:00+00',
+    now(),
+    now()
+  ),
+  (
+    gen_random_uuid(),
+    'Nouveau bouton profil en haut à droite',
+    $d$Ton espace personnel est maintenant accessible en un clic via le rond avec tes initiales en haut à droite. Tu vois tes crédits restants d'un coup d'œil, tu accèdes à ton abonnement, et tu retrouves toutes tes options sans chercher.$d$,
+    'improvement',
+    'Fonctionnalité',
+    null,
+    null,
+    'Users',
+    true,
+    null,
+    timestamptz '2026-05-13 11:00:00+00',
+    now(),
+    now()
+  ),
+  (
+    gen_random_uuid(),
+    'Coaching personnalisé disponible',
+    $d$Tu veux aller plus loin avec l'IA ? Un accompagnement humain est maintenant disponible directement depuis ton profil. Apprentissage, mise en place, stratégie sur-mesure — pour les entrepreneurs qui veulent accélérer sérieusement. Places très limitées.$d$,
+    'feature',
+    'Fonctionnalité',
+    'https://tally.so/r/jaGPrQ',
+    'Découvrir',
+    'Star',
+    true,
+    null,
+    timestamptz '2026-05-13 10:00:00+00',
+    now(),
+    now()
+  ),
+  (
+    gen_random_uuid(),
+    'Nouvelle logique de création vidéo',
+    $d$Le parcours de création vidéo a été repensé : étapes plus claires, meilleure articulation entre script, visuels et export, pour passer de l'idée à la vidéo finie avec moins de friction et une meilleure lisibilité à chaque étape.$d$,
+    'feature',
+    'Création',
+    null,
+    null,
+    'Video',
+    true,
+    null,
+    timestamptz '2026-01-22 12:00:00+00',
+    now(),
+    now()
+  ),
+  (
+    gen_random_uuid(),
+    'Simplification des abonnements',
+    $d$La boutique met en avant les offres importantes, avec des libellés et un parcours d'achat simplifiés pour choisir l'abonnement ou les crédits adaptés à ton usage, sans te perdre dans les détails.$d$,
+    'improvement',
+    'Boutique',
+    null,
+    null,
+    'ShoppingBag',
+    true,
+    null,
+    timestamptz '2026-01-22 11:00:00+00',
+    now(),
+    now()
+  ),
+  (
+    gen_random_uuid(),
+    'Amélioration de la page Informations utiles',
+    $d$La page Informations utiles a été réorganisée : contenus plus lisibles, sections mieux structurées et repères visuels pour retrouver rapidement les bonnes pratiques et astuces liées à la création sur ViralWorks.$d$,
+    'update',
+    'Création',
+    null,
+    null,
+    'BookOpen',
+    true,
+    null,
+    timestamptz '2026-01-14 12:00:00+00',
+    now(),
+    now()
+  ),
+  (
+    gen_random_uuid(),
+    'gestion du script avec historique',
+    $d$Ton script bénéficie désormais d'un historique : tu peux retrouver des versions précédentes, comparer et reprendre une base plus ancienne sans repartir de zéro lorsque tu itères avec l'IA.$d$,
+    'improvement',
+    'Fonctionnalité',
+    null,
+    null,
+    'History',
+    true,
+    null,
+    timestamptz '2026-01-13 12:00:00+00',
+    now(),
+    now()
+  );

@@ -33,6 +33,8 @@ import {
   Trash2,
   CheckCircle,
   XCircle,
+  Star,
+  ShoppingBag,
 } from "lucide-react";
 
 const EVENT_TYPES = {
@@ -83,6 +85,8 @@ const ICON_MAP = {
   TrendingUp,
   CheckCircle2,
   Zap,
+  Star,
+  ShoppingBag,
 };
 
 export default function Lab() {
@@ -200,6 +204,7 @@ export default function Lab() {
       features: events.filter(e => e.type === "feature" || e.type === "creation" || e.type === "fonctionnalite").length,
       improvements: events.filter(e => e.type === "improvement").length,
       fixes: events.filter(e => e.type === "fix").length,
+      updates: events.filter(e => e.type === "update").length,
     };
   }, [events]);
 
@@ -212,7 +217,7 @@ export default function Lab() {
           subtitle="Découvrez l'évolution et les nouveautés de la plateforme"
         />
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8 mb-8">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mt-8 mb-8">
           <div className="glass-strong rounded-xl border border-white/10 p-4 text-center">
             <div className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 to-violet-300">
               {stats.total}
@@ -230,6 +235,10 @@ export default function Lab() {
           <div className="glass-strong rounded-xl border border-white/10 p-4 text-center">
             <div className="text-2xl font-bold text-violet-300">{stats.fixes}</div>
             <div className="text-sm text-gray-400 mt-1">Corrections</div>
+          </div>
+          <div className="glass-strong rounded-xl border border-white/10 p-4 text-center col-span-2 sm:col-span-1 lg:col-span-1">
+            <div className="text-2xl font-bold text-yellow-300">{stats.updates}</div>
+            <div className="text-sm text-gray-400 mt-1">Mises à jour</div>
           </div>
         </div>
 
@@ -424,13 +433,25 @@ export default function Lab() {
                             </p>
                             
                             {event.link && (
-                              <Link
-                                to={event.link}
-                                className="inline-flex items-center gap-1.5 text-sm font-medium text-emerald-400 hover:text-emerald-300 transition-colors group/link"
-                              >
-                                {event.linkLabel}
-                                <Sparkles className="w-4 h-4 group-hover/link:scale-110 transition-transform" />
-                              </Link>
+                              /^https?:\/\//i.test(event.link) ? (
+                                <a
+                                  href={event.link}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1.5 text-sm font-medium text-emerald-400 hover:text-emerald-300 transition-colors group/link"
+                                >
+                                  {event.linkLabel}
+                                  <Sparkles className="w-4 h-4 group-hover/link:scale-110 transition-transform" />
+                                </a>
+                              ) : (
+                                <Link
+                                  to={event.link}
+                                  className="inline-flex items-center gap-1.5 text-sm font-medium text-emerald-400 hover:text-emerald-300 transition-colors group/link"
+                                >
+                                  {event.linkLabel}
+                                  <Sparkles className="w-4 h-4 group-hover/link:scale-110 transition-transform" />
+                                </Link>
+                              )
                             )}
 
                             {isAdminUser && (

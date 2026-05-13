@@ -1,0 +1,187 @@
+# Secrets GitHub Actions à configurer manuellement :
+#   Settings → Secrets and variables → Actions
+#   - OPENAI_API_KEY
+#   - SUPABASE_URL
+#   - SUPABASE_SERVICE_ROLE_KEY
+
+name: Changelog auto (journal des événements)
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  nouveautes-from-news-commits:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Traiter les commits [news] (OpenAI + Supabase)
+        continue-on-error: true
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.event.after }}
+          SYSTEM_PROMPT: |
+            Tu es un assistant qui rédige des entrées de changelog pour une app SaaS appelée ViralWorks Studio. L'app est en français, destinée à des entrepreneurs et créateurs de contenu.
+
+            À partir du message de commit fourni, génère une entrée changelog en JSON avec exactement ces champs :
+            - title : titre court et clair (max 8 mots)
+            - description : explication simple pour un utilisateur non technique (2-3 phrases max)
+            - type : un parmi "Nouvelle fonctionnalité" | "Amélioration" | "Correction" | "Mise à jour"
+            - category : un parmi "Création" | "Fonctionnalité" | "Boutique"
+            - published_at : date du jour au format ISO
+
+            Réponds uniquement en JSON valide, sans markdown, sans commentaire.
+        run: |
+          set +e
+          log_warn() { echo "::warning::$*"; }
+
+          if [ -z "$OPENAI_API_KEY" ] || [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            log_warn "Secret manquant (OPENAI_API_KEY, SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY) — étape ignorée."
+            exit 0
+          fi
+
+          ZERO=0000000000000000000000000000000000000000
+          if [ "$BEFORE_SHA" = "$ZERO" ]; then
+            COMMIT_LIST="$AFTER_SHA"
+            log_warn "before=$ZERO — seul le commit $AFTER_SHA est traité (push initial / nouvelle branche)."
+          else
+            COMMIT_LIST=$(git rev-list --reverse "${BEFORE_SHA}..${AFTER_SHA}" 2>/dev/null) || true
+          fi
+
+          if [ -z "$COMMIT_LIST" ]; then
+            log_warn "Aucun commit dans la plage — rien à faire."
+            exit 0
+          fi
+
+          map_type_fr_to_db() {
+            case "$1" in
+              "Nouvelle fonctionnalité") echo "feature" ;;
+              "Amélioration") echo "improvement" ;;
+              "Correction") echo "fix" ;;
+              "Mise à jour") echo "update" ;;
+              *) echo "" ;;
+            esac
+          }
+
+          strip_fences() {
+            sed -e 's/^[[:space:]]*```json[[:space:]]*//' -e 's/^[[:space:]]*```[[:space:]]*//' -e 's/[[:space:]]*```[[:space:]]*$//' <<<"$1"
+          }
+
+          for SHA in $COMMIT_LIST; do
+            SUBJECT=$(git log -1 --format=%s "$SHA" 2>/dev/null) || continue
+            case "$SUBJECT" in
+              \[news\]*) ;;
+              *) continue ;;
+            esac
+
+            BODY_REST=$(git log -1 --format=%b "$SHA" 2>/dev/null)
+            FIRST_CLEAN=$(sed 's/^\[news\][[:space:]]*//' <<<"$SUBJECT")
+            if [ -n "$BODY_REST" ]; then
+              COMMIT_FOR_AI="${FIRST_CLEAN}"$'\n'"${BODY_REST}"
+            else
+              COMMIT_FOR_AI="${FIRST_CLEAN}"
+            fi
+
+            echo "Traitement commit $SHA (news)"
+
+            REQ=$(jq -n \
+              --arg model "gpt-4o" \
+              --arg sys "$SYSTEM_PROMPT" \
+              --arg user "$COMMIT_FOR_AI" \
+              '{model: $model, response_format: {type: "json_object"}, messages: [{role: "system", content: $sys}, {role: "user", content: $user}]}') || { log_warn "jq build OpenAI request failed for $SHA"; continue; }
+
+            HTTP_OPENAI=$(curl -sS -w "%{http_code}" -o /tmp/openai_out.json \
+              -X POST "https://api.openai.com/v1/chat/completions" \
+              -H "Authorization: Bearer ${OPENAI_API_KEY}" \
+              -H "Content-Type: application/json" \
+              -d "$REQ") || { log_warn "curl OpenAI failed for $SHA"; continue; }
+
+            if [ "$HTTP_OPENAI" != "200" ]; then
+              log_warn "OpenAI HTTP $HTTP_OPENAI pour $SHA : $(head -c 500 /tmp/openai_out.json)"
+              continue
+            fi
+
+            RAW_CONTENT=$(jq -r '.choices[0].message.content // empty' /tmp/openai_out.json 2>/dev/null) || { log_warn "jq parse OpenAI response failed for $SHA"; continue; }
+            if [ -z "$RAW_CONTENT" ] || [ "$RAW_CONTENT" = "null" ]; then
+              log_warn "Contenu OpenAI vide pour $SHA"
+              continue
+            fi
+
+            STRIPPED=$(strip_fences "$RAW_CONTENT")
+            if ! echo "$STRIPPED" | jq -e . >/dev/null 2>&1; then
+              log_warn "JSON OpenAI invalide pour $SHA : $(echo "$STRIPPED" | head -c 400)"
+              continue
+            fi
+
+            TITLE=$(echo "$STRIPPED" | jq -r '.title // empty')
+            DESC=$(echo "$STRIPPED" | jq -r '.description // empty')
+            TYPE_FR=$(echo "$STRIPPED" | jq -r '.type // empty' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            CATEGORY=$(echo "$STRIPPED" | jq -r '.category // empty' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            PUBLISHED=$(echo "$STRIPPED" | jq -r '.published_at // empty' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+            if [ -z "$TITLE" ] || [ -z "$DESC" ] || [ -z "$TYPE_FR" ] || [ -z "$CATEGORY" ] || [ -z "$PUBLISHED" ]; then
+              log_warn "Champs JSON manquants pour $SHA"
+              continue
+            fi
+
+            TYPE_DB=$(map_type_fr_to_db "$TYPE_FR")
+            if [ -z "$TYPE_DB" ]; then
+              log_warn "Type français non reconnu pour $SHA : $TYPE_FR"
+              continue
+            fi
+
+            NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+            NEW_ID=$(uuidgen | tr '[:upper:]' '[:lower:]')
+
+            INSERT_JSON=$(jq -n \
+              --arg id "$NEW_ID" \
+              --arg title "$TITLE" \
+              --arg desc "$DESC" \
+              --arg type "$TYPE_DB" \
+              --arg cat "$CATEGORY" \
+              --arg pub "$PUBLISHED" \
+              --arg ca "$NOW" \
+              --arg ua "$NOW" \
+              '{
+                id: $id,
+                title: $title,
+                description: $desc,
+                type: $type,
+                category: $cat,
+                redirect_path: null,
+                redirect_label: null,
+                icon_name: null,
+                is_active: true,
+                created_by: null,
+                published_at: $pub,
+                created_at: $ca,
+                updated_at: $ua
+              }') || { log_warn "jq build Supabase body failed for $SHA"; continue; }
+
+            HTTP_SUPA=$(curl -sS -w "%{http_code}" -o /tmp/supa_out.json \
+              -X POST "${SUPABASE_URL%/}/rest/v1/nouveautes" \
+              -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+              -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+              -H "Content-Type: application/json" \
+              -H "Prefer: return=minimal" \
+              -d "$INSERT_JSON") || { log_warn "curl Supabase failed for $SHA"; continue; }
+
+            if [ "$HTTP_SUPA" != "200" ] && [ "$HTTP_SUPA" != "201" ]; then
+              log_warn "Supabase HTTP $HTTP_SUPA pour $SHA : $(cat /tmp/supa_out.json | head -c 500)"
+              continue
+            fi
+
+            echo "Insert OK pour $SHA (id=$NEW_ID)"
+          done
+
+          exit 0

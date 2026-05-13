@@ -560,8 +560,11 @@ export default function CampagneVWS({
   const applyVideoFormatChoice = (formatId) => {
     const fmt = getFormatById(formatId);
     if (!fmt) return;
+    const prevFmt = getFormatById(videoFormatId);
+    const wasProduct = prevFmt?.categoryId === "produit";
+    const willBeProduct = fmt.categoryId === "produit";
     const r = fmt.rendering;
-    syncState({
+    const payload = {
       videoFormatId: formatId,
       tempo: normalizeTempo(r.tempo),
       sequenceType: r.sequenceType,
@@ -569,7 +572,15 @@ export default function CampagneVWS({
       revealMode: r.revealMode,
       cinematicMovement: r.cinematicMovement,
       selfieMode: r.selfieMode,
-    });
+    };
+    /** Évite de réutiliser le libellé métier (select) comme « nom du produit » — même state `profession`. */
+    if (willBeProduct && !wasProduct) {
+      const pTrim = String(profession ?? "").trim();
+      if (pTrim && VWS_METIER_LABELS.includes(pTrim)) {
+        payload.profession = "";
+      }
+    }
+    syncState(payload);
   };
 
   const isIdeaTooDenseForRealtime = (text) => {

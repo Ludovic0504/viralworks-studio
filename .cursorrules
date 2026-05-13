@@ -1,0 +1,10 @@
+## Journal des événements — avant chaque push Git
+
+Avant chaque `git push`, tu dois obligatoirement poser cette question à l’utilisateur :
+
+"Est-ce que ce changement doit apparaître dans le Journal des Événements pour les utilisateurs ? (oui / non)"
+
+- Si l’utilisateur répond **oui** → ajoute `[news]` au début du message de commit (première ligne).
+- Si l’utilisateur répond **non** → commit normal sans préfixe.
+
+Ne push jamais sans avoir posé cette question d’abord.
