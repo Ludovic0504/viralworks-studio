@@ -24,6 +24,7 @@ import {
   shouldDebitVideoCredit,
 } from "@/bibliotheque/workflowQuota";
 import {
+  appendVeo3VisualContinuityRules,
   createVertexVeoVideoTask,
   getSessionAccessTokenForVertexVeo,
   pollVertexVeoUntilComplete,
@@ -2478,7 +2479,7 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
     try {
       return [0, 1, 2].map((sceneIdx) => {
         const spec = buildOwnedSpecForSceneIndex(sceneIdx);
-        return buildVeo3Prompt(spec, sceneIdx).prompt;
+        return appendVeo3VisualContinuityRules(buildVeo3Prompt(spec, sceneIdx).prompt);
       });
     } catch (e) {
       console.warn("[Video] aperçu prompt technique Veo:", e);

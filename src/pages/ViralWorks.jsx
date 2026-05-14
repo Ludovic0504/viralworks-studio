@@ -29,12 +29,14 @@ import {
 } from "@/bibliotheque/viralWorksMediaCache";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
+import { useProfilStudio } from "@/contexte/FournisseurProfilStudio";
 import { useStudioLayoutOptions } from "@/contexte/StudioLayoutOptionsContext";
 import { getUserSubscription } from "@/bibliotheque/supabase/stripe";
 import {
   createDefaultCampaignGenerationSpec,
   normalizeCampaignGenerationSpec,
 } from "@/bibliotheque/campaignGenerationSpec";
+import { buildLegacyCampaignPatchFromSecteur } from "@/bibliotheque/sectorDefaults";
 import { serializeCampaignSpecForPrepareGate } from "@/bibliotheque/campaignPrepareGateSerialize";
 import { runStudioScriptRefinement } from "@/bibliotheque/studioScriptRefinement";
 import { Check, Download, X } from "lucide-react";
@@ -549,6 +551,8 @@ function buildLegacyCampaignDataFromSpec(spec) {
     },
     globalIntentProfile: s.campaign.intent_profile ?? null,
     isClarified: s.campaign.clarification.is_resolved === true,
+    productSceneDecorId: s.campaign.product_scene_decor_id ?? null,
+    productOpeningHookId: s.campaign.product_opening_hook_id ?? null,
   };
 }
 
@@ -584,6 +588,18 @@ function applyLegacyCampaignPatchToSpec(prevSpec, patch) {
             ? patch.stagingChips.filter((x) => typeof x === "string")
             : prev.campaign.staging_chips
           : prev.campaign.staging_chips,
+      product_scene_decor_id:
+        patch?.productSceneDecorId !== undefined
+          ? patch.productSceneDecorId && String(patch.productSceneDecorId).trim()
+            ? String(patch.productSceneDecorId).trim()
+            : null
+          : prev.campaign.product_scene_decor_id,
+      product_opening_hook_id:
+        patch?.productOpeningHookId !== undefined
+          ? patch.productOpeningHookId === null || patch.productOpeningHookId === ""
+            ? null
+            : String(patch.productOpeningHookId)
+          : prev.campaign.product_opening_hook_id,
       intent_profile:
         patch?.globalIntentProfile !== undefined ? patch.globalIntentProfile : prev.campaign.intent_profile,
       clarification: {
@@ -816,6 +832,7 @@ export default function ViralWorks() {
   const workflowHydrateCandidateRef = useRef(workflowInitial);
 
   const { session } = useAuth();
+  const { secteur, loading: profilStudioLoading } = useProfilStudio();
   const { runWithAuth } = useRequireAuthAction();
   const { setStudioLayout } = useStudioLayoutOptions();
   const [showScriptQuotaModal, setShowScriptQuotaModal] = useState(false);
@@ -825,6 +842,7 @@ export default function ViralWorks() {
   const [scriptGenStatus, setScriptGenStatus] = useState("idle");
   const scriptGenInFlightRef = useRef(false);
   const lastBrainSnapshotRef = useRef(null);
+  const sectorPrefillAppliedRef = useRef(false);
 
   const [currentStep, setCurrentStep] = useState(() => {
     const fromWorkflow = Number(workflowInitial?.currentStep);
@@ -858,6 +876,24 @@ export default function ViralWorks() {
     () => buildLegacyCampaignDataFromSpec(campaignGenerationSpec),
     [campaignGenerationSpec]
   );
+
+  useEffect(() => {
+    if (!session?.user?.id || !secteur?.trim()) return;
+    if (profilStudioLoading) return;
+    if (sectorPrefillAppliedRef.current) return;
+    setCampaignGenerationSpec((prev) => {
+      const s = normalizeCampaignGenerationSpec(prev);
+      const ideaEmpty = !String(s.campaign.core_idea ?? "").trim();
+      const noDecor = !s.campaign.product_scene_decor_id;
+      if (!(ideaEmpty && noDecor)) {
+        sectorPrefillAppliedRef.current = true;
+        return prev;
+      }
+      sectorPrefillAppliedRef.current = true;
+      const patch = buildLegacyCampaignPatchFromSecteur(secteur.trim(), s.campaign.video_format_id);
+      return applyLegacyCampaignPatchToSpec(s, patch);
+    });
+  }, [session?.user?.id, secteur, profilStudioLoading]);
   const [scriptPromptForImage, setScriptPromptForImage] = useState(() => {
     if (workflowInitial?.scriptPromptForImage !== undefined) {
       return normalizeScriptPayload(workflowInitial.scriptPromptForImage);
@@ -1374,13 +1410,20 @@ export default function ViralWorks() {
     setValidated(normalizeValidated({}));
     setCurrentStep(1);
     setScriptPromptForImage(normalizeScriptPayload(""));
-    setCampaignGenerationSpec(normalizeCampaignGenerationSpec(createDefaultCampaignGenerationSpec()));
+    sectorPrefillAppliedRef.current = true;
+    let spec = normalizeCampaignGenerationSpec(createDefaultCampaignGenerationSpec());
+    if (secteur?.trim()) {
+      spec = normalizeCampaignGenerationSpec(
+        applyLegacyCampaignPatchToSpec(spec, buildLegacyCampaignPatchFromSecteur(secteur.trim()))
+      );
+    }
+    setCampaignGenerationSpec(spec);
     setCampagneMountKey((k) => k + 1);
     setWorkflowVideoState({ status: "idle", videoId: null, lastError: "", provider: "veo3", createdAt: null });
     setMediaCacheMeta({ updatedAt: null, imageMediaId: null, videoMediaId: null });
     setShowWorkflowRecoveryChoice(false);
     resetImageStep();
-  }, [resetImageStep]);
+  }, [resetImageStep, secteur]);
 
   const handleResumeRecoveredWorkflow = useCallback(() => {
     setShowWorkflowRecoveryChoice(false);

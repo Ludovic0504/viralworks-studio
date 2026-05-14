@@ -19,6 +19,7 @@ import {
 } from "@/bibliotheque/workflowQuota";
 import { getUserPayments, getUserSubscription, cancelSubscription } from "@/bibliotheque/supabase/stripe";
 import { getUserProfile, updateUserProfile, uploadAvatar, deleteAvatar } from "@/bibliotheque/supabase/profil";
+import { SECTORS, getSectorLabelForDisplay } from "@/bibliotheque/sectorDefaults";
 import { 
   User, Mail, Calendar, Settings, LogOut, Edit2, Save, X, 
   FileText, Image as ImageIcon, Video, Sparkles, TrendingUp,
@@ -91,6 +92,7 @@ export default function Profil() {
     job: "",
     birth_date: "",
     avatar_url: "",
+    secteur: "",
   });
 
   useEffect(() => {
@@ -282,6 +284,7 @@ export default function Profil() {
           job: userProfile.job || "",
           birth_date: userProfile.birth_date || "",
           avatar_url: userProfile.avatar_url || "",
+          secteur: userProfile.secteur != null ? String(userProfile.secteur) : "",
         });
       }
     } catch (err) {
@@ -299,6 +302,7 @@ export default function Profil() {
         job: formData.job,
         birth_date: formData.birth_date,
         avatar_url: formData.avatar_url,
+        secteur: formData.secteur.trim() || null,
       });
 
       if (result.success) {
@@ -1041,6 +1045,26 @@ export default function Profil() {
                 </div>
 
                 <div>
+                  <label className="block text-xs text-gray-400 mb-1.5">Secteur d&apos;activité (Studio)</label>
+                  <input
+                    type="text"
+                    list="profil-secteur-suggestions"
+                    value={formData.secteur}
+                    onChange={(e) => setFormData({ ...formData, secteur: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-gray-200 placeholder-gray-500 focus:outline-none focus:border-emerald-500/50 transition-colors"
+                    placeholder="ex. artisan_btp ou une courte description…"
+                  />
+                  <datalist id="profil-secteur-suggestions">
+                    {SECTORS.map((s) => (
+                      <option key={s.id} value={s.id} label={`${s.icon} ${s.label}`} />
+                    ))}
+                  </datalist>
+                  <p className="mt-1 text-[11px] text-gray-500">
+                    Choisis une suggestion ou précise ton activité en texte libre (comme à l&apos;inscription Studio).
+                  </p>
+                </div>
+
+                <div>
                   <label className="block text-xs text-gray-400 mb-1.5 flex items-center gap-1">
                     <Calendar className="w-3 h-3" />
                     Date de naissance
@@ -1137,6 +1161,20 @@ export default function Profil() {
                   </div>
                 </div>
               )}
+
+              {profile?.secteur && String(profile.secteur).trim() ? (
+                <div className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/5 p-3 sm:items-center sm:gap-4 sm:p-4">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/20">
+                    <Sparkles className="h-5 w-5 text-emerald-400" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="mb-1 text-xs text-gray-400">Secteur (Studio)</p>
+                    <p className="break-words text-sm font-medium text-gray-200">
+                      {getSectorLabelForDisplay(String(profile.secteur))}
+                    </p>
+                  </div>
+                </div>
+              ) : null}
 
               {profile?.birth_date && (
                 <div className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/5 p-3 sm:items-center sm:gap-4 sm:p-4">

@@ -9,6 +9,8 @@ export interface UserProfile {
   job?: string;
   birth_date?: string;
   avatar_url?: string;
+  /** Secteur d'activité (id catalogue ou texte « autre »). */
+  secteur?: string | null;
   created_at: string;
   updated_at: string;
   role: string;
@@ -49,6 +51,7 @@ export async function updateUserProfile(updates: {
   job?: string;
   birth_date?: string;
   avatar_url?: string;
+  secteur?: string | null;
 }): Promise<{ success: boolean; error?: string }> {
   const supabase = getBrowserSupabase();
 
@@ -57,13 +60,15 @@ export async function updateUserProfile(updates: {
     return { success: false, error: "Non autorisé" };
   }
 
-  const { error } = await supabase
-    .from("profiles")
-    .update({
-      ...updates,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("user_id", user.id);
+  const row: Record<string, unknown> = {
+    ...updates,
+    updated_at: new Date().toISOString(),
+  };
+  for (const key of Object.keys(row)) {
+    if (row[key] === undefined) delete row[key];
+  }
+
+  const { error } = await supabase.from("profiles").update(row).eq("user_id", user.id);
 
   if (error) {
     console.error("Erreur mise à jour profil:", error);

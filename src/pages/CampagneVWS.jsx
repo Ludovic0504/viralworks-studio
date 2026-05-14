@@ -21,6 +21,7 @@ import {
   stampCampaignGenerationMeta,
 } from "@/bibliotheque/campaignGenerationSpec";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
+import { useProfilStudio } from "@/contexte/FournisseurProfilStudio";
 import { Sparkles, BookOpen, X, Clapperboard, MapPin, ChevronRight, Zap } from "lucide-react";
 import ModaleChoixFormatVideo from "../composants/campagne/ModaleChoixFormatVideo.jsx";
 import ModaleChoixDecorProduit from "../composants/campagne/ModaleChoixDecorProduit.jsx";
@@ -510,10 +511,11 @@ export default function CampagneVWS({
     adjustIdeaTextareaHeightMobile();
   }, [idea, isProductMode]);
 
+  const { productPromessePlaceholder: promessePlaceholderProduct, decorPriorityIds } = useProfilStudio();
   const ideaPlaceholder =
     selectedFormatDef?.placeholderIdea ??
     "Ex : un architecte explique son nouveau projet à la caméra dans son studio, tout en dessinant les plans sur une tablette…";
-  const productPromessePlaceholder = "Ce que ça résout ou apporte en une phrase…";
+  const productPromessePlaceholder = promessePlaceholderProduct;
   const stylePlaceholder =
     metierProfile?.stylePlaceholder ??
     "Ex. : ambiance, lumière, style visuel, matériaux…";
@@ -2519,6 +2521,7 @@ Réponds uniquement en JSON :
         onClose={() => setShowDecorModal(false)}
         presentation={formatPickerPresentation === "studioOverlay" ? "studioOverlay" : "portal"}
         currentId={productSceneDecorId}
+        priorityIds={decorPriorityIds}
         onSelect={(id) => {
           setProductSceneDecorId(id);
           onCampaignChange?.(buildCampaignSnapshot({ productSceneDecorId: id }));

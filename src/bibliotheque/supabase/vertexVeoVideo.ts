@@ -148,11 +148,45 @@ function veoDurationSecondsFromSpec(spec: CampaignGenerationSpec): number {
 }
 
 /**
+ * Règles de cohérence visuelle — suffixe injecté sur tout prompt Veo3 avant l’appel Edge / Vertex.
+ * Point d’injection unique pour l’API : {@link createVertexVeoVideoTask}.
+ */
+export const VEO3_VISUAL_CONTINUITY_RULES_SUFFIX = `Continuity rules (strictly enforced):
+- No object spawning: objects must not appear out of nowhere 
+  between frames without a logical narrative action.
+- No object duplication: the same object must never appear 
+  twice simultaneously in the same frame.
+- No sudden appearance or disappearance of people or props 
+  without a cut or a narrative justification.
+- Maintain consistent character appearance (hair, clothing, 
+  face) from first to last frame.`;
+
+const VEO3_CONTINUITY_MARKER = "Continuity rules (strictly enforced):";
+/** Limite côté client : l’Edge tronque à 8000 (text) ou 7600 + consigne image ; on garde une marge pour le suffixe + ligne image. */
+const VEO3_PROMPT_MAX_CHARS_TEXT = 7990;
+const VEO3_PROMPT_MAX_CHARS_IMAGE = 7520;
+
+/**
+ * Concatène le bloc de cohérence à la fin du prompt (idempotent si déjà présent).
+ * Tronque le début du texte utilisateur si besoin pour rester sous `maxTotalChars`.
+ */
+export function appendVeo3VisualContinuityRules(prompt: string, maxTotalChars = VEO3_PROMPT_MAX_CHARS_TEXT): string {
+  const base = String(prompt ?? "").trim();
+  const suffix = `\n\n${VEO3_VISUAL_CONTINUITY_RULES_SUFFIX}`;
+  if (!base) return VEO3_VISUAL_CONTINUITY_RULES_SUFFIX.trim();
+  if (base.includes(VEO3_CONTINUITY_MARKER)) return base.slice(0, maxTotalChars);
+  let combined = `${base}${suffix}`;
+  if (combined.length <= maxTotalChars) return combined;
+  const room = Math.max(0, maxTotalChars - suffix.length);
+  return `${base.slice(0, room)}${suffix}`;
+}
+
+/**
  * Lance une génération longue (retourne le nom d’opération Vertex / task_id).
  * Lit `rendering`, `creative.hook_visual.selected_image_url` et `provider_overrides.veo3.model` depuis le spec.
  * Ne modifie pas le spec (ex. `trace.video_generation.task_id` : responsabilité de l’appelant).
  *
- * @param prompt Texte final produit par le traducteur Veo3 (non reconstruit ici).
+ * @param prompt Texte final produit par le traducteur Veo3 ; le suffixe de cohérence visuelle y est ajouté avant envoi.
  */
 export async function createVertexVeoVideoTask(
   spec: CampaignGenerationSpec,
@@ -160,12 +194,16 @@ export async function createVertexVeoVideoTask(
   accessToken: string | undefined | null,
   clientOptions?: VertexVeoClientOptions,
 ): Promise<{ taskId: string; model?: string }> {
-  const trimmedPrompt = String(prompt ?? "").trim();
-  if (!trimmedPrompt) {
+  const rawPrompt = String(prompt ?? "").trim();
+  if (!rawPrompt) {
     throw new Error("Prompt vidéo manquant : fournis un prompt non vide pour la génération Veo3.");
   }
 
   const generationMode = spec.rendering.generation_mode;
+  const promptBudget =
+    generationMode === "image_to_video" ? VEO3_PROMPT_MAX_CHARS_IMAGE : VEO3_PROMPT_MAX_CHARS_TEXT;
+  const trimmedPrompt = appendVeo3VisualContinuityRules(rawPrompt, promptBudget);
+
   const hookUrl = String(spec.creative.hook_visual.selected_image_url ?? "").trim();
 
   if (generationMode === "image_to_video" && !hookUrl) {

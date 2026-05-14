@@ -7,6 +7,7 @@ import {
 } from "@/config/videoFormats";
 import type { CampaignGenerationSpec } from "../campaignGenerationSpec";
 import { getSafeScenes } from "../campaignGenerationSpec";
+import { getFormatById } from "../vwsVideoFormatsCatalog";
 
 function clampSceneIndex(i: number): 0 | 1 | 2 {
   const n = Math.floor(Number(i));
@@ -91,6 +92,24 @@ export function buildVeo3Prompt(spec: CampaignGenerationSpec, sceneIndex: number
     blocks.push("No visible people, hands, tools, or machines at any time.");
   } else if (causal === "visible") {
     blocks.push("Show visible people or machines actively causing the transformation.");
+  }
+
+  const productName = String(spec.campaign.profession ?? "")
+    .trim()
+    .replace(/\s+/g, " ");
+  const formatDef = spec.campaign.video_format_id
+    ? getFormatById(String(spec.campaign.video_format_id).trim())
+    : null;
+  if (productName && formatDef?.categoryId === "produit") {
+    if (causal === "automatic") {
+      blocks.push(
+        `Following the scene described in the idea above, the physical product ${productName} is clearly visible on screen at all times — consistently framed and recognizable from first to last frame, prominent in the composition without implying visible people or hands.`,
+      );
+    } else {
+      blocks.push(
+        `Following the scene and actions described in the idea above. Throughout the video, the person is visibly holding or interacting with ${productName}. The product ${productName} is clearly visible on screen at all times, held naturally in the person's hand or placed prominently in the foreground.`,
+      );
+    }
   }
 
   const noMusic = wantsNoMusic(spec.rendering.audio.music_style);

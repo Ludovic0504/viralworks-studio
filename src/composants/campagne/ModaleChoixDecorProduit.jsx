@@ -19,14 +19,27 @@ export default function ModaleChoixDecorProduit({
   presentation = "portal",
   onSelect,
   currentId = null,
+  /** Ids décor catalogue à afficher en premier (ex. secteur d'activité). */
+  priorityIds = null,
 }) {
   const titleId = useId();
   const [tab, setTab] = useState("all");
 
   const filtered = useMemo(() => {
-    if (tab === "all") return PRODUCT_SCENE_DECORS;
-    return PRODUCT_SCENE_DECORS.filter((d) => d.category === tab);
-  }, [tab]);
+    const base =
+      tab === "all" ? [...PRODUCT_SCENE_DECORS] : PRODUCT_SCENE_DECORS.filter((d) => d.category === tab);
+    if (!priorityIds?.length) return base;
+    const inBase = new Set(base.map((d) => d.id));
+    const head = [];
+    for (const id of priorityIds) {
+      if (!inBase.has(id)) continue;
+      const def = base.find((d) => d.id === id);
+      if (def) head.push(def);
+    }
+    const headSet = new Set(head.map((d) => d.id));
+    const tail = base.filter((d) => !headSet.has(d.id));
+    return [...head, ...tail];
+  }, [tab, priorityIds]);
 
   const pickNone = () => {
     onSelect?.(null);
