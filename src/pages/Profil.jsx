@@ -203,12 +203,14 @@ export default function Profil() {
     setLoading(true);
     try {
       let allHistory = [];
-      try {
-        allHistory = await listHistory({ limit: 1000 });
-      } catch (err) {
-        console.warn("Fallback historique local (Profil):", err);
-      }
-      if (!Array.isArray(allHistory) || allHistory.length === 0) {
+      if (session?.user?.id) {
+        try {
+          allHistory = await listHistory({ limit: 1000 });
+        } catch (err) {
+          console.warn("Erreur chargement historique Supabase (Profil):", err);
+        }
+        if (!Array.isArray(allHistory)) allHistory = [];
+      } else {
         allHistory = loadLocalHistory();
       }
       const normalized = normalizeHistory(allHistory);

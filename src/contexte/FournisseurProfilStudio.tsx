@@ -21,6 +21,7 @@ type ProfilStudioCtx = {
   profile: UserProfile | null;
   loading: boolean;
   error: string | null;
+  isAdmin: boolean;
   secteur: string | null;
   productPromessePlaceholder: string;
   decorPriorityIds: string[];
@@ -31,7 +32,7 @@ type ProfilStudioCtx = {
 const Ctx = createContext<ProfilStudioCtx | null>(null);
 
 export const FournisseurProfilStudio: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { session } = useAuth();
+  const { session, supabase } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +61,16 @@ export const FournisseurProfilStudio: React.FC<{ children: React.ReactNode }> = 
     void refreshProfile();
   }, [refreshProfile]);
 
+  /** Recharge le profil à chaque connexion (nouveau compte ou reconnexion). */
+  useEffect(() => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
+      if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && s?.user?.id) {
+        void refreshProfile();
+      }
+    });
+    return () => sub.subscription.unsubscribe();
+  }, [supabase, refreshProfile]);
+
   /**
    * Enregistre le secteur côté API : table `profiles`, colonne `secteur`, filtre `user_id` = utilisateur courant.
    * Ordre d’exécution côté UI (voir `updateSecteur` dans ce fichier) :
@@ -84,6 +95,8 @@ export const FournisseurProfilStudio: React.FC<{ children: React.ReactNode }> = 
 
   const secteur = profile?.secteur != null && String(profile.secteur).trim() ? String(profile.secteur).trim() : null;
 
+  const isAdmin = profile?.role === "admin";
+
   const productPromessePlaceholder = useMemo(
     () => getProductPromessePlaceholderForSecteur(secteur),
     [secteur]
@@ -96,13 +109,14 @@ export const FournisseurProfilStudio: React.FC<{ children: React.ReactNode }> = 
       profile,
       loading,
       error,
+      isAdmin,
       secteur,
       productPromessePlaceholder,
       decorPriorityIds,
       refreshProfile,
       updateSecteur,
     }),
-    [profile, loading, error, secteur, productPromessePlaceholder, decorPriorityIds, refreshProfile, updateSecteur]
+    [profile, loading, error, isAdmin, secteur, productPromessePlaceholder, decorPriorityIds, refreshProfile, updateSecteur]
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

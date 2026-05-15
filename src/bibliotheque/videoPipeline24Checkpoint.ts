@@ -1,5 +1,5 @@
 /**
- * Persistance checkpoints pipeline 24s : Supabase + localStorage fallback.
+ * Persistance checkpoints pipeline 24s : Supabase + sessionStorage fallback.
  */
 import { getBrowserSupabase } from "./supabase/client-navigateur";
 
@@ -52,6 +52,28 @@ export async function hashThreePrompts(p1: string, p2: string, p3: string): Prom
 
 function lsKey(promptHash: string): string {
   return `${LS_PREFIX}${promptHash}`;
+}
+
+function checkpointStorage(): Storage | null {
+  if (typeof sessionStorage === "undefined") return null;
+  return sessionStorage;
+}
+
+/** Supprime tous les checkpoints locaux (localStorage legacy + session). */
+export function clearAllVideo24CheckpointsLocal(): void {
+  for (const store of [localStorage, sessionStorage] as const) {
+    if (!store) continue;
+    try {
+      const keys: string[] = [];
+      for (let i = 0; i < store.length; i++) {
+        const k = store.key(i);
+        if (k?.startsWith(LS_PREFIX)) keys.push(k);
+      }
+      keys.forEach((k) => store.removeItem(k));
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 function parseCheckpoint(raw: unknown): VideoPipeline24Checkpoint | null {
@@ -126,8 +148,13 @@ export async function loadCheckpoint(promptHash: string): Promise<VideoPipeline2
   }
 
   try {
-    const raw = localStorage.getItem(lsKey(promptHash));
-    if (!raw) return null;
+    const store = checkpointStorage();
+    const raw = store?.getItem(lsKey(promptHash));
+    if (!raw) {
+      const legacy = localStorage.getItem(lsKey(promptHash));
+      if (!legacy) return null;
+      return parseCheckpoint(JSON.parse(legacy));
+    }
     return parseCheckpoint(JSON.parse(raw));
   } catch {
     return null;
@@ -190,7 +217,8 @@ export async function upsertCheckpoint(input: UpsertCheckpointInput): Promise<vo
       );
       if (!error) {
         try {
-          localStorage.setItem(lsKey(prompt_hash), JSON.stringify(merged));
+          checkpointStorage()?.setItem(lsKey(prompt_hash), JSON.stringify(merged));
+          localStorage.removeItem(lsKey(prompt_hash));
         } catch {
           /* ignore */
         }
@@ -202,7 +230,8 @@ export async function upsertCheckpoint(input: UpsertCheckpointInput): Promise<vo
   }
 
   try {
-    localStorage.setItem(lsKey(prompt_hash), JSON.stringify(merged));
+    checkpointStorage()?.setItem(lsKey(prompt_hash), JSON.stringify(merged));
+    localStorage.removeItem(lsKey(prompt_hash));
   } catch {
     /* ignore */
   }
@@ -225,6 +254,7 @@ export async function clearCheckpoint(promptHash: string): Promise<void> {
   }
 
   try {
+    checkpointStorage()?.removeItem(lsKey(ph));
     localStorage.removeItem(lsKey(ph));
   } catch {
     /* ignore */

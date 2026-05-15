@@ -2,7 +2,7 @@ export const WORKFLOW_QUOTA_STORAGE_KEY = "vws_workflow_quota_v1";
 
 const WORKFLOW_QUOTA_KEY = WORKFLOW_QUOTA_STORAGE_KEY;
 
-/** Émis après chaque mise à jour du quota studio (localStorage), y compris depuis le même onglet. */
+/** Émis après chaque mise à jour du quota studio (sessionStorage), y compris depuis le même onglet. */
 export const WORKFLOW_QUOTA_UPDATED_EVENT = "vws:workflow-quota-updated";
 
 function notifyWorkflowQuotaUpdated() {
@@ -55,7 +55,7 @@ function createDefaultState(): WorkflowQuotaState {
 
 function readState(): WorkflowQuotaState {
   try {
-    const raw = localStorage.getItem(WORKFLOW_QUOTA_KEY);
+    const raw = sessionStorage.getItem(WORKFLOW_QUOTA_KEY);
     if (!raw) return createDefaultState();
     const parsed = JSON.parse(raw) as WorkflowQuotaState;
     if (!parsed || typeof parsed !== "object") return createDefaultState();
@@ -73,7 +73,7 @@ function readState(): WorkflowQuotaState {
 }
 
 function writeState(state: WorkflowQuotaState) {
-  localStorage.setItem(WORKFLOW_QUOTA_KEY, JSON.stringify(state));
+  sessionStorage.setItem(WORKFLOW_QUOTA_KEY, JSON.stringify(state));
   notifyWorkflowQuotaUpdated();
 }
 

@@ -5,19 +5,24 @@ import ImagePage from "./Image.jsx";
 import VideoPage from "./Video.jsx";
 import { resetWorkflowUsage } from "@/bibliotheque/workflowQuota";
 import {
-  LS_VIRAL_STUDIO_DRAFT,
-  LS_IMAGE_STEP_KEY,
   SS_IMAGE_STEP_KEY,
   SS_VISUAL_SNAPSHOTS_KEY,
   SS_CAMPAIGN_IDEA_LIVE_KEY,
   SS_SPA_UI_KEY,
+  SS_BRAIN_V2_LAST_KEY,
   isReloadNavigation,
   clearViralWorksTransientSessionKeys,
   loadSpaUiStateFromSession,
-  loadViralStudioDraftFromLocal,
-  loadViralWorksWorkflowStateFromLocal,
-  saveViralWorksWorkflowStateToLocal,
-  clearViralWorksWorkflowStateFromLocal,
+  loadViralStudioDraftFromSession,
+  loadViralWorksWorkflowStateFromSession,
+  saveViralWorksWorkflowStateToSession,
+  saveViralStudioDraftToSession,
+  clearViralWorksWorkflowStateFromSession,
+  registerSpaImageStepMemoryClear,
+  clearAllViralWorksStudioPersistence,
+  shouldResetStudioWorkflow,
+  touchStudioWorkflowLease,
+  STUDIO_WORKFLOW_RESET_EVENT,
 } from "@/bibliotheque/viralWorksStudioStorage";
 import {
   loadImageMediaRefs,
@@ -98,26 +103,11 @@ function persistImageStepOnly(snapshot) {
   } catch (err) {
     console.warn("[ViralWorks] sessionStorage étape Visuel (quota ?):", err);
   }
-  try {
-    localStorage.setItem(LS_IMAGE_STEP_KEY, json);
-  } catch (err) {
-    console.warn("[ViralWorks] localStorage étape Visuel (quota ?):", err);
-  }
 }
 
 function readSessionImageStep() {
   try {
     const raw = sessionStorage.getItem(SS_IMAGE_STEP_KEY);
-    if (!raw) return null;
-    return sanitizeImageStepFromDraft(JSON.parse(raw));
-  } catch {
-    return null;
-  }
-}
-
-function readLocalImageStepBackup() {
-  try {
-    const raw = localStorage.getItem(LS_IMAGE_STEP_KEY);
     if (!raw) return null;
     return sanitizeImageStepFromDraft(JSON.parse(raw));
   } catch {
@@ -209,7 +199,7 @@ function migrateSpaUiIfNeeded(raw) {
 /** Choisit l’état le plus « riche » (images > ref > texte) — plus fiable qu’un ordre fixe. */
 function pickInitialImageStep() {
   if (isReloadNavigation()) {
-    const draftImg = sanitizeImageStepFromDraft(loadViralStudioDraftFromLocal()?.imageStep);
+    const draftImg = sanitizeImageStepFromDraft(loadViralStudioDraftFromSession()?.imageStep);
     if (
       draftImg &&
       (draftImg.lastGeneratedImages?.length ||
@@ -224,10 +214,9 @@ function pickInitialImageStep() {
 
   const mem = spaImageStepMemory ? sanitizeImageStepFromDraft(spaImageStepMemory) : null;
   const sessionS = readSessionImageStep();
-  const localS = readLocalImageStepBackup();
-  const draftS = sanitizeImageStepFromDraft(loadViralStudioDraftFromLocal()?.imageStep);
+  const draftS = sanitizeImageStepFromDraft(loadViralStudioDraftFromSession()?.imageStep);
 
-  const candidates = [mem, sessionS, localS, draftS].filter(Boolean);
+  const candidates = [mem, sessionS, draftS].filter(Boolean);
   if (candidates.length === 0) return { ...INITIAL_IMAGE_STEP };
   candidates.sort((a, b) => imageStepRichness(b) - imageStepRichness(a));
   return candidates[0];
@@ -817,7 +806,7 @@ export default function ViralWorks() {
     spaUiInitialRef.current = migrateSpaUiIfNeeded(loadSpaUiStateFromSession());
   }
   if (workflowInitialRef.current === undefined) {
-    workflowInitialRef.current = loadViralWorksWorkflowStateFromLocal();
+    workflowInitialRef.current = loadViralWorksWorkflowStateFromSession();
   }
   if (mediaCacheInitialRef.current === undefined) {
     mediaCacheInitialRef.current = {
@@ -862,7 +851,7 @@ export default function ViralWorks() {
             deepStripSensitiveUrls(workflowInitial.campaignGenerationSpec)
           )
         : null;
-    const draft = loadViralStudioDraftFromLocal();
+    const draft = loadViralStudioDraftFromSession();
     return normalizeCampaignGenerationSpec(
       workflowCampaign ??
         spaInitial?.campaignGenerationSpec ??
@@ -901,7 +890,7 @@ export default function ViralWorks() {
     if (spaInitial?.scriptPromptForImage !== undefined) {
       return normalizeScriptPayload(spaInitial.scriptPromptForImage);
     }
-    const d = loadViralStudioDraftFromLocal();
+    const d = loadViralStudioDraftFromSession();
     return normalizeScriptPayload(d?.scriptPrompt ?? "");
   });
   const [step1BrainLaunched, setStep1BrainLaunched] = useState(() =>
@@ -1134,19 +1123,19 @@ export default function ViralWorks() {
   }, []);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(
-        LS_VIRAL_STUDIO_DRAFT,
-        JSON.stringify({
-          campaignGenerationSpec,
-          scriptPrompt: scriptPromptForImage,
-          imageStep,
-        })
-      );
-    } catch (err) {
-      console.warn("[ViralWorks] Sauvegarde brouillon studio:", err);
-    }
+    saveViralStudioDraftToSession({
+      campaignGenerationSpec,
+      scriptPrompt: scriptPromptForImage,
+      imageStep,
+    });
   }, [campaignGenerationSpec, scriptPromptForImage, imageStep]);
+
+  useEffect(() => {
+    registerSpaImageStepMemoryClear(() => {
+      spaImageStepMemory = null;
+    });
+    return () => registerSpaImageStepMemoryClear(null);
+  }, []);
 
   useEffect(() => {
     const sanitizedSnapshot = {
@@ -1166,9 +1155,12 @@ export default function ViralWorks() {
         updatedAt: mediaCacheMeta.updatedAt,
       },
     };
-    const ok = saveViralWorksWorkflowStateToLocal(sanitizedSnapshot);
+    const ok = saveViralWorksWorkflowStateToSession(sanitizedSnapshot);
     if (!ok) {
       console.warn("[ViralWorks] Persistance workflow_state impossible.");
+    }
+    if (session?.user?.id) {
+      touchStudioWorkflowLease(session.user.id);
     }
   }, [
     currentStep,
@@ -1178,6 +1170,7 @@ export default function ViralWorks() {
     imageStep,
     workflowVideoState,
     mediaCacheMeta,
+    session?.user?.id,
   ]);
 
   useEffect(() => {
@@ -1388,20 +1381,7 @@ export default function ViralWorks() {
     [campaignGenerationSpec, resetImageStep, session, hasActiveSubscriptionVw]
   );
 
-  const handleCampagneFullReset = useCallback(() => {
-    clearViralWorksWorkflowStateFromLocal();
-    void purgeViralWorksMediaCache();
-    try {
-      localStorage.removeItem("vws_brain_v2_last");
-    } catch {
-      /* ignore */
-    }
-    try {
-      sessionStorage.removeItem(SS_SPA_UI_KEY);
-    } catch {
-      /* ignore */
-    }
-    resetWorkflowUsage();
+  const applyStudioWorkflowResetState = useCallback(() => {
     setPreparedCampaignSig(null);
     setStep1BrainLaunched(false);
     setScriptGenStatus("idle");
@@ -1422,8 +1402,52 @@ export default function ViralWorks() {
     setWorkflowVideoState({ status: "idle", videoId: null, lastError: "", provider: "veo3", createdAt: null });
     setMediaCacheMeta({ updatedAt: null, imageMediaId: null, videoMediaId: null });
     setShowWorkflowRecoveryChoice(false);
+    setStudioWorkflowSoftResetKey((n) => n + 1);
     resetImageStep();
   }, [resetImageStep, secteur]);
+
+  const handleCampagneFullReset = useCallback(() => {
+    clearViralWorksWorkflowStateFromSession();
+    void purgeViralWorksMediaCache();
+    try {
+      sessionStorage.removeItem(SS_BRAIN_V2_LAST_KEY);
+    } catch {
+      /* ignore */
+    }
+    try {
+      sessionStorage.removeItem(SS_SPA_UI_KEY);
+    } catch {
+      /* ignore */
+    }
+    resetWorkflowUsage();
+    applyStudioWorkflowResetState();
+  }, [applyStudioWorkflowResetState]);
+
+  useEffect(() => {
+    const onStudioReset = () => applyStudioWorkflowResetState();
+    window.addEventListener(STUDIO_WORKFLOW_RESET_EVENT, onStudioReset);
+    return () => window.removeEventListener(STUDIO_WORKFLOW_RESET_EVENT, onStudioReset);
+  }, [applyStudioWorkflowResetState]);
+
+  useEffect(() => {
+    const uid = session?.user?.id;
+    if (!uid) return;
+    let cancelled = false;
+    const run = async () => {
+      if (!shouldResetStudioWorkflow(uid)) {
+        touchStudioWorkflowLease(uid);
+        return;
+      }
+      await clearAllViralWorksStudioPersistence();
+      if (cancelled) return;
+      applyStudioWorkflowResetState();
+      touchStudioWorkflowLease(uid);
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.user?.id, applyStudioWorkflowResetState]);
 
   const handleResumeRecoveredWorkflow = useCallback(() => {
     setShowWorkflowRecoveryChoice(false);
@@ -1431,7 +1455,7 @@ export default function ViralWorks() {
   }, []);
 
   const handleRestartRecoveredWorkflow = useCallback(() => {
-    clearViralWorksWorkflowStateFromLocal();
+    clearViralWorksWorkflowStateFromSession();
     setShowWorkflowRecoveryChoice(false);
     workflowHydrateCandidateRef.current = null;
     handleCampagneFullReset();

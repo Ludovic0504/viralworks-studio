@@ -31,6 +31,7 @@ import {
   buildCanonicalScriptSpec,
   runStudioScriptRefinement,
 } from "@/bibliotheque/studioScriptRefinement";
+import { SS_BRAIN_V2_LAST_KEY } from "@/bibliotheque/viralWorksStudioStorage";
 import PageTitle from "../composants/interface/TitrePage";
 import {
   FileText,
@@ -51,7 +52,7 @@ import {
 
 const PROMPT_GENERATION_COST = 1;
 
-const VWS_BRAIN_LS_KEY = "vws_brain_v2_last";
+const VWS_BRAIN_LS_KEY = SS_BRAIN_V2_LAST_KEY;
 const SCRIPT_EXPORT_VIDEO_SCENES_MAX = 3;
 const VIDEO_QUOTA_EXHAUSTED_MESSAGE =
   "limite vidéo atteint pour ce mois, veuillez attendre la fin du mois pour le renouvellement des vidéos ou acheter des packs vidéos pour continuer a créer";
@@ -108,7 +109,7 @@ function QuotaBlockedModal({ open, title, message, actionLabel, onClose, onGoToS
 
 function getVwsBrainFromStorage() {
   try {
-    const raw = localStorage.getItem(VWS_BRAIN_LS_KEY);
+    const raw = sessionStorage.getItem(VWS_BRAIN_LS_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     return parsed?.brain || null;
@@ -327,7 +328,7 @@ function VEO3Generator({ initialIdea = "" }) {
   useEffect(() => {
     try {
       if (idea.trim()) return;
-      const raw = localStorage.getItem("vws_brain_v2_last");
+      const raw = sessionStorage.getItem(SS_BRAIN_V2_LAST_KEY);
       if (!raw) return;
       const parsed = JSON.parse(raw);
       const seed = parsed?.brain?.scriptSeed;

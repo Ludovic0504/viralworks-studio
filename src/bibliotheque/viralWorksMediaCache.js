@@ -1,4 +1,5 @@
-const LS_VIRALWORKS_MEDIA_CACHE_KEY = "viralworks_media_cache";
+/** Aligné sur SS_VIRALWORKS_MEDIA_CACHE_KEY dans viralWorksStudioStorage.js */
+const MEDIA_CACHE_KEY = "viralworks_media_cache";
 const IDB_DB_NAME = "viralworks_media_cache_db";
 const IDB_DB_VERSION = 1;
 const IDB_STORE_MEDIA = "media";
@@ -69,15 +70,15 @@ function normalizeMediaIndex(raw) {
 }
 
 function readMediaIndex() {
-  if (typeof localStorage === "undefined") return normalizeMediaIndex(null);
-  const parsed = safeJsonParse(localStorage.getItem(LS_VIRALWORKS_MEDIA_CACHE_KEY), null);
+  if (typeof sessionStorage === "undefined") return normalizeMediaIndex(null);
+  const parsed = safeJsonParse(sessionStorage.getItem(MEDIA_CACHE_KEY), null);
   return normalizeMediaIndex(parsed);
 }
 
 function writeMediaIndex(next) {
-  if (typeof localStorage === "undefined") return false;
+  if (typeof sessionStorage === "undefined") return false;
   try {
-    localStorage.setItem(LS_VIRALWORKS_MEDIA_CACHE_KEY, JSON.stringify(normalizeMediaIndex(next)));
+    sessionStorage.setItem(MEDIA_CACHE_KEY, JSON.stringify(normalizeMediaIndex(next)));
     return true;
   } catch {
     return false;
@@ -283,7 +284,8 @@ export function loadVideoMediaRefs() {
 
 export async function purgeViralWorksMediaCache() {
   try {
-    localStorage.removeItem(LS_VIRALWORKS_MEDIA_CACHE_KEY);
+    sessionStorage.removeItem(MEDIA_CACHE_KEY);
+    localStorage.removeItem(MEDIA_CACHE_KEY);
   } catch {
     /* ignore */
   }

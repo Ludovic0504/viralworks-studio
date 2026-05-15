@@ -12,10 +12,7 @@ import {
   getWorkflowUsage,
   resetWorkflowUsage,
 } from "@/bibliotheque/workflowQuota";
-import {
-  LS_VIRAL_STUDIO_DRAFT,
-  SS_CAMPAIGN_IDEA_LIVE_KEY,
-} from "@/bibliotheque/viralWorksStudioStorage";
+import { SS_CAMPAIGN_IDEA_LIVE_KEY } from "@/bibliotheque/viralWorksStudioStorage";
 import {
   loadImageMediaRefs,
   saveImageMediaRef,

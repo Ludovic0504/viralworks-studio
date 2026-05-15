@@ -23,6 +23,7 @@ import {
   markVideoWorkflowCreditConsumed,
   shouldDebitVideoCredit,
 } from "@/bibliotheque/workflowQuota";
+import { SS_BRAIN_V2_LAST_KEY } from "@/bibliotheque/viralWorksStudioStorage";
 import {
   appendVeo3VisualContinuityRules,
   createVertexVeoVideoTask,
@@ -447,7 +448,7 @@ function addHistoryEntry(entry) {
 
 function getVwsBrain() {
   try {
-    const raw = localStorage.getItem("vws_brain_v2_last");
+    const raw = sessionStorage.getItem(SS_BRAIN_V2_LAST_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     return parsed?.brain || null;

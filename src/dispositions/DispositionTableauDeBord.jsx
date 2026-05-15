@@ -15,12 +15,12 @@ import SectorModal from "@/composants/studio/SectorModal";
 function DashboardShellWithSectorGate() {
   const [menuOpen, setMenuOpen] = useState(false);
   const { session } = useAuth();
-  const { secteur, loading: profilStudioLoading, updateSecteur, profile: profilStudioProfile } = useProfilStudio();
+  const { secteur, loading: profilStudioLoading, updateSecteur, isAdmin } = useProfilStudio();
 
   const needsSectorModal =
     Boolean(session?.user?.id) &&
     !profilStudioLoading &&
-    profilStudioProfile != null &&
+    !isAdmin &&
     secteur == null;
 
   const main = (

@@ -20,6 +20,7 @@ import {
   createDefaultCampaignGenerationSpec,
   stampCampaignGenerationMeta,
 } from "@/bibliotheque/campaignGenerationSpec";
+import { SS_BRAIN_V2_LAST_KEY } from "@/bibliotheque/viralWorksStudioStorage";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { useProfilStudio } from "@/contexte/FournisseurProfilStudio";
 import { Sparkles, BookOpen, X, Clapperboard, MapPin, ChevronRight, Zap } from "lucide-react";
@@ -1466,8 +1467,8 @@ Réponds uniquement en JSON :
       setMicroQuestion(null);
 
       try {
-        localStorage.setItem(
-          "vws_brain_v2_last",
+        sessionStorage.setItem(
+          SS_BRAIN_V2_LAST_KEY,
           JSON.stringify({
             input: {
               profession: safeProfession,

@@ -1,6 +1,11 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from "react";
 import type { Session, SupabaseClient } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
+import {
+  clearAllViralWorksStudioPersistence,
+  shouldResetStudioWorkflow,
+  touchStudioWorkflowLease,
+} from "@/bibliotheque/viralWorksStudioStorage";
 
 type AuthCtx = {
   session: Session | null;
@@ -110,18 +115,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setLoading(false);
 
         if (event === "SIGNED_IN") {
-          try { 
+          try {
             localStorage.removeItem("onetool_oauth_remember");
             updateLastActivity();
+            void clearAllViralWorksStudioPersistence().then(() => {
+              if (s?.user?.id) touchStudioWorkflowLease(s.user.id);
+            });
             console.log("[Auth] Utilisateur connecté, activité mise à jour");
           } catch (err) {
             console.warn("[Auth] Erreur lors du nettoyage OAuth:", err);
+          }
+        }
+
+        if (event === "INITIAL_SESSION" && s?.user?.id) {
+          try {
+            const uid = s.user.id;
+            if (shouldResetStudioWorkflow(uid)) {
+              void clearAllViralWorksStudioPersistence().then(() => {
+                touchStudioWorkflowLease(uid);
+              });
+            } else {
+              touchStudioWorkflowLease(uid);
+            }
+          } catch (err) {
+            console.warn("[Auth] Erreur reset workflow studio (INITIAL_SESSION):", err);
           }
         }
         
         if (event === "SIGNED_OUT") {
           try {
             localStorage.removeItem(LAST_ACTIVITY_KEY);
+            void clearAllViralWorksStudioPersistence();
             console.log("[Auth] Utilisateur déconnecté, activité nettoyée");
           } catch (err) {
             console.warn("[Auth] Erreur lors du nettoyage:", err);
@@ -150,6 +174,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setSession(null);
       try {
         localStorage.removeItem(LAST_ACTIVITY_KEY);
+        await clearAllViralWorksStudioPersistence();
       } catch {}
     } catch (error) {
       console.error("Erreur lors de la déconnexion:", error);
