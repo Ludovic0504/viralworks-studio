@@ -391,7 +391,7 @@ export default function Admin() {
 
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-7xl mx-auto w-full min-w-0 px-4 sm:px-6 lg:px-8 py-4 lg:py-8">
         <div className="text-center py-12 text-gray-400">Chargement...</div>
       </div>
     );
@@ -399,7 +399,7 @@ export default function Admin() {
 
   if (!isAdminUser) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-7xl mx-auto w-full min-w-0 px-4 sm:px-6 lg:px-8 py-4 lg:py-8">
         <div className="glass-strong rounded-xl p-12 border border-red-500/30 text-center">
           <Shield className="w-16 h-16 text-red-400 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-gray-200 mb-2">Accès refusé</h2>
@@ -410,67 +410,69 @@ export default function Admin() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <PageTitle green="Administration" white="Dashboard" subtitle="Gérer les utilisateurs, paiements et transactions" />
+    <div className="max-w-7xl mx-auto w-full min-w-0 px-4 sm:px-6 lg:px-8 py-4 lg:py-8">
+      <div className="max-lg:[&_h1]:text-2xl max-lg:[&_header]:mb-4">
+        <PageTitle green="Administration" white="Dashboard" subtitle="Gérer les utilisateurs, paiements et transactions" />
+      </div>
 
       {/* Statistiques globales */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mt-8">
-        <div className="glass-strong rounded-xl p-4 border border-white/10">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-gray-400 mb-1">Total utilisateurs</p>
-              <p className="text-2xl font-bold text-gray-200">{stats.totalUsers}</p>
+      <div className="mt-8 grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-5 lg:gap-4">
+        <div className="glass-strong min-w-0 rounded-xl border border-white/10 p-3 lg:p-4">
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="mb-1 text-[10px] leading-tight text-gray-400 sm:text-xs">Total utilisateurs</p>
+              <p className="text-xl font-bold max-lg:text-lg text-gray-200">{stats.totalUsers}</p>
             </div>
-            <div className="w-12 h-12 rounded-lg bg-blue-500/20 border border-blue-500/30 flex items-center justify-center">
-              <Users className="w-6 h-6 text-blue-400" />
-            </div>
-          </div>
-        </div>
-
-        <div className="glass-strong rounded-xl p-4 border border-white/10">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-gray-400 mb-1">Abonnements actifs</p>
-              <p className="text-2xl font-bold text-blue-400">{stats.activeSubscriptions}</p>
-            </div>
-            <div className="w-12 h-12 rounded-lg bg-blue-500/20 border border-blue-500/30 flex items-center justify-center">
-              <Crown className="w-6 h-6 text-blue-400" />
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-blue-500/30 bg-blue-500/20 max-lg:h-9 max-lg:w-9">
+              <Users className="h-6 w-6 text-blue-400 max-lg:h-5 max-lg:w-5" />
             </div>
           </div>
         </div>
 
-        <div className="glass-strong rounded-xl p-4 border border-white/10">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-gray-400 mb-1">Inscriptions (7j)</p>
-              <p className="text-2xl font-bold text-emerald-400">{stats.recentSignups}</p>
+        <div className="glass-strong min-w-0 rounded-xl border border-white/10 p-3 lg:p-4">
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="mb-1 text-[10px] leading-tight text-gray-400 sm:text-xs">Abonnements actifs</p>
+              <p className="text-xl font-bold max-lg:text-lg text-blue-400">{stats.activeSubscriptions}</p>
             </div>
-            <div className="w-12 h-12 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
-              <TrendingUp className="w-6 h-6 text-emerald-400" />
-            </div>
-          </div>
-        </div>
-
-        <div className="glass-strong rounded-xl p-4 border border-white/10">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-gray-400 mb-1">Emails vérifiés</p>
-              <p className="text-2xl font-bold text-green-400">{stats.verifiedEmails}</p>
-            </div>
-            <div className="w-12 h-12 rounded-lg bg-green-500/20 border border-green-500/30 flex items-center justify-center">
-              <CheckCircle className="w-6 h-6 text-green-400" />
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-blue-500/30 bg-blue-500/20 max-lg:h-9 max-lg:w-9">
+              <Crown className="h-6 w-6 text-blue-400 max-lg:h-5 max-lg:w-5" />
             </div>
           </div>
         </div>
 
-        <div className="glass-strong rounded-xl p-4 border border-white/10">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-gray-400 mb-1">Total générations</p>
-              <p className="text-2xl font-bold text-orange-400">{stats.totalHistory}</p>
+        <div className="glass-strong min-w-0 rounded-xl border border-white/10 p-3 lg:p-4">
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="mb-1 text-[10px] leading-tight text-gray-400 sm:text-xs">Inscriptions (7j)</p>
+              <p className="text-xl font-bold max-lg:text-lg text-emerald-400">{stats.recentSignups}</p>
             </div>
-            <div className="w-12 h-12 rounded-lg bg-orange-500/20 border border-orange-500/30 flex items-center justify-center">
-              <History className="w-6 h-6 text-orange-400" />
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/20 max-lg:h-9 max-lg:w-9">
+              <TrendingUp className="h-6 w-6 text-emerald-400 max-lg:h-5 max-lg:w-5" />
+            </div>
+          </div>
+        </div>
+
+        <div className="glass-strong min-w-0 rounded-xl border border-white/10 p-3 lg:p-4">
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="mb-1 text-[10px] leading-tight text-gray-400 sm:text-xs">Emails vérifiés</p>
+              <p className="text-xl font-bold max-lg:text-lg text-green-400">{stats.verifiedEmails}</p>
+            </div>
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-green-500/30 bg-green-500/20 max-lg:h-9 max-lg:w-9">
+              <CheckCircle className="h-6 w-6 text-green-400 max-lg:h-5 max-lg:w-5" />
+            </div>
+          </div>
+        </div>
+
+        <div className="glass-strong min-w-0 rounded-xl border border-white/10 p-3 lg:p-4">
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="mb-1 text-[10px] leading-tight text-gray-400 sm:text-xs">Total générations</p>
+              <p className="text-xl font-bold max-lg:text-lg text-orange-400">{stats.totalHistory}</p>
+            </div>
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-orange-500/30 bg-orange-500/20 max-lg:h-9 max-lg:w-9">
+              <History className="h-6 w-6 text-orange-400 max-lg:h-5 max-lg:w-5" />
             </div>
           </div>
         </div>
@@ -478,10 +480,10 @@ export default function Admin() {
 
       {/* Onglets */}
       <div className="mt-6">
-        <div className="flex gap-2 border-b border-white/10">
+        <div className="flex gap-2 border-b border-white/10 max-lg:overflow-x-auto max-lg:-mx-4 max-lg:px-4 max-lg:pb-1 max-lg:[scrollbar-width:none] max-lg:[&::-webkit-scrollbar]:hidden max-lg:[-webkit-overflow-scrolling:touch]">
           <button
             onClick={() => setActiveTab("users")}
-            className={`px-4 py-2 font-medium transition-all ${
+            className={`px-4 py-2 font-medium transition-all max-lg:shrink-0 max-lg:whitespace-nowrap max-lg:px-3 max-lg:text-sm ${
               activeTab === "users"
                 ? "text-emerald-400 border-b-2 border-emerald-400"
                 : "text-gray-400 hover:text-gray-200"
@@ -492,7 +494,7 @@ export default function Admin() {
           </button>
           <button
             onClick={() => setActiveTab("payments")}
-            className={`px-4 py-2 font-medium transition-all ${
+            className={`px-4 py-2 font-medium transition-all max-lg:shrink-0 max-lg:whitespace-nowrap max-lg:px-3 max-lg:text-sm ${
               activeTab === "payments"
                 ? "text-emerald-400 border-b-2 border-emerald-400"
                 : "text-gray-400 hover:text-gray-200"
@@ -503,7 +505,7 @@ export default function Admin() {
           </button>
           <button
             onClick={() => setActiveTab("transactions")}
-            className={`px-4 py-2 font-medium transition-all ${
+            className={`px-4 py-2 font-medium transition-all max-lg:shrink-0 max-lg:whitespace-nowrap max-lg:px-3 max-lg:text-sm ${
               activeTab === "transactions"
                 ? "text-emerald-400 border-b-2 border-emerald-400"
                 : "text-gray-400 hover:text-gray-200"
@@ -514,7 +516,7 @@ export default function Admin() {
           </button>
           <button
             onClick={() => setActiveTab("subscriptions")}
-            className={`px-4 py-2 font-medium transition-all ${
+            className={`px-4 py-2 font-medium transition-all max-lg:shrink-0 max-lg:whitespace-nowrap max-lg:px-3 max-lg:text-sm ${
               activeTab === "subscriptions"
                 ? "text-emerald-400 border-b-2 border-emerald-400"
                 : "text-gray-400 hover:text-gray-200"
@@ -525,7 +527,7 @@ export default function Admin() {
           </button>
           <button
             onClick={() => setActiveTab("history")}
-            className={`px-4 py-2 font-medium transition-all ${
+            className={`px-4 py-2 font-medium transition-all max-lg:shrink-0 max-lg:whitespace-nowrap max-lg:px-3 max-lg:text-sm ${
               activeTab === "history"
                 ? "text-emerald-400 border-b-2 border-emerald-400"
                 : "text-gray-400 hover:text-gray-200"
@@ -536,7 +538,7 @@ export default function Admin() {
           </button>
           <button
             onClick={() => setActiveTab("notifications")}
-            className={`px-4 py-2 font-medium transition-all ${
+            className={`px-4 py-2 font-medium transition-all max-lg:shrink-0 max-lg:whitespace-nowrap max-lg:px-3 max-lg:text-sm ${
               activeTab === "notifications"
                 ? "text-emerald-400 border-b-2 border-emerald-400"
                 : "text-gray-400 hover:text-gray-200"
@@ -555,22 +557,24 @@ export default function Admin() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
-        <div className="lg:col-span-2 space-y-6">
+        <div className="space-y-6 lg:col-span-2">
           {/* Onglet Utilisateurs */}
           {activeTab === "users" && (
-            <div className="glass-strong rounded-xl p-6 border border-white/10">
-              <div className="flex items-center gap-3 mb-4">
-                <Search className="w-5 h-5 text-gray-400" />
-                <input
+            <div className="glass-strong min-w-0 overflow-hidden rounded-xl border border-white/10 p-4 lg:p-6">
+              <div className="mb-4 flex items-center gap-3 max-lg:flex-col max-lg:items-stretch max-lg:gap-2">
+                <div className="flex min-w-0 flex-1 items-center gap-2 max-lg:w-full">
+                  <Search className="h-5 w-5 shrink-0 text-gray-400" />
+                  <input
                   type="text"
                   placeholder="Rechercher par email ou ID..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="flex-1 px-4 py-2 rounded-lg border border-white/10 bg-white/5 text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                  className="min-w-0 w-full flex-1 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
                 />
+                </div>
                 <button
                   onClick={loadDashboardData}
-                  className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 transition-all flex items-center gap-2"
+                  className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-gray-300 transition-all hover:bg-white/10 max-lg:self-end"
                   title="Rafraîchir"
                 >
                   <RefreshCw className="w-4 h-4" />
@@ -587,7 +591,7 @@ export default function Admin() {
                   <div className="mb-2 text-xs text-gray-400">
                     {filteredUsers.length} utilisateur{filteredUsers.length > 1 ? "s" : ""}
                   </div>
-                  <div className="space-y-2 max-h-[600px] overflow-y-auto">
+                  <div className="min-w-0 space-y-2 max-h-[600px] overflow-y-auto">
                     {filteredUsers.map((user) => (
                       <div
                         key={user.user_id}
@@ -618,7 +622,7 @@ export default function Admin() {
                                 )}
                               </div>
                               <p className="text-xs text-gray-400 font-mono truncate">{user.user_id}</p>
-                              <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
+                              <div className="mt-2 flex items-center gap-4 text-xs text-gray-500 max-lg:flex-wrap max-lg:gap-x-3 max-lg:gap-y-1">
                                 <span className="flex items-center gap-1">
                                   <Coins className="w-3 h-3" />
                                   Workflow: {user.credits || 0}
@@ -628,7 +632,7 @@ export default function Admin() {
                                 <span>Img mod: {user.credits_image_modification || 0}</span>
                                 <span>Vidéo gen: {user.credits_video_generation || 0}</span>
                               </div>
-                              <div className="flex items-center gap-4 mt-1 text-xs text-gray-500">
+                              <div className="mt-1 flex items-center gap-4 text-xs text-gray-500 max-lg:flex-wrap max-lg:gap-x-3 max-lg:gap-y-1">
                                 <span className="flex items-center gap-1">
                                   <Calendar className="w-3 h-3" />
                                   Inscrit: {formatDate(user.created_at_auth || user.created_at)}
@@ -651,30 +655,32 @@ export default function Admin() {
 
           {/* Onglet Paiements */}
           {activeTab === "payments" && (
-            <div className="glass-strong rounded-xl p-6 border border-white/10">
-              <div className="flex items-center gap-3 mb-4">
-                <Search className="w-5 h-5 text-gray-400" />
-                <input
+            <div className="glass-strong min-w-0 overflow-hidden rounded-xl border border-white/10 p-4 lg:p-6">
+              <div className="mb-4 flex items-center gap-3 max-lg:flex-col max-lg:items-stretch max-lg:gap-2">
+                <div className="flex min-w-0 flex-1 items-center gap-2 max-lg:w-full">
+                  <Search className="h-5 w-5 shrink-0 text-gray-400" />
+                  <input
                   type="text"
                   placeholder="Rechercher par client, email ou session..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="flex-1 px-4 py-2 rounded-lg border border-white/10 bg-white/5 text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                  className="min-w-0 w-full flex-1 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
                 />
+                </div>
                 <button
                   onClick={loadDashboardData}
-                  className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 transition-all flex items-center gap-2"
+                  className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-gray-300 transition-all hover:bg-white/10 max-lg:self-end"
                 >
                   <RefreshCw className="w-4 h-4" />
                 </button>
               </div>
 
-              <div className="space-y-2 max-h-[600px] overflow-y-auto">
+              <div className="min-w-0 space-y-2 max-h-[600px] overflow-y-auto">
                 {filteredPayments.map((payment) => (
                   <div key={payment.id} className="p-4 rounded-lg border bg-white/5 border-white/10">
                     <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-2 flex flex-wrap items-center gap-2">
                           <span className={`px-2 py-1 rounded text-xs border ${getStatusBadge(payment.status)}`}>
                             {payment.status}
                           </span>
@@ -682,16 +688,21 @@ export default function Admin() {
                             {payment.amount} {payment.currency?.toUpperCase()}
                           </span>
                         </div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <User className="w-3 h-3 text-gray-400" />
-                          <p className="text-xs text-gray-300">
+                        <div className="mb-1 flex min-w-0 items-center gap-2">
+                          <User className="h-3 w-3 shrink-0 text-gray-400" />
+                          <p className="min-w-0 truncate text-xs text-gray-300">
                             <span className="font-medium">{payment.client_email || "Client inconnu"}</span>
                             {payment.client_name && (
-                              <span className="text-gray-400 ml-1">({payment.client_name})</span>
+                              <span className="ml-1 text-gray-400">({payment.client_name})</span>
                             )}
                           </p>
                         </div>
-                        <p className="text-xs text-gray-400 font-mono mb-1">Session: {payment.stripe_session_id}</p>
+                        <p
+                          className="mb-1 break-all font-mono text-xs text-gray-400"
+                          title={payment.stripe_session_id}
+                        >
+                          Session: {payment.stripe_session_id}
+                        </p>
                         <p className="text-xs text-gray-500 mt-2">{formatDate(payment.created_at)}</p>
                       </div>
                     </div>
@@ -703,30 +714,32 @@ export default function Admin() {
 
           {/* Onglet Transactions */}
           {activeTab === "transactions" && (
-            <div className="glass-strong rounded-xl p-6 border border-white/10">
-              <div className="flex items-center gap-3 mb-4">
-                <Search className="w-5 h-5 text-gray-400" />
-                <input
+            <div className="glass-strong min-w-0 overflow-hidden rounded-xl border border-white/10 p-4 lg:p-6">
+              <div className="mb-4 flex items-center gap-3 max-lg:flex-col max-lg:items-stretch max-lg:gap-2">
+                <div className="flex min-w-0 flex-1 items-center gap-2 max-lg:w-full">
+                  <Search className="h-5 w-5 shrink-0 text-gray-400" />
+                  <input
                   type="text"
                   placeholder="Rechercher par client ou email..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="flex-1 px-4 py-2 rounded-lg border border-white/10 bg-white/5 text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                  className="min-w-0 w-full flex-1 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
                 />
+                </div>
                 <button
                   onClick={loadDashboardData}
-                  className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 transition-all flex items-center gap-2"
+                  className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-gray-300 transition-all hover:bg-white/10 max-lg:self-end"
                 >
                   <RefreshCw className="w-4 h-4" />
                 </button>
               </div>
 
-              <div className="space-y-2 max-h-[600px] overflow-y-auto">
+              <div className="min-w-0 space-y-2 max-h-[600px] overflow-y-auto">
                 {filteredTransactions.map((transaction) => (
                   <div key={transaction.id} className="p-4 rounded-lg border bg-white/5 border-white/10">
                     <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-2 flex flex-wrap items-center gap-2">
                           <span className={`px-2 py-1 rounded text-xs ${
                             transaction.type === 'credit' || transaction.type === 'purchase' || transaction.type === 'admin_add'
                               ? 'bg-emerald-500/20 text-emerald-300'
@@ -741,14 +754,14 @@ export default function Admin() {
                           </span>
                         </div>
                         {transaction.reason && (
-                          <p className="text-xs text-gray-400 mb-1">Raison: {transaction.reason}</p>
+                          <p className="mb-1 break-words text-xs text-gray-400">Raison: {transaction.reason}</p>
                         )}
-                        <div className="flex items-center gap-2 mb-1">
-                          <User className="w-3 h-3 text-gray-400" />
-                          <p className="text-xs text-gray-300">
+                        <div className="mb-1 flex min-w-0 items-center gap-2">
+                          <User className="h-3 w-3 shrink-0 text-gray-400" />
+                          <p className="min-w-0 truncate text-xs text-gray-300">
                             <span className="font-medium">{transaction.client_email || "Client inconnu"}</span>
                             {transaction.client_name && (
-                              <span className="text-gray-400 ml-1">({transaction.client_name})</span>
+                              <span className="ml-1 text-gray-400">({transaction.client_name})</span>
                             )}
                           </p>
                         </div>
@@ -763,25 +776,27 @@ export default function Admin() {
 
           {/* Onglet Abonnements */}
           {activeTab === "subscriptions" && (
-            <div className="glass-strong rounded-xl p-6 border border-white/10">
-              <div className="flex items-center gap-3 mb-4">
-                <Search className="w-5 h-5 text-gray-400" />
-                <input
+            <div className="glass-strong min-w-0 overflow-hidden rounded-xl border border-white/10 p-4 lg:p-6">
+              <div className="mb-4 flex items-center gap-3 max-lg:flex-col max-lg:items-stretch max-lg:gap-2">
+                <div className="flex min-w-0 flex-1 items-center gap-2 max-lg:w-full">
+                  <Search className="h-5 w-5 shrink-0 text-gray-400" />
+                  <input
                   type="text"
                   placeholder="Rechercher par client ou email..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="flex-1 px-4 py-2 rounded-lg border border-white/10 bg-white/5 text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                  className="min-w-0 w-full flex-1 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
                 />
+                </div>
                 <button
                   onClick={loadDashboardData}
-                  className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 transition-all flex items-center gap-2"
+                  className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-gray-300 transition-all hover:bg-white/10 max-lg:self-end"
                 >
                   <RefreshCw className="w-4 h-4" />
                 </button>
               </div>
 
-              <div className="space-y-2 max-h-[600px] overflow-y-auto">
+              <div className="min-w-0 space-y-2 max-h-[600px] overflow-y-auto">
                 {subscriptions.filter(s => 
                   !searchTerm || 
                   s.user_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -790,8 +805,8 @@ export default function Admin() {
                 ).map((subscription) => (
                   <div key={subscription.id} className="p-4 rounded-lg border bg-white/5 border-white/10">
                     <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-2 flex flex-wrap items-center gap-2">
                           <span className={`px-2 py-1 rounded text-xs border ${getStatusBadge(subscription.status)}`}>
                             {subscription.status}
                           </span>
@@ -801,16 +816,16 @@ export default function Admin() {
                             </span>
                           )}
                         </div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <User className="w-3 h-3 text-gray-400" />
-                          <p className="text-xs text-gray-300">
+                        <div className="mb-1 flex min-w-0 items-center gap-2">
+                          <User className="h-3 w-3 shrink-0 text-gray-400" />
+                          <p className="min-w-0 truncate text-xs text-gray-300">
                             <span className="font-medium">{subscription.client_email || "Client inconnu"}</span>
                             {subscription.client_name && (
-                              <span className="text-gray-400 ml-1">({subscription.client_name})</span>
+                              <span className="ml-1 text-gray-400">({subscription.client_name})</span>
                             )}
                           </p>
                         </div>
-                        <p className="text-xs text-gray-400 mb-1">Période: {formatDate(subscription.current_period_start)} - {formatDate(subscription.current_period_end)}</p>
+                        <p className="mb-1 break-words text-xs text-gray-400 max-lg:text-[11px]">Période: {formatDate(subscription.current_period_start)} - {formatDate(subscription.current_period_end)}</p>
                         <p className="text-xs text-gray-500 mt-2">Créé: {formatDate(subscription.created_at)}</p>
                       </div>
                     </div>
@@ -822,25 +837,27 @@ export default function Admin() {
 
           {/* Onglet Historique */}
           {activeTab === "history" && (
-            <div className="glass-strong rounded-xl p-6 border border-white/10">
-              <div className="flex items-center gap-3 mb-4">
-                <Search className="w-5 h-5 text-gray-400" />
-                <input
+            <div className="glass-strong min-w-0 overflow-hidden rounded-xl border border-white/10 p-4 lg:p-6">
+              <div className="mb-4 flex items-center gap-3 max-lg:flex-col max-lg:items-stretch max-lg:gap-2">
+                <div className="flex min-w-0 flex-1 items-center gap-2 max-lg:w-full">
+                  <Search className="h-5 w-5 shrink-0 text-gray-400" />
+                  <input
                   type="text"
                   placeholder="Rechercher par client, type, modèle ou contenu..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="flex-1 px-4 py-2 rounded-lg border border-white/10 bg-white/5 text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                  className="min-w-0 w-full flex-1 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
                 />
+                </div>
                 <button
                   onClick={loadDashboardData}
-                  className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 transition-all flex items-center gap-2"
+                  className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-gray-300 transition-all hover:bg-white/10 max-lg:self-end"
                 >
                   <RefreshCw className="w-4 h-4" />
                 </button>
               </div>
 
-              <div className="space-y-2 max-h-[600px] overflow-y-auto">
+              <div className="min-w-0 space-y-2 max-h-[600px] overflow-y-auto">
                 {filteredHistory.length === 0 ? (
                   <div className="text-center py-12 text-gray-400">
                     <History className="w-12 h-12 mx-auto mb-3 opacity-50" />
@@ -874,7 +891,7 @@ export default function Admin() {
                       <div key={item.id} className="p-4 rounded-lg border bg-white/5 border-white/10">
                         <div className="flex items-start justify-between gap-4">
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-2">
+                            <div className="mb-2 flex flex-wrap items-center gap-2 max-lg:gap-y-1">
                               {getKindIcon()}
                               <span className={`px-2 py-1 rounded text-xs border ${getKindBadge()}`}>
                                 {item.kind?.toUpperCase() || "UNKNOWN"}
@@ -892,9 +909,9 @@ export default function Admin() {
                               )}
                             </div>
                             
-                            <div className="flex items-center gap-2 mb-2">
-                              <User className="w-3 h-3 text-gray-400" />
-                              <p className="text-xs text-gray-300">
+                            <div className="mb-2 flex min-w-0 items-center gap-2">
+                              <User className="h-3 w-3 shrink-0 text-gray-400" />
+                              <p className="min-w-0 truncate text-xs text-gray-300">
                                 <span className="font-medium">{item.client_email || "Client inconnu"}</span>
                                 {item.client_name && (
                                   <span className="text-gray-400 ml-1">({item.client_name})</span>
@@ -930,7 +947,7 @@ export default function Admin() {
 
           {/* Onglet Notifications */}
           {activeTab === "notifications" && (
-            <div className="glass-strong rounded-xl p-6 border border-white/10">
+            <div className="glass-strong min-w-0 overflow-hidden rounded-xl border border-white/10 p-4 lg:p-6">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
                 <div>
                   <p className="text-sm font-semibold text-gray-200">Notifications admin</p>
@@ -982,7 +999,7 @@ export default function Admin() {
                   <p>Aucune notification</p>
                 </div>
               ) : (
-                <div className="space-y-2 max-h-[600px] overflow-y-auto">
+                <div className="min-w-0 space-y-2 max-h-[600px] overflow-y-auto">
                   {adminNotifications.map((n) => (
                     <div
                       key={n.id}
@@ -1003,7 +1020,7 @@ export default function Admin() {
                           />
                         </div>
 
-                        <div className="flex items-start justify-between gap-3 flex-1 min-w-0">
+                        <div className="flex min-w-0 flex-1 items-start justify-between gap-3 max-lg:flex-col max-lg:gap-2">
                           <div className="min-w-0">
                             <p className="text-sm font-medium text-gray-200">
                               {n.title || "Notification"}
@@ -1013,7 +1030,7 @@ export default function Admin() {
                                 {n.body}
                               </p>
                             ) : null}
-                            <div className="text-xs text-gray-500 mt-2 flex items-center gap-3">
+                            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500">
                               <span>{formatNotifDate(n.created_at)}</span>
                               {n.actor_email ? <span className="truncate">{n.actor_email}</span> : null}
                               {!n.read_at ? (
@@ -1024,7 +1041,7 @@ export default function Admin() {
                             </div>
                           </div>
 
-                          <div className="flex items-start gap-2 shrink-0">
+                          <div className="flex shrink-0 items-start gap-2 max-lg:w-full max-lg:flex-wrap max-lg:justify-end">
                             {!n.read_at ? (
                               <button
                                 onClick={() => handleMarkRead([n.id])}
@@ -1061,7 +1078,7 @@ export default function Admin() {
 
         {/* Panneau latéral - Gestion crédits */}
         <div className="lg:col-span-1">
-          <div className="glass-strong rounded-xl p-6 border border-white/10 sticky top-24">
+          <div className="glass-strong min-w-0 overflow-hidden rounded-xl border border-white/10 p-4 max-lg:static lg:sticky lg:top-24 lg:p-6">
             <h3 className="text-lg font-semibold text-gray-200 mb-4 flex items-center gap-2">
               <Coins className="w-5 h-5 text-emerald-400" />
               Gérer les crédits
