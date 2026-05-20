@@ -421,5 +421,59 @@
       padding: 0.625rem 0.875rem;
     }
   }
+
+  /* Slider âge — thumb explicite (évite curseur interdit avec appearance-none seul) */
+  .avatar-age-range {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 8px;
+    border-radius: 9999px;
+    background: rgba(255, 255, 255, 0.1);
+    cursor: pointer;
+    touch-action: none;
+  }
+
+  .avatar-age-range::-webkit-slider-runnable-track {
+    height: 8px;
+    border-radius: 9999px;
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .avatar-age-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    margin-top: -5px;
+    border-radius: 50%;
+    border: 2px solid rgba(6, 78, 59, 0.9);
+    background: #34d399;
+    cursor: grab;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  }
+
+  .avatar-age-range::-webkit-slider-thumb:active {
+    cursor: grabbing;
+  }
+
+  .avatar-age-range::-moz-range-track {
+    height: 8px;
+    border-radius: 9999px;
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .avatar-age-range::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border: none;
+    border-radius: 50%;
+    background: #34d399;
+    cursor: grab;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  }
+
+  .avatar-age-range::-moz-range-thumb:active {
+    cursor: grabbing;
+  }
 }
 

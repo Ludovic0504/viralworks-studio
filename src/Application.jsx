@@ -15,6 +15,7 @@ import CommunauteVWS from "./pages/CommunauteVWS.jsx";
 import Admin from "./pages/Admin.jsx";
 import MentionsLegales from "./pages/MentionsLegales.jsx";
 import ViralWorks from "./pages/ViralWorks.jsx";
+import Studio from "./pages/Studio.jsx";
 import ProtectedRoute from "./composants/auth/RouteProtegee.jsx";
 import { AuthProvider } from "./contexte/FournisseurAuth";
 import { AuthActionProvider } from "./contexte/ActionAuthModalContext";
@@ -150,6 +151,14 @@ const router = createBrowserRouter([
           { path: "/viralworks", element: <ViralWorks /> },
           { path: "/image", element: <Navigate to="/viralworks" replace /> },
           { path: "/video", element: <Navigate to="/viralworks" replace /> },
+          {
+            path: "/studio",
+            element: (
+              <ProtectedRoute>
+                <Studio />
+              </ProtectedRoute>
+            ),
+          },
           {
             path: "/profil",
             element: (

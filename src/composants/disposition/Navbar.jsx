@@ -3,11 +3,11 @@ import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { Home, Sparkles, X, ShoppingBag, Users, FileText } from "lucide-react";
 import LienNavSync from "@/composants/disposition/LienNavSync";
+import { MenuNavViralWorksMobile } from "@/composants/disposition/MenuNavViralWorks";
 
 const links = [
   { path: "/", label: "Accueil", icon: Home },
   { path: "/lab", label: "Nouveautés", icon: Sparkles },
-  { path: "/viralworks", label: "ViralWorks", icon: Sparkles },
   { path: "/communaute-vws", label: "Communauté VWS", icon: Users },
   { path: "/boutique", label: "Boutique", icon: ShoppingBag },
 ];
@@ -97,7 +97,10 @@ export default function SidebarShell({
             </button>
           </div>
           <nav className="flex flex-col gap-2 px-4 py-4 flex-1">
-            {links.map((link) => (
+            <Item path={links[0].path} label={links[0].label} icon={links[0].icon} />
+            <Item path={links[1].path} label={links[1].label} icon={links[1].icon} />
+            <MenuNavViralWorksMobile onNavigate={() => onCloseMenu?.()} />
+            {links.slice(2).map((link) => (
               <Item key={link.path} {...link} />
             ))}
           </nav>

@@ -6,13 +6,13 @@ import { useCommunauteVWSNotif } from "@/contexte/FournisseurCommunauteVWSNotif.
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import LienNavSync from "@/composants/disposition/LienNavSync";
 import MenuProfilConnecte from "@/composants/disposition/MenuProfilConnecte";
+import { MenuNavViralWorksDesktop } from "@/composants/disposition/MenuNavViralWorks";
 import { isAdmin } from "@/bibliotheque/supabase/credits";
 import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
 
 const navLinks = [
   { path: "/", label: "Accueil" },
   { path: "/lab", label: "Nouveautés" },
-  { path: "/viralworks", label: "ViralWorks" },
   { path: "/communaute-vws", label: "Communauté VWS" },
   { path: "/boutique", label: "Boutique" },
 ];
@@ -132,28 +132,32 @@ export default function Header({ onOpenMenu }) {
     </span>
   );
 
+  const navLinkItem = (link) => {
+    const active = isActive(link.path);
+    return (
+      <LienNavSync
+        key={link.path}
+        to={link.path}
+        className={`relative text-sm font-medium transition-all duration-300 whitespace-nowrap ${
+          active ? "text-emerald-300" : "text-gray-400 hover:text-gray-200"
+        }`}
+      >
+        <span className="relative z-10">{link.label}</span>
+        {active && (
+          <>
+            <div className="absolute -bottom-1 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent" />
+            <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-emerald-400" />
+          </>
+        )}
+      </LienNavSync>
+    );
+  };
+
   const navItems = (
     <>
-      {navLinks.map((link) => {
-        const active = isActive(link.path);
-        return (
-          <LienNavSync
-            key={link.path}
-            to={link.path}
-            className={`relative text-sm font-medium transition-all duration-300 whitespace-nowrap ${
-              active ? "text-emerald-300" : "text-gray-400 hover:text-gray-200"
-            }`}
-          >
-            <span className="relative z-10">{link.label}</span>
-            {active && (
-              <>
-                <div className="absolute -bottom-1 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent" />
-                <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-emerald-400" />
-              </>
-            )}
-          </LienNavSync>
-        );
-      })}
+      {navLinks.slice(0, 2).map(navLinkItem)}
+      <MenuNavViralWorksDesktop />
+      {navLinks.slice(2).map(navLinkItem)}
     </>
   );
 

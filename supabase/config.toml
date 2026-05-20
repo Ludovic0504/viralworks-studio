@@ -29,3 +29,7 @@ verify_jwt = false
 # Même motif : le navigateur envoie OPTIONS sans JWT valide pour le preflight CORS.
 [functions.video-postprocess]
 verify_jwt = false
+
+# Studio avatar : preflight CORS depuis localhost:5173 ; auth JWT dans la fonction (getUser).
+[functions.studio-generate-avatar]
+verify_jwt = false
