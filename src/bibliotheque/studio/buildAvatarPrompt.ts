@@ -121,38 +121,24 @@ export function buildPromptTriptyque(config: AvatarConfig): string {
   );
   const accessoires = resolveAccessoires(config.metier, config.accessoires);
 
-  return `Image de référence : source unique et figée. 
-Reproduis EXACTEMENT ce personnage : même visage, même 
-morphologie, même carnation, même cheveux.
+  return `Réf. figée. Reproduire exact : visage, morphologie, 
+carnation, cheveux. TENUE ref. — Haut : ${tenue.haut}. Bas : ${tenue.bas}. 
+Chaussures : ${tenue.chaussures}. Access. : ${accessoires}. Tenue inchangée.
 
-TENUE OBLIGATOIRE identique à la référence — Haut : ${tenue.haut}. 
-Bas : ${tenue.bas}. Chaussures : ${tenue.chaussures}. 
-Accessoires : ${accessoires}. Aucun changement de tenue autorisé.
+1 image COULEUR, 3 colonnes. Fond studio gris, éclairage doux, 
+sans équipement.
 
-UNE SEULE image COULEUR, 3 colonnes verticales côte à côte. 
-Fond studio gris neutre, éclairage doux, aucun équipement visible.
+GAUCHE : corps entier pieds à tête, dos uniquement visible, 
+nuque visible, visage invisible, bras le long du corps.
+Tenue identique à la référence visible de dos.
 
-GAUCHE : vue de dos obligatoire. Le personnage tourne 
-le dos à la caméra. On voit uniquement la nuque, 
-le dos, les fesses et les talons. Le visage est 
-totalement invisible. Corps entier de la tête aux pieds.
-Dos strictement perpendiculaire à la caméra, aucun profil,
-aucun trois-quarts. Tenue identique à l'image de référence :
-même haut, même bas, mêmes chaussures, mêmes accessoires 
-visibles dans le dos.
-
-CENTRE : corps entier pieds à tête, de face strict, 
+CENTRE : corps entier pieds à tête, de face strict,
 0° rotation, regard caméra, bouche fermée.
 
-DROITE : gros plan portrait, côté droit du visage uniquement. 
-Tête entière, oreille droite visible, cou, haut des épaules. 
-Regard vers l'horizon, pas vers caméra.
-
-INTERDICTIONS : pas de sourire. Pas de trois-quarts. 
-Pas de regard caméra gauche et droite. 
-Ne pas modifier la tenue. Pas de visage visible colonne gauche.
-Pas de profil colonne gauche.
-Colonne gauche = dos complet avec tenue de référence.`.trim();
+DROITE : gros plan portrait serré, visage entier visible.
+Tête complète non coupée, menton visible, cou, 
+haut des épaules à mi-épaule maximum. 
+Regard vers l'horizon. Expression neutre.`.trim();
 }
 
 export function buildPromptFace(config: AvatarConfig): string {

@@ -5,7 +5,7 @@ import LienNavSync from "@/composants/disposition/LienNavSync";
 import { FEATURE_DECORS } from "@/bibliotheque/featureFlags";
 
 const STUDIO_ITEMS = [
-  { to: "/studio", label: "Avatar IA", matchDecors: false },
+  { to: "/studio", label: "Avatar IA", matchDecors: false, showNew: true },
   ...(FEATURE_DECORS
     ? [{ to: "/studio?mode=decors", label: "Décors & Lieux", matchDecors: true }]
     : []),
@@ -40,15 +40,24 @@ function itemClass(active) {
     : "text-white/70 hover:bg-white/[0.06] hover:text-white";
 }
 
-function MenuLink({ to, label, active, onNavigate }) {
+function NewBadge() {
+  return (
+    <span className="shrink-0 rounded-[20px] bg-emerald-400 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-[#0d1117]">
+      NEW
+    </span>
+  );
+}
+
+function MenuLink({ to, label, active, onNavigate, showNew = false }) {
   return (
     <LienNavSync
       to={to}
       role="menuitem"
-      className={`flex cursor-pointer items-center rounded-lg px-2.5 py-[9px] text-[13px] transition-colors ${itemClass(active)}`}
+      className={`flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-2.5 py-[9px] text-[13px] transition-colors ${itemClass(active)}`}
       onClick={onNavigate}
     >
-      {label}
+      <span>{label}</span>
+      {showNew ? <NewBadge /> : null}
     </LienNavSync>
   );
 }
@@ -61,7 +70,7 @@ function DropdownPanel({ onClose, isCreatorActive, isStudioItemActive }) {
     >
       <MenuLink
         to="/viralworks"
-        label="Créateur vidéo"
+        label="Créer ma vidéo"
         active={isCreatorActive}
         onNavigate={onClose}
       />
@@ -80,6 +89,7 @@ function DropdownPanel({ onClose, isCreatorActive, isStudioItemActive }) {
           label={item.label}
           active={isStudioItemActive(item.matchDecors)}
           onNavigate={onClose}
+          showNew={Boolean(item.showNew)}
         />
       ))}
     </div>
@@ -178,7 +188,7 @@ export function MenuNavViralWorksMobile({ onNavigate }) {
             className={`rounded-lg px-3 py-2 text-sm transition-colors ${itemClass(isCreatorActive)}`}
             onClick={close}
           >
-            Créateur vidéo
+            Créer ma vidéo
           </LienNavSync>
 
           <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-white/35">
@@ -189,10 +199,11 @@ export function MenuNavViralWorksMobile({ onNavigate }) {
             <LienNavSync
               key={item.to}
               to={item.to}
-              className={`rounded-lg px-3 py-2 text-sm transition-colors ${itemClass(isStudioItemActive(item.matchDecors))}`}
+              className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${itemClass(isStudioItemActive(item.matchDecors))}`}
               onClick={close}
             >
-              {item.label}
+              <span>{item.label}</span>
+              {item.showNew ? <NewBadge /> : null}
             </LienNavSync>
           ))}
         </div>

@@ -1,17 +1,59 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import PageTitle from "@/composants/interface/TitrePage";
 import StudioCategorySidebar from "@/composants/studio/avatar/StudioCategorySidebar";
 import StudioAvatarPreview from "@/composants/studio/avatar/StudioAvatarPreview";
 import StudioOptionsPanel from "@/composants/studio/avatar/StudioOptionsPanel";
 import StudioCategoryPanel from "@/composants/studio/avatar/StudioCategoryPanel";
+import ModalAbonnementRequis from "@/composants/studio/avatar/ModalAbonnementRequis";
 import { DEFAULT_AVATAR_CONFIG } from "@/bibliotheque/studio/avatarOptions";
 import { generateAvatar } from "@/bibliotheque/studio/generateAvatar";
+import { getUserSubscription } from "@/bibliotheque/supabase/stripe";
+import { useAuth } from "@/contexte/FournisseurAuth";
 
 export default function Studio() {
+  const { session } = useAuth();
   const [config, setConfig] = useState(DEFAULT_AVATAR_CONFIG);
   const [error, setError] = useState(null);
+  const [hasActiveSubscription, setHasActiveSubscription] = useState(false);
+  const [subscriptionLoading, setSubscriptionLoading] = useState(true);
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
 
   const update = (patch) => setConfig((prev) => ({ ...prev, ...patch }));
+
+  useEffect(() => {
+    let active = true;
+    const loadSubscription = async () => {
+      if (!session?.user?.id) {
+        if (active) {
+          setHasActiveSubscription(false);
+          setSubscriptionLoading(false);
+        }
+        return;
+      }
+      setSubscriptionLoading(true);
+      try {
+        const sub = await getUserSubscription();
+        if (active) setHasActiveSubscription(Boolean(sub));
+      } catch {
+        if (active) setHasActiveSubscription(false);
+      } finally {
+        if (active) setSubscriptionLoading(false);
+      }
+    };
+    loadSubscription();
+    return () => {
+      active = false;
+    };
+  }, [session?.user?.id]);
+
+  const requireSubscription = useCallback(() => {
+    if (subscriptionLoading) return false;
+    if (!hasActiveSubscription) {
+      setShowSubscriptionModal(true);
+      return false;
+    }
+    return true;
+  }, [hasActiveSubscription, subscriptionLoading]);
 
   const canGenerateFace =
     Boolean(config.metier) && !config.generatingFace && !config.generatingTriptyque;
@@ -36,7 +78,13 @@ export default function Studio() {
         generatingFace: false,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erreur lors de la génération.");
+      const message =
+        err instanceof Error ? err.message : "Erreur lors de la génération.";
+      if (message.includes("Abonnement requis")) {
+        setShowSubscriptionModal(true);
+      } else {
+        setError(message);
+      }
       update({ generatingFace: false });
     }
   };
@@ -56,9 +104,25 @@ export default function Studio() {
         generatingTriptyque: false,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erreur lors de la génération.");
+      const message =
+        err instanceof Error ? err.message : "Erreur lors de la génération.";
+      if (message.includes("Abonnement requis")) {
+        setShowSubscriptionModal(true);
+      } else {
+        setError(message);
+      }
       update({ generatingTriptyque: false });
     }
+  };
+
+  const requestGenerateFace = () => {
+    if (!requireSubscription()) return;
+    void handleGenerateFace();
+  };
+
+  const requestGenerateTriptyque = () => {
+    if (!requireSubscription()) return;
+    void handleGenerateTriptyque();
   };
 
   return (
@@ -80,13 +144,16 @@ export default function Studio() {
           previewTriptyqueUrl={config.previewTriptyqueUrl}
           generatingFace={config.generatingFace}
           generatingTriptyque={config.generatingTriptyque}
-          onGenerateTriptyque={handleGenerateTriptyque}
+          onGenerateTriptyque={requestGenerateTriptyque}
           canGenerateTriptyque={canGenerateTriptyque}
         />
 
         <StudioOptionsPanel
           activeCategory={config.activeCategory}
-          onGenerateFace={handleGenerateFace}
+          onGenerateFace={requestGenerateFace}
+          onSubscriptionRequired={() => setShowSubscriptionModal(true)}
+          hasActiveSubscription={hasActiveSubscription}
+          subscriptionLoading={subscriptionLoading}
           canGenerateFace={canGenerateFace}
           generatingFace={config.generatingFace}
         >
@@ -103,6 +170,11 @@ export default function Studio() {
           {error}
         </p>
       ) : null}
+
+      <ModalAbonnementRequis
+        open={showSubscriptionModal}
+        onClose={() => setShowSubscriptionModal(false)}
+      />
     </div>
   );
 }

@@ -149,8 +149,12 @@ export async function generateAvatar(
   if (import.meta.env.DEV) {
     if (format === "face") {
       console.log("[studio/avatar] prompt face:", prompt);
-    } else {
-      console.log("[studio/avatar] prompt triptyque:", prompt);
+    }
+    if (format === "triptyque") {
+      console.log(
+        "[studio/triptyque] prompt envoyé:\n",
+        buildPromptTriptyque(payload.config as AvatarConfig)
+      );
     }
   }
 

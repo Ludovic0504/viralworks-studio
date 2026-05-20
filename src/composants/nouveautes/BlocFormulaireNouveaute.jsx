@@ -272,6 +272,9 @@ export default function BlocFormulaireNouveaute({ editingNouveaute, onCancel, on
               <option value="/lab" className="bg-gray-900 text-gray-100">
                 Nouveautés
               </option>
+              <option value="/studio" className="bg-gray-900 text-gray-100">
+                Studio Avatar IA
+              </option>
             </select>
           </div>
 

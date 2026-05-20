@@ -49,6 +49,30 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+/** Aligné sur getUserSubscription (client) + cancel-subscription / sync-subscription-credits */
+async function userHasActiveSubscription(
+  supabase: ReturnType<typeof createClient>,
+  userId: string
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("stripe_subscriptions")
+    .select("status, cancel_at_period_end, current_period_end")
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .maybeSingle();
+
+  if (error || !data) return false;
+
+  if (data.cancel_at_period_end) {
+    const periodEndMs = new Date(data.current_period_end).getTime();
+    if (Number.isFinite(periodEndMs) && Date.now() >= periodEndMs) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 function getKieApiKey(): string | null {
   const key =
     Deno.env.get("KIE_AI_API_KEY")?.trim() ||
@@ -615,6 +639,11 @@ serve(async (req) => {
 
     if (body.action !== "create") {
       return jsonResponse({ error: "action invalide (create | poll)" }, 400);
+    }
+
+    const hasSubscription = await userHasActiveSubscription(supabase, user.id);
+    if (!hasSubscription) {
+      return jsonResponse({ error: "Abonnement requis" }, 403);
     }
 
     return await handleCreate(body);

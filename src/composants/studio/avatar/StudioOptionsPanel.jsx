@@ -4,9 +4,20 @@ export default function StudioOptionsPanel({
   activeCategory,
   children,
   onGenerateFace,
+  onSubscriptionRequired,
+  hasActiveSubscription = false,
+  subscriptionLoading = false,
   canGenerateFace,
   generatingFace,
 }) {
+  const handleGenerateClick = () => {
+    if (subscriptionLoading) return;
+    if (!hasActiveSubscription) {
+      onSubscriptionRequired?.();
+      return;
+    }
+    onGenerateFace?.();
+  };
   const labels = {
     apparence: "Apparence",
     tenue: "Tenue",
@@ -24,8 +35,8 @@ export default function StudioOptionsPanel({
       <div className="mt-auto border-t border-white/10 pt-4">
         <Button
           variant="primary"
-          onClick={onGenerateFace}
-          disabled={!canGenerateFace}
+          onClick={handleGenerateClick}
+          disabled={!canGenerateFace || subscriptionLoading}
           loading={generatingFace}
           className="w-full"
         >
