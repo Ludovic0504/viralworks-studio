@@ -12,7 +12,7 @@ insert into public.nouveautes (
   published_at
 )
 values (
-  'Studio Avatar IA : créez votre personnage professionnel',
+  'Création d''avatar IA',
   $d$Tu peux maintenant concevoir un avatar IA sur mesure : choisis ton métier, ta tenue et ton apparence, génère un portrait face, puis un triptyque (dos, face, gros plan) prêt pour tes vidéos. Accède au studio via le menu ViralWorks → Avatar IA.$d$,
   'feature',
   'Fonctionnalité',
