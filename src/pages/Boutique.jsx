@@ -4,6 +4,7 @@ import { useAuth } from "@/contexte/FournisseurAuth";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { getUserCredits } from "@/bibliotheque/supabase/credits";
 import { track } from "@/bibliotheque/meta/pixel";
+import { capturePostHog, trackPostHogError } from "@/bibliotheque/posthog/client";
 import {
   getUserSubscription,
   fetchWelcomeGiftNeedsChoice,
@@ -98,6 +99,16 @@ export default function Boutique() {
   const paymentStatus = searchParams.get("payment");
 
   useEffect(() => {
+    capturePostHog("pricing_page_viewed", { page: "boutique" });
+  }, []);
+
+  useEffect(() => {
+    if (error) {
+      trackPostHogError(error, "/boutique", "payment");
+    }
+  }, [error]);
+
+  useEffect(() => {
     if (session) {
       loadData();
     }
@@ -119,12 +130,30 @@ export default function Boutique() {
             value: typeof last?.amount === "number" ? last.amount : undefined,
             currency: last?.currency || "EUR",
           });
+          capturePostHog("payment_completed", {
+            price:
+              typeof last?.billedAmount === "number"
+                ? last.billedAmount
+                : last?.amount,
+            type: last?.type,
+            credits: last?.credits,
+            plan_name:
+              last?.subscriptionPlan === "monthly"
+                ? "Abonnement Mensuel"
+                : last?.subscriptionPlan === "yearly"
+                  ? "Abonnement Annuel"
+                  : last?.credits
+                    ? `${last.credits} vidéos`
+                    : undefined,
+          });
           sessionStorage.removeItem("onetool_last_checkout");
         } else {
           track("Purchase");
+          capturePostHog("payment_completed");
         }
       } catch {
         track("Purchase");
+        capturePostHog("payment_completed");
       }
 
       setTimeout(() => {
@@ -132,6 +161,10 @@ export default function Boutique() {
       }, 3000);
     } else if (paymentStatus === "cancelled") {
       console.log("ℹ️ Paiement annulé par l'utilisateur");
+      capturePostHog("payment_failed", {
+        error_type: "cancelled",
+        error_message: "Paiement annulé par l'utilisateur",
+      });
     }
   }, [paymentStatus, session, openAuthModal]);
 
@@ -356,11 +389,15 @@ export default function Boutique() {
                 </div>
               </div>
               <button
-                onClick={() =>
+                onClick={() => {
+                  capturePostHog("plan_selected", {
+                    plan_name: pkg.name,
+                    price: pkg.price,
+                  });
                   void runWithAuth(() =>
                     startPayment(payVideoPack({ videos: pkg.credits, amount: pkg.price }))
-                  )
-                }
+                  );
+                }}
                 disabled={loading}
                 className={`w-full py-3 rounded-lg font-semibold transition-all ${
                   pkg.popular
@@ -441,11 +478,15 @@ export default function Boutique() {
               </ul>
               <div className="space-y-3">
                 <button
-                  onClick={() =>
+                  onClick={() => {
+                    capturePostHog("plan_selected", {
+                      plan_name: plan.name,
+                      price: plan.price,
+                    });
                     void runWithAuth(() =>
                       startPayment(plan.id === "monthly" ? payMonthly() : payYearly())
-                    )
-                  }
+                    );
+                  }}
                   disabled={loading || subscription !== null}
                   className={`w-full py-3 rounded-lg font-semibold transition-all ${
                     plan.popular

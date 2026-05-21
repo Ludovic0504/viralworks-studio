@@ -37,6 +37,7 @@ import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { useProfilStudio } from "@/contexte/FournisseurProfilStudio";
 import { useStudioLayoutOptions } from "@/contexte/StudioLayoutOptionsContext";
 import { getUserSubscription } from "@/bibliotheque/supabase/stripe";
+import { capturePostHog, trackPostHogError } from "@/bibliotheque/posthog/client";
 import {
   createDefaultCampaignGenerationSpec,
   normalizeCampaignGenerationSpec,
@@ -1353,25 +1354,36 @@ export default function ViralWorks() {
                 hasActiveSubscriptionVw ? SCRIPT_STEP_VIDEO_QUOTA_MSG : SCRIPT_STEP_NON_SUB_MSG
               );
               setShowScriptQuotaModal(true);
+              capturePostHog("quota_limit_reached", { step: "script", code: "credits" });
             } else if (result.code === "quota") {
               setScriptQuotaModalMessage(
                 result.message ||
                   (hasActiveSubscriptionVw ? SCRIPT_STEP_VIDEO_QUOTA_MSG : SCRIPT_STEP_NON_SUB_MSG)
               );
               setShowScriptQuotaModal(true);
+              capturePostHog("quota_limit_reached", { step: "script", code: "quota" });
             } else if (result.code === "validation") {
-              alert(result.message);
+              const msg = result.message;
+              alert(msg);
+              trackPostHogError(msg, "/viralworks", "validation");
             } else {
-              alert(result.message || "Impossible de générer le script.");
+              const msg = result.message || "Impossible de générer le script.";
+              alert(msg);
+              trackPostHogError(msg, "/viralworks", "generation");
             }
             setScriptGenStatus("error");
             return;
           }
+          capturePostHog("campaign_creation_completed", {
+            video_format_id: snapshot?.videoFormatId ?? null,
+          });
           setScriptPromptForImage(result.payload);
           setScriptGenStatus("idle");
         } catch (e) {
           setScriptGenStatus("error");
-          alert(e?.message || "Erreur inattendue pendant la génération du script.");
+          const msg = e?.message || "Erreur inattendue pendant la génération du script.";
+          alert(msg);
+          trackPostHogError(msg, "/viralworks", "generation");
         } finally {
           scriptGenInFlightRef.current = false;
         }

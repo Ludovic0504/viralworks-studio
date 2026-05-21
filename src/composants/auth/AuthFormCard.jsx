@@ -7,6 +7,7 @@ import {
   getSupabaseDashboardAuthUrls,
 } from "@/bibliotheque/supabase/client-navigateur";
 import { track } from "@/bibliotheque/meta/pixel";
+import { capturePostHog, trackPostHogError } from "@/bibliotheque/posthog/client";
 
 /**
  * Erreurs côté projet Supabase (SMTP, restriction SMTP intégré, redirect URL).
@@ -160,6 +161,11 @@ export default function AuthFormCard({
     navigate(next, { replace: true });
   };
 
+  const reportAuthError = (message, hint) => {
+    setErrorMsg(message);
+    trackPostHogError(message, "/auth", hint);
+  };
+
   const handleResendConfirmation = async () => {
     if (!pendingConfirmEmail || resendStatus === "sending") return;
     setResendStatus("sending");
@@ -246,9 +252,12 @@ export default function AuthFormCard({
         options: { redirectTo },
       });
 
-      if (error) setErrorMsg(error.message);
+      if (error) reportAuthError(error.message, "auth");
     } catch (err) {
-      setErrorMsg(err?.message || "Erreur lors de la connexion avec Google");
+      reportAuthError(
+        err?.message || "Erreur lors de la connexion avec Google",
+        "auth"
+      );
     } finally {
       setOauthLoading(false);
     }
@@ -262,13 +271,13 @@ export default function AuthFormCard({
     setRecoveryDashboardUrls(null);
 
     if (!email || !email.includes("@")) {
-      setErrorMsg("Veuillez entrer une adresse email valide.");
+      reportAuthError("Veuillez entrer une adresse email valide.", "validation");
       setLoading(false);
       return;
     }
 
     if (!password || password.length < 6) {
-      setErrorMsg("Le mot de passe doit contenir au moins 6 caractères.");
+      reportAuthError("Le mot de passe doit contenir au moins 6 caractères.", "validation");
       setLoading(false);
       return;
     }
@@ -279,7 +288,10 @@ export default function AuthFormCard({
       const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
       if (!url || !key || url === "https://placeholder.supabase.co" || key === "placeholder-key") {
-        setErrorMsg("Configuration Supabase manquante. Veuillez contacter l'administrateur.");
+        reportAuthError(
+          "Configuration Supabase manquante. Veuillez contacter l'administrateur.",
+          "auth"
+        );
         setLoading(false);
         return;
       }
@@ -289,16 +301,20 @@ export default function AuthFormCard({
 
         if (error) {
           if (error.message?.toLowerCase().includes("email not confirmed")) {
-            setErrorMsg("Ton email n'est pas confirmé. Clique sur le lien reçu lors de l'inscription.");
+            reportAuthError(
+              "Ton email n'est pas confirmé. Clique sur le lien reçu lors de l'inscription.",
+              "auth"
+            );
           } else if (
             error.message?.toLowerCase().includes("invalid login") ||
             error.message?.toLowerCase().includes("invalid credentials")
           ) {
-            setErrorMsg(
-              "Email ou mot de passe incorrect. Si vous êtes admin, utilisez 'Mot de passe oublié' pour réinitialiser votre mot de passe."
+            reportAuthError(
+              "Email ou mot de passe incorrect. Si vous êtes admin, utilisez 'Mot de passe oublié' pour réinitialiser votre mot de passe.",
+              "auth"
             );
           } else {
-            setErrorMsg(error.message);
+            reportAuthError(error.message, "auth");
           }
           setLoading(false);
           return;
@@ -317,7 +333,10 @@ export default function AuthFormCard({
         }
 
         if (!hasSession) {
-          setErrorMsg("Connexion refusée: session non créée côté navigateur. Réessaie après avoir rafraîchi la page.");
+          reportAuthError(
+            "Connexion refusée: session non créée côté navigateur. Réessaie après avoir rafraîchi la page.",
+            "auth"
+          );
           setLoading(false);
           return;
         }
@@ -326,6 +345,7 @@ export default function AuthFormCard({
         return;
       }
 
+      capturePostHog("signup_started", { method: "email" });
       track("Lead");
       const signUpResult = await supabase.auth.signUp({
         email: email.trim().toLowerCase(),
@@ -339,13 +359,14 @@ export default function AuthFormCard({
         if (message.includes("User already registered")) {
           message = "Cet email est déjà utilisé. Essayez de vous connecter ou utilisez 'Mot de passe oublié'.";
         }
-        setErrorMsg(message);
+        reportAuthError(message, "auth");
         setRecoveryDashboardUrls(a.showDashboardHelp ? getSupabaseDashboardAuthUrls() : null);
         setLoading(false);
         return;
       }
 
       if (signUpResult.data?.session) {
+        capturePostHog("signup_completed", { method: "email", confirmed: true });
         handleSuccess({ next });
         return;
       }
@@ -353,11 +374,15 @@ export default function AuthFormCard({
       const cleanedEmail = email.trim().toLowerCase();
       setPendingConfirmEmail(cleanedEmail);
       setResendStatus("idle");
+      capturePostHog("signup_completed", { method: "email", confirmed: false });
       setInfoMsg(
         "Compte créé ! Vérifie ta boîte mail (et tes spams) et clique sur le lien de confirmation."
       );
     } catch (err) {
-      setErrorMsg(err?.message || "Erreur inconnue. Vérifiez votre connexion internet et réessayez.");
+      reportAuthError(
+        err?.message || "Erreur inconnue. Vérifiez votre connexion internet et réessayez.",
+        "network"
+      );
     } finally {
       setLoading(false);
     }
@@ -591,7 +616,11 @@ export default function AuthFormCard({
         <button
           type="button"
           onClick={() => {
-            setMode(mode === "signin" ? "signup" : "signin");
+            const nextMode = mode === "signin" ? "signup" : "signin";
+            if (nextMode === "signup") {
+              capturePostHog("signup_started", { method: "toggle" });
+            }
+            setMode(nextMode);
             setErrorMsg("");
             setInfoMsg(null);
             setRecoveryDashboardUrls(null);

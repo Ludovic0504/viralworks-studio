@@ -18,6 +18,12 @@ import {
 import { hasEnoughCredits, debitCredits, getUserCredits, isAdmin } from "@/bibliotheque/supabase/credits";
 import { getUserSubscription } from "@/bibliotheque/supabase/stripe";
 import {
+  capturePostHog,
+  classifyErrorType,
+  parseVideoDurationSeconds,
+  trackPostHogError,
+} from "@/bibliotheque/posthog/client";
+import {
   canUseVideoAttempt,
   consumeVideoAttempt,
   markVideoWorkflowCreditConsumed,
@@ -1591,8 +1597,17 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
           hasActiveSubscription ? VIDEO_QUOTA_EXHAUSTED_MESSAGE : NON_SUBSCRIBER_BLOCKED_MESSAGE
         );
         setShowQuotaNotice(true);
+        capturePostHog("quota_limit_reached", { step: "video" });
         return;
       }
+    }
+
+    const hadOutput = Boolean(String(output || "").trim());
+    const durationSeconds = parseVideoDurationSeconds(duration);
+    if (hadOutput) {
+      capturePostHog("video_regenerated", { duration_seconds: durationSeconds });
+    } else {
+      capturePostHog("video_generation_started", { duration_seconds: durationSeconds });
     }
 
     setLoading(true);
@@ -1877,6 +1892,10 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
         setProgressMessage("Vidéo prête");
         setGenerationError("");
         setOutput(finalVideoUrl);
+        capturePostHog("video_generation_completed", {
+          duration_seconds: parseVideoDurationSeconds(duration),
+          success: true,
+        });
       }
 
     } catch (e) {
@@ -1890,6 +1909,11 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
       setOutput("");
       setViral24LastFrameDataUrl(null);
       setGenerationError(errorMessage);
+      capturePostHog("video_generation_failed", {
+        error_type: classifyErrorType(e, "generation"),
+        error_message: errorMessage,
+      });
+      trackPostHogError(errorMessage, "/viralworks", "generation");
       console.error("Erreur génération vidéo VEO3:", e);
       if (session) {
         await loadCredits();
@@ -2216,6 +2240,7 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
             hasActiveSubscription ? VIDEO_QUOTA_EXHAUSTED_MESSAGE : NON_SUBSCRIBER_BLOCKED_MESSAGE
           );
           setShowQuotaNotice(true);
+          capturePostHog("quota_limit_reached", { step: "video_download" });
           return;
         }
         const debitResult = await debitCredits(
@@ -2278,6 +2303,10 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
           ? `viralworks-video-24s-${new Date().toISOString().slice(0, 10)}.mp4`
           : `viralworks-video-${new Date().toISOString().slice(0, 10)}.mp4`;
       await downloadUrlFile(outputToPersist, filename);
+
+      capturePostHog("video_downloaded", {
+        duration_seconds: parseVideoDurationSeconds(duration),
+      });
 
       alert("Vidéo téléchargée et enregistrée dans votre profil avec succès !");
 
@@ -4098,8 +4127,17 @@ function HailuoVideoForm({
           hasActiveSubscription ? VIDEO_QUOTA_EXHAUSTED_MESSAGE : NON_SUBSCRIBER_BLOCKED_MESSAGE
         );
         setShowQuotaNotice(true);
+        capturePostHog("quota_limit_reached", { step: "video" });
         return;
       }
+    }
+
+    const hadOutputHailuo = Boolean(String(output || "").trim());
+    const durationSecondsHailuo = parseVideoDurationSeconds(duration);
+    if (hadOutputHailuo) {
+      capturePostHog("video_regenerated", { duration_seconds: durationSecondsHailuo });
+    } else {
+      capturePostHog("video_generation_started", { duration_seconds: durationSecondsHailuo });
     }
 
     setLoading(true);
@@ -4224,6 +4262,10 @@ function HailuoVideoForm({
       setProgressMessage("Vidéo prête");
       setGenerationError("");
       setOutput(finalVideoUrl);
+      capturePostHog("video_generation_completed", {
+        duration_seconds: parseVideoDurationSeconds(duration),
+        success: true,
+      });
 
     } catch (e) {
       if (e.name === 'AbortError') {
@@ -4232,6 +4274,11 @@ function HailuoVideoForm({
       const errorMessage = e?.message || "Erreur lors de la génération";
       setGenerationError(errorMessage);
       setOutput("⚠️ Erreur : " + errorMessage);
+      capturePostHog("video_generation_failed", {
+        error_type: classifyErrorType(e, "generation"),
+        error_message: errorMessage,
+      });
+      trackPostHogError(errorMessage, "/viralworks", "generation");
       console.error("Erreur génération vidéo Hailuo:", e);
       if (session) {
         await loadCredits();
@@ -4349,6 +4396,7 @@ function HailuoVideoForm({
             hasActiveSubscription ? VIDEO_QUOTA_EXHAUSTED_MESSAGE : NON_SUBSCRIBER_BLOCKED_MESSAGE
           );
           setShowQuotaNotice(true);
+          capturePostHog("quota_limit_reached", { step: "video_download" });
           return;
         }
         const debitResult = await debitCredits(
@@ -4410,6 +4458,10 @@ function HailuoVideoForm({
         outputToPersist,
         `viralworks-video-${new Date().toISOString().slice(0, 10)}.mp4`
       );
+
+      capturePostHog("video_downloaded", {
+        duration_seconds: parseVideoDurationSeconds(duration),
+      });
 
       alert("Vidéo téléchargée et enregistrée dans votre profil avec succès !");
 

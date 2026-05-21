@@ -1,5 +1,6 @@
 import { getBrowserSupabase } from "./client-navigateur";
 import { track } from "@/bibliotheque/meta/pixel";
+import { capturePostHog } from "@/bibliotheque/posthog/client";
 
 export interface StripePayment {
   id: string;
@@ -181,6 +182,18 @@ export async function redirectToCheckout(
   }
 
   track("InitiateCheckout", { value: amount, currency: "EUR" });
+
+  capturePostHog("checkout_started", {
+    type,
+    price: amount,
+    credits,
+    plan_name:
+      subscriptionPlan === "monthly"
+        ? "Abonnement Mensuel"
+        : subscriptionPlan === "yearly"
+          ? "Abonnement Annuel"
+          : `${credits} vidéos`,
+  });
 
   // Rediriger vers Stripe Checkout
   window.location.href = result.url;

@@ -5,6 +5,9 @@ interface ImportMetaEnv {
   readonly VITE_SUPABASE_ANON_KEY: string
   /** Meta Pixel ID (public). Si absent, tracking désactivé. */
   readonly VITE_META_PIXEL_ID?: string
+  /** PostHog — clé projet (phc_…, publique). Région EU : https://eu.i.posthog.com */
+  readonly VITE_POSTHOG_API_KEY?: string
+  readonly VITE_POSTHOG_HOST?: string
   /** URL complète du callback auth, ex. https://mondomaine.fr/auth/callback (optionnel) */
   readonly VITE_AUTH_REDIRECT_URL?: string
   readonly VITE_SITE_URL?: string

@@ -21,6 +21,7 @@ import { AuthProvider } from "./contexte/FournisseurAuth";
 import { AuthActionProvider } from "./contexte/ActionAuthModalContext";
 import { FournisseurCommunauteVWSNotif } from "./contexte/FournisseurCommunauteVWSNotif.jsx";
 import { initMetaPixel, trackPageView } from "./bibliotheque/meta/pixel";
+import { initPostHog, trackPostHogPageView } from "./bibliotheque/posthog/client";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 
@@ -67,15 +68,18 @@ class RouteErrorBoundary extends Component {
   }
 }
 
-function MetaPixelRouteListener() {
+function AnalyticsRouteListener() {
   const location = useLocation();
 
   useEffect(() => {
     initMetaPixel();
+    initPostHog();
   }, []);
 
   useEffect(() => {
-    trackPageView(`${location.pathname}${location.search}`);
+    const path = `${location.pathname}${location.search}`;
+    trackPageView(path);
+    trackPostHogPageView(path);
   }, [location.pathname, location.search]);
 
   return null;
@@ -126,7 +130,7 @@ const router = createBrowserRouter([
       <AuthProvider>
         <AuthActionProvider>
           <FournisseurCommunauteVWSNotif>
-            <MetaPixelRouteListener />
+            <AnalyticsRouteListener />
             <AppShell />
           </FournisseurCommunauteVWSNotif>
         </AuthActionProvider>

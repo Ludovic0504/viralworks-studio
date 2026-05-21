@@ -10,6 +10,7 @@ import { generateAvatar } from "@/bibliotheque/studio/generateAvatar";
 import { getUserSubscription } from "@/bibliotheque/supabase/stripe";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
+import { capturePostHog, trackPostHogError } from "@/bibliotheque/posthog/client";
 
 export default function Studio() {
   const { session } = useAuth();
@@ -19,6 +20,10 @@ export default function Studio() {
   const [hasActiveSubscription, setHasActiveSubscription] = useState(false);
   const [subscriptionLoading, setSubscriptionLoading] = useState(true);
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+
+  useEffect(() => {
+    capturePostHog("avatar_creator_opened");
+  }, []);
 
   const update = (patch) => setConfig((prev) => ({ ...prev, ...patch }));
 
@@ -86,6 +91,7 @@ export default function Studio() {
         setShowSubscriptionModal(true);
       } else {
         setError(message);
+        trackPostHogError(message, "/studio", "generation");
       }
       update({ generatingFace: false });
     }
@@ -112,6 +118,7 @@ export default function Studio() {
         setShowSubscriptionModal(true);
       } else {
         setError(message);
+        trackPostHogError(message, "/studio", "generation");
       }
       update({ generatingTriptyque: false });
     }

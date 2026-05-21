@@ -6,6 +6,7 @@ import os from "node:os";
 import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { createClient } from "@supabase/supabase-js";
+import { capture, shutdown } from "./posthog.mjs";
 
 const PORT = Number(process.env.VIDEO_AUDIO_PORT || process.env.PORT || 8788);
 const PIPELINE_TOKEN = String(process.env.VIDEO_AUDIO_PIPELINE_TOKEN || "").trim();
@@ -266,6 +267,11 @@ app.post("/api/video-postprocess", async (req, res) => {
       return res.status(400).json({ error: "source_video_url must be a valid http(s) URL." });
     }
 
+    capture(userId, "video_postprocess_started", {
+      enable_tts: payload.enable_tts !== false,
+      enable_music: payload.enable_music !== false,
+    });
+
     const { outPath, warnings, hadAudioLayers } = await processVideo(payload);
     let outputUrl = sourceVideoUrl;
     try {
@@ -273,6 +279,11 @@ app.post("/api/video-postprocess", async (req, res) => {
     } finally {
       await fs.rm(path.dirname(outPath), { recursive: true, force: true });
     }
+
+    capture(userId, "video_postprocess_completed", {
+      audio_applied: hadAudioLayers,
+      warnings_count: warnings.length,
+    });
 
     return res.json({
       status: "success",
@@ -282,6 +293,9 @@ app.post("/api/video-postprocess", async (req, res) => {
     });
   } catch (error) {
     console.error("video-postprocess error:", error);
+    capture("anon", "video_postprocess_failed", {
+      error: error instanceof Error ? error.message : "Internal server error",
+    });
     return res.status(500).json({
       error: error instanceof Error ? error.message : "Internal server error",
     });
@@ -290,5 +304,15 @@ app.post("/api/video-postprocess", async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`[video-audio-pipeline] listening on :${PORT}`);
+});
+
+process.on("SIGTERM", async () => {
+  await shutdown();
+  process.exit(0);
+});
+
+process.on("SIGINT", async () => {
+  await shutdown();
+  process.exit(0);
 });
 

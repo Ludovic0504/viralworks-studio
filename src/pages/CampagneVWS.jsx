@@ -22,6 +22,7 @@ import {
 } from "@/bibliotheque/campaignGenerationSpec";
 import { SS_BRAIN_V2_LAST_KEY } from "@/bibliotheque/viralWorksStudioStorage";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
+import { capturePostHog, trackPostHogError } from "@/bibliotheque/posthog/client";
 import { useProfilStudio } from "@/contexte/FournisseurProfilStudio";
 import { Sparkles, BookOpen, X, Clapperboard, MapPin, ChevronRight, Zap } from "lucide-react";
 import ModaleChoixFormatVideo from "../composants/campagne/ModaleChoixFormatVideo.jsx";
@@ -1054,6 +1055,11 @@ Réponds uniquement en JSON : { "person_visible": true/false }`;
       if (!videoFormatId || !getFormatById(videoFormatId)) {
         throw new Error("Choisis un format vidéo avant de lancer la préparation.");
       }
+
+      capturePostHog("campaign_creation_started", {
+        video_format_id: videoFormatId,
+      });
+
       const catalogFormatDef = getFormatById(videoFormatId);
       const formatParamsConfig = getVideoFormatConfigForCatalogId(videoFormatId);
       const formatParamsAppendix = formatParamsConfig
@@ -1602,7 +1608,9 @@ Réponds uniquement en JSON :
       onCampaignChange?.(buildCampaignSnapshot(finalPayload));
       onBrainReady?.(finalPayload);
     } catch (e) {
-      setError(e?.message || "Une erreur s’est produite pendant la préparation.");
+      const msg = e?.message || "Une erreur s’est produite pendant la préparation.";
+      setError(msg);
+      trackPostHogError(msg, "/viralworks", "generation");
     } finally {
       setLoading(false);
     }

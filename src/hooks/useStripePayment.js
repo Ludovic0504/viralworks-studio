@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
+import { capturePostHog, trackPostHogError } from "@/bibliotheque/posthog/client";
 
 export const SUBSCRIPTION_PLANS = {
   monthly: { amount: 129,       credits: 30, label: "Mensuel" },
@@ -62,9 +63,31 @@ export function useStripePayment() {
         // no-op
       }
 
+      const billedAmount =
+        typeof payload.billedAmount === "number"
+          ? payload.billedAmount
+          : payload.amount;
+      capturePostHog("checkout_started", {
+        type: payload.type,
+        price: billedAmount,
+        credits: payload.credits,
+        plan_name:
+          payload.subscriptionPlan === "monthly"
+            ? "Abonnement Mensuel"
+            : payload.subscriptionPlan === "yearly"
+              ? "Abonnement Annuel"
+              : `${payload.credits} vidéos`,
+      });
+
       window.location.href = data.url;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Une erreur est survenue");
+      const message = err instanceof Error ? err.message : "Une erreur est survenue";
+      setError(message);
+      capturePostHog("payment_failed", {
+        error_type: "payment",
+        error_message: message,
+      });
+      trackPostHogError(message, "/boutique", "payment");
       console.error("❌ Erreur Stripe:", err);
     } finally {
       setLoading(false);

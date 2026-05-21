@@ -6,6 +6,11 @@ import {
   shouldResetStudioWorkflow,
   touchStudioWorkflowLease,
 } from "@/bibliotheque/viralWorksStudioStorage";
+import {
+  capturePostHog,
+  resetPostHogUser,
+  syncPostHogUserFromSession,
+} from "@/bibliotheque/posthog/client";
 
 type AuthCtx = {
   session: Session | null;
@@ -114,13 +119,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSession(s ?? null);
         setLoading(false);
 
-        if (event === "SIGNED_IN") {
+        if (event === "SIGNED_IN" && s?.user?.id) {
           try {
             localStorage.removeItem("onetool_oauth_remember");
             updateLastActivity();
             void clearAllViralWorksStudioPersistence().then(() => {
-              if (s?.user?.id) touchStudioWorkflowLease(s.user.id);
+              touchStudioWorkflowLease(s.user.id);
             });
+            void syncPostHogUserFromSession({
+              id: s.user.id,
+              email: s.user.email,
+            });
+            capturePostHog("login");
             console.log("[Auth] Utilisateur connecté, activité mise à jour");
           } catch (err) {
             console.warn("[Auth] Erreur lors du nettoyage OAuth:", err);
@@ -128,6 +138,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         if (event === "INITIAL_SESSION" && s?.user?.id) {
+          void syncPostHogUserFromSession({
+            id: s.user.id,
+            email: s.user.email,
+          });
           try {
             const uid = s.user.id;
             if (shouldResetStudioWorkflow(uid)) {
@@ -144,6 +158,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         
         if (event === "SIGNED_OUT") {
           try {
+            resetPostHogUser();
             localStorage.removeItem(LAST_ACTIVITY_KEY);
             void clearAllViralWorksStudioPersistence();
             console.log("[Auth] Utilisateur déconnecté, activité nettoyée");
@@ -170,6 +185,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signOut = useCallback(async () => {
     try {
+      resetPostHogUser();
       await supabase.auth.signOut();
       setSession(null);
       try {

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { track } from "@/bibliotheque/meta/pixel";
+import { capturePostHog } from "@/bibliotheque/posthog/client";
 import { getUserCredits } from "@/bibliotheque/supabase/credits";
 import { redirectToCheckout, getUserSubscription } from "@/bibliotheque/supabase/stripe";
 import { 
@@ -48,6 +49,10 @@ export default function Paiements() {
   const paymentStatus = searchParams.get("payment");
 
   useEffect(() => {
+    capturePostHog("pricing_page_viewed", { page: "paiements" });
+  }, []);
+
+  useEffect(() => {
     if (session) {
       loadData();
     }
@@ -63,12 +68,20 @@ export default function Paiements() {
             value: typeof last?.amount === "number" ? last.amount : undefined,
             currency: last?.currency || "EUR",
           });
+          capturePostHog("payment_completed", {
+            price: last?.amount,
+            type: last?.type,
+            credits: last?.credits,
+            plan_name: last?.subscriptionPlan,
+          });
           sessionStorage.removeItem("onetool_last_checkout");
         } else {
           track("Purchase");
+          capturePostHog("payment_completed");
         }
       } catch {
         track("Purchase");
+        capturePostHog("payment_completed");
       }
       setTimeout(() => {
         loadData();
@@ -92,12 +105,21 @@ export default function Paiements() {
     const packageData = CREDIT_PACKAGES.find((p) => p.id === packageId);
     if (!packageData) return;
 
+    capturePostHog("plan_selected", {
+      plan_name: packageData.name,
+      price: packageData.price,
+    });
+
     setLoading(true);
     try {
       await redirectToCheckout(packageData.price, packageData.credits, "credits");
     } catch (err) {
       console.error("Erreur achat crédits:", err);
       const errorMessage = err?.message || "Erreur lors de l'achat. Veuillez réessayer.";
+      capturePostHog("payment_failed", {
+        error_type: "payment",
+        error_message: errorMessage,
+      });
       console.error("Détails de l'erreur:", errorMessage);
       alert(`Erreur lors de l'achat: ${errorMessage}`);
     } finally {
@@ -109,12 +131,21 @@ export default function Paiements() {
     const plan = SUBSCRIPTION_PLANS.find((p) => p.id === planId);
     if (!plan) return;
 
+    capturePostHog("plan_selected", {
+      plan_name: plan.name,
+      price: plan.price,
+    });
+
     setLoading(true);
     try {
       await redirectToCheckout(plan.price, plan.credits, "subscription", plan.id);
     } catch (err) {
       console.error("Erreur abonnement:", err);
       const errorMessage = err?.message || "Erreur lors de l'abonnement. Veuillez réessayer.";
+      capturePostHog("payment_failed", {
+        error_type: "payment",
+        error_message: errorMessage,
+      });
       console.error("Détails de l'erreur:", errorMessage);
       alert(`Erreur lors de l'abonnement: ${errorMessage}`);
     } finally {
