@@ -9,9 +9,11 @@ import { DEFAULT_AVATAR_CONFIG } from "@/bibliotheque/studio/avatarOptions";
 import { generateAvatar } from "@/bibliotheque/studio/generateAvatar";
 import { getUserSubscription } from "@/bibliotheque/supabase/stripe";
 import { useAuth } from "@/contexte/FournisseurAuth";
+import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 
 export default function Studio() {
   const { session } = useAuth();
+  const { runWithAuth } = useRequireAuthAction();
   const [config, setConfig] = useState(DEFAULT_AVATAR_CONFIG);
   const [error, setError] = useState(null);
   const [hasActiveSubscription, setHasActiveSubscription] = useState(false);
@@ -116,13 +118,17 @@ export default function Studio() {
   };
 
   const requestGenerateFace = () => {
-    if (!requireSubscription()) return;
-    void handleGenerateFace();
+    void runWithAuth(async () => {
+      if (!requireSubscription()) return;
+      await handleGenerateFace();
+    });
   };
 
   const requestGenerateTriptyque = () => {
-    if (!requireSubscription()) return;
-    void handleGenerateTriptyque();
+    void runWithAuth(async () => {
+      if (!requireSubscription()) return;
+      await handleGenerateTriptyque();
+    });
   };
 
   return (

@@ -1,4 +1,5 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useMemo, useRef, useState, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import AuthModal from "@/composants/auth/AuthModal";
 import { useAuth } from "@/contexte/FournisseurAuth";
 
@@ -6,16 +7,19 @@ const AuthActionContext = createContext(null);
 
 export function AuthActionProvider({ children }) {
   const { session } = useAuth();
+  const location = useLocation();
   const [modalOpen, setModalOpen] = useState(false);
   const pendingActionRef = useRef(null);
-  const loggedRef = useRef(false);
 
   const openAuthModal = useCallback(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'0480cf'},body:JSON.stringify({sessionId:'0480cf',runId:'auth-bug',hypothesisId:'H4',location:'src/contexte/ActionAuthModalContext.jsx:openAuthModal',message:'openAuthModal called',data:{hasSession:Boolean(session?.user?.id)},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     setModalOpen(true);
   }, []);
+
+  /** Fermer le modal si l'utilisateur change de page (ex. /studio?login=1 → /viralworks). */
+  useEffect(() => {
+    setModalOpen(false);
+    pendingActionRef.current = null;
+  }, [location.pathname]);
 
   const runWithAuth = useCallback(
     async (action) => {
@@ -69,13 +73,6 @@ export function AuthActionProvider({ children }) {
     }),
     [runWithAuth, openAuthModal, modalOpen]
   );
-
-  if (!loggedRef.current) {
-    loggedRef.current = true;
-    // #region agent log
-    fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'0480cf'},body:JSON.stringify({sessionId:'0480cf',runId:'auth-bug',hypothesisId:'H2',location:'src/contexte/ActionAuthModalContext.jsx:mount',message:'AuthActionProvider mounted',data:{initialModalOpen:modalOpen,hasSession:Boolean(session?.user?.id)},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-  }
 
   return (
     <AuthActionContext.Provider value={value}>

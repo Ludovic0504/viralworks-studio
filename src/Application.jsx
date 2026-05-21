@@ -151,14 +151,7 @@ const router = createBrowserRouter([
           { path: "/viralworks", element: <ViralWorks /> },
           { path: "/image", element: <Navigate to="/viralworks" replace /> },
           { path: "/video", element: <Navigate to="/viralworks" replace /> },
-          {
-            path: "/studio",
-            element: (
-              <ProtectedRoute>
-                <Studio />
-              </ProtectedRoute>
-            ),
-          },
+          { path: "/studio", element: <Studio /> },
           {
             path: "/profil",
             element: (
