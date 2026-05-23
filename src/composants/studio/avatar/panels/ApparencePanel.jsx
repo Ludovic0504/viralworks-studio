@@ -30,11 +30,11 @@ export default function ApparencePanel({ config, onChange }) {
           <div className="mb-2 flex items-center justify-between">
             <label
               htmlFor="avatar-age"
-              className="text-sm font-medium text-gray-300 hidden md:block"
+              className="text-sm font-medium text-gray-300 hidden lg:block"
             >
               Âge
             </label>
-            <span className="text-sm font-semibold text-emerald-300 max-md:ml-auto md:ml-0">
+            <span className="text-sm font-semibold text-emerald-300 max-lg:ml-auto lg:ml-0">
               {config.age} ans
             </span>
           </div>

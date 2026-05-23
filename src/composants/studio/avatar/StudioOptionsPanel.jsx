@@ -25,16 +25,16 @@ export default function StudioOptionsPanel({
   };
 
   return (
-    <aside className="studio-panel flex w-full min-w-0 max-w-full max-md:h-auto max-md:shrink max-md:overflow-x-hidden max-md:border-0 max-md:bg-transparent max-md:p-0 max-md:shadow-none h-[560px] shrink-0 flex-col gap-3 max-md:gap-3 p-4 md:gap-4 lg:w-72">
-      <h2 className="hidden text-sm font-semibold text-emerald-300/90 md:block">
+    <aside className="studio-panel flex w-full min-w-0 max-w-full max-lg:h-auto max-lg:shrink max-lg:overflow-x-hidden max-lg:border-0 max-lg:bg-transparent max-lg:p-0 max-lg:shadow-none h-[560px] shrink-0 flex-col gap-3 max-lg:gap-3 p-4 lg:gap-4 lg:w-72">
+      <h2 className="hidden text-sm font-semibold text-emerald-300/90 lg:block">
         {labels[activeCategory] || "Options"}
       </h2>
 
-      <div className="flex w-full min-w-0 max-w-full max-md:flex-none max-md:overflow-x-hidden flex-1 flex-col gap-3 max-md:gap-3 overflow-y-auto md:gap-4">
+      <div className="flex w-full min-w-0 max-w-full max-lg:flex-none max-lg:overflow-x-hidden flex-1 flex-col gap-3 max-lg:gap-3 overflow-y-auto lg:gap-4">
         {children}
       </div>
 
-      <div className="mt-auto hidden border-t border-white/10 pt-4 md:block">
+      <div className="mt-auto hidden border-t border-white/10 pt-4 lg:block">
         <Button
           variant="primary"
           onClick={handleGenerateClick}

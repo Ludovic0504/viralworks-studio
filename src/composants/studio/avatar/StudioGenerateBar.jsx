@@ -2,7 +2,7 @@ import { Loader2 } from "lucide-react";
 
 export default function StudioGenerateBar({ onClick, disabled, loading }) {
   return (
-    <div className="md:hidden fixed bottom-0 inset-x-0 z-30">
+    <div className="lg:hidden fixed bottom-0 inset-x-0 z-30">
       <div className="px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur-md bg-[#050810]/85">
         <button
           type="button"

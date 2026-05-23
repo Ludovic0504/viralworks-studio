@@ -3,7 +3,7 @@ import { AVATAR_CATEGORIES } from "@/bibliotheque/studio/avatarOptions";
 export default function StudioCategoryTabs({ activeCategory, onCategoryChange }) {
   return (
     <nav
-      className="studio-tabs-scroll md:hidden sticky top-0 z-20 -mx-4 px-4 py-2 backdrop-blur-md bg-[#050810]/80"
+      className="studio-tabs-scroll lg:hidden sticky top-0 z-20 -mx-4 px-4 py-2 backdrop-blur-md bg-[#050810]/80"
       aria-label="Sections de personnalisation"
     >
       <div className="flex gap-4 overflow-x-auto [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden">

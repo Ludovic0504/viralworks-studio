@@ -486,7 +486,7 @@
   }
 }
 
-@media (max-width: 767px) {
+@media (max-width: 1023px) {
   /* Profession : largeur figée = mesure Apparence/Tenue (390px viewport − px-4) */
   .studio-profession-panel-mobile {
     width: 100%;

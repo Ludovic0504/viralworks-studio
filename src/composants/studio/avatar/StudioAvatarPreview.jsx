@@ -21,14 +21,14 @@ export default function StudioAvatarPreview({
   const showStep2Block = Boolean(previewFaceUrl) && !generatingFace;
 
   return (
-    <div className="flex w-full min-w-0 max-w-full max-md:shrink-0 max-md:flex-none max-md:h-auto flex-1 flex-col gap-3 md:min-h-0 md:h-[560px] md:gap-4">
-      <div className="studio-panel flex w-full min-w-0 max-w-full max-md:aspect-[4/3] max-md:min-h-[240px] max-md:shrink-0 max-md:rounded-2xl max-md:border-white/10 max-md:bg-[#1a1a2e] min-h-0 flex-1 flex-col max-md:p-4 md:p-6">
+    <div className="flex w-full min-w-0 max-w-full max-lg:shrink-0 max-lg:flex-none max-lg:h-auto flex-1 flex-col gap-3 lg:min-h-0 lg:h-[560px] lg:gap-4">
+      <div className="studio-panel flex w-full min-w-0 max-w-full max-lg:aspect-[4/3] max-lg:min-h-[240px] max-lg:shrink-0 max-lg:rounded-2xl max-lg:border-white/10 max-lg:bg-[#1a1a2e] min-h-0 flex-1 flex-col max-lg:p-4 lg:p-6">
         {generatingFace && !previewFaceUrl ? (
           <LoadingSpinner />
         ) : !previewFaceUrl && !previewTriptyqueUrl && !generatingTriptyque ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
-            <div className="flex h-24 w-24 max-md:h-28 max-md:w-28 items-center justify-center rounded-2xl border border-white/10 bg-white/5">
-              <User className="h-12 w-12 max-md:h-14 max-md:w-14 text-white/20" strokeWidth={1.25} />
+            <div className="flex h-24 w-24 max-lg:h-28 max-lg:w-28 items-center justify-center rounded-2xl border border-white/10 bg-white/5">
+              <User className="h-12 w-12 max-lg:h-14 max-lg:w-14 text-white/20" strokeWidth={1.25} />
             </div>
             <p className="max-w-xs text-sm text-gray-400">
               Votre avatar apparaîtra ici après génération
