@@ -13,9 +13,11 @@ import Galerie from "./pages/Galerie.jsx";
 import Boutique from "./pages/Boutique.jsx";
 import CommunauteVWS from "./pages/CommunauteVWS.jsx";
 import Admin from "./pages/Admin.jsx";
+import AdminStats from "./pages/AdminStats.jsx";
 import MentionsLegales from "./pages/MentionsLegales.jsx";
 import ViralWorks from "./pages/ViralWorks.jsx";
 import Studio from "./pages/Studio.jsx";
+import GoRedirect from "./pages/GoRedirect.jsx";
 import ProtectedRoute from "./composants/auth/RouteProtegee.jsx";
 import { AuthProvider } from "./contexte/FournisseurAuth";
 import { AuthActionProvider } from "./contexte/ActionAuthModalContext";
@@ -126,6 +128,7 @@ function LoginRedirect() {
 
 const router = createBrowserRouter([
   {
+    path: "/",
     element: (
       <AuthProvider>
         <AuthActionProvider>
@@ -137,27 +140,28 @@ const router = createBrowserRouter([
       </AuthProvider>
     ),
     children: [
-      { path: "/login", element: <LoginRedirect /> },
-      { path: "/logout", element: <RouteDeconnexion /> },
-      { path: "/auth/callback", element: <RappelAuth /> },
-      { path: "/auth/confirm", element: <ConfirmerEmail /> },
-      { path: "/reset-password", element: <ReinitialiserMotDePasse /> },
+      // Bio tracking — avant dashboard et avant le catch-all *
+      { path: "go/:source", element: <GoRedirect /> },
+      { path: "login", element: <LoginRedirect /> },
+      { path: "logout", element: <RouteDeconnexion /> },
+      { path: "auth/callback", element: <RappelAuth /> },
+      { path: "auth/confirm", element: <ConfirmerEmail /> },
+      { path: "reset-password", element: <ReinitialiserMotDePasse /> },
       {
         element: <DashboardLayout />,
         children: [
-          { path: "/", element: <Accueil /> },
-          { path: "/lab", element: <Lab /> },
-          // Backward compatibility: ancienne route supprimée → retour accueil.
-          { path: "/a-savoir", element: <Navigate to="/" replace /> },
-          { path: "/mentions-legales", element: <MentionsLegales /> },
-          { path: "/dashboard", element: <Navigate to="/" replace /> },
-          { path: "/prompt", element: <Navigate to="/viralworks" replace /> },
-          { path: "/viralworks", element: <ViralWorks /> },
-          { path: "/image", element: <Navigate to="/viralworks" replace /> },
-          { path: "/video", element: <Navigate to="/viralworks" replace /> },
-          { path: "/studio", element: <Studio /> },
+          { index: true, element: <Accueil /> },
+          { path: "lab", element: <Lab /> },
+          { path: "a-savoir", element: <Navigate to="/" replace /> },
+          { path: "mentions-legales", element: <MentionsLegales /> },
+          { path: "dashboard", element: <Navigate to="/" replace /> },
+          { path: "prompt", element: <Navigate to="/viralworks" replace /> },
+          { path: "viralworks", element: <ViralWorks /> },
+          { path: "image", element: <Navigate to="/viralworks" replace /> },
+          { path: "video", element: <Navigate to="/viralworks" replace /> },
+          { path: "studio", element: <Studio /> },
           {
-            path: "/profil",
+            path: "profil",
             element: (
               <ProtectedRoute>
                 <Profil />
@@ -165,7 +169,7 @@ const router = createBrowserRouter([
             ),
           },
           {
-            path: "/galerie",
+            path: "galerie",
             element: (
               <ProtectedRoute>
                 <RouteErrorBoundary>
@@ -174,13 +178,21 @@ const router = createBrowserRouter([
               </ProtectedRoute>
             ),
           },
-          { path: "/communaute-vws", element: <CommunauteVWS /> },
-          { path: "/boutique", element: <Boutique /> },
+          { path: "communaute-vws", element: <CommunauteVWS /> },
+          { path: "boutique", element: <Boutique /> },
           {
-            path: "/admin",
+            path: "admin",
             element: (
               <ProtectedRoute>
                 <Admin />
+              </ProtectedRoute>
+            ),
+          },
+          {
+            path: "admin/stats",
+            element: (
+              <ProtectedRoute>
+                <AdminStats />
               </ProtectedRoute>
             ),
           },

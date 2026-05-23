@@ -1,9 +1,14 @@
 # Hébergement mutualisé OVH (Apache) — routage SPA (React Router)
+# Les routes /go/* sont gérées côté client (GoRedirect), pas ici.
+
+Options -MultiViews
+
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteBase /
+
   RewriteRule ^index\.html$ - [L]
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
-  RewriteRule . /index.html [L]
+  RewriteRule ^ /index.html [L]
 </IfModule>

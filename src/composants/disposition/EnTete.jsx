@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { Menu, Bell, UserPlus } from "lucide-react";
+import { Menu, Bell, UserPlus, BarChart3 } from "lucide-react";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { useCommunauteVWSNotif } from "@/contexte/FournisseurCommunauteVWSNotif.jsx";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
@@ -198,6 +198,15 @@ export default function Header({ onOpenMenu }) {
 
           <div className="nav-right flex shrink-0 items-center justify-end gap-2">
             {adminBar.isAdmin ? (
+              <>
+              <LienNavSync
+                to="/admin/stats"
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-300 transition-colors hover:bg-white/10 hover:text-white"
+                aria-label="Analytics réseaux sociaux"
+                title="Analytics réseaux"
+              >
+                <BarChart3 size={18} className="text-gray-300" />
+              </LienNavSync>
               <LienNavSync
                 to="/admin?tab=notifications"
                 className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-300 transition-colors hover:bg-white/10 hover:text-white"
@@ -220,6 +229,7 @@ export default function Header({ onOpenMenu }) {
                   </span>
                 ) : null}
               </LienNavSync>
+              </>
             ) : null}
             {hasSession ? (
               <LienNavSync

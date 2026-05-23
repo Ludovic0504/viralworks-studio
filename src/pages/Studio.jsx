@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import PageTitle from "@/composants/interface/TitrePage";
 import StudioCategorySidebar from "@/composants/studio/avatar/StudioCategorySidebar";
+import StudioCategoryTabs from "@/composants/studio/avatar/StudioCategoryTabs";
+import StudioGenerateBar from "@/composants/studio/avatar/StudioGenerateBar";
 import StudioAvatarPreview from "@/composants/studio/avatar/StudioAvatarPreview";
 import StudioOptionsPanel from "@/composants/studio/avatar/StudioOptionsPanel";
 import StudioCategoryPanel from "@/composants/studio/avatar/StudioCategoryPanel";
@@ -139,14 +141,21 @@ export default function Studio() {
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 py-6 sm:px-6 lg:px-8">
+    <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 py-6 max-md:gap-3 max-md:pb-[calc(5rem+env(safe-area-inset-bottom))] sm:px-6 lg:px-8">
       <PageTitle
         green="Avatar"
         white="IA"
         subtitle="Créez un avatar professionnel personnalisé pour vos contenus"
+        titleClassName="max-md:text-[28px]"
+        className="max-md:mb-4"
       />
 
-      <div className="flex h-[560px] flex-col gap-4 lg:flex-row lg:items-stretch">
+      <StudioCategoryTabs
+        activeCategory={config.activeCategory}
+        onCategoryChange={(id) => update({ activeCategory: id })}
+      />
+
+      <div className="flex w-full min-w-0 max-w-full max-md:overflow-x-hidden max-md:h-auto max-md:min-h-0 flex-col gap-3 md:h-[560px] md:flex-row md:items-stretch md:gap-4">
         <StudioCategorySidebar
           activeCategory={config.activeCategory}
           onCategoryChange={(id) => update({ activeCategory: id })}
@@ -183,6 +192,12 @@ export default function Studio() {
           {error}
         </p>
       ) : null}
+
+      <StudioGenerateBar
+        onClick={requestGenerateFace}
+        disabled={!canGenerateFace || subscriptionLoading}
+        loading={config.generatingFace}
+      />
 
       <ModalAbonnementRequis
         open={showSubscriptionModal}

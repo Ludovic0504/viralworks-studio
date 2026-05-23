@@ -25,14 +25,16 @@ export default function StudioOptionsPanel({
   };
 
   return (
-    <aside className="studio-panel flex h-[560px] shrink-0 flex-col gap-4 p-4 lg:w-72">
-      <h2 className="text-sm font-semibold text-emerald-300/90">
+    <aside className="studio-panel flex w-full min-w-0 max-w-full max-md:h-auto max-md:shrink max-md:overflow-x-hidden max-md:border-0 max-md:bg-transparent max-md:p-0 max-md:shadow-none h-[560px] shrink-0 flex-col gap-3 max-md:gap-3 p-4 md:gap-4 lg:w-72">
+      <h2 className="hidden text-sm font-semibold text-emerald-300/90 md:block">
         {labels[activeCategory] || "Options"}
       </h2>
 
-      <div className="flex flex-1 flex-col gap-4 overflow-y-auto">{children}</div>
+      <div className="flex w-full min-w-0 max-w-full max-md:flex-none max-md:overflow-x-hidden flex-1 flex-col gap-3 max-md:gap-3 overflow-y-auto md:gap-4">
+        {children}
+      </div>
 
-      <div className="mt-auto border-t border-white/10 pt-4">
+      <div className="mt-auto hidden border-t border-white/10 pt-4 md:block">
         <Button
           variant="primary"
           onClick={handleGenerateClick}

@@ -1,7 +1,7 @@
-export default function PageTitle({ green, white, subtitle }) {
+export default function PageTitle({ green, white, subtitle, titleClassName = "", className = "" }) {
   return (
-    <header className="mb-8">
-      <h1 className="text-3xl font-extrabold">
+    <header className={`mb-8 ${className}`.trim()}>
+      <h1 className={`text-3xl font-extrabold ${titleClassName}`.trim()}>
         <span className="text-accent/90">{green}</span>
         <span className="text-white"> · {white}</span>
       </h1>

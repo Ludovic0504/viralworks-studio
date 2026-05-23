@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { isAdmin, notifyUserCreditsUpdated } from "@/bibliotheque/supabase/credits";
 import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
@@ -13,6 +13,7 @@ import {
   Shield,
   Users,
   TrendingUp,
+  BarChart3,
   RefreshCw,
   Trash2,
   MailOpen,
@@ -411,8 +412,17 @@ export default function Admin() {
 
   return (
     <div className="max-w-7xl mx-auto w-full min-w-0 px-4 sm:px-6 lg:px-8 py-4 lg:py-8">
-      <div className="max-lg:[&_h1]:text-2xl max-lg:[&_header]:mb-4">
-        <PageTitle green="Administration" white="Dashboard" subtitle="Gérer les utilisateurs, paiements et transactions" />
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+        <div className="max-lg:[&_h1]:text-2xl max-lg:[&_header]:mb-4 flex-1">
+          <PageTitle green="Administration" white="Dashboard" subtitle="Gérer les utilisateurs, paiements et transactions" />
+        </div>
+        <Link
+          to="/admin/stats"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/30 transition-all text-sm shrink-0"
+        >
+          <BarChart3 className="w-4 h-4" />
+          Analytics réseaux
+        </Link>
       </div>
 
       {/* Statistiques globales */}

@@ -33,3 +33,7 @@ verify_jwt = false
 # Studio avatar : preflight CORS depuis localhost:5173 ; auth JWT dans la fonction (getUser).
 [functions.studio-generate-avatar]
 verify_jwt = false
+
+# Liens bio /go/* : redirection publique sans JWT (passerelle : apikey anon en query).
+[functions.go-redirect]
+verify_jwt = false

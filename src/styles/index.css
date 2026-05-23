@@ -475,5 +475,79 @@
   .avatar-age-range::-moz-range-thumb:active {
     cursor: grabbing;
   }
+
+  .studio-avatar-cta {
+    background: linear-gradient(135deg, #2af598, #009efd);
+    box-shadow: 0 4px 20px rgba(42, 245, 152, 0.25);
+  }
+
+  .studio-avatar-cta:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+}
+
+@media (max-width: 767px) {
+  /* Profession : largeur figée = mesure Apparence/Tenue (390px viewport − px-4) */
+  .studio-profession-panel-mobile {
+    width: 100%;
+    max-width: 358px;
+    min-width: 0;
+    contain: inline-size;
+    overflow-x: hidden;
+  }
+
+  .studio-profession-field-card-wrap {
+    width: 100%;
+    max-width: 358px;
+    min-width: 0;
+  }
+
+  .studio-profession-panel-mobile .studio-field-metier-select-wrap,
+  .studio-profession-panel-mobile .studio-field-metier-select-wrap > div {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .studio-profession-panel-mobile .studio-avatar-metier-select {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  .avatar-age-range {
+    background: linear-gradient(
+      90deg,
+      rgba(42, 245, 152, 0.35),
+      rgba(0, 158, 253, 0.25)
+    );
+  }
+
+  .avatar-age-range::-webkit-slider-runnable-track {
+    background: linear-gradient(
+      90deg,
+      rgba(42, 245, 152, 0.35),
+      rgba(0, 158, 253, 0.25)
+    );
+  }
+
+  .avatar-age-range::-webkit-slider-thumb {
+    background: #2af598;
+    border-color: #1a1a2e;
+  }
+
+  .avatar-age-range::-moz-range-track {
+    background: linear-gradient(
+      90deg,
+      rgba(42, 245, 152, 0.35),
+      rgba(0, 158, 253, 0.25)
+    );
+  }
+
+  .avatar-age-range::-moz-range-thumb {
+    background: #2af598;
+    border: 2px solid #1a1a2e;
+  }
 }
 
