@@ -1,12 +1,14 @@
 # Build Vite + déploiement OVH (FTP) à chaque push sur main
 #
-# Secret requis (Settings → Secrets and variables → Actions → Secrets) :
+# Secrets requis (Settings → Secrets and variables → Actions → Secrets) :
 #   FTP_PASSWORD
-#
-# Variables de dépôt (optionnelles, pour le build Vite — mêmes que deploy-frontend.yml) :
-#   VITE_SUPABASE_URL, VITE_SITE_URL, VITE_STRIPE_PUBLISHABLE_KEY, etc.
-# Secret build :
+#   VITE_SUPABASE_URL
 #   VITE_SUPABASE_ANON_KEY
+#
+# Variables de dépôt (optionnelles, pour le build Vite) :
+#   VITE_SITE_URL, VITE_STRIPE_PUBLISHABLE_KEY, VITE_META_PIXEL_ID, etc.
+# Secrets optionnels :
+#   VITE_PEXELS_API_KEY
 
 name: Deploy to OVH (FTP)
 
@@ -38,9 +40,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Verify Supabase secrets
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$VITE_SUPABASE_URL" ] || [ -z "$VITE_SUPABASE_ANON_KEY" ]; then
+            echo "::error::Secrets manquants : définir VITE_SUPABASE_URL et VITE_SUPABASE_ANON_KEY dans GitHub Actions (Settings → Secrets)."
+            exit 1
+          fi
+
       - name: Build (Vite)
         env:
-          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_SITE_URL: ${{ vars.VITE_SITE_URL }}
           VITE_STRIPE_PUBLISHABLE_KEY: ${{ vars.VITE_STRIPE_PUBLISHABLE_KEY }}

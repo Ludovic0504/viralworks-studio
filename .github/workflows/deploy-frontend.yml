@@ -1,7 +1,10 @@
 # Build Vite + déploiement GitHub Pages
 #
-# Variables de dépôt (Settings → Secrets and variables → Actions → Variables) :
+# Secrets requis (Settings → Secrets and variables → Actions → Secrets) :
 #   VITE_SUPABASE_URL
+#   VITE_SUPABASE_ANON_KEY
+#
+# Variables de dépôt (optionnelles) :
 #   VITE_SITE_URL                    (ex. https://viralworks-studio.com)
 #   VITE_STRIPE_PUBLISHABLE_KEY
 #   VITE_META_PIXEL_ID               (optionnel)
@@ -10,9 +13,8 @@
 #   VITE_PEXELS_SERVER               (optionnel, ex. 1)
 #   VITE_FEATURE_DECORS              (optionnel)
 #
-# Secrets (Settings → Secrets and variables → Actions → Secrets) :
-#   VITE_SUPABASE_ANON_KEY
-#   VITE_PEXELS_API_KEY              (optionnel)
+# Secrets optionnels :
+#   VITE_PEXELS_API_KEY
 
 name: Deploy frontend (GitHub Pages)
 
@@ -46,9 +48,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Verify Supabase secrets
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$VITE_SUPABASE_URL" ] || [ -z "$VITE_SUPABASE_ANON_KEY" ]; then
+            echo "::error::Secrets manquants : définir VITE_SUPABASE_URL et VITE_SUPABASE_ANON_KEY dans GitHub Actions (Settings → Secrets)."
+            exit 1
+          fi
+
       - name: Build (Vite)
         env:
-          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_SITE_URL: ${{ vars.VITE_SITE_URL }}
           VITE_STRIPE_PUBLISHABLE_KEY: ${{ vars.VITE_STRIPE_PUBLISHABLE_KEY }}
