@@ -537,7 +537,7 @@ export default function AuthFormCard({
       {googleSignInButton}
 
       <p className="mt-3 text-xs text-center text-gray-400 opacity-60">
-        🔒 Données protégées
+        Données protégées
       </p>
 
       {authDivider}

@@ -30,6 +30,7 @@ import {
   IMAGE_EDIT_BUSY_MESSAGE,
 } from "@/bibliotheque/nanobanana/modifyImage";
 import { buildHookImageApiPrompt } from "@/bibliotheque/vwsPromptEngine";
+import { getFormatById } from "@/bibliotheque/vwsVideoFormatsCatalog";
 import {
   Sparkles,
   X,
@@ -41,7 +42,54 @@ import {
   RectangleHorizontal,
   Smartphone,
   Square,
+  Upload,
+  Plus,
 } from "lucide-react";
+
+function buildProductHailuoRefs({ avatarRefDataUrl, productRefDataUrl, refCharDataUrl }) {
+  const refs = [];
+  const av = typeof avatarRefDataUrl === "string" ? avatarRefDataUrl.trim() : "";
+  const pr = typeof productRefDataUrl === "string" ? productRefDataUrl.trim() : "";
+  if (av) refs.push(av);
+  if (pr) refs.push(pr);
+  if (refs.length > 0) return { subjectReferences: refs };
+  if (refCharDataUrl) return { refCharacter: refCharDataUrl };
+  return {};
+}
+
+function ProductRefCard({ label, imageUrl, onPick, onClear, disabled }) {
+  return (
+    <div className="relative h-20 w-14 shrink-0">
+      <button
+        type="button"
+        onClick={onPick}
+        disabled={disabled}
+        className="relative flex h-full w-full flex-col items-center justify-center overflow-hidden rounded-lg border border-white/20 bg-[#161d2e] transition hover:bg-[#1a2236] disabled:cursor-not-allowed disabled:opacity-50"
+        aria-label={imageUrl ? `${label} — changer l'image` : `Importer ${label}`}
+      >
+        {imageUrl ? (
+          <img src={imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
+        ) : (
+          <>
+            <Plus className="h-4 w-4 shrink-0 text-white/70" aria-hidden />
+            <span className="mt-0.5 text-[9px] leading-none text-white/60">{label}</span>
+          </>
+        )}
+      </button>
+      {imageUrl ? (
+        <button
+          type="button"
+          onClick={onClear}
+          disabled={disabled}
+          className="absolute right-0.5 top-0.5 z-10 flex h-4 w-4 items-center justify-center rounded-full bg-black/70 text-gray-300 hover:text-white disabled:opacity-50"
+          aria-label={`Retirer ${label}`}
+        >
+          <X className="h-2.5 w-2.5" aria-hidden />
+        </button>
+      ) : null}
+    </div>
+  );
+}
 
 const IMAGE_GENERATION_COST = 1;
 const VIDEO_QUOTA_EXHAUSTED_MESSAGE =
@@ -360,6 +408,39 @@ export default function ImagePage({
   }, []);
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+
+  const isProductMode = useMemo(() => {
+    const formatId = canonicalSpec.campaign.video_format_id;
+    return getFormatById(formatId)?.categoryId === "produit";
+  }, [canonicalSpec.campaign.video_format_id]);
+
+  const [avatarRefDataUrl, setAvatarRefDataUrl] = useState(null);
+  const [productRefDataUrl, setProductRefDataUrl] = useState(null);
+  const avatarRefFileInputRef = useRef(null);
+  const productRefFileInputRef = useRef(null);
+
+  const clearProductRefCards = useCallback(() => {
+    setAvatarRefDataUrl(null);
+    setProductRefDataUrl(null);
+  }, []);
+
+  const onAvatarRefFileChange = (e) => {
+    const f = e.target.files?.[0];
+    if (!f || !f.type.startsWith("image/")) return;
+    const rd = new FileReader();
+    rd.onload = () => setAvatarRefDataUrl(String(rd.result || "") || null);
+    rd.readAsDataURL(f);
+    e.target.value = "";
+  };
+
+  const onProductRefFileChange = (e) => {
+    const f = e.target.files?.[0];
+    if (!f || !f.type.startsWith("image/")) return;
+    const rd = new FileReader();
+    rd.onload = () => setProductRefDataUrl(String(rd.result || "") || null);
+    rd.readAsDataURL(f);
+    e.target.value = "";
+  };
 
   const is24s = sequenceType === "three_x_8s" || canonicalSpec.creative.sequence_type === "three_x_8s";
   const autoHookInFlightRef = useRef(false);
@@ -999,7 +1080,9 @@ export default function ImagePage({
   }, [campaignIdeaPrompt, busy, session]);
 
   const fileInputRef = useRef(null);
+  const hookImportFileInputRef = useRef(null);
   const onPickRefImage = () => fileInputRef.current?.click();
+  const onPickHookImport = () => hookImportFileInputRef.current?.click();
   const onFileChange = (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
@@ -1007,6 +1090,27 @@ export default function ImagePage({
     rd.onload = () =>
       patchImageStep({ refCharDataUrl: String(rd.result) });
     rd.readAsDataURL(f);
+  };
+  const onHookImportFileChange = (e) => {
+    const f = e.target.files?.[0];
+    if (!f || !f.type.startsWith("image/")) return;
+    const rd = new FileReader();
+    rd.onload = () => {
+      const dataUrl = String(rd.result || "");
+      if (!dataUrl) return;
+      patchImageStep({
+        lastGeneratedImages: [dataUrl],
+        selectedImageIndex: 0,
+        lastGeneratedPrompt: "",
+      });
+      writeHookVisualSpec({
+        image_variants: [dataUrl],
+        selected_variant_index: 0,
+        selected_image_url: dataUrl,
+      });
+    };
+    rd.readAsDataURL(f);
+    e.target.value = "";
   };
 
   async function generate() {
@@ -1105,12 +1209,30 @@ export default function ImagePage({
         }
       );
 
+      const hailuoRefs = isProductMode
+        ? buildProductHailuoRefs({ avatarRefDataUrl, productRefDataUrl, refCharDataUrl })
+        : { refCharacter: refCharDataUrl };
+
       const image1RequestBody = {
         prompt: image1Prompt,
         ratio,
         quantity,
         model,
-        refCharacter: refCharDataUrl,
+        ...hailuoRefs,
+      };
+
+      const debugRequestBody = {
+        ...image1RequestBody,
+        ...(Array.isArray(image1RequestBody.subjectReferences)
+          ? {
+              subjectReferences: image1RequestBody.subjectReferences.map((u) =>
+                summarizeDataUrl(u)
+              ),
+            }
+          : {}),
+        ...(image1RequestBody.refCharacter
+          ? { refCharacter: summarizeDataUrl(image1RequestBody.refCharacter) }
+          : {}),
       };
 
       // Debug UI: capture du payload exact envoyé (Image 1).
@@ -1124,7 +1246,7 @@ export default function ImagePage({
               provider: "hailuo",
               functionUrl,
               prompt: image1Prompt,
-              requestBody: image1RequestBody,
+              requestBody: debugRequestBody,
               ratio,
               model,
               quantity,
@@ -1598,7 +1720,7 @@ export default function ImagePage({
     if (hasSessionImages) void handleModifyImage();
     else void generate();
   };
-  const ideaReadyBadge = Boolean(String(campaignIdeaPrompt || "").trim()) && !hasSessionImages;
+  const showHookImportLink = !lastGeneratedImages?.length && !busy;
 
   useLayoutEffect(() => {
     adjustBottomTextareaHeight();
@@ -1753,25 +1875,22 @@ export default function ImagePage({
 
   const interactionPanel = (
     <div
-      className={`min-w-0 w-full rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-4 sm:px-5 sm:py-5 ${
+      className={`min-w-0 w-full px-4 py-4 sm:px-5 sm:py-5 ${
         visualStepActive ? "max-[640px]:px-3 max-[640px]:py-3" : ""
       }`}
     >
       <div className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-end">
         <div className="min-w-0 flex-1">
-          <div className="mb-1.5 flex items-center justify-between gap-3">
-            <label className="block text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-              {hasSessionImages ? (
-                "Modifier l'image sélectionnée"
-              ) : visualStepActive ? (
-                <>
-                  <span className="max-[640px]:hidden">Décrire le visuel d&apos;accroche (première image)</span>
-                  <span className="hidden max-[640px]:inline">Décrire le visuel d&apos;accroche</span>
-                </>
-              ) : (
-                "Décrire le visuel d'accroche (première image)"
-              )}
-            </label>
+          <div
+            className={`mb-1.5 flex items-center gap-3 ${
+              hasSessionImages ? "justify-between" : "justify-end"
+            }`}
+          >
+            {hasSessionImages ? (
+              <label className="block text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                Modifier l&apos;image sélectionnée
+              </label>
+            ) : null}
             <button
               type="button"
               onClick={reloadIdeaFromCampaign}
@@ -1787,7 +1906,46 @@ export default function ImagePage({
               )}
             </button>
           </div>
-          <div className="relative flex rounded-2xl border border-white/10 bg-white/[0.04] focus-within:ring-2 focus-within:ring-cyan-500/35">
+          <div className="relative min-w-0 w-full">
+            {isProductMode ? (
+              <>
+                <div className="absolute -top-16 left-2 z-10 flex gap-1.5">
+                  <ProductRefCard
+                    label="Avatar"
+                    imageUrl={avatarRefDataUrl}
+                    onPick={() => avatarRefFileInputRef.current?.click()}
+                    onClear={() => setAvatarRefDataUrl(null)}
+                    disabled={busy || modifyLoading}
+                  />
+                  <ProductRefCard
+                    label="Produit"
+                    imageUrl={productRefDataUrl}
+                    onPick={() => productRefFileInputRef.current?.click()}
+                    onClear={() => setProductRefDataUrl(null)}
+                    disabled={busy || modifyLoading}
+                  />
+                </div>
+                <input
+                  ref={avatarRefFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={onAvatarRefFileChange}
+                  className="hidden"
+                  aria-hidden
+                  tabIndex={-1}
+                />
+                <input
+                  ref={productRefFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={onProductRefFileChange}
+                  className="hidden"
+                  aria-hidden
+                  tabIndex={-1}
+                />
+              </>
+            ) : null}
+            <div className="relative rounded-2xl border border-white/10 bg-white/[0.04] focus-within:ring-2 focus-within:ring-cyan-500/35">
             <textarea
               ref={bottomFieldInputRef}
               rows={narrowVisualStudio ? 1 : 2}
@@ -1806,7 +1964,7 @@ export default function ImagePage({
                   ? "Ex. : ajoute un détail au premier plan, change l'arrière-plan…"
                   : "Ex. : gros plan sur une personne surprise qui regarde la caméra…"
               }
-              className={`flex-1 resize-none rounded-2xl bg-transparent px-4 py-3 pr-14 text-sm text-gray-200 placeholder-gray-500 focus:outline-none ${
+              className={`w-full resize-none rounded-2xl bg-transparent px-4 py-3 pr-14 text-sm text-gray-200 placeholder-gray-500 focus:outline-none ${
                 narrowVisualStudio
                   ? "min-h-[60px] overflow-hidden overflow-y-hidden"
                   : "min-h-[3.5rem]"
@@ -1837,6 +1995,7 @@ export default function ImagePage({
                 <ChevronRight className="h-5 w-5" />
               )}
             </button>
+            </div>
           </div>
           {hasSessionImages && modifyError ? (
             <p className="mt-1.5 text-xs text-amber-300/90" role="alert">
@@ -1864,15 +2023,6 @@ export default function ImagePage({
             }`}
           >
             Utiliser cette image
-            <span
-              className={`mt-1 block text-[10px] font-normal uppercase tracking-wide ${
-                lastGeneratedImages?.length && !busy && !modifyLoading
-                  ? "text-cyan-300/90"
-                  : "text-gray-600"
-              } ${visualStepActive ? "max-[640px]:hidden" : ""}`}
-            >
-              Étape 3 : vidéo →
-            </span>
           </button>
           <button
             type="button"
@@ -1882,6 +2032,8 @@ export default function ImagePage({
                 Boolean(String(prompt || "").trim()) ||
                 Boolean(String(modifyInstruction || "").trim()) ||
                 Boolean(refCharDataUrl) ||
+                Boolean(avatarRefDataUrl) ||
+                Boolean(productRefDataUrl) ||
                 Boolean(String(lastGeneratedPrompt || "").trim()) ||
                 Boolean(String(campaignIdeaPrompt || "").trim()) ||
                 Number(selectedImageIndex || 0) !== 0;
@@ -1889,6 +2041,7 @@ export default function ImagePage({
               if (!confirm("Repartir de zéro sur cette étape ? Les images non enregistrées seront perdues.")) {
                 return;
               }
+              clearProductRefCards();
               resetImageStep();
             }}
             className={`text-center text-[10px] uppercase tracking-wider text-gray-600 underline decoration-gray-700 underline-offset-2 hover:text-gray-500 ${
@@ -2190,39 +2343,6 @@ export default function ImagePage({
         </div>
       </div>
 
-      {/* 2. Introduction (hero) — sans cadre, sur le fond de page */}
-      <section
-        className={`space-y-4 text-center sm:space-y-5 ${
-          visualStepActive ? "max-[640px]:space-y-0" : ""
-        }`}
-        style={isMobile ? { marginTop: "20px" } : undefined}
-      >
-        {ideaReadyBadge && (
-          <span
-            className={`inline-flex rounded-full border border-cyan-400/35 bg-cyan-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-cyan-200 ${
-              visualStepActive ? "max-[640px]:hidden" : ""
-            }`}
-          >
-            Idée prête à être illustrée
-          </span>
-        )}
-        <h2
-          className={`text-2xl font-bold text-white sm:text-3xl lg:text-4xl ${
-            visualStepActive ? "max-[640px]:mb-1.5 max-[640px]:text-base max-[640px]:font-bold max-[640px]:leading-snug" : ""
-          }`}
-        >
-          Crée le visuel qui <span className="border-b-2 border-cyan-400 text-cyan-300">accroche</span>.
-        </h2>
-        <p
-          className={`mx-auto max-w-2xl text-sm leading-relaxed text-gray-400 sm:text-base ${
-            visualStepActive ? "max-[640px]:hidden" : ""
-          }`}
-        >
-          Décris ce que tu veux voir en premier dans ta vidéo (la toute première image). Ensuite tu pourras affiner
-          image par image.
-        </p>
-      </section>
-
       {/* 3. Zone images : aperçu principal + variantes à droite (groupées et centrées pour éviter l’écart à droite) */}
       <div
         className="flex w-full min-w-0 flex-col items-center gap-4 lg:flex-row lg:items-center lg:justify-center lg:gap-5"
@@ -2274,27 +2394,60 @@ export default function ImagePage({
           ) : (
             <>
               {visualStepActive ? (
-                <div
-                  className="mx-auto my-2 hidden h-[90px] w-[120px] flex-shrink-0 items-center justify-center rounded-[11px] border border-[#1e2845] bg-[#161d2e] max-[640px]:flex"
-                  role="status"
-                >
-                  <p
-                    className="px-1 text-center text-[9px] leading-tight"
-                    style={{ color: "#3e4870" }}
+                <div className="mx-auto my-2 hidden flex-col items-center gap-1.5 max-[640px]:flex">
+                  <div
+                    className="flex h-[90px] w-[120px] flex-shrink-0 items-center justify-center rounded-[11px] border border-[#1e2845] bg-[#161d2e]"
+                    role="status"
                   >
-                    Tes visuels générés s’afficheront ici.
-                  </p>
+                    <p
+                      className="px-1 text-center text-[9px] leading-tight"
+                      style={{ color: "#3e4870" }}
+                    >
+                      Tes visuels générés s’afficheront ici.
+                    </p>
+                  </div>
+                  {showHookImportLink ? (
+                    <button
+                      type="button"
+                      onClick={onPickHookImport}
+                      disabled={modifyLoading}
+                      className="inline-flex items-center gap-1 text-[10px] text-gray-500 hover:text-gray-400 disabled:pointer-events-none disabled:opacity-40"
+                    >
+                      <Upload className="h-3 w-3 shrink-0" aria-hidden />
+                      ou importer ma propre image
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
               <div
-                className={`absolute inset-0 flex items-center justify-center px-6 py-10 ${
+                className={`absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 py-10 ${
                   visualStepActive ? "max-[640px]:hidden" : ""
                 }`}
               >
                 <p className="text-center text-sm leading-relaxed text-gray-500">
                   Tes visuels générés s’afficheront ici.
                 </p>
+                {showHookImportLink ? (
+                  <button
+                    type="button"
+                    onClick={onPickHookImport}
+                    disabled={modifyLoading}
+                    className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-400 disabled:pointer-events-none disabled:opacity-40"
+                  >
+                    <Upload className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                    ou importer ma propre image
+                  </button>
+                ) : null}
               </div>
+              <input
+                ref={hookImportFileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={onHookImportFileChange}
+                className="hidden"
+                aria-hidden
+                tabIndex={-1}
+              />
             </>
           )}
       </div>

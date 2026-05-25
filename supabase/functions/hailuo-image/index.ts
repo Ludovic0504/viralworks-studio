@@ -16,6 +16,81 @@ interface RequestBody {
   quantity?: number;
   model?: string;
   refCharacter?: string; // Base64 data URL de l'image de référence
+  /** Références ordonnées (ex. avatar puis produit) — prioritaire sur refCharacter si non vide */
+  subjectReferences?: string[];
+}
+
+async function resolveReferenceImageUrl(
+  refInput: string,
+  userId: string,
+  supabaseAdmin: ReturnType<typeof createClient> | null
+): Promise<string | null> {
+  const refCharacter = String(refInput || "").trim();
+  if (!refCharacter) return null;
+
+  try {
+    if (refCharacter.startsWith("http://") || refCharacter.startsWith("https://")) {
+      return refCharacter.startsWith("http://")
+        ? refCharacter.replace("http://", "https://")
+        : refCharacter;
+    }
+
+    if (!supabaseAdmin) {
+      console.warn("SERVICE_ROLE_KEY non configurée, impossible d'uploader l'image de référence");
+      return null;
+    }
+
+    let base64Data = refCharacter;
+    let mimeType = "image/png";
+
+    if (refCharacter.startsWith("data:")) {
+      const mimeMatch = refCharacter.match(/data:([^;]+);base64,(.+)/);
+      if (mimeMatch) {
+        mimeType = mimeMatch[1];
+        base64Data = mimeMatch[2];
+      }
+    }
+
+    const binaryString = atob(base64Data);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+
+    const ext = mimeType.includes("jpeg") || mimeType.includes("jpg")
+      ? "jpg"
+      : mimeType.includes("png")
+      ? "png"
+      : mimeType.includes("webp")
+      ? "webp"
+      : "png";
+
+    const fileName = `${userId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
+
+    console.log(`Upload de l'image de référence vers Storage: ${fileName}`);
+    const { error: uploadError } = await supabaseAdmin.storage
+      .from("image-references")
+      .upload(fileName, bytes, {
+        contentType: mimeType,
+        cacheControl: "3600",
+        upsert: false,
+      });
+
+    if (uploadError) {
+      console.error("Erreur upload image de référence:", uploadError);
+      return null;
+    }
+
+    const { data: { publicUrl } } = supabaseAdmin.storage
+      .from("image-references")
+      .getPublicUrl(fileName);
+
+    console.log(`Image de référence uploadée avec succès: ${publicUrl}`);
+    return publicUrl;
+  } catch (err) {
+    console.error("Erreur lors du traitement de l'image de référence:", err);
+    return null;
+  }
 }
 
 serve(async (req) => {
@@ -140,6 +215,7 @@ serve(async (req) => {
       quantity = 1,
       model = "image-01",
       refCharacter,
+      subjectReferences,
     } = body;
 
     // 7. Valider le prompt
@@ -192,90 +268,41 @@ serve(async (req) => {
       prompt_optimizer: true, // Optimisation automatique du prompt
     };
 
-    // 11. Gérer l'image de référence si fournie
-    let referenceImageUrl: string | null = null;
-    if (refCharacter) {
-      try {
-        // Si c'est déjà une URL, l'utiliser directement
-        if (refCharacter.startsWith("http://") || refCharacter.startsWith("https://")) {
-          referenceImageUrl = refCharacter;
-        } else {
-          // Sinon, c'est un base64 qu'il faut uploader
-          if (!supabaseAdmin) {
-            console.warn("SERVICE_ROLE_KEY non configurée, impossible d'uploader l'image de référence");
-          } else {
-            // Extraire le base64 et le type MIME du data URL
-            let base64Data = refCharacter;
-            let mimeType = "image/png";
-            
-            if (refCharacter.startsWith("data:")) {
-              const mimeMatch = refCharacter.match(/data:([^;]+);base64,(.+)/);
-              if (mimeMatch) {
-                mimeType = mimeMatch[1];
-                base64Data = mimeMatch[2];
-              }
-            }
+    // 11. Gérer les images de référence (tableau ordonné ou refCharacter legacy)
+    const subjectRefInputs = Array.isArray(subjectReferences)
+      ? subjectReferences.filter((s): s is string => typeof s === "string" && s.trim().length > 0)
+      : [];
 
-            // Convertir le base64 en Uint8Array
-            const binaryString = atob(base64Data);
-            const bytes = new Uint8Array(binaryString.length);
-            for (let i = 0; i < binaryString.length; i++) {
-              bytes[i] = binaryString.charCodeAt(i);
-            }
-
-            // Déterminer l'extension du fichier
-            const ext = mimeType.includes("jpeg") || mimeType.includes("jpg")
-              ? "jpg"
-              : mimeType.includes("png")
-              ? "png"
-              : mimeType.includes("webp")
-              ? "webp"
-              : "png";
-
-            // Générer un nom de fichier unique
-            const fileName = `${user.id}/${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
-            const filePath = fileName;
-
-            // Uploader l'image vers Supabase Storage
-            console.log(`Upload de l'image de référence vers Storage: ${filePath}`);
-            const { error: uploadError, data: uploadData } = await supabaseAdmin.storage
-              .from("image-references")
-              .upload(filePath, bytes, {
-                contentType: mimeType,
-                cacheControl: "3600",
-                upsert: false,
-              });
-
-            if (uploadError) {
-              console.error("Erreur upload image de référence:", uploadError);
-              // Ne pas bloquer, continuer sans l'image de référence
-              referenceImageUrl = null;
-            } else {
-              // Obtenir l'URL publique de l'image
-              const { data: { publicUrl } } = supabaseAdmin.storage
-                .from("image-references")
-                .getPublicUrl(filePath);
-
-              referenceImageUrl = publicUrl;
-              console.log(`Image de référence uploadée avec succès: ${referenceImageUrl}`);
-            }
-          }
-        }
-
-        // Ajouter l'image de référence à la requête MiniMax
-        if (referenceImageUrl) {
-          requestBody.subject_reference = [
-            {
-              type: "character",
-              image_file: referenceImageUrl,
-            },
-          ];
-          console.log("Image de référence ajoutée à la requête MiniMax");
-        }
-      } catch (err) {
-        console.error("Erreur lors du traitement de l'image de référence:", err);
-        // Ne pas bloquer la génération si l'upload échoue
-        // On continue sans l'image de référence
+    if (subjectRefInputs.length > 0) {
+      const primaryRefInput = subjectRefInputs[0];
+      const referenceImageUrl = await resolveReferenceImageUrl(
+        primaryRefInput,
+        user.id,
+        supabaseAdmin
+      );
+      if (referenceImageUrl) {
+        requestBody.subject_reference = [
+          {
+            type: "character",
+            image_file: referenceImageUrl,
+          },
+        ];
+        console.log("Image de référence ajoutée à la requête MiniMax");
+      }
+    } else if (refCharacter) {
+      const referenceImageUrl = await resolveReferenceImageUrl(
+        refCharacter,
+        user.id,
+        supabaseAdmin
+      );
+      if (referenceImageUrl) {
+        requestBody.subject_reference = [
+          {
+            type: "character",
+            image_file: referenceImageUrl,
+          },
+        ];
+        console.log("Image de référence ajoutée à la requête MiniMax");
       }
     }
 

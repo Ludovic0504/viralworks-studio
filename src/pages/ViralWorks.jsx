@@ -125,6 +125,11 @@ function imageStepRichness(s) {
   return n * 10_000 + refW + promptW + modifyW;
 }
 
+function imageStepHasHookVisual(step) {
+  const urls = Array.isArray(step?.lastGeneratedImages) ? step.lastGeneratedImages : [];
+  return urls.some((u) => typeof u === "string" && u.trim().length > 0);
+}
+
 function normalizeValidated(v) {
   const base = { 1: false, 2: false, 3: false };
   if (!v || typeof v !== "object") return base;
@@ -1476,6 +1481,10 @@ export default function ViralWorks() {
   const handleValidateAndNext = async () => {
     if (currentStep === 1 && !step1BrainLaunched) return;
     if (currentStep === 1 && scriptGenStatus === "running") return;
+    if (currentStep === 2 && !imageStepHasHookVisual(imageStep)) {
+      alert("Génère ou importe un visuel avant de continuer.");
+      return;
+    }
 
     // Le débit crédit « fin de parcours vidéo » est effectué dans Video.jsx au clic
     // « Télécharger la vidéo » (upload + historique). Ne pas marquer videoCreditDebited ici,
@@ -1488,7 +1497,9 @@ export default function ViralWorks() {
   };
 
   const validateStepBlocked =
-    (currentStep === 1 && !step1BrainLaunched) || scriptGenStatus === "running";
+    (currentStep === 1 && !step1BrainLaunched) ||
+    scriptGenStatus === "running" ||
+    (currentStep === 2 && !imageStepHasHookVisual(imageStep));
 
   const validateStepPromptLoading = scriptGenStatus === "running";
 
@@ -1525,6 +1536,7 @@ export default function ViralWorks() {
     scriptScene3Idea: String(scriptPromptForImage?.scenes?.[2] ?? ""),
     campaignRevealMode: Boolean(campaignData?.revealMode),
     campaignMicroAnswer: campaignData?.microAnswer ?? null,
+    campaignGenerationSpec,
     visualStepActive: currentStep === 2,
     imageStep,
     patchImageStep,
@@ -1618,7 +1630,11 @@ export default function ViralWorks() {
                   validateStepBlocked
                     ? scriptGenStatus === "running"
                       ? "Génération du script en cours…"
-                      : "Lance d’abord le cerveau VWS avec le bouton vert dans l’étape Campagne."
+                      : currentStep === 2 && !imageStepHasHookVisual(imageStep)
+                        ? "Génère ou importe un visuel avant de continuer."
+                        : currentStep === 1 && !step1BrainLaunched
+                          ? "Lance d’abord le cerveau VWS avec le bouton vert dans l’étape Campagne."
+                          : undefined
                     : undefined
                 }
                 className={`w-full sm:w-auto inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold text-center leading-tight transition-colors duration-150 ${
