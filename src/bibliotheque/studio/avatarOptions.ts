@@ -40,16 +40,7 @@ export const COULEURS_DOMINANTES = [
   { value: "vert", label: "Vert", swatch: "#16a34a" },
 ] as const;
 
-export const METIERS = [
-  { value: "electricien", label: "Électricien" },
-  { value: "plombier", label: "Plombier" },
-  { value: "macon", label: "Maçon" },
-  { value: "climaticien", label: "Climaticien" },
-  { value: "menuisier", label: "Menuisier" },
-  { value: "peintre", label: "Peintre" },
-  { value: "carreleur", label: "Carreleur" },
-  { value: "couvreur", label: "Couvreur" },
-] as const;
+export { METIERS } from "./avatarMetiersCatalog";
 
 export type OutputFormat = "face" | "triptyque";
 

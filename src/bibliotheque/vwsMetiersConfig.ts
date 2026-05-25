@@ -1,151 +1,95 @@
 /**
  * Source unique : liste des métiers + paramètres métier pour Campagne VWS et vwsPromptEngine.
- * Tout nouveau métier ou ajustement se fait ici.
+ * Catalogue 106 libellés : metiersCategories.ts — profils par catégorie : vwsMetiersProfiles/.
  */
 
-export type VwsMetierProfile = {
-  /** Libellé affiché dans le select (clé de correspondance avec campaignData.profession) */
-  label: string;
-  /** Injecté dans l’environnement visuel du moteur VWS quand les détails style sont vides ou en complément */
-  environmentHint: string;
-  /** Placeholder du champ « Détails supplémentaires » */
-  stylePlaceholder: string;
-  /** Court contexte ajouté au prompt « M’inspirer » (GPT) pour coller au terrain */
-  inspireContext?: string;
-  /** Format vidéo suggéré dans la modale Campagne VWS (`vwsVideoFormatsCatalog`) */
-  recommendedVideoFormatId: string;
+import { ALL_METIERS, isKnownMetierLabel } from "./metiersCategories";
+import { VWS_METIER_PROFILES_COMBINED } from "./vwsMetiersProfiles";
+import type { VwsMetierProfile } from "./vwsMetiersProfiles/types";
+
+export type { VwsMetierProfile };
+
+/** Anciens libellés campagne → libellé(s) canonique(s) du catalogue 106. */
+export const PROFESSION_LABEL_ALIASES: Record<string, string | readonly [string, string]> = {
+  "Coiffeur / barbier": "Coiffeur",
+  "Chauffagiste / climatisation": "Chauffagiste",
+  "Paysagiste / jardinier": "Paysagiste",
+  "Architecte / architecte d'intérieur": "Architecte",
+  "Coach sportif / salle de sport": "Coach sportif",
+  "Magasin de meubles / décoration": ["Cuisiniste", "Décorateur d'intérieur"],
 };
 
-export const VWS_METIER_PROFILES: VwsMetierProfile[] = [
-  {
-    label: "Agent immobilier",
-    recommendedVideoFormatId: "story_lifestyle",
-    environmentHint:
-      "bien réel en vente (appartement, maison, studio), entrée, pièce de vie, cuisine, salle d’eau, extérieur ou balcon selon le bien",
-    stylePlaceholder: "Ex. : T3 rénové, style haussmannien, vue dégagée, quartier résidentiel, lumière naturelle…",
-    inspireContext:
-      "accroche sur le besoin client, visite courte pièce par pièce, focus points forts mesurables (surface, luminosité, extérieur)",
-  },
-  {
-    label: "Restaurateur",
-    recommendedVideoFormatId: "produit_demo",
-    environmentHint:
-      "cuisine en service, plan de travail, dressage, salle ou terrasse, équipe en mouvement, plats prêts à servir",
-    stylePlaceholder: "Ex. : service du midi, cuisine bistronomique, burger maison, four à pizza, ambiance du soir…",
-    inspireContext: "préparation en cadence, dressage final, sortie de plat, réaction client en dégustation",
-  },
-  {
-    label: "Coiffeur / barbier",
-    recommendedVideoFormatId: "process_avant_apres",
-    environmentHint:
-      "salon identifiable avec fauteuil, miroir, poste de travail, tondeuse, ciseaux, produits coiffants, lumière de miroir",
-    stylePlaceholder: "Ex. : dégradé à blanc, taille de barbe, brushing, coloration, salon premium ou urbain…",
-    inspireContext: "avant/après net, geste technique sur contour ou nuque, résultat final montré au miroir",
-  },
-  {
-    label: "Garagiste / mécanicien",
-    recommendedVideoFormatId: "process_demo_geste",
-    environmentHint:
-      "atelier auto avec pont, valise diagnostic, outils, pièces démontées, véhicule client en intervention",
-    stylePlaceholder: "Ex. : révision complète, freinage, distribution, diagnostic moteur, garage multimarque…",
-    inspireContext: "problème client explicité, contrôle visuel, réparation en cours, test final véhicule",
-  },
-  {
-    label: "Plombier",
-    recommendedVideoFormatId: "process_avant_apres",
-    environmentHint:
-      "intervention en salle de bain, cuisine ou local technique, fuite localisée, raccords, vannes, outillage plomberie",
-    stylePlaceholder: "Ex. : fuite sous évier, remplacement robinet, débouchage, rénovation réseau eau chaude…",
-    inspireContext: "constat du défaut, action de réparation, remise en eau et vérification d’étanchéité",
-  },
-  {
-    label: "Électricien",
-    recommendedVideoFormatId: "process_avant_apres",
-    environmentHint:
-      "tableau électrique, prises, éclairages, câblage apparent en chantier, EPI et gestes de sécurité visibles",
-    stylePlaceholder: "Ex. : mise aux normes NFC 15-100, ajout de prises, éclairage LED, domotique maison…",
-    inspireContext: "diagnostic panne ou besoin, intervention claire au tableau, test final avec éclairage fonctionnel",
-  },
-  {
-    label: "Chauffagiste / climatisation",
-    recommendedVideoFormatId: "humain_face_expert",
-    environmentHint:
-      "chaudière, pompe à chaleur, unité intérieure/extérieure, radiateurs ou plancher chauffant, instruments de mesure",
-    stylePlaceholder: "Ex. : entretien chaudière gaz, dépannage PAC, installation clim split, optimisation consommation…",
-    inspireContext: "contrôle des paramètres, entretien ou remplacement pièce, remise en service avec température stable",
-  },
-  {
-    label: "Pisciniste",
-    recommendedVideoFormatId: "process_avant_apres",
-    environmentHint:
-      "bassin résidentiel, local technique, filtration, margelles, robot ou accessoires entretien, eau en condition réelle",
-    stylePlaceholder: "Ex. : remise en route saison, traitement eau verte, installation pompe, entretien hebdomadaire…",
-    inspireContext: "analyse qualité d’eau, action de traitement, réglage filtration, résultat eau claire",
-  },
-  {
-    label: "Paysagiste / jardinier",
-    recommendedVideoFormatId: "process_avant_apres",
-    environmentHint:
-      "jardin privé ou copropriété, haies, pelouse, massifs, terrasse, outils d’entretien et déchets verts",
-    stylePlaceholder: "Ex. : taille de haie, création massif, pose gazon, arrosage automatique, entretien saisonnier…",
-    inspireContext: "avant/après zone traitée, geste professionnel, finition propre et visuellement nette",
-  },
-  {
-    label: "Menuisier",
-    recommendedVideoFormatId: "process_demo_geste",
-    environmentHint:
-      "atelier bois ou pose sur chantier, établi, panneaux, machines de coupe, quincaillerie, éléments sur mesure",
-    stylePlaceholder: "Ex. : placard sur mesure, escalier bois, pose porte intérieure, habillage mural…",
-    inspireContext: "prise de cote, fabrication ou ajustage, pose finale et contrôle d’alignement",
-  },
-  {
-    label: "Couvreur",
-    recommendedVideoFormatId: "process_demo_geste",
-    environmentHint:
-      "toiture en intervention, tuiles/ardoises/zinc, échafaudage, harnais, gouttières, conditions extérieures réalistes",
-    stylePlaceholder: "Ex. : réparation fuite toiture, remplacement tuiles cassées, zinguerie, nettoyage toiture…",
-    inspireContext: "zone défectueuse montrée, réparation sécurisée, contrôle d’écoulement ou d’étanchéité",
-  },
-  {
-    label: "Maçon",
-    recommendedVideoFormatId: "process_timelapse",
-    environmentHint:
-      "chantier gros œuvre ou rénovation, parpaings/briques, mortier, coffrage, ferraillage, niveaux et repères",
-    stylePlaceholder: "Ex. : dalle béton, mur de clôture, ouverture de mur porteur, enduit de façade…",
-    inspireContext: "mise en place précise, contrôle au niveau, progression du chantier visible à l’image",
-  },
-  {
-    label: "Architecte / architecte d'intérieur",
-    recommendedVideoFormatId: "story_probleme_solution",
-    environmentHint:
-      "plan 2D/3D, échantillons matériaux, chantier suivi ou intérieur finalisé, échanges client autour des choix",
-    stylePlaceholder: "Ex. : rénovation appartement ancien, optimisation petit espace, conception cuisine, ambiance haut de gamme…",
-    inspireContext: "problème d’aménagement posé, solution visuelle proposée, projection avant/après compréhensible",
-  },
-  {
-    label: "Magasin de meubles / décoration",
-    recommendedVideoFormatId: "produit_demo",
-    environmentHint:
-      "showroom organisé par univers, meubles en situation, accessoires déco, client qui compare matières et dimensions",
-    stylePlaceholder: "Ex. : salon complet, chambre moderne, style scandinave, offre promotionnelle en magasin…",
-    inspireContext: "conseil client concret, mise en situation d’un meuble, argument confort/praticité/prix",
-  },
-  {
-    label: "Coach sportif / salle de sport",
-    recommendedVideoFormatId: "social_hook_educatif",
-    environmentHint:
-      "salle de sport active (musculation, cardio, functional), matériel utilisé, coach et pratiquant en séance réelle",
-    stylePlaceholder: "Ex. : programme perte de poids, coaching force, remise en forme débutant, séance HIIT 30 min…",
-    inspireContext: "objectif client clair, exercice démontré, correction posture, progression mesurable",
-  },
-];
+const MAGASIN_LEGACY_LABEL = "Magasin de meubles / décoration";
 
-export const VWS_METIER_LABELS: string[] = VWS_METIER_PROFILES.map((p) => p.label);
+function findProfileByLabel(label: string): VwsMetierProfile | undefined {
+  return VWS_METIER_PROFILES_COMBINED.find((p) => p.label === label);
+}
+
+function mergeMagasinProfiles(
+  targets: readonly [string, string],
+  fallback: VwsMetierProfile
+): VwsMetierProfile {
+  const [aLabel, bLabel] = targets;
+  const a = findProfileByLabel(aLabel);
+  const b = findProfileByLabel(bLabel);
+  if (!a && !b) return { ...fallback, label: MAGASIN_LEGACY_LABEL };
+  if (a && !b) return { ...a, label: MAGASIN_LEGACY_LABEL };
+  if (b && !a) return { ...b, label: MAGASIN_LEGACY_LABEL };
+  const join = (x: string | undefined, y: string | undefined) =>
+    [x, y].filter(Boolean).join(" ; ");
+  return {
+    label: MAGASIN_LEGACY_LABEL,
+    recommendedVideoFormatId: a!.recommendedVideoFormatId || b!.recommendedVideoFormatId,
+    environmentHint: join(a!.environmentHint, b!.environmentHint),
+    stylePlaceholder: join(a!.stylePlaceholder, b!.stylePlaceholder),
+    inspireContext: join(a!.inspireContext, b!.inspireContext),
+  };
+}
+
+function resolveCanonicalLabel(professionLabel: string): string {
+  const alias = PROFESSION_LABEL_ALIASES[professionLabel];
+  if (typeof alias === "string") return alias;
+  return professionLabel;
+}
+
+export const VWS_METIER_PROFILES: VwsMetierProfile[] = VWS_METIER_PROFILES_COMBINED;
+
+/** Libellés catalogue (106) — combobox campagne et garde mode produit. */
+export const VWS_METIER_LABELS: string[] = [...ALL_METIERS];
+
+/** Tous les libellés du catalogue (106) — pour combobox Phase 3. */
+export { ALL_METIERS, isKnownMetierLabel };
 
 export function getVwsMetierProfile(professionLabel: string): VwsMetierProfile | null {
   const t = (professionLabel || "").trim();
   if (!t) return null;
-  return VWS_METIER_PROFILES.find((p) => p.label === t) ?? null;
+
+  const direct = findProfileByLabel(t);
+  if (direct) return direct;
+
+  const alias = PROFESSION_LABEL_ALIASES[t];
+  if (Array.isArray(alias)) {
+    const fallback = findProfileByLabel(MAGASIN_LEGACY_LABEL);
+    return mergeMagasinProfiles(alias, fallback ?? {
+      label: MAGASIN_LEGACY_LABEL,
+      recommendedVideoFormatId: "produit_demo",
+      environmentHint:
+        "showroom organisé par univers, meubles en situation, accessoires déco, client qui compare matières et dimensions",
+      stylePlaceholder:
+        "Ex. : salon complet, chambre moderne, style scandinave, offre promotionnelle en magasin…",
+      inspireContext:
+        "conseil client concret, mise en situation d’un meuble, argument confort/praticité/prix",
+    });
+  }
+
+  if (typeof alias === "string") {
+    const resolved = findProfileByLabel(alias);
+    if (resolved) return resolved;
+    const legacy = findProfileByLabel(t);
+    if (legacy) return legacy;
+  }
+
+  return null;
 }
 
 export function getVwsEnvironmentHint(professionLabel: string): string | null {

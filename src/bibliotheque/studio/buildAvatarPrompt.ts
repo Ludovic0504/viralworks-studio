@@ -1,5 +1,9 @@
 import type { AvatarConfig } from "@/bibliotheque/studio/avatarOptions";
-import { METIERS } from "@/bibliotheque/studio/avatarOptions";
+import {
+  ACCESSOIRES_PAR_METIER,
+  resolveAvatarMetierLabel,
+  resolveAvatarMetierSlug,
+} from "@/bibliotheque/studio/avatarMetiersCatalog";
 
 const PROMPT_FACE_TEMPLATE = `
 Photographie couleur réaliste, style portrait corporate 
@@ -36,17 +40,6 @@ const COULEUR_PROMPT_LABELS: Record<string, string> = {
   vert: "vert",
 };
 
-const ACCESSOIRES_PAR_METIER: Record<string, string> = {
-  electricien: "ceinture porte-outils, mètre ruban",
-  plombier: "ceinture porte-outils, gants de travail",
-  macon: "gants de protection, casque de chantier",
-  climaticien: "carnet technique, stylo",
-  menuisier: "ceinture porte-outils, lunettes de protection",
-  peintre: "gants fins, tablier de peintre",
-  carreleur: "genouillères, gants",
-  couvreur: "harnais de sécurité, casque",
-};
-
 const DEFAULT_ACCESSOIRES = "accessoires de travail adaptés au métier";
 
 function resolveGenreLabel(genre: string | null): string {
@@ -56,8 +49,7 @@ function resolveGenreLabel(genre: string | null): string {
 }
 
 function resolveMetierLabel(metier: string): string {
-  const found = METIERS.find((m) => m.value === metier);
-  return found?.label ?? metier;
+  return resolveAvatarMetierLabel(metier);
 }
 
 function resolveCouleurLabel(couleur: string | null): string {
@@ -67,7 +59,8 @@ function resolveCouleurLabel(couleur: string | null): string {
 
 function resolveAccessoires(metier: string, accessoires: boolean): string {
   if (!accessoires) return "Aucun";
-  return ACCESSOIRES_PAR_METIER[metier] ?? DEFAULT_ACCESSOIRES;
+  const slug = resolveAvatarMetierSlug(metier);
+  return ACCESSOIRES_PAR_METIER[slug] ?? ACCESSOIRES_PAR_METIER[metier] ?? DEFAULT_ACCESSOIRES;
 }
 
 export function getTenueDetails(

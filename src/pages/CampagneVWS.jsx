@@ -12,10 +12,10 @@ import {
   narrativeContinuityNeedsQuestion,
 } from "../bibliotheque/vwsPromptEngine";
 import { generateResponse } from "@/bibliotheque/openai/chatgpt-client";
-import {
-  VWS_METIER_LABELS,
-  getVwsMetierProfile,
-} from "@/bibliotheque/vwsMetiersConfig";
+import { getVwsMetierProfile } from "@/bibliotheque/vwsMetiersConfig";
+import { isKnownMetierLabel } from "@/bibliotheque/metiersCategories";
+import MetierCombobox from "@/composants/campagne/MetierCombobox";
+import { PROFESSION_TO_LIEU_TOURNAGE } from "@/bibliotheque/professionLieuTournage";
 import {
   createDefaultCampaignGenerationSpec,
   stampCampaignGenerationMeta,
@@ -165,24 +165,6 @@ const LIEU_TOURNAGE_OPTIONS = [
     sentence: "La scène se déroule dans un lieu neutre ou extérieur.",
   },
 ];
-
-const PROFESSION_TO_LIEU_TOURNAGE = {
-  "Plombier": "chez_client",
-  "Électricien": "chez_client",
-  "Chauffagiste / climatisation": "chez_client",
-  "Menuisier": "chez_client",
-  "Maçon": "chez_client",
-  "Restaurateur": "etablissement",
-  "Coiffeur / barbier": "etablissement",
-  "Garagiste / mécanicien": "etablissement",
-  "Magasin de meubles / décoration": "etablissement",
-  "Coach sportif / salle de sport": "etablissement",
-  "Agent immobilier": "neutre",
-  "Pisciniste": "neutre",
-  "Paysagiste / jardinier": "neutre",
-  "Couvreur": "neutre",
-  "Architecte / architecte d'intérieur": "neutre",
-};
 
 function getLieuOption(value) {
   return LIEU_TOURNAGE_OPTIONS.find((opt) => opt.value === value) || LIEU_TOURNAGE_OPTIONS[2];
@@ -741,7 +723,7 @@ export default function CampagneVWS({
     /** Évite de réutiliser le libellé métier (select) comme « nom du produit » — même state `profession`. */
     if (willBeProduct && !wasProduct) {
       const pTrim = String(profession ?? "").trim();
-      if (pTrim && VWS_METIER_LABELS.includes(pTrim)) {
+      if (pTrim && isKnownMetierLabel(pTrim)) {
         payload.profession = "";
       }
     }
@@ -874,6 +856,10 @@ export default function CampagneVWS({
     }
 
     const metier = effectiveProfession;
+    const inspireMetierProfile = getVwsMetierProfile(metier);
+    const inspireContextLine = inspireMetierProfile?.inspireContext?.trim()
+      ? `\nAngle narratif typique pour ce métier : ${inspireMetierProfile.inspireContext.trim()}`
+      : "";
     setInspireProductAwaitingDelayedSpinner(false);
     setInspireDelayedSpinnerVisible(false);
     if (inspireSpinnerDelayTimerRef.current != null) {
@@ -889,7 +875,7 @@ export default function CampagneVWS({
       const selectedFormatLabel = inspireFormatDef?.name || "Format non défini";
       const userPrompt = `Tu es un expert en création de vidéos courtes pour les réseaux sociaux.
 Génère une idée de scène vidéo de 8 secondes pour un ${metier}
-qui travaille ${selectedLieu.sentence}
+qui travaille ${selectedLieu.sentence}${inspireContextLine}
 
 Le format de cette vidéo est : ${selectedFormatLabel}
 Tu dois impérativement respecter ce que ce format implique :
@@ -1966,20 +1952,14 @@ Réponds uniquement en JSON :
                     <label className="vws-campagne-label" htmlFor="campagne-metier">
                       Ton métier
                     </label>
-                    <select
+                    <MetierCombobox
                       id="campagne-metier"
                       value={profession}
-                      onChange={(e) => setProfession(e.target.value)}
-                      className="vws-campagne-field vws-campagne-select vws-campagne-field--touch vws-campagne-select-grid-mobile"
+                      onChange={setProfession}
+                      placeholder="Rechercher un métier…"
+                      className="vws-campagne-select-grid-mobile"
                       aria-describedby={metierProfile ? "campagne-metier-hint" : undefined}
-                    >
-                      <option value="">Choisir un métier...</option>
-                      {VWS_METIER_LABELS.map((m) => (
-                        <option key={m} value={m}>
-                          {m}
-                        </option>
-                      ))}
-                    </select>
+                    />
                     {metierProfile ? (
                       <p className="vws-campagne-metier-hint min-[641px]:block max-[640px]:hidden" id="campagne-metier-hint">
                         Ambiance typique pour ce métier (pour aider à imaginer la scène) :{" "}
