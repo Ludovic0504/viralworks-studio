@@ -446,11 +446,11 @@ export default function AuthFormCard({
           height={36}
           decoding="async"
         />
-        <p className="text-sm text-gray-400">
-          {mode === "signin"
-            ? "Accède à toutes les fonctionnalités"
-            : "Rejoins ViralWorks Studio et commence à créer"}
-        </p>
+        {mode === "signup" ? (
+          <p className="text-sm text-gray-400">
+            Rejoins ViralWorks Studio et commence à créer
+          </p>
+        ) : null}
       </div>
 
       {errorMsg ? (
@@ -538,8 +538,8 @@ export default function AuthFormCard({
 
       {googleSignInButton}
 
-      <p className="mt-3 text-sm text-gray-400 text-center leading-relaxed">
-        Tes données sont protégées — aucune utilisation commerciale
+      <p className="mt-3 text-xs text-center text-gray-400 opacity-60">
+        🔒 Données protégées
       </p>
 
       {authDivider}
