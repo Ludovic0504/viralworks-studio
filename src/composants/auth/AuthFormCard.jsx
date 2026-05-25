@@ -436,9 +436,7 @@ export default function AuthFormCard({
 
   return (
     <div className="w-full max-w-md">
-      <div
-        className={`text-center mb-4 sm:mb-5${reserveHeaderSpaceForCloseButton ? " pr-10 sm:pr-0" : ""}`}
-      >
+      <div className="mb-4 sm:mb-5 w-full text-center">
         <img
           src="/Logo_VWS_sans_bordure.png"
           alt="ViralWorks Studio"
