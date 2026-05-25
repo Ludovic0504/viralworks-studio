@@ -1,11 +1,10 @@
-import { createBrowserRouter, RouterProvider, Outlet, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { createBrowserRouter, RouterProvider, Outlet, Navigate, useLocation } from "react-router-dom";
 import { useEffect, Component } from "react";
 import DashboardLayout from "./dispositions/DispositionTableauDeBord.jsx";
 import RappelAuth from "./pages/RappelAuth.jsx";
 import ConfirmerEmail from "./pages/ConfirmerEmail.jsx";
 import Accueil from "./pages/Accueil.jsx";
 import Lab from "./pages/Lab.jsx";
-import Connexion from "./pages/Connexion.jsx";
 import RouteDeconnexion from "./pages/RouteDeconnexion.jsx";
 import ReinitialiserMotDePasse from "./pages/ReinitialiserMotDePasse.jsx";
 import Profil from "./pages/Profil.jsx";
@@ -24,8 +23,6 @@ import { AuthActionProvider } from "./contexte/ActionAuthModalContext";
 import { FournisseurCommunauteVWSNotif } from "./contexte/FournisseurCommunauteVWSNotif.jsx";
 import { initMetaPixel, trackPageView } from "./bibliotheque/meta/pixel";
 import { initPostHog, trackPostHogPageView } from "./bibliotheque/posthog/client";
-import { useAuth } from "@/contexte/FournisseurAuth";
-import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 
 class RouteErrorBoundary extends Component {
   constructor(props) {
@@ -87,35 +84,15 @@ function AnalyticsRouteListener() {
   return null;
 }
 
-function AppShell() {
-  const location = useLocation();
-  const navigate = useNavigate();
-  const { session, loading } = useAuth();
-  const { openAuthModal } = useRequireAuthAction();
-
-  useEffect(() => {
-    const sp = new URLSearchParams(location.search);
-    const wantsLogin = sp.get("login") === "1";
-    if (!wantsLogin) return;
-
-    // Nettoyer l'URL immédiatement pour éviter la réouverture au refresh.
-    sp.delete("login");
-    const nextSearch = sp.toString();
-    navigate(
-      { pathname: location.pathname, search: nextSearch ? `?${nextSearch}` : "" },
-      { replace: true }
-    );
-
-    // Si déjà connecté, rien à ouvrir.
-    if (session?.user?.id) return;
-    // Évite un flash si la session est en cours d'init.
-    if (loading) return;
-
-    openAuthModal();
-  }, [location.pathname, location.search, navigate, openAuthModal, session?.user?.id, loading]);
-
-  // Intro supprimée : on affiche toujours l'app directement.
-  return <Outlet />;
+function RootRouteLayout() {
+  return (
+    <AuthActionProvider>
+      <FournisseurCommunauteVWSNotif>
+        <AnalyticsRouteListener />
+        <Outlet />
+      </FournisseurCommunauteVWSNotif>
+    </AuthActionProvider>
+  );
 }
 
 function LoginRedirect() {
@@ -131,12 +108,7 @@ const router = createBrowserRouter([
     path: "/",
     element: (
       <AuthProvider>
-        <AuthActionProvider>
-          <FournisseurCommunauteVWSNotif>
-            <AnalyticsRouteListener />
-            <AppShell />
-          </FournisseurCommunauteVWSNotif>
-        </AuthActionProvider>
+        <RootRouteLayout />
       </AuthProvider>
     ),
     children: [

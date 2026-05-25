@@ -95,7 +95,7 @@ export default function Login() {
             />
           ))}
 
-          <div className="relative z-10 min-h-screen flex items-center justify-center px-4 sm:px-6 lg:px-8 py-24">
+          <div className="relative z-10 flex min-h-[calc(100dvh-4rem)] items-start justify-center px-4 sm:items-center sm:px-6 lg:px-8 py-5 sm:py-16 max-sm:pb-6">
             <AuthFormCard
               next={next}
               showConfirmedBanner={confirmedBanner}

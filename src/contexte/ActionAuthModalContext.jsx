@@ -1,19 +1,46 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState, useEffect } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import AuthModal from "@/composants/auth/AuthModal";
 import { useAuth } from "@/contexte/FournisseurAuth";
 
 const AuthActionContext = createContext(null);
 
 export function AuthActionProvider({ children }) {
-  const { session } = useAuth();
+  const { session, loading } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const [modalOpen, setModalOpen] = useState(false);
   const pendingActionRef = useRef(null);
 
   const openAuthModal = useCallback(() => {
     setModalOpen(true);
   }, []);
+
+  /** Ouvre le modal quand l'URL contient ?login=1 (ex. redirect depuis RouteProtegee). */
+  useEffect(() => {
+    const sp = new URLSearchParams(location.search);
+    const wantsLogin = sp.get("login") === "1";
+    if (!wantsLogin) return;
+
+    sp.delete("login");
+    const nextSearch = sp.toString();
+    navigate(
+      { pathname: location.pathname, search: nextSearch ? `?${nextSearch}` : "" },
+      { replace: true }
+    );
+
+    if (session?.user?.id) return;
+    if (loading) return;
+
+    openAuthModal();
+  }, [
+    location.pathname,
+    location.search,
+    navigate,
+    openAuthModal,
+    session?.user?.id,
+    loading,
+  ]);
 
   /** Fermer le modal si l'utilisateur change de page (ex. /studio?login=1 → /viralworks). */
   useEffect(() => {

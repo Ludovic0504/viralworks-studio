@@ -139,7 +139,7 @@ export default function AuthFormCard({
   /** Liens dashboard affichés seulement après échec « mot de passe oublié » côté Supabase. */
   const [recoveryDashboardUrls, setRecoveryDashboardUrls] = useState(null);
   const [showPwd, setShowPwd] = useState(false);
-  const [remember, setRemember] = useState(false);
+  const remember = false;
   /** Email du dernier signup en attente de confirmation (active le bouton « renvoyer »). */
   const [pendingConfirmEmail, setPendingConfirmEmail] = useState("");
   const [resendStatus, setResendStatus] = useState("idle");
@@ -388,18 +388,68 @@ export default function AuthFormCard({
     }
   };
 
+  const googleSignInButton = (
+    <button
+      type="button"
+      onClick={signInWithGoogle}
+      disabled={oauthLoading}
+      className="w-full rounded-lg border border-[#dadce0] bg-[#ffffff] text-[#1f1f1f] font-medium py-3 hover:bg-[#f5f5f5] transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2.5 shadow-sm"
+    >
+      {oauthLoading ? (
+        <>
+          <div className="w-4 h-4 border-2 border-[#1f1f1f]/20 border-t-[#1f1f1f] rounded-full animate-spin" />
+          <span>Connexion Google...</span>
+        </>
+      ) : (
+        <>
+          <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" aria-hidden>
+            <path
+              fill="#4285F4"
+              d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+            />
+            <path
+              fill="#34A853"
+              d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+            />
+            <path
+              fill="#FBBC05"
+              d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+            />
+            <path
+              fill="#EA4335"
+              d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+            />
+          </svg>
+          <span>Continuer avec Google</span>
+        </>
+      )}
+    </button>
+  );
+
+  const authDivider = (
+    <div className="my-4 flex items-center gap-4" role="separator" aria-label="ou">
+      <div className="flex-1 h-px bg-white/10" />
+      <span className="text-xs text-gray-500 uppercase tracking-wide">ou</span>
+      <div className="flex-1 h-px bg-white/10" />
+    </div>
+  );
+
   return (
     <div className="w-full max-w-md">
       <div
-        className={`text-center mb-8${reserveHeaderSpaceForCloseButton ? " pr-10 sm:pr-0" : ""}`}
+        className={`text-center mb-4 sm:mb-5${reserveHeaderSpaceForCloseButton ? " pr-10 sm:pr-0" : ""}`}
       >
-        <h1 className="text-3xl font-black mb-2">
-          <span className="bg-gradient-to-r from-cyan-300 via-violet-300 to-yellow-300 bg-clip-text text-transparent">
-            {mode === "signin" ? "Connexion" : "Créer un compte"}
-          </span>
-        </h1>
+        <img
+          src="/Logo_VWS_sans_bordure.png"
+          alt="ViralWorks Studio"
+          className="mx-auto mb-2.5 h-9 w-auto block"
+          height={36}
+          decoding="async"
+        />
         <p className="text-sm text-gray-400">
-          {mode === "signin" ? "Accède à toutes les fonctionnalités" : "Rejoins ViralWorks Studio et commence à créer"}
+          {mode === "signin"
+            ? "Accède à toutes les fonctionnalités"
+            : "Rejoins ViralWorks Studio et commence à créer"}
         </p>
       </div>
 
@@ -486,7 +536,15 @@ export default function AuthFormCard({
         </div>
       ) : null}
 
-      <form onSubmit={onSubmit} className="space-y-5">
+      {googleSignInButton}
+
+      <p className="mt-3 text-sm text-gray-400 text-center leading-relaxed">
+        Tes données sont protégées — aucune utilisation commerciale
+      </p>
+
+      {authDivider}
+
+      <form onSubmit={onSubmit} className="space-y-4">
         <div>
           <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
             <Mail className="w-4 h-4 text-gray-400" />
@@ -495,7 +553,7 @@ export default function AuthFormCard({
           <input
             id="email"
             type="email"
-            className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all"
+            className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 sm:py-3 text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all"
             placeholder="ton@email.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -512,7 +570,7 @@ export default function AuthFormCard({
             <input
               id="password"
               type={showPwd ? "text" : "password"}
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 pr-12 text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all"
+              className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 sm:py-3 pr-12 text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all"
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -528,28 +586,18 @@ export default function AuthFormCard({
           </div>
         </div>
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-0">
-          <label className="inline-flex min-w-0 items-center gap-2 text-sm text-gray-400 cursor-not-allowed opacity-80">
-            <input
-              type="checkbox"
-              checked={remember}
-              onChange={(e) => setRemember(e.target.checked)}
-              disabled
-              className="w-4 h-4 rounded border-white/10 bg-white/5 text-emerald-500 focus:ring-emerald-500/50"
-            />
-            <span>Session sécurisée active</span>
-          </label>
-          {mode === "signin" ? (
+        {mode === "signin" ? (
+          <div className="flex justify-end">
             <button
               type="button"
               onClick={handleForgotPassword}
               disabled={loading}
-              className="self-end sm:self-auto shrink-0 whitespace-nowrap text-sm text-emerald-400 hover:text-emerald-300 transition-colors underline disabled:opacity-50"
+              className="shrink-0 whitespace-nowrap text-sm text-emerald-400 hover:text-emerald-300 transition-colors underline disabled:opacity-50"
             >
               Mot de passe oublié ?
             </button>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
 
         <button
           type="submit"
@@ -570,49 +618,7 @@ export default function AuthFormCard({
         </button>
       </form>
 
-      <div className="my-6 flex items-center gap-4">
-        <div className="flex-1 h-px bg-white/10" />
-        <span className="text-xs text-gray-500">ou</span>
-        <div className="flex-1 h-px bg-white/10" />
-      </div>
-
-      <button
-        type="button"
-        onClick={signInWithGoogle}
-        disabled={oauthLoading}
-        className="w-full rounded-lg bg-white/5 border border-white/10 text-white font-medium py-3 hover:bg-white/10 transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-      >
-        {oauthLoading ? (
-          <>
-            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-            <span>Connexion Google...</span>
-          </>
-        ) : (
-          <>
-            <svg className="w-5 h-5" viewBox="0 0 24 24">
-              <path
-                fill="currentColor"
-                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-              />
-              <path
-                fill="currentColor"
-                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-              />
-              <path
-                fill="currentColor"
-                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-              />
-              <path
-                fill="currentColor"
-                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-              />
-            </svg>
-            <span>Continuer avec Google</span>
-          </>
-        )}
-      </button>
-
-      <div className="flex items-center justify-center gap-2 mt-4">
+      <div className="flex items-center justify-center gap-2 mt-3 pb-1">
         <button
           type="button"
           onClick={() => {
@@ -627,15 +633,11 @@ export default function AuthFormCard({
             setPendingConfirmEmail("");
             setResendStatus("idle");
           }}
-          className="text-sm text-emerald-400 hover:text-emerald-300 transition-colors underline"
+          className="text-sm font-medium text-emerald-400 hover:text-emerald-300 transition-colors underline"
         >
           {mode === "signin" ? "Créer un compte" : "Se connecter"}
         </button>
       </div>
-
-      <p className="mt-6 text-xs text-gray-500 text-center leading-relaxed">
-        Tes données sont protégées — aucune utilisation commerciale
-      </p>
     </div>
   );
 }

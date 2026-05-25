@@ -127,9 +127,13 @@ export default function Header({ onOpenMenu }) {
   const showConnectedBranch = hasSession || (loading && wasConnectedRef.current);
 
   const logoTitle = (
-    <span className="text-xl font-black bg-gradient-to-r from-cyan-300 via-violet-300 to-yellow-300 bg-clip-text text-transparent">
-      ViralWorks Studio
-    </span>
+    <img
+      src="/Logo_VWS_sans_bordure.png"
+      alt="ViralWorks Studio"
+      className="h-10 w-auto block"
+      height={40}
+      decoding="async"
+    />
   );
 
   const navLinkItem = (link) => {
