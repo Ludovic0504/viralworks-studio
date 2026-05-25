@@ -57,6 +57,24 @@ function buildProductHailuoRefs({ avatarRefDataUrl, productRefDataUrl, refCharDa
   return {};
 }
 
+function buildProductRefPromptPrefix({ isProductMode, avatarRefDataUrl, productRefDataUrl }) {
+  if (!isProductMode) return "";
+  const lines = [];
+  const av = typeof avatarRefDataUrl === "string" ? avatarRefDataUrl.trim() : "";
+  const pr = typeof productRefDataUrl === "string" ? productRefDataUrl.trim() : "";
+  if (av) {
+    lines.push(
+      "Use the person from the reference image as the exact character in this scene. Match their face, hair, and appearance precisely."
+    );
+  }
+  if (pr) {
+    lines.push(
+      "Feature the product from the second reference image prominently in the scene."
+    );
+  }
+  return lines.join("\n\n");
+}
+
 function ProductRefCard({ label, imageUrl, onPick, onClear, disabled }) {
   return (
     <div className="relative h-20 w-14 shrink-0">
@@ -1169,7 +1187,7 @@ export default function ImagePage({
       setProgressMessage("Envoi de la requête...");
       console.log("📡 Appel de la fonction Edge Function:", functionUrl);
 
-      const image1Prompt = buildHookImageApiPrompt(
+      const baseImage1Prompt = buildHookImageApiPrompt(
         [
           String(canonicalSpec.creative.hook_visual.prompt_text || "").trim() ||
             String(canonicalSpec.campaign.core_idea || "").trim(),
@@ -1208,6 +1226,14 @@ export default function ImagePage({
           openingHookStill: true,
         }
       );
+      const refPromptPrefix = buildProductRefPromptPrefix({
+        isProductMode,
+        avatarRefDataUrl,
+        productRefDataUrl,
+      });
+      const image1Prompt = refPromptPrefix
+        ? `${refPromptPrefix}\n\n${baseImage1Prompt}`
+        : baseImage1Prompt;
 
       const hailuoRefs = isProductMode
         ? buildProductHailuoRefs({ avatarRefDataUrl, productRefDataUrl, refCharDataUrl })
@@ -1380,6 +1406,7 @@ export default function ImagePage({
 
       patchImageStep({
         lastGeneratedImages: finalUrls,
+        prompt: image1Prompt,
         lastGeneratedPrompt: String(campaignIdeaPrompt || "").trim() || prompt,
         pairedCampaignIdea: String(campaignIdea || "").trim() || null,
       });
@@ -1881,16 +1908,7 @@ export default function ImagePage({
     >
       <div className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-end">
         <div className="min-w-0 flex-1">
-          <div
-            className={`mb-1.5 flex items-center gap-3 ${
-              hasSessionImages ? "justify-between" : "justify-end"
-            }`}
-          >
-            {hasSessionImages ? (
-              <label className="block text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-                Modifier l&apos;image sélectionnée
-              </label>
-            ) : null}
+          <div className="mb-1.5 flex items-center justify-end gap-3">
             <button
               type="button"
               onClick={reloadIdeaFromCampaign}
@@ -1946,55 +1964,57 @@ export default function ImagePage({
               </>
             ) : null}
             <div className="relative rounded-2xl border border-white/10 bg-white/[0.04] focus-within:ring-2 focus-within:ring-cyan-500/35">
-            <textarea
-              ref={bottomFieldInputRef}
-              rows={narrowVisualStudio ? 1 : 2}
-              value={bottomFieldValue}
-              onChange={(e) => {
-                setModifyError("");
-                setBottomFieldValue(e.target.value);
-              }}
-              onInput={() => {
-                requestAnimationFrame(() => adjustBottomTextareaHeight());
-              }}
-              maxLength={hasSessionImages ? 500 : 1500}
-              disabled={busy || modifyLoading}
-              placeholder={
-                hasSessionImages
-                  ? "Ex. : ajoute un détail au premier plan, change l'arrière-plan…"
-                  : "Ex. : gros plan sur une personne surprise qui regarde la caméra…"
-              }
-              className={`w-full resize-none rounded-2xl bg-transparent px-4 py-3 pr-14 text-sm text-gray-200 placeholder-gray-500 focus:outline-none ${
-                narrowVisualStudio
-                  ? "min-h-[60px] overflow-hidden overflow-y-hidden"
-                  : "min-h-[3.5rem]"
-              }`}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  if (canBottomSubmit) runBottomSubmit();
+              <div className="flex flex-row items-center">
+              <textarea
+                ref={bottomFieldInputRef}
+                rows={narrowVisualStudio ? 1 : 2}
+                value={bottomFieldValue}
+                onChange={(e) => {
+                  setModifyError("");
+                  setBottomFieldValue(e.target.value);
+                }}
+                onInput={() => {
+                  requestAnimationFrame(() => adjustBottomTextareaHeight());
+                }}
+                maxLength={hasSessionImages ? 500 : 1500}
+                disabled={busy || modifyLoading}
+                placeholder={
+                  hasSessionImages
+                    ? "Ex. : ajoute un détail au premier plan, change l'arrière-plan…"
+                    : "Ex. : gros plan sur une personne surprise qui regarde la caméra…"
                 }
-              }}
-            />
-            <button
-              type="button"
-              onClick={runBottomSubmit}
-              disabled={!canBottomSubmit}
-              className="absolute bottom-2 right-2 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white text-gray-950 shadow-lg transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
-              title={
-                hasSessionImages
-                  ? !session
-                    ? "Appliquer la modification (connexion requise au moment d’envoyer)"
-                    : "Appliquer la modification"
-                  : "Générer les images"
-              }
-            >
-              {busy || modifyLoading ? (
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-400 border-t-gray-900" />
-              ) : (
-                <ChevronRight className="h-5 w-5" />
-              )}
-            </button>
+                className={`min-w-0 flex-1 resize-none rounded-2xl bg-transparent px-4 py-3 pr-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none ${
+                  narrowVisualStudio
+                    ? "min-h-[60px] overflow-hidden overflow-y-hidden"
+                    : "min-h-[3.5rem]"
+                }`}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    if (canBottomSubmit) runBottomSubmit();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                onClick={runBottomSubmit}
+                disabled={!canBottomSubmit}
+                className="mr-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-gray-950 shadow-lg transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
+                title={
+                  hasSessionImages
+                    ? !session
+                      ? "Appliquer la modification (connexion requise au moment d’envoyer)"
+                      : "Appliquer la modification"
+                    : "Générer les images"
+                }
+              >
+                {busy || modifyLoading ? (
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-400 border-t-gray-900" />
+                ) : (
+                  <ChevronRight className="h-5 w-5" />
+                )}
+              </button>
+              </div>
             </div>
           </div>
           {hasSessionImages && modifyError ? (
@@ -2343,21 +2363,86 @@ export default function ImagePage({
         </div>
       </div>
 
-      {/* 3. Zone images : aperçu principal + variantes à droite (groupées et centrées pour éviter l’écart à droite) */}
-      <div
-        className="flex w-full min-w-0 flex-col items-center gap-4 lg:flex-row lg:items-center lg:justify-center lg:gap-5"
-        style={isMobile ? { marginTop: "16px" } : undefined}
-      >
+      {/* 3. Zone images : aperçu principal + variantes en colonne à droite (tous viewports) */}
+      {lastGeneratedImages?.length ? (
         <div
-          className={`relative min-w-0 overflow-hidden rounded-xl ${
-            lastGeneratedImages?.length
-              ? "shrink-0 bg-transparent"
-              : `min-h-[220px] border border-white/[0.08] bg-gradient-to-b from-white/[0.04] to-black/20 lg:min-h-[260px] mx-auto w-1/2 max-w-full shrink-0 ${
-                  visualStepActive
-                    ? "max-[640px]:mx-auto max-[640px]:min-h-0 max-[640px]:w-auto max-[640px]:max-w-none max-[640px]:overflow-visible max-[640px]:rounded-none max-[640px]:border-0 max-[640px]:bg-transparent"
-                    : ""
-                }`
+          className="flex w-full justify-center"
+          style={isMobile ? { marginTop: "16px" } : undefined}
+        >
+          <div className="flex max-w-full w-fit flex-row items-start justify-center gap-2">
+          <div className="relative shrink-0 overflow-hidden rounded-xl bg-transparent">
+            {busy && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/70 px-6">
+                <Sparkles className="mb-3 h-8 w-8 animate-pulse text-cyan-400" />
+                <p className="text-sm font-medium text-gray-200">{progressMessage || "Génération…"}</p>
+                <div
+                  className={`mt-4 w-full max-w-xs overflow-hidden rounded-full ${
+                    visualStepActive ? "h-[3px]" : "h-1.5 bg-white/10"
+                  }`}
+                  style={visualStepActive ? { backgroundColor: "#1e2845" } : undefined}
+                >
+                  <div
+                    className={`h-full rounded-full transition-all duration-300 ${
+                      visualStepActive ? "" : "bg-cyan-500"
+                    }`}
+                    style={
+                      visualStepActive
+                        ? { width: `${progress}%`, backgroundColor: "#00d4a0" }
+                        : { width: `${progress}%` }
+                    }
+                  />
+                </div>
+                <p className="mt-2 text-xs text-gray-400">{progress}%</p>
+              </div>
+            )}
+            <img
+              src={lastGeneratedImages[selectedImageIndex]}
+              alt="Visuel sélectionné"
+              className="block max-h-[min(42vh,380px)] w-auto max-w-full object-contain"
+            />
+          </div>
+          <div className="flex shrink-0 flex-col items-start justify-start gap-2">
+            {lastGeneratedImages.map((url, index) => (
+              <button
+                key={`${url}-${index}`}
+                type="button"
+                onClick={() => {
+                  patchImageStep({ selectedImageIndex: index });
+                  writeHookVisualSpec({
+                    selected_variant_index: index,
+                    selected_image_url: String(url || ""),
+                  });
+                }}
+                className={`relative aspect-[9/16] w-11 shrink-0 overflow-hidden rounded-lg border transition-all sm:w-12 ${
+                  selectedImageIndex === index
+                    ? "border-cyan-400"
+                    : "border-white/15 opacity-90 hover:border-white/30 hover:opacity-100"
+                }`}
+              >
+                <img src={url} alt="" className="h-full w-full object-cover" loading="lazy" />
+                <span
+                  className={`absolute right-0.5 top-0.5 rounded-full px-1 py-px text-[9px] font-bold sm:text-[10px] ${
+                    selectedImageIndex === index ? "bg-cyan-500 text-gray-950" : "bg-black/60 text-gray-200"
+                  }`}
+                >
+                  V{index + 1}
+                </span>
+                {selectedImageIndex === index && (
+                  <Check className="absolute left-0.5 top-0.5 h-3.5 w-3.5 text-cyan-400 sm:h-4 sm:w-4" aria-hidden />
+                )}
+              </button>
+            ))}
+          </div>
+          </div>
+        </div>
+      ) : (
+        <div
+          className={`relative min-w-0 overflow-hidden rounded-xl min-h-[220px] border border-white/[0.08] bg-gradient-to-b from-white/[0.04] to-black/20 lg:min-h-[260px] mx-auto w-1/2 max-w-full shrink-0 ${
+            visualStepActive
+              ? "max-[640px]:mx-auto max-[640px]:min-h-0 max-[640px]:w-auto max-[640px]:max-w-none max-[640px]:overflow-visible max-[640px]:rounded-none max-[640px]:border-0 max-[640px]:bg-transparent"
+              : ""
           }`}
+          style={isMobile ? { marginTop: "16px" } : undefined}
         >
           {busy && (
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/70 px-6">
@@ -2383,113 +2468,63 @@ export default function ImagePage({
               <p className="mt-2 text-xs text-gray-400">{progress}%</p>
             </div>
           )}
-          {lastGeneratedImages?.length ? (
-            <div className="flex min-h-[200px] items-center justify-center px-2 py-3 sm:px-4 sm:py-4">
-              <img
-                src={lastGeneratedImages[selectedImageIndex]}
-                alt="Visuel sélectionné"
-                className="max-h-[min(42vh,380px)] w-auto max-w-full object-contain"
-              />
-            </div>
-          ) : (
-            <>
-              {visualStepActive ? (
-                <div className="mx-auto my-2 hidden flex-col items-center gap-1.5 max-[640px]:flex">
-                  <div
-                    className="flex h-[90px] w-[120px] flex-shrink-0 items-center justify-center rounded-[11px] border border-[#1e2845] bg-[#161d2e]"
-                    role="status"
-                  >
-                    <p
-                      className="px-1 text-center text-[9px] leading-tight"
-                      style={{ color: "#3e4870" }}
-                    >
-                      Tes visuels générés s’afficheront ici.
-                    </p>
-                  </div>
-                  {showHookImportLink ? (
-                    <button
-                      type="button"
-                      onClick={onPickHookImport}
-                      disabled={modifyLoading}
-                      className="inline-flex items-center gap-1 text-[10px] text-gray-500 hover:text-gray-400 disabled:pointer-events-none disabled:opacity-40"
-                    >
-                      <Upload className="h-3 w-3 shrink-0" aria-hidden />
-                      ou importer ma propre image
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
+          {visualStepActive ? (
+            <div className="mx-auto my-2 hidden flex-col items-center gap-1.5 max-[640px]:flex">
               <div
-                className={`absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 py-10 ${
-                  visualStepActive ? "max-[640px]:hidden" : ""
-                }`}
+                className="flex h-[90px] w-[120px] flex-shrink-0 items-center justify-center rounded-[11px] border border-[#1e2845] bg-[#161d2e]"
+                role="status"
               >
-                <p className="text-center text-sm leading-relaxed text-gray-500">
+                <p
+                  className="px-1 text-center text-[9px] leading-tight"
+                  style={{ color: "#3e4870" }}
+                >
                   Tes visuels générés s’afficheront ici.
                 </p>
-                {showHookImportLink ? (
-                  <button
-                    type="button"
-                    onClick={onPickHookImport}
-                    disabled={modifyLoading}
-                    className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-400 disabled:pointer-events-none disabled:opacity-40"
-                  >
-                    <Upload className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                    ou importer ma propre image
-                  </button>
-                ) : null}
               </div>
-              <input
-                ref={hookImportFileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={onHookImportFileChange}
-                className="hidden"
-                aria-hidden
-                tabIndex={-1}
-              />
-            </>
-          )}
-      </div>
-
-        {lastGeneratedImages?.length ? (
-          <div className="flex w-full max-w-full flex-shrink-0 flex-row justify-center gap-2 overflow-x-auto pb-1 sm:justify-start lg:w-auto lg:flex-col lg:justify-center lg:gap-2.5 lg:overflow-visible lg:pb-0">
-            {lastGeneratedImages.map((url, index) => (
-              <button
-                key={`${url}-${index}`}
-                type="button"
-                onClick={() => {
-                  patchImageStep({ selectedImageIndex: index });
-                  writeHookVisualSpec({
-                    selected_variant_index: index,
-                    selected_image_url: String(url || ""),
-                  });
-                }}
-                className={`relative shrink-0 overflow-hidden rounded-lg border transition-all ${
-                  selectedImageIndex === index
-                    ? "border-cyan-400"
-                    : "border-white/15 opacity-90 hover:border-white/30 hover:opacity-100"
-                }`}
-              >
-                {/* ~100px de haut × ratio 9:16 → 4 vignettes ≈ 400px + interlignes : sans scroll sur une fenêtre typique */}
-                <div className="h-[5.5rem] w-[3.1rem] sm:h-[6rem] sm:w-[3.375rem]">
-                  <img src={url} alt="" className="h-full w-full object-cover" loading="lazy" />
-                </div>
-                <span
-                  className={`absolute right-0.5 top-0.5 rounded-full px-1 py-px text-[9px] font-bold sm:text-[10px] ${
-                    selectedImageIndex === index ? "bg-cyan-500 text-gray-950" : "bg-black/60 text-gray-200"
-                  }`}
+              {showHookImportLink ? (
+                <button
+                  type="button"
+                  onClick={onPickHookImport}
+                  disabled={modifyLoading}
+                  className="inline-flex items-center gap-1 text-[10px] text-gray-500 hover:text-gray-400 disabled:pointer-events-none disabled:opacity-40"
                 >
-                  V{index + 1}
-                </span>
-                {selectedImageIndex === index && (
-                  <Check className="absolute left-0.5 top-0.5 h-3.5 w-3.5 text-cyan-400 sm:h-4 sm:w-4" aria-hidden />
-                )}
+                  <Upload className="h-3 w-3 shrink-0" aria-hidden />
+                  ou importer ma propre image
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+          <div
+            className={`absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 py-10 ${
+              visualStepActive ? "max-[640px]:hidden" : ""
+            }`}
+          >
+            <p className="text-center text-sm leading-relaxed text-gray-500">
+              Tes visuels générés s’afficheront ici.
+            </p>
+            {showHookImportLink ? (
+              <button
+                type="button"
+                onClick={onPickHookImport}
+                disabled={modifyLoading}
+                className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-400 disabled:pointer-events-none disabled:opacity-40"
+              >
+                <Upload className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                ou importer ma propre image
               </button>
-            ))}
+            ) : null}
           </div>
-        ) : null}
+          <input
+            ref={hookImportFileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={onHookImportFileChange}
+            className="hidden"
+            aria-hidden
+            tabIndex={-1}
+          />
         </div>
+      )}
 
       {is24s && STUDIO_24S_TEMPORAL_HOOK_IMAGES_ENABLED ? (
         <section className="mt-4 rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-4 sm:px-5 sm:py-5">
@@ -2592,7 +2627,7 @@ export default function ImagePage({
                 Réservé aux utilisateurs expérimentés. Le champ principal suffit dans la plupart des cas.
               </p>
               <div>
-                <label className="mb-1.5 block text-xs font-medium text-gray-300">Prompt complet (envoyé pour la génération)</label>
+                <label className="mb-1.5 block text-xs font-medium text-gray-300">Prompt personnalisé (optionnel)</label>
                 <textarea
                   value={prompt}
                   onChange={(e) => patchImageStep({ prompt: e.target.value })}

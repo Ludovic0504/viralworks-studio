@@ -1298,6 +1298,74 @@ export function applyViewpointSafetyGate(text: string, jobTypeLabel: string): st
 const OPENING_HOOK_MIN_SEED_LEN = 24;
 const OPENING_HOOK_MIN_BEFORE_PIVOT = 12;
 
+const PRODUCT_DECOR_LINE_RE = /Décor de la scène\s*:[^\n]+/i;
+const PRODUCT_HOOK_LINE_RE = /Hook d'accroche[^\n]*/i;
+const PRODUCT_MISE_LINE_RE = /Mise en scène souhaitée\s*:[^\n]+/i;
+const PRODUCT_DESC_MARKER_RE = /DESCRIPTION\s+DE\s+LA\s+SCÈNE\s*:\s*/i;
+
+function stripProductStructuralBlocksFromBody(body: string): string {
+  let out = body;
+  const blockPatterns = [
+    /Décor de la scène\s*:[^\n]+/gi,
+    /Hook d'accroche[^\n]*/gi,
+    /DESCRIPTION\s+DE\s+LA\s+SCÈNE\s*:\s*/gi,
+    /Mise en scène souhaitée\s*:[^\n]+/gi,
+  ];
+  for (const re of blockPatterns) {
+    out = out.replace(re, "");
+  }
+  return out.replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/**
+ * Brief campagne produit : une seule occurrence de Décor / Hook / DESCRIPTION / Mise en scène.
+ * Corrige les `core_idea` ré-enveloppés lors de re-préparations Campagne VWS.
+ */
+export function normalizeProductCampaignIdeaForHook(raw: string): string {
+  console.log("🔍 INPUT normalize:", raw.substring(0, 200));
+  const text = clean(raw);
+  if (!text) {
+    console.log("🔍 OUTPUT normalize:", text.substring(0, 200));
+    return text;
+  }
+
+  if (!PRODUCT_DECOR_LINE_RE.test(text)) {
+    console.log("🔍 OUTPUT normalize:", text.substring(0, 200));
+    return text;
+  }
+
+  const decor = text.match(PRODUCT_DECOR_LINE_RE)?.[0]?.trim() ?? "";
+  const hook = text.match(PRODUCT_HOOK_LINE_RE)?.[0]?.trim() ?? "";
+  const mise = text.match(PRODUCT_MISE_LINE_RE)?.[0]?.trim() ?? "";
+
+  const firstDesc = text.match(PRODUCT_DESC_MARKER_RE);
+  let body = "";
+  if (firstDesc && firstDesc.index !== undefined) {
+    body = text.slice(firstDesc.index + firstDesc[0].length).trim();
+  } else {
+    body = text;
+    if (decor) body = body.replace(PRODUCT_DECOR_LINE_RE, "").trim();
+    if (hook) body = body.replace(PRODUCT_HOOK_LINE_RE, "").trim();
+  }
+
+  body = stripProductStructuralBlocksFromBody(body);
+  if (mise) {
+    body = body.replace(PRODUCT_MISE_LINE_RE, "").trim();
+    if (!/Mise en scène souhaitée\s*:/i.test(body)) {
+      body = body ? `${body}\n\n${mise}` : mise;
+    }
+  }
+
+  const parts: string[] = [];
+  if (decor) parts.push(decor);
+  if (hook) parts.push(hook);
+  if (body) parts.push(`DESCRIPTION DE LA SCÈNE : ${body}`);
+
+  const result = parts.length ? parts.join("\n\n") : text;
+  console.log("🔍 OUTPUT normalize:", result.substring(0, 200));
+  return result;
+}
+
 /**
  * Extrait le premier segment narratif (accroche / problème / premier plan),
  * sans la résolution ni le pay-off après pivot (—, →, puis, etc.).
@@ -1415,7 +1483,7 @@ export function buildHookImageApiPrompt(
 ): string {
   const antiDistortionBlock =
     "Contraintes absolues : aucune distorsion anatomique sur les humains, les membres et le corps doivent respecter des proportions et positions physiquement possibles. Si une personne est sous ou près d'un véhicule/objet, sa posture doit être réaliste et cohérente avec l'espace disponible (allongée sur le dos, accroupie, penchée selon le contexte). Aucun objet ne doit avoir une taille ou une position physiquement impossible par rapport aux autres éléments de la scène. Pas de membres supplémentaires, pas de doigts mal formés, pas de visage déformé.";
-  const idea = clean(userIdea);
+  const idea = normalizeProductCampaignIdeaForHook(clean(userIdea));
   if (!idea) return idea;
   const lower = idea.toLowerCase();
   const openingHookStill = options.openingHookStill === true;
@@ -1474,12 +1542,17 @@ export function buildHookImageApiPrompt(
 
   let narrativeBody = idea;
   if (openingHookStill) {
-    let seed = extractOpeningHookNarrativeSeed(userIdea);
-    if (seed.length < OPENING_HOOK_MIN_SEED_LEN) {
-      seed = truncateOpeningHookFallback(userIdea, 480);
+    const isProductBrief = PRODUCT_DECOR_LINE_RE.test(idea);
+    if (isProductBrief) {
+      narrativeBody = idea;
+    } else {
+      let seed = extractOpeningHookNarrativeSeed(idea);
+      if (seed.length < OPENING_HOOK_MIN_SEED_LEN) {
+        seed = truncateOpeningHookFallback(idea, 480);
+      }
+      const lieuLine = extractLieuLineFromCampaignIdea(idea);
+      narrativeBody = [lieuLine, seed].filter(Boolean).join("\n\n") || idea;
     }
-    const lieuLine = extractLieuLineFromCampaignIdea(userIdea);
-    narrativeBody = [lieuLine, seed].filter(Boolean).join("\n\n") || idea;
   }
 
   const baseIdea =
@@ -1549,7 +1622,9 @@ export function buildHookImageApiPrompt(
   }
 
   const firstInstantBlock = openingHookStill ? `\n\n${HOOK_FIRST_INSTANT_DIRECTIVE_FR}` : "";
-  return `${withViewpoint}${firstInstantBlock}\n\n${antiDistortionBlock}`;
+  const prompt = `${withViewpoint}${firstInstantBlock}\n\n${antiDistortionBlock}`;
+  console.log("🔍 PROMPT FINAL:", prompt.substring(0, 500));
+  return prompt;
 }
 
 export async function clarifyIdea(input: ClarifyIdeaInput): Promise<ClarifyIdeaResult> {

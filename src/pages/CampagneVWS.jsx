@@ -1973,11 +1973,11 @@ Réponds uniquement en JSON :
                 <label className="vws-campagne-label" htmlFor="campagne-duree">
                   Durée de la vidéo
                 </label>
-                <select
+                <CampagneDureeSelect
                   id="campagne-duree"
-                  value={sequenceType}
-                  onChange={(e) => {
-                    const v = e.target.value;
+                  value={sequenceType === "three_x_8s" ? "single_8s" : sequenceType}
+                  onChange={(v) => {
+                    if (v === "three_x_8s") return;
                     // #region agent log
                     const __dbgA_dba02a = {sessionId:'dba02a',runId:'pre-fix-1',hypothesisId:'A',location:'CampagneVWS.jsx:sequenceType:onChange',message:'User changed sequenceType select (duration choice)',data:{nextSequenceType:String(v||''),prevSequenceType:String(sequenceType||''),tempo:String(tempo||''),videoFormatId:String(videoFormatId||'')},timestamp:Date.now()};
                     fetch('http://127.0.0.1:7405/ingest/84f2a250-0990-480e-ba92-160ff926a4b7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'dba02a'},body:JSON.stringify(__dbgA_dba02a)}).catch(()=>{});
@@ -1991,12 +1991,7 @@ Réponds uniquement en JSON :
                     onCampaignChange?.(buildCampaignSnapshot({ sequenceType: v }));
                   }}
                   className="vws-campagne-field vws-campagne-select vws-campagne-field--touch vws-campagne-select-grid-mobile"
-                >
-                  <option value="single_8s">Une courte vidéo (8 secondes)</option>
-                  <option value="three_x_8s">
-                    Une vidéo plus longue (plusieurs moments à la suite)
-                  </option>
-                </select>
+                />
               </div>
             </div>
             {!isProductMode && metierProfile ? (
@@ -2590,5 +2585,131 @@ Réponds uniquement en JSON :
 
     <CampagneVwsExplicationSheet open={showCampagneExplication} onClose={closeCampagneExplication} />
     </>
+  );
+}
+
+const CAMPAGNE_DUREE_OPTIONS = [
+  { value: "single_8s", label: "8 secondes" },
+  { value: "three_x_8s", label: "24 secondes", disabled: true },
+];
+
+function CampagneDureeSelect({ id, value, onChange, className = "" }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+  const triggerRef = useRef(null);
+
+  const safeValue = value === "three_x_8s" ? "single_8s" : value;
+  const selectedLabel =
+    CAMPAGNE_DUREE_OPTIONS.find((opt) => opt.value === safeValue)?.label ?? "8 secondes";
+  const enabledOptions = CAMPAGNE_DUREE_OPTIONS.filter((opt) => !opt.disabled);
+
+  useEffect(() => {
+    if (!open) return;
+    const handlePointerDown = (event) => {
+      if (!rootRef.current?.contains(event.target)) setOpen(false);
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  const handleSelect = (nextValue) => {
+    const option = CAMPAGNE_DUREE_OPTIONS.find((opt) => opt.value === nextValue);
+    if (!option || option.disabled) return;
+    onChange(nextValue);
+    setOpen(false);
+    triggerRef.current?.focus();
+  };
+
+  return (
+    <div ref={rootRef} className="vws-campagne-duree-select">
+      <button
+        ref={triggerRef}
+        type="button"
+        id={id}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={`${id}-listbox`}
+        onClick={() => setOpen((prev) => !prev)}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown" || event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            setOpen(true);
+          }
+        }}
+        className={`vws-campagne-duree-select__trigger ${className}`.trim()}
+      >
+        {selectedLabel}
+      </button>
+      {open ? (
+        <ul
+          id={`${id}-listbox`}
+          role="listbox"
+          aria-labelledby={id}
+          className="vws-campagne-duree-select__dropdown"
+        >
+          {CAMPAGNE_DUREE_OPTIONS.map((opt) => {
+            const isSelected = safeValue === opt.value;
+            const optionClassName = [
+              "vws-campagne-duree-select__option",
+              isSelected && !opt.disabled ? "vws-campagne-duree-select__option--selected" : "",
+              opt.disabled ? "vws-campagne-duree-select__option--disabled" : "",
+            ]
+              .filter(Boolean)
+              .join(" ");
+
+            return (
+              <li key={opt.value} role="presentation">
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={isSelected}
+                  aria-disabled={opt.disabled || undefined}
+                  disabled={opt.disabled}
+                  tabIndex={opt.disabled ? -1 : 0}
+                  className={optionClassName}
+                  onClick={() => handleSelect(opt.value)}
+                  onKeyDown={(event) => {
+                    if (opt.disabled) {
+                      event.preventDefault();
+                      return;
+                    }
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      handleSelect(opt.value);
+                      return;
+                    }
+                    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                      event.preventDefault();
+                      const currentIndex = enabledOptions.findIndex((item) => item.value === opt.value);
+                      if (currentIndex < 0) return;
+                      const delta = event.key === "ArrowDown" ? 1 : -1;
+                      const nextIndex =
+                        (currentIndex + delta + enabledOptions.length) % enabledOptions.length;
+                      const nextOption = enabledOptions[nextIndex];
+                      rootRef.current
+                        ?.querySelector(`[data-duree-value="${nextOption.value}"]`)
+                        ?.focus();
+                    }
+                  }}
+                  data-duree-value={opt.value}
+                >
+                  <span>{opt.label}</span>
+                  {opt.disabled ? (
+                    <span className="vws-campagne-duree-select__badge">Bientôt</span>
+                  ) : null}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </div>
   );
 }

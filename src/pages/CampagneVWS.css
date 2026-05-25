@@ -163,6 +163,85 @@
   background-size: 1rem 1rem;
 }
 
+/* Durée vidéo — listbox custom (option 24 s désactivée + badge) */
+.vws-campagne-duree-select {
+  position: relative;
+  width: 100%;
+}
+
+.vws-campagne-duree-select__trigger {
+  display: block;
+  width: 100%;
+  text-align: left;
+}
+
+.vws-campagne-duree-select__dropdown {
+  position: absolute;
+  z-index: 50;
+  left: 0;
+  right: 0;
+  margin-top: 0.375rem;
+  border-radius: 12px;
+  border: 1px solid rgba(46, 204, 154, 0.25);
+  background: rgb(15 20 32);
+  box-shadow:
+    0 12px 32px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+  list-style: none;
+  margin: 0.375rem 0 0;
+  padding: 0.375rem 0;
+}
+
+.vws-campagne-duree-select__option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.625rem 1rem;
+  font-size: 0.875rem;
+  line-height: 1.35;
+  color: rgb(229 231 235);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.vws-campagne-duree-select__option:hover:not(:disabled),
+.vws-campagne-duree-select__option:focus-visible:not(:disabled) {
+  outline: none;
+  background: rgba(42, 245, 152, 0.1);
+  color: #2af598;
+}
+
+.vws-campagne-duree-select__option--selected:not(:disabled) {
+  background: rgba(42, 245, 152, 0.08);
+  color: #2af598;
+}
+
+.vws-campagne-duree-select__option--disabled {
+  opacity: 0.45;
+  color: rgb(138 143 154);
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.vws-campagne-duree-select__badge {
+  flex-shrink: 0;
+  border-radius: 0.375rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: #161d2e;
+  padding: 0.125rem 0.375rem;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #8a8f9a;
+}
+
 @media (max-width: 767px) {
   .vws-campagne-field--touch {
     min-height: 52px;

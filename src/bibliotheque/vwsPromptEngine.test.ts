@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildHookImageApiPrompt,
   extractOpeningHookNarrativeSeed,
+  normalizeProductCampaignIdeaForHook,
   truncateOpeningHookFallback,
 } from "./vwsPromptEngine";
 
@@ -12,6 +13,45 @@ const finishedResultIntent = {
   confidence: 0.9,
   source: "heuristic" as const,
 };
+
+const productDecor = "Décor de la scène : Studio. Fond neutre professionnel.";
+const productHook =
+  "Hook d'accroche (3 premières secondes) : Révélation — Lumière qui s'allume sur le produit.";
+const productPromo = "Crème anti-âge posée sur marbre, lumière dorée, vapeur légère.";
+const productMise = "Mise en scène souhaitée : Produit en vedette";
+
+function buildTripledProductBrief() {
+  const pollutedBody = [
+    productDecor,
+    productHook,
+    "DESCRIPTION DE LA SCÈNE :",
+    productDecor,
+    productHook,
+    "DESCRIPTION DE LA SCÈNE :",
+    productPromo,
+    productMise,
+    productMise,
+  ].join("\n\n");
+  return `${productDecor}\n\n${productHook}\n\nDESCRIPTION DE LA SCÈNE : ${pollutedBody}`;
+}
+
+describe("normalizeProductCampaignIdeaForHook", () => {
+  it("brief produit triplé → une occurrence par bloc structurant", () => {
+    const triple = buildTripledProductBrief();
+    const out = normalizeProductCampaignIdeaForHook(triple);
+    expect((out.match(/Décor de la scène\s*:/gi) ?? []).length).toBe(1);
+    expect((out.match(/Hook d'accroche/gi) ?? []).length).toBe(1);
+    expect((out.match(/DESCRIPTION\s+DE\s+LA\s+SCÈNE\s*:/gi) ?? []).length).toBe(1);
+    expect((out.match(/Mise en scène souhaitée\s*:/gi) ?? []).length).toBe(1);
+    expect(out).toContain(productPromo);
+  });
+
+  it("brief métier LIEU DE LA SCÈNE → inchangé", () => {
+    const metier =
+      "LIEU DE LA SCÈNE : Atelier chez le client.\n\nDESCRIPTION DE LA SCÈNE : Réparation express.";
+    expect(normalizeProductCampaignIdeaForHook(metier)).toBe(metier);
+  });
+});
 
 describe("extractOpeningHookNarrativeSeed", () => {
   it("coupe avant un pivot em dash (avant / après)", () => {
@@ -76,5 +116,17 @@ describe("buildHookImageApiPrompt — openingHookStill vs show_finished_result",
     });
     expect(p).toContain("Contrainte visuelle (image d'accroche de départ)");
     expect(p).toContain("Consigne « image unique d'accroche »");
+  });
+
+  it("brief produit triplé : le prompt final ne répète pas Décor / Hook", () => {
+    const p = buildHookImageApiPrompt(buildTripledProductBrief(), {
+      revealMode: false,
+      initialStateMode: null,
+      jobTypeLabel: "cosmétique",
+      openingHookStill: true,
+    });
+    expect((p.match(/Décor de la scène\s*:/gi) ?? []).length).toBe(1);
+    expect((p.match(/Hook d'accroche/gi) ?? []).length).toBe(1);
+    expect((p.match(/Mise en scène souhaitée\s*:/gi) ?? []).length).toBe(1);
   });
 });
