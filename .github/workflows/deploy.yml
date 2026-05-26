@@ -7,8 +7,9 @@
 #
 # Variables de dépôt (optionnelles, pour le build Vite) :
 #   VITE_SITE_URL, VITE_STRIPE_PUBLISHABLE_KEY, VITE_META_PIXEL_ID, etc.
-# Secrets optionnels :
+# Secrets requis pour les images Pexels (cartes format Campagne VWS) :
 #   VITE_PEXELS_API_KEY
+# Ne pas définir VITE_PEXELS_SERVER=1 sur OVH (pas de /api/pexels-search).
 
 name: Deploy to OVH (FTP)
 
@@ -47,6 +48,20 @@ jobs:
         run: |
           if [ -z "$VITE_SUPABASE_URL" ] || [ -z "$VITE_SUPABASE_ANON_KEY" ]; then
             echo "::error::Secrets manquants : définir VITE_SUPABASE_URL et VITE_SUPABASE_ANON_KEY dans GitHub Actions (Settings → Secrets)."
+            exit 1
+          fi
+
+      - name: Verify Pexels build config
+        env:
+          VITE_PEXELS_API_KEY: ${{ secrets.VITE_PEXELS_API_KEY }}
+          VITE_PEXELS_SERVER: ${{ vars.VITE_PEXELS_SERVER }}
+        run: |
+          if [ -z "$VITE_PEXELS_API_KEY" ]; then
+            echo "::error::Secret manquant : définir VITE_PEXELS_API_KEY dans GitHub Actions (Settings → Secrets). Sans lui, les images Pexels sont absentes en production OVH."
+            exit 1
+          fi
+          if [ "$VITE_PEXELS_SERVER" = "1" ]; then
+            echo "::error::VITE_PEXELS_SERVER=1 est incompatible avec OVH statique (/api/pexels-search renvoie index.html). Supprimer la variable ou la vider dans Settings → Variables."
             exit 1
           fi
 
