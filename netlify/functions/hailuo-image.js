@@ -51,7 +51,7 @@ exports.handler = async (event) => {
 
     // Parser le corps de la requête
     const body = JSON.parse(event.body || '{}');
-    const { prompt, ratio, quantity = 1, model = 'dall-e-3', refCharacter } = body;
+    const { prompt, ratio, quantity = 1, model = 'gpt-image-2', refCharacter } = body;
 
     // Validation des paramètres
     if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
@@ -82,12 +82,12 @@ exports.handler = async (event) => {
     
     for (let i = 0; i < numImages; i++) {
       const requestBody = {
-        model: model === 'Image-01' ? 'dall-e-3' : model,
+        model: model || 'gpt-image-2',
         prompt: prompt.trim(),
         n: 1,
         size: size,
-        quality: 'standard',
-        response_format: 'url',
+        quality: 'high',
+        response_format: 'b64_json',
       };
 
       // Si une image de référence est fournie, on pourrait l'ajouter ici
@@ -115,9 +115,10 @@ exports.handler = async (event) => {
             return response.json();
           })
           .then((data) => {
-            // DALL-E 3 retourne un seul objet, pas un tableau
             if (data.data && data.data.length > 0) {
-              return data.data[0].url;
+              const first = data.data[0];
+              if (first.url) return first.url;
+              if (first.b64_json) return `data:image/png;base64,${first.b64_json}`;
             }
             throw new Error('Aucune image retournée par l\'API');
           })

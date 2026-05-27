@@ -9,6 +9,11 @@ import StudioCategoryPanel from "@/composants/studio/avatar/StudioCategoryPanel"
 import ModalAbonnementRequis from "@/composants/studio/avatar/ModalAbonnementRequis";
 import { DEFAULT_AVATAR_CONFIG } from "@/bibliotheque/studio/avatarOptions";
 import { generateAvatar } from "@/bibliotheque/studio/generateAvatar";
+import {
+  getAvatarUrlFromHistory,
+  listStudioAvatars,
+} from "@/bibliotheque/studio/studioAvatars";
+import { deleteHistory } from "@/bibliotheque/supabase/historique";
 import { getUserSubscription } from "@/bibliotheque/supabase/stripe";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
@@ -22,6 +27,9 @@ export default function Studio() {
   const [hasActiveSubscription, setHasActiveSubscription] = useState(false);
   const [subscriptionLoading, setSubscriptionLoading] = useState(true);
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+  const [avatarLibrary, setAvatarLibrary] = useState([]);
+  const [libraryLoading, setLibraryLoading] = useState(false);
+  const [libraryRefreshKey, setLibraryRefreshKey] = useState(0);
 
   useEffect(() => {
     capturePostHog("avatar_creator_opened");
@@ -55,6 +63,32 @@ export default function Studio() {
     };
   }, [session?.user?.id]);
 
+  useEffect(() => {
+    let active = true;
+    const loadLibrary = async () => {
+      if (!session?.user?.id) {
+        if (active) {
+          setAvatarLibrary([]);
+          setLibraryLoading(false);
+        }
+        return;
+      }
+      setLibraryLoading(true);
+      try {
+        const rows = await listStudioAvatars(10);
+        if (active) setAvatarLibrary(rows);
+      } catch {
+        if (active) setAvatarLibrary([]);
+      } finally {
+        if (active) setLibraryLoading(false);
+      }
+    };
+    loadLibrary();
+    return () => {
+      active = false;
+    };
+  }, [session?.user?.id, libraryRefreshKey]);
+
   const requireSubscription = useCallback(() => {
     if (subscriptionLoading) return false;
     if (!hasActiveSubscription) {
@@ -64,28 +98,21 @@ export default function Studio() {
     return true;
   }, [hasActiveSubscription, subscriptionLoading]);
 
-  const canGenerateFace =
-    Boolean(config.metier) && !config.generatingFace && !config.generatingTriptyque;
+  const canGenerate = Boolean(config.metier) && !config.generating;
 
-  const canGenerateTriptyque =
-    Boolean(config.previewFaceUrl) &&
-    !config.generatingTriptyque &&
-    !config.generatingFace;
-
-  const handleGenerateFace = async () => {
-    if (!canGenerateFace) return;
+  const handleGenerate = async () => {
+    if (!canGenerate) return;
     setError(null);
-    update({ generatingFace: true, previewTriptyqueUrl: null });
+    update({ generating: true });
     try {
       const result = await generateAvatar({
         config,
-        format: "face",
       });
       update({
-        previewFaceUrl: result.avatarUrl,
-        previewTriptyqueUrl: null,
-        generatingFace: false,
+        previewUrl: result.avatarUrl,
+        generating: false,
       });
+      setLibraryRefreshKey((k) => k + 1);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Erreur lors de la génération.";
@@ -95,53 +122,44 @@ export default function Studio() {
         setError(message);
         trackPostHogError(message, "/studio", "generation");
       }
-      update({ generatingFace: false });
+      update({ generating: false });
     }
   };
 
-  const handleGenerateTriptyque = async () => {
-    if (!canGenerateTriptyque || !config.previewFaceUrl) return;
-    setError(null);
-    update({ generatingTriptyque: true });
-    try {
-      const result = await generateAvatar({
-        config,
-        format: "triptyque",
-        referenceImageUrl: config.previewFaceUrl,
-      });
-      update({
-        previewTriptyqueUrl: result.avatarUrl,
-        generatingTriptyque: false,
-      });
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Erreur lors de la génération.";
-      if (message.includes("Abonnement requis")) {
-        setShowSubscriptionModal(true);
-      } else {
-        setError(message);
-        trackPostHogError(message, "/studio", "generation");
+  const requestGenerate = () => {
+    void runWithAuth(async () => {
+      if (!requireSubscription()) return;
+      await handleGenerate();
+    });
+  };
+
+  const handleDeleteAvatar = useCallback(
+    async (item) => {
+      const id = item?.id;
+      if (!id || String(id).startsWith("storage-")) return;
+
+      const deletedUrl = getAvatarUrlFromHistory(item);
+      const result = await deleteHistory(id);
+      if (!result.success) {
+        console.error("Suppression avatar:", result.error);
+        return;
       }
-      update({ generatingTriptyque: false });
-    }
-  };
 
-  const requestGenerateFace = () => {
-    void runWithAuth(async () => {
-      if (!requireSubscription()) return;
-      await handleGenerateFace();
-    });
-  };
-
-  const requestGenerateTriptyque = () => {
-    void runWithAuth(async () => {
-      if (!requireSubscription()) return;
-      await handleGenerateTriptyque();
-    });
-  };
+      setAvatarLibrary((prev) => prev.filter((row) => row.id !== id));
+      if (
+        deletedUrl &&
+        config.previewUrl &&
+        getAvatarUrlFromHistory({ output: config.previewUrl }) === deletedUrl
+      ) {
+        update({ previewUrl: null });
+      }
+      setLibraryRefreshKey((k) => k + 1);
+    },
+    [config.previewUrl, update]
+  );
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 py-6 max-lg:gap-3 max-lg:pb-[calc(5rem+env(safe-area-inset-bottom))] sm:px-6 lg:px-8">
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-1 flex-col px-4 py-4 max-lg:gap-3 max-lg:pb-[calc(5rem+env(safe-area-inset-bottom))] sm:px-6 lg:px-8 lg:py-6">
       <PageTitle
         green="Avatar"
         white="IA"
@@ -155,29 +173,29 @@ export default function Studio() {
         onCategoryChange={(id) => update({ activeCategory: id })}
       />
 
-      <div className="flex w-full min-w-0 max-w-full max-lg:overflow-x-hidden max-lg:h-auto max-lg:min-h-0 flex-col gap-3 lg:h-[560px] lg:flex-row lg:items-stretch lg:gap-4">
+      <div className="flex min-h-0 w-full min-w-0 max-w-full flex-1 flex-col gap-3 max-lg:overflow-x-hidden lg:flex-row lg:items-stretch lg:gap-4">
         <StudioCategorySidebar
           activeCategory={config.activeCategory}
           onCategoryChange={(id) => update({ activeCategory: id })}
         />
 
         <StudioAvatarPreview
-          previewFaceUrl={config.previewFaceUrl}
-          previewTriptyqueUrl={config.previewTriptyqueUrl}
-          generatingFace={config.generatingFace}
-          generatingTriptyque={config.generatingTriptyque}
-          onGenerateTriptyque={requestGenerateTriptyque}
-          canGenerateTriptyque={canGenerateTriptyque}
+          previewUrl={config.previewUrl}
+          generating={config.generating}
+          libraryItems={avatarLibrary}
+          libraryLoading={libraryLoading}
+          onSelectAvatar={(url) => update({ previewUrl: url })}
+          onDeleteAvatar={handleDeleteAvatar}
         />
 
         <StudioOptionsPanel
           activeCategory={config.activeCategory}
-          onGenerateFace={requestGenerateFace}
+          onGenerate={requestGenerate}
           onSubscriptionRequired={() => setShowSubscriptionModal(true)}
           hasActiveSubscription={hasActiveSubscription}
           subscriptionLoading={subscriptionLoading}
-          canGenerateFace={canGenerateFace}
-          generatingFace={config.generatingFace}
+          canGenerate={canGenerate}
+          generating={config.generating}
         >
           <StudioCategoryPanel
             activeCategory={config.activeCategory}
@@ -194,9 +212,9 @@ export default function Studio() {
       ) : null}
 
       <StudioGenerateBar
-        onClick={requestGenerateFace}
-        disabled={!canGenerateFace || subscriptionLoading}
-        loading={config.generatingFace}
+        onClick={requestGenerate}
+        disabled={!canGenerate || subscriptionLoading}
+        loading={config.generating}
       />
 
       <ModalAbonnementRequis

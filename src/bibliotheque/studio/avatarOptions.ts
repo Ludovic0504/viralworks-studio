@@ -42,8 +42,6 @@ export const COULEURS_DOMINANTES = [
 
 export { METIERS } from "./avatarMetiersCatalog";
 
-export type OutputFormat = "face" | "triptyque";
-
 /** Valeur fixe envoyée à l'API, jamais exposée dans l'UI. */
 export const AVATAR_ENVIRONMENT = "studio" as const;
 
@@ -58,10 +56,8 @@ export interface AvatarConfig {
   metier: string;
   accessoires: boolean;
   environment: typeof AVATAR_ENVIRONMENT;
-  previewFaceUrl: string | null;
-  previewTriptyqueUrl: string | null;
-  generatingFace: boolean;
-  generatingTriptyque: boolean;
+  previewUrl: string | null;
+  generating: boolean;
 }
 
 export const DEFAULT_AVATAR_CONFIG: AvatarConfig = {
@@ -75,8 +71,6 @@ export const DEFAULT_AVATAR_CONFIG: AvatarConfig = {
   metier: "",
   accessoires: false,
   environment: AVATAR_ENVIRONMENT,
-  previewFaceUrl: null,
-  previewTriptyqueUrl: null,
-  generatingFace: false,
-  generatingTriptyque: false,
+  previewUrl: null,
+  generating: false,
 };

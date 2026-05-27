@@ -2,7 +2,7 @@ import { useState } from "react";
 import Header from "@/composants/disposition/EnTete";
 import SidebarShell from "@/composants/disposition/Navbar";
 import Footer from "@/composants/disposition/PiedDePage";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { StudioLayoutOptionsProvider } from "@/contexte/StudioLayoutOptionsContext";
 import { FournisseurProfilStudio, useProfilStudio } from "@/contexte/FournisseurProfilStudio";
 import { useAuth } from "@/contexte/FournisseurAuth";
@@ -14,8 +14,12 @@ import SectorModal from "@/composants/studio/SectorModal";
  */
 function DashboardShellWithSectorGate() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const location = useLocation();
   const { session } = useAuth();
   const { secteur, loading: profilStudioLoading, updateSecteur, isAdmin } = useProfilStudio();
+
+  const isAvatarStudioPage =
+    location.pathname === "/studio" || location.pathname.startsWith("/studio/");
 
   const needsSectorModal =
     Boolean(session?.user?.id) &&
@@ -38,11 +42,21 @@ function DashboardShellWithSectorGate() {
           if (!r.ok) throw new Error(r.error || "Impossible d'enregistrer le secteur.");
         }}
       />
-      <div className="min-h-dvh flex flex-col bg-gradient-to-br from-[#050810] via-[#0C1116] to-[#080b10] text-white relative">
+      <div
+        className={`flex flex-col bg-gradient-to-br from-[#050810] via-[#0C1116] to-[#080b10] text-white relative ${
+          isAvatarStudioPage ? "h-dvh overflow-hidden" : "min-h-dvh"
+        }`}
+      >
         <Header onOpenMenu={() => setMenuOpen(true)} />
-        <div className="flex-1 flex flex-col pt-16">
-          <SidebarShell open={menuOpen} onCloseMenu={() => setMenuOpen(false)}>
-            <div className="flex-1 min-h-0 flex flex-col">{main}</div>
+        <div className="flex min-h-0 flex-1 flex-col pt-16">
+          <SidebarShell
+            open={menuOpen}
+            onCloseMenu={() => setMenuOpen(false)}
+            mainClassName={
+              isAvatarStudioPage ? "min-h-0 overflow-hidden" : "overflow-y-auto"
+            }
+          >
+            <div className="flex min-h-0 flex-1 flex-col">{main}</div>
           </SidebarShell>
         </div>
         <Footer />

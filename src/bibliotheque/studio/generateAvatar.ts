@@ -1,20 +1,15 @@
-import type { AvatarConfig, OutputFormat } from "@/bibliotheque/studio/avatarOptions";
+import type { AvatarConfig } from "@/bibliotheque/studio/avatarOptions";
 import { AVATAR_ENVIRONMENT, DEFAULT_AVATAR_CONFIG } from "@/bibliotheque/studio/avatarOptions";
-import { buildPromptFace, buildPromptTriptyque } from "@/bibliotheque/studio/buildAvatarPrompt";
+import { persistGeneratedAvatar } from "@/bibliotheque/studio/studioAvatars";
 import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
-
-const POLL_INTERVAL_MS = 3000;
-const POLL_TIMEOUT_MS = 120_000;
 
 export interface GenerateAvatarRequest {
   config: Partial<AvatarConfig>;
-  format: OutputFormat;
-  referenceImageUrl?: string;
 }
 
 export interface GenerateAvatarResponse {
   avatarUrl: string;
-  format: OutputFormat;
+  format: "character_sheet";
   jobId: string;
   creditsUsed: number;
 }
@@ -27,18 +22,11 @@ type StudioApiAuth = {
 
 type CreateResponse = {
   status?: string;
-  taskId?: string;
   avatarUrl?: string;
   jobId?: string;
-  format?: OutputFormat;
+  format?: "character_sheet";
   creditsUsed?: number;
   provider?: string;
-  error?: string;
-};
-
-type PollResponse = {
-  status: "pending" | "completed" | "failed";
-  avatarUrl?: string;
   error?: string;
 };
 
@@ -67,11 +55,46 @@ function getFunctionUrl(supabaseUrl: string): string {
   return `${supabaseUrl.replace(/\/$/, "")}/functions/v1/studio-generate-avatar`;
 }
 
-function buildPromptForFormat(config: AvatarConfig, format: OutputFormat): string {
-  if (format === "face") {
-    return buildPromptFace(config);
-  }
-  return buildPromptTriptyque(config);
+function buildCharacterSheetPrompt(config: AvatarConfig): string {
+  const promptPayload = {
+    prompt_parameters: {
+      subject: {
+        gender: config.genre,
+        age: config.age,
+        skin_tone: config.carnation,
+        morphology: config.morphologie,
+      },
+      wardrobe: {
+        style: config.styleTenue,
+        dominant_color: config.couleurDominante,
+        profession_accessories: config.accessoires,
+      },
+      profession: config.metier,
+      layout_requirements: {
+        format:
+          "professional studio photography reference sheet, real photograph, not 3D, not illustrated, not cartoon, not CGI, photorealistic human being, 3 views of the same real person on white background",
+        full_body_angles: ["front profile", "side profile", "back profile"],
+        facial_portraits: ["front face", "3/4 view", "side profile"],
+      },
+      environment: {
+        background_color: "pure white",
+        backdrop_type: "seamless studio backdrop",
+        shadows: "none",
+      },
+      technical_specifications: {
+        style: "ultra-realistic photography",
+        lighting: "crisp studio lighting",
+        focus: "sharp focus",
+        details: "highly detailed skin texture",
+        resolution: "high",
+        render_quality: "cinematic and photorealistic",
+        rendering:
+          "real photography only, film camera, no 3D rendering, no illustration, no digital art",
+      },
+    },
+  };
+
+  return JSON.stringify(promptPayload);
 }
 
 async function callStudioAvatarApi<T>(
@@ -107,55 +130,14 @@ async function callStudioAvatarApi<T>(
   return data;
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function pollUntilCompleted(
-  auth: StudioApiAuth,
-  taskId: string
-): Promise<string> {
-  const deadline = Date.now() + POLL_TIMEOUT_MS;
-
-  while (Date.now() < deadline) {
-    const poll = await callStudioAvatarApi<PollResponse>(auth, {
-      action: "poll",
-      taskId,
-    });
-
-    if (poll.status === "completed" && poll.avatarUrl) {
-      return poll.avatarUrl;
-    }
-
-    if (poll.status === "failed") {
-      throw new Error(poll.error || "La génération a échoué.");
-    }
-
-    await sleep(POLL_INTERVAL_MS);
-  }
-
-  throw new Error(
-    "Délai dépassé (120 s). La génération prend plus de temps que prévu — réessayez."
-  );
-}
-
 export async function generateAvatar(
   payload: GenerateAvatarRequest
 ): Promise<GenerateAvatarResponse> {
   const config = { ...DEFAULT_AVATAR_CONFIG, ...payload.config } as AvatarConfig;
-  const format = payload.format;
-  const prompt = buildPromptForFormat(config, format);
+  const prompt = buildCharacterSheetPrompt(config);
 
   if (import.meta.env.DEV) {
-    if (format === "face") {
-      console.log("[studio/avatar] prompt face:", prompt);
-    }
-    if (format === "triptyque") {
-      console.log(
-        "[studio/triptyque] prompt envoyé:\n",
-        buildPromptTriptyque(payload.config as AvatarConfig)
-      );
-    }
+    console.log("[studio/avatar] character_sheet payload:", prompt);
   }
 
   const auth = await getStudioApiAuth();
@@ -163,31 +145,19 @@ export async function generateAvatar(
   const create = await callStudioAvatarApi<CreateResponse>(auth, {
     action: "create",
     prompt,
-    format,
-    referenceImageUrl: payload.referenceImageUrl,
-    ratio: format === "triptyque" ? "16:9" : "9:16",
     config: { ...config, environment: AVATAR_ENVIRONMENT },
   });
 
-  if (create.status === "completed" && create.avatarUrl) {
-    return {
-      avatarUrl: create.avatarUrl,
-      format,
-      jobId: create.jobId || `sync-${Date.now()}`,
-      creditsUsed: create.creditsUsed ?? (format === "triptyque" ? 4 : 2),
-    };
+  if (create.status !== "completed" || !create.avatarUrl) {
+    throw new Error(create.error || "Impossible de générer l'avatar.");
   }
 
-  if (!create.taskId) {
-    throw new Error(create.error || "Impossible de démarrer la génération.");
-  }
-
-  const avatarUrl = await pollUntilCompleted(auth, create.taskId);
+  const persistedUrl = await persistGeneratedAvatar(create.avatarUrl, config);
 
   return {
-    avatarUrl,
-    format,
-    jobId: create.taskId,
-    creditsUsed: create.creditsUsed ?? (format === "triptyque" ? 4 : 2),
+    avatarUrl: persistedUrl,
+    format: "character_sheet",
+    jobId: create.jobId || `sync-${Date.now()}`,
+    creditsUsed: create.creditsUsed ?? 4,
   };
 }

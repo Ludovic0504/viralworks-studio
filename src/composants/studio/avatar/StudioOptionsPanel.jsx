@@ -3,12 +3,12 @@ import Button from "@/composants/interface/Bouton";
 export default function StudioOptionsPanel({
   activeCategory,
   children,
-  onGenerateFace,
+  onGenerate,
   onSubscriptionRequired,
   hasActiveSubscription = false,
   subscriptionLoading = false,
-  canGenerateFace,
-  generatingFace,
+  canGenerate,
+  generating,
 }) {
   const handleGenerateClick = () => {
     if (subscriptionLoading) return;
@@ -16,7 +16,7 @@ export default function StudioOptionsPanel({
       onSubscriptionRequired?.();
       return;
     }
-    onGenerateFace?.();
+    onGenerate?.();
   };
   const labels = {
     apparence: "Apparence",
@@ -25,7 +25,7 @@ export default function StudioOptionsPanel({
   };
 
   return (
-    <aside className="studio-panel flex w-full min-w-0 max-w-full max-lg:h-auto max-lg:shrink max-lg:overflow-x-hidden max-lg:border-0 max-lg:bg-transparent max-lg:p-0 max-lg:shadow-none h-[560px] shrink-0 flex-col gap-3 max-lg:gap-3 p-4 lg:gap-4 lg:w-72">
+    <aside className="studio-panel flex h-full min-h-0 w-full min-w-0 max-w-full max-lg:h-auto max-lg:shrink max-lg:overflow-x-hidden max-lg:border-0 max-lg:bg-transparent max-lg:p-0 max-lg:shadow-none shrink-0 flex-col gap-3 max-lg:gap-3 p-4 lg:gap-4 lg:w-72">
       <h2 className="hidden text-sm font-semibold text-emerald-300/90 lg:block">
         {labels[activeCategory] || "Options"}
       </h2>
@@ -38,8 +38,8 @@ export default function StudioOptionsPanel({
         <Button
           variant="primary"
           onClick={handleGenerateClick}
-          disabled={!canGenerateFace || subscriptionLoading}
-          loading={generatingFace}
+          disabled={!canGenerate || subscriptionLoading}
+          loading={generating}
           className="w-full"
         >
           Générer mon avatar

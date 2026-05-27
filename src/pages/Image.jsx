@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/contexte/FournisseurAuth";
+import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
+import ModalBibliothequeAvatars from "@/composants/studio/avatar/ModalBibliothequeAvatars";
 import { saveHistory as saveHistorySupabase } from "@/bibliotheque/supabase/historique";
 import { hasEnoughCredits, getUserCredits } from "@/bibliotheque/supabase/credits";
 import { uploadImagesFromUrls } from "@/bibliotheque/supabase/storage";
@@ -44,6 +46,7 @@ import {
   Square,
   Upload,
   Plus,
+  User,
 } from "lucide-react";
 
 function buildProductHailuoRefs({ avatarRefDataUrl, productRefDataUrl, refCharDataUrl }) {
@@ -75,26 +78,46 @@ function buildProductRefPromptPrefix({ isProductMode, avatarRefDataUrl, productR
   return lines.join("\n\n");
 }
 
-function ProductRefCard({ label, imageUrl, onPick, onClear, disabled }) {
+function ProductRefCard({
+  label,
+  imageUrl,
+  onPick,
+  onClear,
+  disabled,
+  emptyIcon: EmptyIcon = Plus,
+  imageClassName = "",
+}) {
+  const hasImage = Boolean(imageUrl);
   return (
-    <div className="relative h-20 w-14 shrink-0">
+    <div className="group relative h-20 w-14 shrink-0">
       <button
         type="button"
         onClick={onPick}
         disabled={disabled}
-        className="relative flex h-full w-full flex-col items-center justify-center overflow-hidden rounded-lg border border-white/20 bg-[#161d2e] transition hover:bg-[#1a2236] disabled:cursor-not-allowed disabled:opacity-50"
-        aria-label={imageUrl ? `${label} — changer l'image` : `Importer ${label}`}
+        className={`relative flex h-full w-full flex-col items-center justify-center overflow-hidden rounded-lg border bg-[#161d2e] transition hover:bg-[#1a2236] disabled:cursor-not-allowed disabled:opacity-50 ${
+          hasImage ? "border-white/20" : "border-dashed border-white/20"
+        }`}
+        aria-label={hasImage ? `${label} — changer` : label}
       >
-        {imageUrl ? (
-          <img src={imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
+        {hasImage ? (
+          <>
+            <img
+              src={imageUrl}
+              alt=""
+              className={`absolute inset-0 h-full w-full object-cover ${imageClassName}`.trim()}
+            />
+            <span className="absolute inset-0 flex items-center justify-center bg-black/75 text-[8px] font-medium text-white/90 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+              Changer
+            </span>
+          </>
         ) : (
           <>
-            <Plus className="h-4 w-4 shrink-0 text-white/70" aria-hidden />
-            <span className="mt-0.5 text-[9px] leading-none text-white/60">{label}</span>
+            <EmptyIcon className="h-4 w-4 shrink-0 text-white/70" aria-hidden />
+            <span className="mt-0.5 px-0.5 text-center text-[9px] leading-tight text-white/60">{label}</span>
           </>
         )}
       </button>
-      {imageUrl ? (
+      {hasImage ? (
         <button
           type="button"
           onClick={onClear}
@@ -261,6 +284,7 @@ export default function ImagePage({
   onRestoreVisualSnapshot,
 }) {
   const { session, supabase } = useAuth();
+  const { runWithAuth } = useRequireAuthAction();
   const uid = session?.user?.id;
 
   const {
@@ -433,20 +457,54 @@ export default function ImagePage({
   }, [canonicalSpec.campaign.video_format_id]);
 
   const [avatarRefDataUrl, setAvatarRefDataUrl] = useState(null);
+  const [avatarRefSource, setAvatarRefSource] = useState(null);
   const [productRefDataUrl, setProductRefDataUrl] = useState(null);
+  const [avatarLibraryOpen, setAvatarLibraryOpen] = useState(false);
+  const [avatarLibraryTarget, setAvatarLibraryTarget] = useState("product");
   const avatarRefFileInputRef = useRef(null);
   const productRefFileInputRef = useRef(null);
 
-  const clearProductRefCards = useCallback(() => {
+  const openAvatarLibrary = useCallback(
+    (target) => {
+      void runWithAuth(() => {
+        setAvatarLibraryTarget(target);
+        setAvatarLibraryOpen(true);
+        return true;
+      });
+    },
+    [runWithAuth]
+  );
+
+  const handleAvatarLibrarySelect = useCallback(
+    (url) => {
+      if (avatarLibraryTarget === "product") {
+        setAvatarRefDataUrl(url);
+        setAvatarRefSource("library");
+      } else {
+        patchImageStep?.({ refCharDataUrl: url });
+      }
+    },
+    [avatarLibraryTarget, patchImageStep]
+  );
+
+  const clearAvatarRef = useCallback(() => {
     setAvatarRefDataUrl(null);
-    setProductRefDataUrl(null);
+    setAvatarRefSource(null);
   }, []);
+
+  const clearProductRefCards = useCallback(() => {
+    clearAvatarRef();
+    setProductRefDataUrl(null);
+  }, [clearAvatarRef]);
 
   const onAvatarRefFileChange = (e) => {
     const f = e.target.files?.[0];
     if (!f || !f.type.startsWith("image/")) return;
     const rd = new FileReader();
-    rd.onload = () => setAvatarRefDataUrl(String(rd.result || "") || null);
+    rd.onload = () => {
+      setAvatarRefDataUrl(String(rd.result || "") || null);
+      setAvatarRefSource("import");
+    };
     rd.readAsDataURL(f);
     e.target.value = "";
   };
@@ -977,6 +1035,7 @@ export default function ImagePage({
   const historyPanelRef = useRef(null);
   /** Valeur réelle du champ au clic (évite instruction vide si le state parent n’est pas encore recalé). */
   const bottomFieldInputRef = useRef(null);
+  const [scrollbarVisible, setScrollbarVisible] = useState(false);
   /** ImagePage reste montée sur les autres étapes : ne pas recopier l’idée à chaque frappe (sinon prompt = 1ère lettre bloquée). */
   const wasVisualStepActiveRef = useRef(false);
 
@@ -1927,12 +1986,14 @@ export default function ImagePage({
           <div className="relative min-w-0 w-full">
             {isProductMode ? (
               <>
-                <div className="absolute -top-16 left-2 z-10 flex gap-1.5">
+                <div className="absolute -top-16 left-2 z-10 flex gap-3">
                   <ProductRefCard
-                    label="Avatar"
-                    imageUrl={avatarRefDataUrl}
-                    onPick={() => avatarRefFileInputRef.current?.click()}
-                    onClear={() => setAvatarRefDataUrl(null)}
+                    label="Mes avatars IA"
+                    emptyIcon={User}
+                    imageUrl={avatarRefSource === "library" ? avatarRefDataUrl : null}
+                    imageClassName="[object-position:16%_center]"
+                    onPick={() => openAvatarLibrary("product")}
+                    onClear={clearAvatarRef}
                     disabled={busy || modifyLoading}
                   />
                   <ProductRefCard
@@ -1940,6 +2001,14 @@ export default function ImagePage({
                     imageUrl={productRefDataUrl}
                     onPick={() => productRefFileInputRef.current?.click()}
                     onClear={() => setProductRefDataUrl(null)}
+                    disabled={busy || modifyLoading}
+                  />
+                  <ProductRefCard
+                    label="Importer une image"
+                    emptyIcon={Upload}
+                    imageUrl={avatarRefSource === "import" ? avatarRefDataUrl : null}
+                    onPick={() => avatarRefFileInputRef.current?.click()}
+                    onClear={clearAvatarRef}
                     disabled={busy || modifyLoading}
                   />
                 </div>
@@ -1983,11 +2052,19 @@ export default function ImagePage({
                     ? "Ex. : ajoute un détail au premier plan, change l'arrière-plan…"
                     : "Ex. : gros plan sur une personne surprise qui regarde la caméra…"
                 }
-                className={`min-w-0 flex-1 resize-none rounded-2xl bg-transparent px-4 py-3 pr-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none ${
+                className={`min-w-0 flex-1 resize-none rounded-2xl bg-transparent px-4 py-3 pr-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full ${
                   narrowVisualStudio
                     ? "min-h-[60px] overflow-hidden overflow-y-hidden"
                     : "min-h-[3.5rem]"
                 }`}
+                style={{
+                  scrollbarWidth: "thin",
+                  scrollbarColor: scrollbarVisible
+                    ? "rgba(255,255,255,0.25) transparent"
+                    : "transparent transparent",
+                }}
+                onMouseEnter={() => setScrollbarVisible(true)}
+                onMouseLeave={() => setScrollbarVisible(false)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
@@ -2648,20 +2725,40 @@ export default function ImagePage({
                     <span className="text-[10px] uppercase tracking-wider text-gray-500">Image de référence</span>
                     <div className="mt-2">
                       {refCharDataUrl ? (
-                        <div className="flex items-center gap-3">
-                          <img src={refCharDataUrl} alt="" className="h-20 w-20 rounded-lg object-cover border border-white/10" />
-                          <button type="button" onClick={resetRef} className="text-xs text-gray-400 underline">
-                            Retirer
-                          </button>
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-center gap-3">
+                            <img src={refCharDataUrl} alt="" className="h-20 w-20 rounded-lg object-cover border border-white/10" />
+                            <div className="flex flex-col gap-1">
+                              <button type="button" onClick={resetRef} className="text-left text-xs text-gray-400 underline">
+                                Retirer
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => openAvatarLibrary("classic")}
+                                className="text-left text-xs text-cyan-400/90 underline-offset-2 hover:text-cyan-300 hover:underline"
+                              >
+                                Choisir depuis mes avatars
+                              </button>
+                            </div>
+                          </div>
                         </div>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={onPickRefImage}
-                          className="rounded-lg border border-dashed border-white/20 px-4 py-3 text-xs text-gray-400 hover:border-cyan-500/30"
-                        >
-                          Ajouter une image de référence
-                        </button>
+                        <div className="flex flex-col gap-2">
+                          <button
+                            type="button"
+                            onClick={onPickRefImage}
+                            className="rounded-lg border border-dashed border-white/20 px-4 py-3 text-xs text-gray-400 hover:border-cyan-500/30"
+                          >
+                            Ajouter une image de référence
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openAvatarLibrary("classic")}
+                            className="text-left text-xs text-cyan-400/90 underline-offset-2 hover:text-cyan-300 hover:underline"
+                          >
+                            Choisir depuis mes avatars
+                          </button>
+                        </div>
                       )}
                       <input ref={fileInputRef} type="file" accept="image/*" onChange={onFileChange} className="hidden" />
                     </div>
@@ -2675,6 +2772,12 @@ export default function ImagePage({
           )}
       </div>
       </div>
+
+      <ModalBibliothequeAvatars
+        open={avatarLibraryOpen}
+        onClose={() => setAvatarLibraryOpen(false)}
+        onSelect={handleAvatarLibrarySelect}
+      />
 
       <VisuelAccrocheExplicationSheet open={showSystemVideo} onClose={() => setShowSystemVideo(false)} />
     </>

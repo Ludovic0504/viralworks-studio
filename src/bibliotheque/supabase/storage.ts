@@ -38,10 +38,16 @@ function buildFetchableImageUrl(imageUrl: string): string {
   return `${supabaseUrl}/functions/v1/image-proxy?url=${encodedUrl}`;
 }
 
+export type UploadImageOptions = {
+  /** Sous-dossier Storage, ex. "avatars" → `{userId}/avatars/{timestamp}.png` */
+  subfolder?: string;
+};
+
 export async function uploadImageFromUrl(
   imageUrl: string,
   userId: string,
-  prompt?: string
+  prompt?: string,
+  options?: UploadImageOptions
 ): Promise<{ success: boolean; url?: string; error?: string }> {
   const supabase = getBrowserSupabase();
 
@@ -61,7 +67,10 @@ export async function uploadImageFromUrl(
 
     const fetchUrl = buildFetchableImageUrl(secureImageUrl);
 
-    if (isSignedUrlExpired(secureImageUrl)) {
+    if (
+      !secureImageUrl.startsWith("data:") &&
+      isSignedUrlExpired(secureImageUrl)
+    ) {
       const msg = "URL image expirée (signature dépassée)";
       console.warn("⚠️", msg, secureImageUrl);
       return { success: false, error: msg };
@@ -97,14 +106,17 @@ export async function uploadImageFromUrl(
 
     const timestamp = Date.now();
     const random = Math.random().toString(36).substring(7);
-    const fileName = `${user.id}/${timestamp}-${random}.${ext}`;
-    const filePath = fileName;
+    const useAvatarsPath = options?.subfolder === "avatars";
+    const filePath = useAvatarsPath
+      ? `${user.id}/avatars/${timestamp}.png`
+      : `${user.id}/${timestamp}-${random}.${ext}`;
+    const uploadContentType = useAvatarsPath ? "image/png" : contentType;
 
     console.log("📤 Upload vers Supabase Storage:", filePath);
     const { error: uploadError, data } = await supabase.storage
       .from("generated-images")
       .upload(filePath, uint8Array, {
-        contentType: contentType,
+        contentType: uploadContentType,
         cacheControl: "3600",
         upsert: false,
       });
@@ -141,7 +153,8 @@ export async function uploadImageFromUrl(
 export async function uploadImagesFromUrls(
   imageUrls: string[],
   userId: string,
-  prompt?: string
+  prompt?: string,
+  options?: UploadImageOptions
 ): Promise<{ success: boolean; urls?: string[]; errors?: string[] }> {
   console.log(`📤 Upload de ${imageUrls.length} image(s) vers Supabase Storage...`);
 
@@ -161,7 +174,7 @@ export async function uploadImagesFromUrls(
   const results = await Promise.allSettled(
     imageUrls.map((url, index) => {
       console.log(`📤 Upload image ${index + 1}/${imageUrls.length}...`);
-      return uploadImageFromUrl(url, userId, prompt);
+      return uploadImageFromUrl(url, userId, prompt, options);
     })
   );
 
