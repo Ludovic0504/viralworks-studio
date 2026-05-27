@@ -484,6 +484,31 @@
   .studio-avatar-cta:active:not(:disabled) {
     transform: scale(0.98);
   }
+
+  /* Scrollbar discrète (desktop / pointeur) — pas de thumb au hover sur touch */
+  .studio-subtle-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+
+  .studio-subtle-scrollbar::-webkit-scrollbar {
+    width: 3px;
+  }
+
+  .studio-subtle-scrollbar::-webkit-scrollbar-thumb {
+    border-radius: 9999px;
+    background-color: transparent;
+  }
+
+  @media (hover: hover) {
+    .studio-subtle-scrollbar:hover {
+      scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
+    }
+
+    .studio-subtle-scrollbar:hover::-webkit-scrollbar-thumb {
+      background-color: rgba(255, 255, 255, 0.25);
+    }
+  }
 }
 
 @media (max-width: 1023px) {

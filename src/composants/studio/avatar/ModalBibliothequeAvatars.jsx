@@ -6,8 +6,7 @@ import {
 } from "@/bibliotheque/studio/studioAvatars";
 import { useAuth } from "@/contexte/FournisseurAuth";
 
-const SCROLLBAR_CLASSES =
-  "[&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-transparent hover:[&::-webkit-scrollbar-thumb]:bg-white/25";
+const SCROLLBAR_CLASSES = "studio-subtle-scrollbar";
 
 function metierLabel(item) {
   const m = item?.metadata?.config?.metier;

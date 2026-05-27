@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useStudioLayoutOptions } from "@/contexte/StudioLayoutOptionsContext";
 import PageTitle from "@/composants/interface/TitrePage";
 import StudioCategorySidebar from "@/composants/studio/avatar/StudioCategorySidebar";
 import StudioCategoryTabs from "@/composants/studio/avatar/StudioCategoryTabs";
@@ -22,6 +23,7 @@ import { capturePostHog, trackPostHogError } from "@/bibliotheque/posthog/client
 export default function Studio() {
   const { session } = useAuth();
   const { runWithAuth } = useRequireAuthAction();
+  const { setStudioLayout } = useStudioLayoutOptions();
   const [config, setConfig] = useState(DEFAULT_AVATAR_CONFIG);
   const [error, setError] = useState(null);
   const [hasActiveSubscription, setHasActiveSubscription] = useState(false);
@@ -30,10 +32,16 @@ export default function Studio() {
   const [avatarLibrary, setAvatarLibrary] = useState([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [libraryRefreshKey, setLibraryRefreshKey] = useState(0);
+  const [libraryExpandSignal, setLibraryExpandSignal] = useState(0);
 
   useEffect(() => {
     capturePostHog("avatar_creator_opened");
   }, []);
+
+  useEffect(() => {
+    setStudioLayout({ hideGlobalFooterOnMobile: true });
+    return () => setStudioLayout(null);
+  }, [setStudioLayout]);
 
   const update = (patch) => setConfig((prev) => ({ ...prev, ...patch }));
 
@@ -113,6 +121,7 @@ export default function Studio() {
         generating: false,
       });
       setLibraryRefreshKey((k) => k + 1);
+      setLibraryExpandSignal((s) => s + 1);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Erreur lors de la génération.";
@@ -159,7 +168,7 @@ export default function Studio() {
   );
 
   return (
-    <div className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-1 flex-col px-4 py-4 max-lg:gap-3 max-lg:pb-[calc(5rem+env(safe-area-inset-bottom))] sm:px-6 lg:px-8 lg:py-6">
+    <div className="mx-auto flex w-full max-w-7xl flex-col px-4 py-4 max-lg:h-auto max-lg:min-h-0 max-lg:overflow-x-hidden max-lg:gap-3 max-lg:pb-[calc(5rem+env(safe-area-inset-bottom))] sm:px-6 lg:h-full lg:min-h-0 lg:flex-1 lg:px-8 lg:py-6">
       <PageTitle
         green="Avatar"
         white="IA"
@@ -173,36 +182,41 @@ export default function Studio() {
         onCategoryChange={(id) => update({ activeCategory: id })}
       />
 
-      <div className="flex min-h-0 w-full min-w-0 max-w-full flex-1 flex-col gap-3 max-lg:overflow-x-hidden lg:flex-row lg:items-stretch lg:gap-4">
+      <div className="flex w-full min-w-0 max-w-full flex-col gap-3 max-lg:flex-none max-lg:overflow-x-hidden lg:min-h-0 lg:flex-1 lg:flex-row lg:items-stretch lg:gap-4">
         <StudioCategorySidebar
           activeCategory={config.activeCategory}
           onCategoryChange={(id) => update({ activeCategory: id })}
         />
 
-        <StudioAvatarPreview
-          previewUrl={config.previewUrl}
-          generating={config.generating}
-          libraryItems={avatarLibrary}
-          libraryLoading={libraryLoading}
-          onSelectAvatar={(url) => update({ previewUrl: url })}
-          onDeleteAvatar={handleDeleteAvatar}
-        />
-
-        <StudioOptionsPanel
-          activeCategory={config.activeCategory}
-          onGenerate={requestGenerate}
-          onSubscriptionRequired={() => setShowSubscriptionModal(true)}
-          hasActiveSubscription={hasActiveSubscription}
-          subscriptionLoading={subscriptionLoading}
-          canGenerate={canGenerate}
-          generating={config.generating}
-        >
-          <StudioCategoryPanel
-            activeCategory={config.activeCategory}
-            config={config}
-            onChange={update}
+        <div className="max-lg:order-2 w-full min-w-0 max-w-full lg:contents">
+          <StudioAvatarPreview
+            previewUrl={config.previewUrl}
+            generating={config.generating}
+            libraryItems={avatarLibrary}
+            libraryLoading={libraryLoading}
+            libraryExpandSignal={libraryExpandSignal}
+            onSelectAvatar={(url) => update({ previewUrl: url })}
+            onDeleteAvatar={handleDeleteAvatar}
           />
-        </StudioOptionsPanel>
+        </div>
+
+        <div className="max-lg:order-1 w-full min-w-0 max-w-full lg:contents">
+          <StudioOptionsPanel
+            activeCategory={config.activeCategory}
+            onGenerate={requestGenerate}
+            onSubscriptionRequired={() => setShowSubscriptionModal(true)}
+            hasActiveSubscription={hasActiveSubscription}
+            subscriptionLoading={subscriptionLoading}
+            canGenerate={canGenerate}
+            generating={config.generating}
+          >
+            <StudioCategoryPanel
+              activeCategory={config.activeCategory}
+              config={config}
+              onChange={update}
+            />
+          </StudioOptionsPanel>
+        </div>
       </div>
 
       {error ? (

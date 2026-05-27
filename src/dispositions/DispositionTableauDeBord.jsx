@@ -28,7 +28,13 @@ function DashboardShellWithSectorGate() {
     secteur == null;
 
   const main = (
-    <div className="flex-1 min-h-0 flex flex-col min-h-0">
+    <div
+      className={`flex flex-col ${
+        isAvatarStudioPage
+          ? "max-lg:flex-none max-lg:min-h-0 lg:min-h-0 lg:flex-1"
+          : "min-h-0 flex-1"
+      }`}
+    >
       <Outlet />
     </div>
   );
@@ -44,7 +50,9 @@ function DashboardShellWithSectorGate() {
       />
       <div
         className={`flex flex-col bg-gradient-to-br from-[#050810] via-[#0C1116] to-[#080b10] text-white relative ${
-          isAvatarStudioPage ? "h-dvh overflow-hidden" : "min-h-dvh"
+          isAvatarStudioPage
+            ? "min-h-dvh max-lg:overflow-y-auto lg:h-dvh lg:overflow-hidden"
+            : "min-h-dvh"
         }`}
       >
         <Header onOpenMenu={() => setMenuOpen(true)} />
@@ -53,10 +61,20 @@ function DashboardShellWithSectorGate() {
             open={menuOpen}
             onCloseMenu={() => setMenuOpen(false)}
             mainClassName={
-              isAvatarStudioPage ? "min-h-0 overflow-hidden" : "overflow-y-auto"
+              isAvatarStudioPage
+                ? "min-h-0 max-lg:overflow-y-auto lg:overflow-hidden"
+                : "overflow-y-auto"
             }
           >
-            <div className="flex min-h-0 flex-1 flex-col">{main}</div>
+            <div
+              className={`flex flex-col ${
+                isAvatarStudioPage
+                  ? "max-lg:flex-none max-lg:min-h-0 lg:min-h-0 lg:flex-1"
+                  : "min-h-0 flex-1"
+              }`}
+            >
+              {main}
+            </div>
           </SidebarShell>
         </div>
         <Footer />

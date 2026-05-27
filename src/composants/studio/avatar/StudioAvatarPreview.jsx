@@ -1,5 +1,7 @@
-import { User } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronDown, Images, User } from "lucide-react";
 import StudioAvatarLibrary from "@/composants/studio/avatar/StudioAvatarLibrary";
+import { getAvatarUrlFromHistory } from "@/bibliotheque/studio/studioAvatars";
 
 function LoadingSpinner({ label = "Génération en cours…" }) {
   return (
@@ -15,30 +17,52 @@ export default function StudioAvatarPreview({
   generating,
   libraryItems = [],
   libraryLoading = false,
+  libraryExpandSignal = 0,
   onSelectAvatar,
   onDeleteAvatar,
 }) {
+  const [mobileLibraryOpen, setMobileLibraryOpen] = useState(false);
+
+  const avatarCount = useMemo(
+    () => libraryItems.filter((item) => getAvatarUrlFromHistory(item)).length,
+    [libraryItems]
+  );
+
+  useEffect(() => {
+    if (libraryExpandSignal > 0) {
+      setMobileLibraryOpen(true);
+    }
+  }, [libraryExpandSignal]);
+
+  const libraryProps = {
+    items: libraryItems,
+    activeUrl: previewUrl,
+    onSelect: (url) => onSelectAvatar?.(url),
+    onDelete: onDeleteAvatar,
+    loading: libraryLoading,
+  };
+
   return (
-    <div className="flex min-h-0 w-full min-w-0 max-w-full max-lg:shrink-0 max-lg:flex-none flex-1 flex-col gap-3 lg:gap-4">
-      <div className="studio-panel flex min-h-0 w-full min-w-0 max-w-full flex-1 flex-col overflow-hidden max-lg:min-h-[min(38vh,280px)] max-lg:shrink-0 max-lg:rounded-2xl max-lg:border-white/10 max-lg:bg-[#1a1a2e] max-lg:p-4 lg:p-6">
-        <div className="flex min-h-0 w-full flex-1 items-center justify-center">
+    <div className="flex w-full min-w-0 max-w-full flex-col gap-3 max-lg:flex-none lg:min-h-0 lg:flex-1 lg:gap-4">
+      <div className="studio-panel flex w-full min-w-0 max-w-full flex-col overflow-hidden max-lg:h-[clamp(200px,35dvh,320px)] max-lg:shrink-0 max-lg:rounded-2xl max-lg:border-white/10 max-lg:bg-[#1a1a2e] max-lg:p-4 lg:min-h-0 lg:flex-1 lg:p-6">
+        <div className="flex h-full w-full items-center justify-center">
           {generating && !previewUrl ? (
             <LoadingSpinner />
           ) : !previewUrl && !generating ? (
-            <div className="flex flex-col items-center justify-center gap-4 text-center">
-              <div className="flex h-24 w-24 max-lg:h-28 max-lg:w-28 items-center justify-center rounded-2xl border border-white/10 bg-white/5">
-                <User className="h-12 w-12 max-lg:h-14 max-lg:w-14 text-white/20" strokeWidth={1.25} />
+            <div className="flex flex-col items-center justify-center gap-3 text-center max-lg:gap-2">
+              <div className="flex h-20 w-20 items-center justify-center rounded-2xl border border-white/10 bg-white/5 lg:h-24 lg:w-24">
+                <User className="h-10 w-10 text-white/20 lg:h-12 lg:w-12" strokeWidth={1.25} />
               </div>
               <p className="max-w-xs text-sm text-gray-400">
                 Votre avatar apparaîtra ici après génération
               </p>
             </div>
           ) : previewUrl ? (
-            <div className="flex min-h-0 w-full flex-1 overflow-hidden rounded-xl">
+            <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-xl">
               <img
                 src={previewUrl}
                 alt="Avatar (character sheet)"
-                className="block h-full w-full object-contain"
+                className="max-h-full max-w-full object-contain"
               />
             </div>
           ) : (
@@ -49,15 +73,45 @@ export default function StudioAvatarPreview({
         </div>
       </div>
 
-      <div className="studio-panel flex shrink-0 flex-col overflow-hidden p-4 lg:p-5">
-        <h3 className="mb-3 shrink-0 text-sm font-medium text-gray-200">Mes avatars</h3>
-        <StudioAvatarLibrary
-          items={libraryItems}
-          activeUrl={previewUrl}
-          onSelect={(url) => onSelectAvatar?.(url)}
-          onDelete={onDeleteAvatar}
-          loading={libraryLoading}
-        />
+      <div className="studio-panel flex shrink-0 flex-col max-lg:overflow-visible p-4 lg:overflow-hidden lg:p-5">
+        <button
+          type="button"
+          className="mb-0 flex w-full items-center gap-2.5 text-left lg:hidden"
+          onClick={() => setMobileLibraryOpen((open) => !open)}
+          aria-expanded={mobileLibraryOpen}
+          aria-controls="studio-mobile-avatar-library"
+        >
+          <Images className="h-4 w-4 shrink-0 text-gray-400" strokeWidth={1.75} aria-hidden />
+          <span className="min-w-0 flex-1 text-sm font-medium text-gray-200">Mes avatars</span>
+          {avatarCount > 0 ? (
+            <span
+              className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums ${
+                mobileLibraryOpen
+                  ? "bg-emerald-500/15 text-emerald-400"
+                  : "bg-white/10 text-gray-300"
+              }`}
+            >
+              {avatarCount}
+            </span>
+          ) : null}
+          <ChevronDown
+            className={`h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200 ${
+              mobileLibraryOpen ? "rotate-180" : ""
+            }`}
+            aria-hidden
+          />
+        </button>
+
+        <h3 className="mb-3 hidden shrink-0 text-sm font-medium text-gray-200 lg:block">
+          Mes avatars
+        </h3>
+
+        <div
+          id="studio-mobile-avatar-library"
+          className={`lg:block ${mobileLibraryOpen ? "max-lg:block" : "max-lg:hidden"}`}
+        >
+          <StudioAvatarLibrary {...libraryProps} className="max-lg:mt-3 lg:mt-0" />
+        </div>
       </div>
     </div>
   );

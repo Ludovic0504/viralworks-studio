@@ -30,7 +30,7 @@ export default function StudioOptionsPanel({
         {labels[activeCategory] || "Options"}
       </h2>
 
-      <div className="flex w-full min-w-0 max-w-full max-lg:flex-none max-lg:overflow-x-hidden flex-1 flex-col gap-3 max-lg:gap-3 overflow-y-auto lg:gap-4">
+      <div className="flex w-full min-w-0 max-w-full max-lg:flex-none max-lg:overflow-visible flex-1 flex-col gap-3 max-lg:gap-3 lg:overflow-y-auto lg:gap-4">
         {children}
       </div>
 

@@ -227,7 +227,7 @@ export default function StudioAvatarLibrary({
       : null;
 
   const scrollClasses =
-    "max-h-[145px] overflow-y-auto [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-transparent hover:[&::-webkit-scrollbar-thumb]:bg-white/25";
+    "max-lg:max-h-none max-lg:overflow-visible max-h-[145px] overflow-y-auto lg:studio-subtle-scrollbar";
 
   return (
     <div
