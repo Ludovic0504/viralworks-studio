@@ -67,20 +67,6 @@ function isLinkClickSource(value: string): value is LinkClickSource {
   return SOURCES.includes(value as LinkClickSource);
 }
 
-function startOfDayUtc(d: Date): Date {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-}
-
-function toDateKey(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
-function daysAgoUtc(days: number): Date {
-  const d = startOfDayUtc(new Date());
-  d.setUTCDate(d.getUTCDate() - days);
-  return d;
-}
-
 function pad2(n: number): string {
   return String(n).padStart(2, "0");
 }
@@ -89,20 +75,67 @@ function ymdKey(y: number, m: number, d: number): string {
   return `${y}-${pad2(m)}-${pad2(d)}`;
 }
 
+/** Date calendaire YYYY-MM-DD en Europe/Paris pour un instant ISO. */
+function clickedAtToParisDateKey(iso: string): string {
+  return toParisDateString(iso);
+}
+
+/** Premier jour inclus d'une fenêtre glissante de `sinceDays` jours (calendrier Paris). */
+function getParisCutoffDateKey(sinceDays: number): string {
+  const today = getTodayParisYmd();
+  const cutoff = addCalendarDays(today.y, today.m, today.d, -(sinceDays - 1));
+  return ymdKey(cutoff.y, cutoff.m, cutoff.d);
+}
+
+/** Instant UTC du début du jour civil `y-m-d` à Paris (00:00). */
+function parisMidnightUtcIso(y: number, m: number, d: number): string {
+  const target = ymdKey(y, m, d);
+  const probeStart = Date.UTC(y, m - 1, d - 1, 0, 0, 0);
+  const probeEnd = Date.UTC(y, m - 1, d + 2, 0, 0, 0);
+
+  for (let t = probeStart; t <= probeEnd; t += 60 * 60 * 1000) {
+    const iso = new Date(t).toISOString();
+    if (toParisDateString(iso) === target && getHourInParis(iso) === 0) {
+      return iso;
+    }
+  }
+
+  return new Date(Date.UTC(y, m - 1, d - 1, 23, 0, 0)).toISOString();
+}
+
+function parisMidnightUtcIsoFromDateKey(dateKey: string): string {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  return parisMidnightUtcIso(y, m, d);
+}
+
 function filterRowsSince(rows: LinkClickRow[], sinceDays: number): LinkClickRow[] {
-  const cutoff = daysAgoUtc(sinceDays - 1);
+  const cutoffKey = getParisCutoffDateKey(sinceDays);
   return rows.filter((row) => {
-    const t = new Date(row.clicked_at).getTime();
-    return !Number.isNaN(t) && t >= cutoff.getTime();
+    if (Number.isNaN(new Date(row.clicked_at).getTime())) return false;
+    return clickedAtToParisDateKey(row.clicked_at) >= cutoffKey;
   });
 }
 
 function filterProfilesSince(rows: ProfileSignupRow[], sinceDays: number): ProfileSignupRow[] {
-  const cutoff = daysAgoUtc(sinceDays - 1);
+  const cutoffKey = getParisCutoffDateKey(sinceDays);
   return rows.filter((row) => {
-    const t = new Date(row.created_at).getTime();
-    return !Number.isNaN(t) && t >= cutoff.getTime();
+    if (Number.isNaN(new Date(row.created_at).getTime())) return false;
+    return toParisDateString(row.created_at) >= cutoffKey;
   });
+}
+
+/** Libellé axe graphique pour une clé date Paris (YYYY-MM-DD). */
+export function formatParisDateKeyLabel(dateKey: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
+  if (!match) return dateKey;
+  const y = Number(match[1]);
+  const m = Number(match[2]);
+  const d = Number(match[3]);
+  return new Intl.DateTimeFormat("fr-FR", {
+    day: "numeric",
+    month: "short",
+    timeZone: PARIS_TZ,
+  }).format(new Date(parisMidnightUtcIso(y, m, d)));
 }
 
 export function getHourInParis(iso: string): number {
@@ -159,22 +192,22 @@ function getMondayWeekKeyParis(iso: string): string {
 
 function formatWeekLabel(mondayY: number, mondayM: number, mondayD: number): string {
   const sunday = addCalendarDays(mondayY, mondayM, mondayD, 6);
-  const start = new Date(Date.UTC(mondayY, mondayM - 1, mondayD));
-  const end = new Date(Date.UTC(sunday.y, sunday.m - 1, sunday.d));
-  const month = end.toLocaleDateString("fr-FR", { month: "short", timeZone: "UTC" });
-  return `${start.getUTCDate()}–${end.getUTCDate()} ${month}`;
+  const month = new Intl.DateTimeFormat("fr-FR", {
+    month: "short",
+    timeZone: PARIS_TZ,
+  }).format(new Date(parisMidnightUtcIso(sunday.y, sunday.m, sunday.d)));
+  return `${mondayD}–${sunday.d} ${month}`;
 }
 
 export function buildDailySeries(rows: LinkClickRow[], days = 30): DailyClickPoint[] {
   const filtered = filterRowsSince(rows, days);
   const series: DailyClickPoint[] = [];
-  const today = startOfDayUtc(new Date());
+  const today = getTodayParisYmd();
 
   for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(today);
-    d.setUTCDate(d.getUTCDate() - i);
+    const d = addCalendarDays(today.y, today.m, today.d, -i);
     series.push({
-      date: toDateKey(d),
+      date: ymdKey(d.y, d.m, d.d),
       facebook: 0,
       instagram: 0,
       tiktok: 0,
@@ -185,7 +218,7 @@ export function buildDailySeries(rows: LinkClickRow[], days = 30): DailyClickPoi
 
   for (const row of filtered) {
     if (!isLinkClickSource(row.source)) continue;
-    const key = toDateKey(new Date(row.clicked_at));
+    const key = clickedAtToParisDateKey(row.clicked_at);
     const idx = indexByDate.get(key);
     if (idx === undefined) continue;
     series[idx][row.source] += 1;
@@ -213,6 +246,7 @@ export function buildHourlySeries(rows: LinkClickRow[], sinceDays = 30): HourlyC
 }
 
 export function buildWeeklySeries(rows: LinkClickRow[], weeks = 12): WeeklyClickPoint[] {
+  const filtered = filterRowsSince(rows, weeks * 7);
   const today = getTodayParisYmd();
   const todayIso = `${ymdKey(today.y, today.m, today.d)}T12:00:00Z`;
   const currentMonday = getMondayYmdFromParisDate(today.y, today.m, today.d, getParisWeekday(todayIso));
@@ -241,7 +275,7 @@ export function buildWeeklySeries(rows: LinkClickRow[], weeks = 12): WeeklyClick
 
   const indexByWeek = new Map(series.map((p, i) => [p.weekKey, i]));
 
-  for (const row of rows) {
+  for (const row of filtered) {
     if (!isLinkClickSource(row.source)) continue;
     const key = getMondayWeekKeyParis(row.clicked_at);
     const idx = indexByWeek.get(key);
@@ -304,7 +338,7 @@ export function computeSourceBreakdown(rows: LinkClickRow[], sinceDays = 30): So
 
 export async function fetchLinkClicksSince(days: number): Promise<LinkClickRow[]> {
   const supabase = getBrowserSupabase();
-  const since = daysAgoUtc(days - 1).toISOString();
+  const since = parisMidnightUtcIsoFromDateKey(getParisCutoffDateKey(days));
 
   const { data, error } = await supabase
     .from("link_clicks")
@@ -321,7 +355,7 @@ export async function fetchLinkClicksSince(days: number): Promise<LinkClickRow[]
 
 export async function fetchProfileSignupsSince(days: number): Promise<ProfileSignupRow[]> {
   const supabase = getBrowserSupabase();
-  const since = daysAgoUtc(days - 1).toISOString();
+  const since = parisMidnightUtcIsoFromDateKey(getParisCutoffDateKey(days));
 
   const { data, error } = await supabase
     .from("profiles")

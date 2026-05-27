@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import {
   Bar,
@@ -13,7 +13,7 @@ import {
 import { BarChart3, MousePointerClick, ArrowLeft, RefreshCw, Percent } from "lucide-react";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { isAdmin } from "@/bibliotheque/supabase/credits";
-import { fetchLinkClickStats } from "@/bibliotheque/supabase/linkClicks";
+import { fetchLinkClickStats, formatParisDateKeyLabel } from "@/bibliotheque/supabase/linkClicks";
 import PageTitle from "../composants/interface/TitrePage";
 
 const SOURCE_COLORS = {
@@ -28,9 +28,10 @@ const SOURCE_LABELS = {
   tiktok: "TikTok",
 };
 
+const STATS_POLL_INTERVAL_MS = 30_000;
+
 function formatDayLabel(dateStr) {
-  const d = new Date(`${dateStr}T12:00:00Z`);
-  return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+  return formatParisDateKeyLabel(dateStr);
 }
 
 function formatRate(ratePercent) {
@@ -89,8 +90,9 @@ export default function AdminStats() {
   const [weeklySeries, setWeeklySeries] = useState([]);
   const [conversionRates, setConversionRates] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const pollIntervalRef = useRef(null);
 
-  const loadStats = async () => {
+  const loadStats = useCallback(async () => {
     setError(null);
     const stats = await fetchLinkClickStats();
     setTotals(stats.totals);
@@ -99,7 +101,18 @@ export default function AdminStats() {
     setHourlySeries(stats.hourlySeries);
     setWeeklySeries(stats.weeklySeries);
     setConversionRates(stats.conversionRates);
-  };
+  }, []);
+
+  const startStatsPolling = useCallback(() => {
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+    }
+    pollIntervalRef.current = setInterval(() => {
+      void loadStats().catch((err) => {
+        setError(err?.message || "Erreur chargement des statistiques");
+      });
+    }, STATS_POLL_INTERVAL_MS);
+  }, [loadStats]);
 
   useEffect(() => {
     let cancelled = false;
@@ -128,13 +141,27 @@ export default function AdminStats() {
     return () => {
       cancelled = true;
     };
-  }, [session]);
+  }, [session, loadStats]);
+
+  useEffect(() => {
+    if (!isAdminUser) return;
+
+    startStatsPolling();
+
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, [isAdminUser, startStatsPolling]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
     setError(null);
     try {
       await loadStats();
+      startStatsPolling();
     } catch (err) {
       setError(err?.message || "Erreur chargement des statistiques");
     } finally {
@@ -172,15 +199,18 @@ export default function AdminStats() {
             <ArrowLeft className="w-4 h-4" />
             Administration
           </Link>
-          <button
-            type="button"
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-[#2af598]/30 bg-[#2af598]/10 text-[#2af598] hover:bg-[#2af598]/20 transition-all text-sm disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
-            Actualiser
-          </button>
+          <div className="flex flex-col items-end gap-1">
+            <button
+              type="button"
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-[#2af598]/30 bg-[#2af598]/10 text-[#2af598] hover:bg-[#2af598]/20 transition-all text-sm disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
+              Actualiser
+            </button>
+            <p className="text-[10px] text-gray-500 leading-none">Mise à jour auto • 30s</p>
+          </div>
         </div>
       </div>
 
