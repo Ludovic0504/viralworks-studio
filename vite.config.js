@@ -24,10 +24,10 @@ export default defineConfig(({ mode }) => {
     studioAvatarApiDev(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['logo.png'],
+      includeAssets: ['logo.png', 'pwa-192x192.png', 'pwa-512x512.png'],
       manifest: {
         name: 'ViralWorks Studio',
-        short_name: 'ViralWorks',
+        short_name: 'VWS Studio',
         description: 'Créez des vidéos virales pour vos réseaux sociaux',
         theme_color: '#0C1116',
         background_color: '#0C1116',
@@ -36,12 +36,12 @@ export default defineConfig(({ mode }) => {
         start_url: '/',
         icons: [
           {
-            src: 'logo.png',
+            src: 'pwa-192x192.png',
             sizes: '192x192',
             type: 'image/png'
           },
           {
-            src: 'logo.png',
+            src: 'pwa-512x512.png',
             sizes: '512x512',
             type: 'image/png'
           }
