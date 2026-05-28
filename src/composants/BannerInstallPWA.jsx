@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Plus, Share, X } from "lucide-react";
+import { ChevronUp, Plus, Share, X } from "lucide-react";
 
 const STORAGE_KEY = "pwa_banner_dismissed";
 const MOBILE_MQ = "(max-width: 768px)";
@@ -40,10 +40,17 @@ const IOS_INSTALL_STEPS = [
   },
   {
     step: 2,
+    Icon: ChevronUp,
+    iconClassName: "text-gray-200",
+    text: "Appuie sur « Voir plus » si besoin",
+    note: null,
+  },
+  {
+    step: 3,
     Icon: Plus,
     iconClassName: "text-gray-100",
     text: "Appuie sur « Sur l'écran d'accueil »",
-    note: "Fais défiler si tu ne le vois pas",
+    note: null,
   },
 ];
 
