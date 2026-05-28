@@ -16,6 +16,8 @@ type RequestBody = {
   stagingIds: string[];
   aspectRatio: string; // "16:9" | "9:16" | "1:1" — vient du champ "ratio" côté UI
   subjectReferences?: unknown[];
+  /** Legacy client field — fusionné dans subjectReferences si absent */
+  refCharacter?: string;
 };
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -372,13 +374,20 @@ serve(async (req) => {
     const stagingIds = Array.isArray(body.stagingIds) ? body.stagingIds.filter((x) => typeof x === "string") : [];
     const aspectRatio = typeof body.aspectRatio === "string" ? body.aspectRatio.trim() : "16:9";
     const subjectReferencesRaw = Array.isArray(body.subjectReferences) ? body.subjectReferences : [];
-    const subjectReferences = subjectReferencesRaw
+    let subjectReferences = subjectReferencesRaw
       .map((x) => (typeof x === "string" ? x.trim() : ""))
       .filter(Boolean);
 
+    if (subjectReferences.length === 0) {
+      const legacyRef =
+        typeof body.refCharacter === "string" ? body.refCharacter.trim() : "";
+      if (legacyRef) subjectReferences = [legacyRef];
+    }
+
     if (!prompt) return jsonResponse({ error: "Le prompt est requis et doit être une chaîne non vide." }, 400);
 
-    const provider: Provider = hookId ? "gpt-image-2" : "hailuo";
+    const provider: Provider =
+      subjectReferences.length > 0 ? "hailuo" : hookId ? "gpt-image-2" : "hailuo";
     const creditsUsed = 1;
 
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {

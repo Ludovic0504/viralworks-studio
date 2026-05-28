@@ -49,15 +49,28 @@ import {
   User,
 } from "lucide-react";
 
-function buildProductHailuoRefs({ avatarRefDataUrl, productRefDataUrl, refCharDataUrl }) {
+function buildHookSubjectReferences({
+  isProductMode,
+  avatarRefDataUrl,
+  productRefDataUrl,
+  refCharDataUrl,
+}) {
   const refs = [];
-  const av = typeof avatarRefDataUrl === "string" ? avatarRefDataUrl.trim() : "";
-  const pr = typeof productRefDataUrl === "string" ? productRefDataUrl.trim() : "";
-  if (av) refs.push(av);
-  if (pr) refs.push(pr);
-  if (refs.length > 0) return { subjectReferences: refs };
-  if (refCharDataUrl) return { refCharacter: refCharDataUrl };
-  return {};
+  if (isProductMode) {
+    const av = typeof avatarRefDataUrl === "string" ? avatarRefDataUrl.trim() : "";
+    const pr = typeof productRefDataUrl === "string" ? productRefDataUrl.trim() : "";
+    if (av) refs.push(av);
+    if (pr) refs.push(pr);
+  } else {
+    const ref = typeof refCharDataUrl === "string" ? refCharDataUrl.trim() : "";
+    if (ref) refs.push(ref);
+  }
+  if (refs.length === 0) {
+    const legacy = typeof refCharDataUrl === "string" ? refCharDataUrl.trim() : "";
+    if (legacy) refs.push(legacy);
+  }
+  if (refs.length === 0) return {};
+  return { subjectReferences: refs };
 }
 
 function buildProductRefPromptPrefix({ isProductMode, avatarRefDataUrl, productRefDataUrl }) {
@@ -231,6 +244,9 @@ const DEFAULT_IMAGE_STEP = {
   ratio: "9:16",
   quantity: 4,
   refCharDataUrl: null,
+  productAvatarRefUrl: null,
+  productAvatarRefSource: null,
+  productProductRefUrl: null,
   lastGeneratedImages: null,
   lastGeneratedPrompt: "",
   selectedImageIndex: 0,
@@ -293,6 +309,9 @@ export default function ImagePage({
     ratio,
     quantity,
     refCharDataUrl,
+    productAvatarRefUrl,
+    productAvatarRefSource,
+    productProductRefUrl,
     lastGeneratedImages,
     lastGeneratedPrompt,
     selectedImageIndex,
@@ -456,9 +475,6 @@ export default function ImagePage({
     return getFormatById(formatId)?.categoryId === "produit";
   }, [canonicalSpec.campaign.video_format_id]);
 
-  const [avatarRefDataUrl, setAvatarRefDataUrl] = useState(null);
-  const [avatarRefSource, setAvatarRefSource] = useState(null);
-  const [productRefDataUrl, setProductRefDataUrl] = useState(null);
   const [avatarLibraryOpen, setAvatarLibraryOpen] = useState(false);
   const [avatarLibraryTarget, setAvatarLibraryTarget] = useState("product");
   const avatarRefFileInputRef = useRef(null);
@@ -478,8 +494,10 @@ export default function ImagePage({
   const handleAvatarLibrarySelect = useCallback(
     (url) => {
       if (avatarLibraryTarget === "product") {
-        setAvatarRefDataUrl(url);
-        setAvatarRefSource("library");
+        patchImageStep?.({
+          productAvatarRefUrl: url,
+          productAvatarRefSource: "library",
+        });
       } else {
         patchImageStep?.({ refCharDataUrl: url });
       }
@@ -488,22 +506,30 @@ export default function ImagePage({
   );
 
   const clearAvatarRef = useCallback(() => {
-    setAvatarRefDataUrl(null);
-    setAvatarRefSource(null);
-  }, []);
+    patchImageStep?.({
+      productAvatarRefUrl: null,
+      productAvatarRefSource: null,
+    });
+  }, [patchImageStep]);
 
   const clearProductRefCards = useCallback(() => {
-    clearAvatarRef();
-    setProductRefDataUrl(null);
-  }, [clearAvatarRef]);
+    patchImageStep?.({
+      productAvatarRefUrl: null,
+      productAvatarRefSource: null,
+      productProductRefUrl: null,
+    });
+  }, [patchImageStep]);
 
   const onAvatarRefFileChange = (e) => {
     const f = e.target.files?.[0];
     if (!f || !f.type.startsWith("image/")) return;
     const rd = new FileReader();
     rd.onload = () => {
-      setAvatarRefDataUrl(String(rd.result || "") || null);
-      setAvatarRefSource("import");
+      const dataUrl = String(rd.result || "") || null;
+      patchImageStep?.({
+        productAvatarRefUrl: dataUrl,
+        productAvatarRefSource: dataUrl ? "import" : null,
+      });
     };
     rd.readAsDataURL(f);
     e.target.value = "";
@@ -513,7 +539,8 @@ export default function ImagePage({
     const f = e.target.files?.[0];
     if (!f || !f.type.startsWith("image/")) return;
     const rd = new FileReader();
-    rd.onload = () => setProductRefDataUrl(String(rd.result || "") || null);
+    rd.onload = () =>
+      patchImageStep?.({ productProductRefUrl: String(rd.result || "") || null });
     rd.readAsDataURL(f);
     e.target.value = "";
   };
@@ -1280,23 +1307,30 @@ export default function ImagePage({
       );
       const refPromptPrefix = buildProductRefPromptPrefix({
         isProductMode,
-        avatarRefDataUrl,
-        productRefDataUrl,
+        avatarRefDataUrl: productAvatarRefUrl,
+        productRefDataUrl: productProductRefUrl,
       });
       const image1Prompt = refPromptPrefix
         ? `${refPromptPrefix}\n\n${baseImage1Prompt}`
         : baseImage1Prompt;
 
-      const hailuoRefs = isProductMode
-        ? buildProductHailuoRefs({ avatarRefDataUrl, productRefDataUrl, refCharDataUrl })
-        : { refCharacter: refCharDataUrl };
+      const hookSubjectRefs = buildHookSubjectReferences({
+        isProductMode,
+        avatarRefDataUrl: productAvatarRefUrl,
+        productRefDataUrl: productProductRefUrl,
+        refCharDataUrl,
+      });
+      const subjectReferences = hookSubjectRefs.subjectReferences;
 
       const image1RequestBody = {
         prompt: image1Prompt,
         hookId: canonicalSpec.campaign.product_opening_hook_id,
         stagingIds: canonicalSpec.campaign.staging_chips,
         aspectRatio: ratio,
-        subjectReferences: Array.isArray(hailuoRefs?.subjectReferences) ? hailuoRefs.subjectReferences : undefined,
+        subjectReferences:
+          Array.isArray(subjectReferences) && subjectReferences.length > 0
+            ? subjectReferences
+            : undefined,
       };
 
       const debugRequestBody = {
@@ -1993,7 +2027,7 @@ export default function ImagePage({
                   <ProductRefCard
                     label="Mes avatars IA"
                     emptyIcon={User}
-                    imageUrl={avatarRefSource === "library" ? avatarRefDataUrl : null}
+                    imageUrl={productAvatarRefSource === "library" ? productAvatarRefUrl : null}
                     imageClassName="[object-position:16%_center]"
                     onPick={() => openAvatarLibrary("product")}
                     onClear={clearAvatarRef}
@@ -2001,15 +2035,15 @@ export default function ImagePage({
                   />
                   <ProductRefCard
                     label="Produit"
-                    imageUrl={productRefDataUrl}
+                    imageUrl={productProductRefUrl}
                     onPick={() => productRefFileInputRef.current?.click()}
-                    onClear={() => setProductRefDataUrl(null)}
+                    onClear={() => patchImageStep?.({ productProductRefUrl: null })}
                     disabled={busy || modifyLoading}
                   />
                   <ProductRefCard
                     label="Importer une image"
                     emptyIcon={Upload}
-                    imageUrl={avatarRefSource === "import" ? avatarRefDataUrl : null}
+                    imageUrl={productAvatarRefSource === "import" ? productAvatarRefUrl : null}
                     onPick={() => avatarRefFileInputRef.current?.click()}
                     onClear={clearAvatarRef}
                     disabled={busy || modifyLoading}
@@ -2132,8 +2166,8 @@ export default function ImagePage({
                 Boolean(String(prompt || "").trim()) ||
                 Boolean(String(modifyInstruction || "").trim()) ||
                 Boolean(refCharDataUrl) ||
-                Boolean(avatarRefDataUrl) ||
-                Boolean(productRefDataUrl) ||
+                Boolean(productAvatarRefUrl) ||
+                Boolean(productProductRefUrl) ||
                 Boolean(String(lastGeneratedPrompt || "").trim()) ||
                 Boolean(String(campaignIdeaPrompt || "").trim()) ||
                 Number(selectedImageIndex || 0) !== 0;

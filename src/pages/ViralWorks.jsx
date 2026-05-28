@@ -256,6 +256,9 @@ const INITIAL_IMAGE_STEP = {
   ratio: "9:16",
   quantity: 4,
   refCharDataUrl: null,
+  productAvatarRefUrl: null,
+  productAvatarRefSource: null,
+  productProductRefUrl: null,
   lastGeneratedImages: null,
   lastGeneratedPrompt: "",
   selectedImageIndex: 0,
@@ -306,6 +309,14 @@ function sanitizeImageStepFromDraft(raw) {
     ratio,
     quantity,
     refCharDataUrl: typeof raw.refCharDataUrl === "string" ? raw.refCharDataUrl : null,
+    productAvatarRefUrl:
+      typeof raw.productAvatarRefUrl === "string" ? raw.productAvatarRefUrl : null,
+    productAvatarRefSource:
+      raw.productAvatarRefSource === "library" || raw.productAvatarRefSource === "import"
+        ? raw.productAvatarRefSource
+        : null,
+    productProductRefUrl:
+      typeof raw.productProductRefUrl === "string" ? raw.productProductRefUrl : null,
     lastGeneratedImages,
     lastGeneratedPrompt:
       typeof raw.lastGeneratedPrompt === "string" ? raw.lastGeneratedPrompt : "",
@@ -404,11 +415,26 @@ function isSensitiveOrTransientUrl(value) {
   }
 }
 
+function persistableHttpsRefUrl(value) {
+  const s = typeof value === "string" ? value.trim() : "";
+  return s.startsWith("https://") ? s : null;
+}
+
 function sanitizeImageStepForWorkflowPersistence(raw) {
   const base = sanitizeImageStepFromDraft(raw) || { ...INITIAL_IMAGE_STEP };
+  const productAvatarRefUrl = persistableHttpsRefUrl(base.productAvatarRefUrl);
+  const productProductRefUrl = persistableHttpsRefUrl(base.productProductRefUrl);
+  const productAvatarRefSource =
+    productAvatarRefUrl &&
+    (base.productAvatarRefSource === "library" || base.productAvatarRefSource === "import")
+      ? base.productAvatarRefSource
+      : null;
   return {
     ...base,
-    refCharDataUrl: null,
+    refCharDataUrl: persistableHttpsRefUrl(base.refCharDataUrl),
+    productAvatarRefUrl,
+    productAvatarRefSource,
+    productProductRefUrl,
     lastGeneratedImages: null,
   };
 }
