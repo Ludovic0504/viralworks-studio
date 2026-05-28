@@ -1193,19 +1193,10 @@ export default function ImagePage({
   async function generate() {
     if (!canGenerate) return;
 
-    let hasServerCredits = true;
-    if (session) {
-      hasServerCredits = await hasEnoughCredits(1);
-      if (!hasServerCredits) {
-        openQuotaModal();
-        return;
-      }
-    }
-
     if (!canUseImageGeneration()) {
       // Le quota local peut être désynchronisé (ex: crédits workflow rajoutés côté admin).
-      // Tant que le solde serveur est OK, on laisse générer.
-      if (!(session && hasServerCredits)) {
+      // Le gate crédits est désormais côté serveur (generate-hook-visual).
+      if (!session) {
         const usage = getWorkflowUsage();
         if (usage.videoAttemptsUsed >= 1) {
           resetWorkflowUsage();
@@ -1235,7 +1226,7 @@ export default function ImagePage({
         throw new Error("Configuration Supabase manquante");
       }
 
-      const functionUrl = `${supabaseUrl}/functions/v1/hailuo-image`;
+      const functionUrl = `${supabaseUrl}/functions/v1/generate-hook-visual`;
       const accessToken = session?.access_token;
 
       if (!accessToken) {
@@ -1283,6 +1274,8 @@ export default function ImagePage({
           globalIntent: getSafeIntentProfile(canonicalSpec),
           selfieMode: canonicalSpec.rendering.camera.selfie_mode === true,
           openingHookStill: true,
+          hookId: canonicalSpec.campaign.product_opening_hook_id,
+          stagingIds: canonicalSpec.campaign.staging_chips,
         }
       );
       const refPromptPrefix = buildProductRefPromptPrefix({
@@ -1300,10 +1293,10 @@ export default function ImagePage({
 
       const image1RequestBody = {
         prompt: image1Prompt,
-        ratio,
-        quantity,
-        model,
-        ...hailuoRefs,
+        hookId: canonicalSpec.campaign.product_opening_hook_id,
+        stagingIds: canonicalSpec.campaign.staging_chips,
+        aspectRatio: ratio,
+        subjectReferences: Array.isArray(hailuoRefs?.subjectReferences) ? hailuoRefs.subjectReferences : undefined,
       };
 
       const debugRequestBody = {
@@ -1315,9 +1308,6 @@ export default function ImagePage({
               ),
             }
           : {}),
-        ...(image1RequestBody.refCharacter
-          ? { refCharacter: summarizeDataUrl(image1RequestBody.refCharacter) }
-          : {}),
       };
 
       // Debug UI: capture du payload exact envoyé (Image 1).
@@ -1328,7 +1318,7 @@ export default function ImagePage({
           image24sDebug: {
             ...(p.image24sDebug || {}),
             image1: {
-              provider: "hailuo",
+              provider: "generate-hook-visual",
               functionUrl,
               prompt: image1Prompt,
               requestBody: debugRequestBody,
@@ -1385,20 +1375,24 @@ export default function ImagePage({
       setProgress(60);
       setProgressMessage("Traitement de la réponse...");
 
-      let urls = Array.isArray(responseData?.urls) ? responseData.urls : [];
+      const debitWarning = responseData?.debitWarning === true;
+      if (debitWarning) {
+        console.warn(
+          "[generate-hook-visual] debitWarning=true: image generated but credit debit failed post-success."
+        );
+      }
 
-      if (urls.length === 0) {
+      const rawImageUrl =
+        typeof responseData?.imageUrl === "string" ? responseData.imageUrl.trim() : "";
+      if (!rawImageUrl) {
         throw new Error("Aucune image reçue");
       }
 
-      urls = urls.map(url => {
-        if (url && url.startsWith('http://')) {
-          const httpsUrl = url.replace('http://', 'https://');
-          console.log("🔒 Conversion HTTP → HTTPS:", url.substring(0, 80) + "...", "→", httpsUrl.substring(0, 80) + "...");
-          return httpsUrl;
-        }
-        return url;
-      });
+      const imageUrl = rawImageUrl.startsWith("http://")
+        ? rawImageUrl.replace("http://", "https://")
+        : rawImageUrl;
+
+      const urls = [imageUrl];
 
       setProgress(80);
       setProgressMessage("Téléchargement vers le stockage...");

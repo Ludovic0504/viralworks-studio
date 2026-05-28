@@ -22,6 +22,11 @@ export interface ProductOpeningHookDef {
   name: string;
   description: string;
   iconId: string;
+  frame0_directives: string[];
+  frame0_negatives: string[];
+  product_visibility_at_t0: "not_held" | "in_air" | "hidden" | "held" | "destroyed" | "offscreen";
+  requires_character: boolean;
+  camera_energy: "stable" | "bump" | "chaotic" | "slow";
 }
 
 export type ProductMiseEnSceneId = "cinematique" | "facecam" | "situation" | "fondneutre";
@@ -31,6 +36,9 @@ export interface ProductMiseEnSceneDef {
   label: string;
   notice: string;
   iconId: string;
+  frame0_directives: string[];
+  character_prominence: "primary" | "secondary" | "none";
+  background_style: "neutral" | "real_context" | "cinematic";
 }
 
 export const PRODUCT_SCENE_DECORS: ProductSceneDecorDef[] = [
@@ -128,6 +136,14 @@ export const PRODUCT_OPENING_HOOKS: ProductOpeningHookDef[] = [
     description:
       "L'objet vole dans le cadre et frappe le sujet. Réaction brève → pivot produit",
     iconId: "Zap",
+    frame0_directives: [
+      "flying object approaching subject from off-frame",
+      "subject has empty hands, expression of surprise",
+    ],
+    frame0_negatives: ["product held in hand"],
+    product_visibility_at_t0: "in_air",
+    requires_character: true,
+    camera_energy: "stable",
   },
   {
     id: "productcrash",
@@ -135,6 +151,11 @@ export const PRODUCT_OPENING_HOOKS: ProductOpeningHookDef[] = [
     name: "Product Crash",
     description: "Le produit tombe de haut et se détruit — chaos visuel immédiat",
     iconId: "TrendingDown",
+    frame0_directives: ["product visibly falling or already broken", "debris or chaos in frame"],
+    frame0_negatives: [],
+    product_visibility_at_t0: "destroyed",
+    requires_character: false,
+    camera_energy: "chaotic",
   },
   {
     id: "blizzard",
@@ -142,6 +163,15 @@ export const PRODUCT_OPENING_HOOKS: ProductOpeningHookDef[] = [
     name: "Blizzard",
     description: "Une tempête violente et impossible surgit dans la scène",
     iconId: "Snowflake",
+    frame0_directives: [
+      "violent environmental elements invading the scene",
+      "subject overwhelmed or reacting to surroundings",
+      "atmospheric chaos",
+    ],
+    frame0_negatives: [],
+    product_visibility_at_t0: "offscreen",
+    requires_character: true,
+    camera_energy: "chaotic",
   },
   {
     id: "camerabump",
@@ -149,6 +179,11 @@ export const PRODUCT_OPENING_HOOKS: ProductOpeningHookDef[] = [
     name: "Camera Bump",
     description: "La caméra percute accidentellement quelqu'un — chaos immédiat",
     iconId: "Video",
+    frame0_directives: ["unstable handheld shot aesthetic", "slight motion blur on edges", "accidental collision feel"],
+    frame0_negatives: ["perfectly stable composed framing"],
+    product_visibility_at_t0: "held",
+    requires_character: true,
+    camera_energy: "bump",
   },
   {
     id: "productdodge",
@@ -156,6 +191,11 @@ export const PRODUCT_OPENING_HOOKS: ProductOpeningHookDef[] = [
     name: "Product Dodge",
     description: "Un produit file vers le visage, la personne esquive et l'attrape",
     iconId: "Shuffle",
+    frame0_directives: ["object flying toward subject's face", "subject in evasive motion", "hands completely free and open"],
+    frame0_negatives: ["product held in hand at frame 0", "subject standing still"],
+    product_visibility_at_t0: "offscreen",
+    requires_character: true,
+    camera_energy: "stable",
   },
   {
     id: "epicfail",
@@ -163,6 +203,15 @@ export const PRODUCT_OPENING_HOOKS: ProductOpeningHookDef[] = [
     name: "Epic Fail",
     description: "Tentative ratée, chute spectaculaire — l'humour crée l'attention",
     iconId: "Frown",
+    frame0_directives: [
+      "subject mid-failed gesture",
+      "humorous physical mishap frozen in progress",
+      "awkward or unstable pose",
+    ],
+    frame0_negatives: ["calm neutral pose", "successful action"],
+    product_visibility_at_t0: "held",
+    requires_character: true,
+    camera_energy: "stable",
   },
   {
     id: "spicy",
@@ -171,6 +220,11 @@ export const PRODUCT_OPENING_HOOKS: ProductOpeningHookDef[] = [
     description:
       "Gros plan extrême sur une pommette ou un cou, recule lentement vers le produit",
     iconId: "Flame",
+    frame0_directives: ["extreme close-up on cheek or neck", "camera retreating slowly", "no product visible in frame"],
+    frame0_negatives: ["wide shot", "product visible at frame 0", "full face visible"],
+    product_visibility_at_t0: "offscreen",
+    requires_character: true,
+    camera_energy: "slow",
   },
   {
     id: "interview",
@@ -179,6 +233,15 @@ export const PRODUCT_OPENING_HOOKS: ProductOpeningHookDef[] = [
     description:
       "Intervieweur interroge un inconnu dans la rue — première réponse = pivot produit",
     iconId: "Mic2",
+    frame0_directives: [
+      "vlog-style street setting",
+      "subject seen from behind or three-quarter profile",
+      "interviewer approaching from off-frame",
+    ],
+    frame0_negatives: ["product visible at frame 0", "subject facing camera directly"],
+    product_visibility_at_t0: "offscreen",
+    requires_character: true,
+    camera_energy: "stable",
   },
   {
     id: "randommic",
@@ -186,6 +249,11 @@ export const PRODUCT_OPENING_HOOKS: ProductOpeningHookDef[] = [
     name: "Random Object Mic",
     description: "Vlog banal — un objet absurde sort du champ et devient le micro",
     iconId: "CassetteTape",
+    frame0_directives: ["mundane everyday object held as if it were a microphone", "absurd vlog energy", "subject speaking into the object"],
+    frame0_negatives: [],
+    product_visibility_at_t0: "offscreen",
+    requires_character: true,
+    camera_energy: "stable",
   },
   {
     id: "revealent",
@@ -193,6 +261,15 @@ export const PRODUCT_OPENING_HOOKS: ProductOpeningHookDef[] = [
     name: "Reveal lent",
     description: "Le produit est flou — la mise au point progressive crée l'attente",
     iconId: "Eye",
+    frame0_directives: [
+      "product intentionally blurred or partially obscured at frame 0",
+      "soft progressive focus pull implied",
+      "anticipation atmosphere",
+    ],
+    frame0_negatives: ["product sharp and clearly visible", "product in focus"],
+    product_visibility_at_t0: "hidden",
+    requires_character: false,
+    camera_energy: "slow",
   },
 ];
 
@@ -202,24 +279,40 @@ export const PRODUCT_MISE_EN_SCENE: ProductMiseEnSceneDef[] = [
     label: "Cinématique",
     notice: "Plan composé, lumière travaillée, ton sobre. Comme une pub de marque.",
     iconId: "Aperture",
+    frame0_directives: ["composed cinematic shot", "carefully worked lighting", "brand advertisement tone"],
+    character_prominence: "secondary",
+    background_style: "cinematic",
   },
   {
     id: "facecam",
     label: "Face caméra",
     notice: "Quelqu'un parle directement à l'objectif, lumière naturelle, énergie spontanée.",
     iconId: "User",
+    frame0_directives: ["character directly facing lens", "eye contact with camera", "natural light", "spontaneous energy"],
+    character_prominence: "primary",
+    background_style: "real_context",
   },
   {
     id: "situation",
     label: "En situation",
     notice: "Une scène se déroule — un personnage dans un contexte, une micro-histoire.",
     iconId: "GitBranch",
+    frame0_directives: [
+      "character in real-life context",
+      "micro-story unfolding naturally",
+      "environment fully integrated",
+    ],
+    character_prominence: "primary",
+    background_style: "real_context",
   },
   {
     id: "fondneutre",
     label: "Fond neutre",
     notice: "Sujet centré sur fond uni, lumière propre. Rien ne distrait du produit.",
     iconId: "PanelBottom",
+    frame0_directives: ["centered subject on clean neutral background", "nothing distracts from product"],
+    character_prominence: "none",
+    background_style: "neutral",
   },
 ];
 

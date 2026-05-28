@@ -1,5 +1,6 @@
 import { getVwsEnvironmentHint } from "./vwsMetiersConfig";
 import { generateResponse } from "./openai/chatgpt-client";
+import { getProductHookById, getProductMiseDef } from "./vwsProductCampagneCatalog";
 
 export type Tempo = "real_time" | "timelapse" | "slow_motion";
 
@@ -1407,6 +1408,63 @@ export function truncateOpeningHookFallback(raw: string, maxLen: number): string
   return `${cut.trim()}…`;
 }
 
+export function resolveFrame0Intent(
+  hookId: string | null | undefined,
+  stagingIds: string[]
+): string {
+  const hook = hookId ? getProductHookById(hookId) : undefined;
+  const miseId = Array.isArray(stagingIds) && stagingIds.length > 0 ? stagingIds[0] : undefined;
+  const mise = miseId ? getProductMiseDef(miseId) : undefined;
+
+  const directives: string[] = [];
+  const negatives: string[] = [];
+
+  if (hook?.frame0_directives?.length) directives.push(...hook.frame0_directives);
+  if (mise?.frame0_directives?.length) directives.push(...mise.frame0_directives);
+  if (hook?.frame0_negatives?.length) negatives.push(...hook.frame0_negatives);
+
+  const dedupe = (arr: string[]) => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const raw of arr) {
+      const s = String(raw || "").trim();
+      if (!s) continue;
+      const key = s.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(s);
+    }
+    return out;
+  };
+
+  const finalDirectives = dedupe(directives);
+  const finalNegatives = dedupe(negatives);
+
+  const hookRequiresCharacter = hook?.requires_character !== false;
+  const stagingProminence = mise?.character_prominence ?? null;
+
+  // Compat rule: if hook says no character at frame 0 and staging wants primary character, hook wins.
+  const characterAllowedAtT0 = hookRequiresCharacter ? true : stagingProminence !== "primary";
+
+  const productStatus = hook?.product_visibility_at_t0 ?? "held";
+  const cameraFeel = hook?.camera_energy ?? "stable";
+
+  const lines: string[] = [];
+  lines.push("[FRAME 0 — FIRST INSTANT CONSTRAINTS — HIGHEST PRIORITY]");
+  if (!characterAllowedAtT0) {
+    lines.push("No visible character at frame 0.");
+  }
+  if (finalDirectives.length) {
+    lines.push(finalDirectives.join(", "));
+  }
+  lines.push(`Product status at frame 0: ${productStatus}`);
+  lines.push(`Camera feel: ${cameraFeel}`);
+  if (finalNegatives.length) {
+    lines.push(`STRICTLY FORBIDDEN at frame 0: ${finalNegatives.join(", ")}`);
+  }
+  return lines.join("\n");
+}
+
 function firstPivotSegmentForHook(s: string): string | null {
   const patterns: RegExp[] = [
     /\s[\u2013\u2014]\s/g,
@@ -1479,6 +1537,8 @@ export function buildHookImageApiPrompt(
     selfieMode?: boolean;
     /** Image 1 accroche : premier instant, sans laisser `show_finished_result` désactiver l’état initial. */
     openingHookStill?: boolean;
+    hookId?: string;
+    stagingIds?: string[];
   }
 ): string {
   const antiDistortionBlock =
@@ -1622,7 +1682,11 @@ export function buildHookImageApiPrompt(
   }
 
   const firstInstantBlock = openingHookStill ? `\n\n${HOOK_FIRST_INSTANT_DIRECTIVE_FR}` : "";
-  const prompt = `${withViewpoint}${firstInstantBlock}\n\n${antiDistortionBlock}`;
+  const frame0Block =
+    openingHookStill && (options.hookId || (Array.isArray(options.stagingIds) && options.stagingIds.length > 0))
+      ? `${resolveFrame0Intent(options.hookId ?? null, options.stagingIds ?? [])}\n\n`
+      : "";
+  const prompt = `${frame0Block}${withViewpoint}${firstInstantBlock}\n\n${antiDistortionBlock}`;
   console.log("🔍 PROMPT FINAL:", prompt.substring(0, 500));
   return prompt;
 }
