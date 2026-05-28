@@ -41,11 +41,10 @@ export function getBrowserSupabase(opts: { remember?: boolean } = {}): SupabaseC
 
   const client = createClient(url, key, {
     auth: {
+      storage: localStorage,
       persistSession: true,
-      autoRefreshToken: true,
       detectSessionInUrl: true,
-      // Mode sécurisé: session navigateur uniquement (pas de persistance longue).
-      storage: window.sessionStorage,
+      autoRefreshToken: true,
     },
   })
 
