@@ -31,6 +31,17 @@ const HISTORY_LOCAL_CACHE_KEY = "history_v2";
 const SS_APP_BOOT_MARKER = "vws_app_boot_marker";
 export const SS_STUDIO_LEASE_KEY = "vws_studio_workflow_lease";
 
+/** Clés workflow persistées en localStorage scopé par utilisateur (P0). */
+export const STUDIO_SCOPED_KEYS = [
+  SS_STUDIO_LEASE_KEY,
+  SS_VIRALWORKS_WORKFLOW_STATE_KEY,
+  SS_SPA_UI_KEY,
+  SS_VIRAL_STUDIO_DRAFT,
+];
+
+/** userId courant pour load/save sans paramètre explicite (défini par FournisseurAuth). */
+let studioScopedUserId = null;
+
 /** Inactivité studio : au-delà, le workflow est réinitialisé au prochain accès. */
 export const STUDIO_WORKFLOW_IDLE_MS = 4 * 60 * 60 * 1000;
 
@@ -58,6 +69,114 @@ export function clearSpaImageStepMemory() {
     spaImageStepMemoryClearFn?.();
   } catch {
     /* ignore */
+  }
+}
+
+export function setStudioScopedUserId(userId) {
+  const uid = String(userId || "").trim();
+  studioScopedUserId = uid || null;
+}
+
+function resolveScopedUserId(explicitUserId) {
+  const uid = String(explicitUserId ?? studioScopedUserId ?? "").trim();
+  return uid || null;
+}
+
+export function scopedKey(baseKey, userId) {
+  const uid = String(userId || "").trim();
+  if (!uid) return null;
+  return `${baseKey}:u:${uid}`;
+}
+
+export function readStudioScoped(baseKey, userId) {
+  const key = scopedKey(baseKey, resolveScopedUserId(userId));
+  if (!key || typeof localStorage === "undefined") return null;
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+export function writeStudioScoped(baseKey, userId, value) {
+  const key = scopedKey(baseKey, resolveScopedUserId(userId));
+  if (!key || typeof localStorage === "undefined") return false;
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function clearStudioScopedForUser(userId) {
+  const uid = resolveScopedUserId(userId);
+  if (!uid || typeof localStorage === "undefined") return;
+  for (const baseKey of STUDIO_SCOPED_KEYS) {
+    const key = scopedKey(baseKey, uid);
+    if (!key) continue;
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function readLegacySessionRaw(baseKey) {
+  if (typeof sessionStorage === "undefined") return null;
+  try {
+    return sessionStorage.getItem(baseKey);
+  } catch {
+    return null;
+  }
+}
+
+function removeLegacySessionKey(baseKey) {
+  if (typeof sessionStorage === "undefined") return;
+  try {
+    sessionStorage.removeItem(baseKey);
+  } catch {
+    /* ignore */
+  }
+}
+
+function canMigrateLegacySessionKey(baseKey, raw, userId) {
+  if (!raw) return false;
+  if (baseKey === SS_STUDIO_LEASE_KEY) {
+    const lease = parseStudioLease(raw);
+    return Boolean(lease && lease.userId === userId);
+  }
+  const legacyLeaseRaw = readLegacySessionRaw(SS_STUDIO_LEASE_KEY);
+  if (!legacyLeaseRaw) return true;
+  const lease = parseStudioLease(legacyLeaseRaw);
+  if (!lease) return true;
+  return lease.userId === userId;
+}
+
+/** Dual-read sessionStorage legacy → localStorage scopé (P0). */
+export function migrateLegacySessionStorageToLocal(userId) {
+  const uid = String(userId || "").trim();
+  if (!uid || typeof localStorage === "undefined") return;
+
+  for (const baseKey of STUDIO_SCOPED_KEYS) {
+    const key = scopedKey(baseKey, uid);
+    if (!key) continue;
+
+    if (readStudioScoped(baseKey, uid)) {
+      removeLegacySessionKey(baseKey);
+      continue;
+    }
+
+    const legacyRaw = readLegacySessionRaw(baseKey);
+    if (!legacyRaw || !canMigrateLegacySessionKey(baseKey, legacyRaw, uid)) continue;
+
+    try {
+      localStorage.setItem(key, legacyRaw);
+      removeLegacySessionKey(baseKey);
+    } catch {
+      /* ignore */
+    }
   }
 }
 
@@ -114,16 +233,20 @@ function parseStudioLease(raw) {
   }
 }
 
-function readStudioLease() {
-  if (typeof sessionStorage === "undefined") return null;
-  return parseStudioLease(sessionStorage.getItem(SS_STUDIO_LEASE_KEY));
+function readStudioLease(userId) {
+  const scopedRaw = readStudioScoped(SS_STUDIO_LEASE_KEY, userId);
+  if (scopedRaw) {
+    const parsed = parseStudioLease(scopedRaw);
+    if (parsed) return parsed;
+  }
+  return parseStudioLease(readLegacySessionRaw(SS_STUDIO_LEASE_KEY));
 }
 
 /** True si le workflow doit être repris à zéro (nouvel onglet, autre user, idle > 4 h). */
 export function shouldResetStudioWorkflow(userId) {
   const uid = String(userId || "").trim();
   if (!uid) return true;
-  const lease = readStudioLease();
+  const lease = readStudioLease(uid);
   if (!lease) return true;
   if (lease.userId !== uid) return true;
   if (Date.now() - lease.lastActivityAt > STUDIO_WORKFLOW_IDLE_MS) return true;
@@ -132,31 +255,33 @@ export function shouldResetStudioWorkflow(userId) {
 
 export function touchStudioWorkflowLease(userId) {
   const uid = String(userId || "").trim();
-  if (!uid || typeof sessionStorage === "undefined") return;
-  const prev = readStudioLease();
+  if (!uid) return;
+  const prev = readStudioLease(uid);
   const now = Date.now();
   const next = {
     userId: uid,
     startedAt: prev?.userId === uid ? prev.startedAt : now,
     lastActivityAt: now,
   };
-  try {
-    sessionStorage.setItem(SS_STUDIO_LEASE_KEY, JSON.stringify(next));
-  } catch {
-    /* ignore */
-  }
+  const payload = JSON.stringify(next);
+  writeStudioScoped(SS_STUDIO_LEASE_KEY, uid, payload);
+  removeLegacySessionKey(SS_STUDIO_LEASE_KEY);
 }
 
-export function clearStudioWorkflowLease() {
-  try {
-    sessionStorage.removeItem(SS_STUDIO_LEASE_KEY);
-  } catch {
-    /* ignore */
+export function clearStudioWorkflowLease(userId) {
+  const key = scopedKey(SS_STUDIO_LEASE_KEY, resolveScopedUserId(userId));
+  if (key && typeof localStorage !== "undefined") {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      /* ignore */
+    }
   }
+  removeLegacySessionKey(SS_STUDIO_LEASE_KEY);
 }
 
 function purgeSessionStudioKeysSync() {
-  removeSessionKeys([
+  const sessionKeys = [
     SS_VIRAL_STUDIO_DRAFT,
     SS_IMAGE_STEP_KEY,
     SS_VISUAL_SNAPSHOTS_KEY,
@@ -167,8 +292,17 @@ function purgeSessionStudioKeysSync() {
     "vws_workflow_quota_v1",
     SS_BRAIN_V2_LAST_KEY,
     SS_STUDIO_LEASE_KEY,
-  ]);
-  clearViralWorksWorkflowStateFromSession();
+  ].filter((key) => !STUDIO_SCOPED_KEYS.includes(key));
+
+  removeSessionKeys(sessionKeys);
+  try {
+    sessionStorage.removeItem(SS_VIRALWORKS_WORKFLOW_STATE_KEY);
+    sessionStorage.removeItem(SS_VIRAL_STUDIO_DRAFT);
+    sessionStorage.removeItem(SS_SPA_UI_KEY);
+    sessionStorage.removeItem(SS_STUDIO_LEASE_KEY);
+  } catch {
+    /* ignore */
+  }
   try {
     localStorage.removeItem(LS_IMAGE_STEP_KEY);
   } catch {
@@ -200,10 +334,18 @@ export function clearLegacyViralWorksLocalStorage() {
   }
 }
 
-export function loadSpaUiStateFromSession() {
+export function loadSpaUiStateFromSession(userId) {
   if (isReloadNavigation()) return null;
   try {
-    const raw = sessionStorage.getItem(SS_SPA_UI_KEY);
+    const uid = resolveScopedUserId(userId);
+    if (uid) {
+      const scopedRaw = readStudioScoped(SS_SPA_UI_KEY, uid);
+      if (scopedRaw) {
+        const parsed = JSON.parse(scopedRaw);
+        if (parsed && typeof parsed === "object") return parsed;
+      }
+    }
+    const raw = readLegacySessionRaw(SS_SPA_UI_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") return null;
@@ -213,9 +355,24 @@ export function loadSpaUiStateFromSession() {
   }
 }
 
-export function loadViralStudioDraftFromSession() {
+export function loadViralStudioDraftFromSession(userId) {
   try {
-    const raw = sessionStorage.getItem(SS_VIRAL_STUDIO_DRAFT);
+    const uid = resolveScopedUserId(userId);
+    if (uid) {
+      const scopedRaw = readStudioScoped(SS_VIRAL_STUDIO_DRAFT, uid);
+      if (scopedRaw) {
+        const parsed = JSON.parse(scopedRaw);
+        if (parsed && typeof parsed === "object") {
+          return {
+            campaign: parsed.campaign && typeof parsed.campaign === "object" ? parsed.campaign : {},
+            scriptPrompt: typeof parsed.scriptPrompt === "string" ? parsed.scriptPrompt : "",
+            imageStep:
+              parsed.imageStep && typeof parsed.imageStep === "object" ? parsed.imageStep : null,
+          };
+        }
+      }
+    }
+    const raw = readLegacySessionRaw(SS_VIRAL_STUDIO_DRAFT);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") return null;
@@ -235,18 +392,35 @@ export function loadViralStudioDraftFromLocal() {
   return loadViralStudioDraftFromSession();
 }
 
-export function saveViralStudioDraftToSession(snapshot) {
+export function saveViralStudioDraftToSession(snapshot, userId) {
   try {
-    sessionStorage.setItem(SS_VIRAL_STUDIO_DRAFT, JSON.stringify(snapshot));
-    return true;
+    const payload = JSON.stringify(snapshot);
+    const uid = resolveScopedUserId(userId);
+    if (uid && writeStudioScoped(SS_VIRAL_STUDIO_DRAFT, uid, payload)) {
+      removeLegacySessionKey(SS_VIRAL_STUDIO_DRAFT);
+      return true;
+    }
+    if (typeof sessionStorage !== "undefined") {
+      sessionStorage.setItem(SS_VIRAL_STUDIO_DRAFT, payload);
+      return true;
+    }
+    return false;
   } catch {
     return false;
   }
 }
 
-export function loadViralWorksWorkflowStateFromSession() {
+export function loadViralWorksWorkflowStateFromSession(userId) {
   try {
-    const raw = sessionStorage.getItem(SS_VIRALWORKS_WORKFLOW_STATE_KEY);
+    const uid = resolveScopedUserId(userId);
+    if (uid) {
+      const scopedRaw = readStudioScoped(SS_VIRALWORKS_WORKFLOW_STATE_KEY, uid);
+      if (scopedRaw) {
+        const parsed = JSON.parse(scopedRaw);
+        if (parsed && typeof parsed === "object") return parsed;
+      }
+    }
+    const raw = readLegacySessionRaw(SS_VIRALWORKS_WORKFLOW_STATE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") return null;
@@ -261,10 +435,19 @@ export function loadViralWorksWorkflowStateFromLocal() {
   return loadViralWorksWorkflowStateFromSession();
 }
 
-export function saveViralWorksWorkflowStateToSession(snapshot) {
+export function saveViralWorksWorkflowStateToSession(snapshot, userId) {
   try {
-    sessionStorage.setItem(SS_VIRALWORKS_WORKFLOW_STATE_KEY, JSON.stringify(snapshot));
-    return true;
+    const payload = JSON.stringify(snapshot);
+    const uid = resolveScopedUserId(userId);
+    if (uid && writeStudioScoped(SS_VIRALWORKS_WORKFLOW_STATE_KEY, uid, payload)) {
+      removeLegacySessionKey(SS_VIRALWORKS_WORKFLOW_STATE_KEY);
+      return true;
+    }
+    if (typeof sessionStorage !== "undefined") {
+      sessionStorage.setItem(SS_VIRALWORKS_WORKFLOW_STATE_KEY, payload);
+      return true;
+    }
+    return false;
   } catch {
     return false;
   }
@@ -275,9 +458,17 @@ export function saveViralWorksWorkflowStateToLocal(snapshot) {
   return saveViralWorksWorkflowStateToSession(snapshot);
 }
 
-export function clearViralWorksWorkflowStateFromSession() {
+export function clearViralWorksWorkflowStateFromSession(userId) {
+  const key = scopedKey(SS_VIRALWORKS_WORKFLOW_STATE_KEY, resolveScopedUserId(userId));
+  if (key && typeof localStorage !== "undefined") {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      /* ignore */
+    }
+  }
+  removeLegacySessionKey(SS_VIRALWORKS_WORKFLOW_STATE_KEY);
   try {
-    sessionStorage.removeItem(SS_VIRALWORKS_WORKFLOW_STATE_KEY);
     localStorage.removeItem(SS_VIRALWORKS_WORKFLOW_STATE_KEY);
   } catch {
     /* ignore */
@@ -293,10 +484,11 @@ export function clearViralWorksWorkflowStateFromLocal() {
  * Purge complète du workflow studio (déconnexion).
  * N’affecte pas l’historique Supabase du profil.
  */
-export async function clearAllViralWorksStudioPersistence() {
+export async function clearAllViralWorksStudioPersistence(userId) {
+  const uid = resolveScopedUserId(userId);
   clearSpaImageStepMemory();
   clearViralWorksTransientSessionKeys();
-  clearViralWorksWorkflowStateFromSession();
+  clearViralWorksWorkflowStateFromSession(uid);
   removeSessionKeys([
     SS_VIRAL_STUDIO_DRAFT,
     SS_CAMPAIGN_IDEA_LIVE_KEY,
@@ -304,7 +496,12 @@ export async function clearAllViralWorksStudioPersistence() {
     "vws_workflow_quota_v1",
     SS_BRAIN_V2_LAST_KEY,
   ]);
-  clearStudioWorkflowLease();
+  removeLegacySessionKey(SS_VIRAL_STUDIO_DRAFT);
+  removeLegacySessionKey(SS_SPA_UI_KEY);
+  clearStudioWorkflowLease(uid);
+  if (uid) {
+    clearStudioScopedForUser(uid);
+  }
   clearLegacyViralWorksLocalStorage();
   try {
     resetWorkflowUsage();

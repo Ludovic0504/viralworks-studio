@@ -3,6 +3,8 @@ import type { Session, SupabaseClient } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
 import {
   clearAllViralWorksStudioPersistence,
+  migrateLegacySessionStorageToLocal,
+  setStudioScopedUserId,
   shouldResetStudioWorkflow,
   touchStudioWorkflowLease,
 } from "@/bibliotheque/viralWorksStudioStorage";
@@ -44,6 +46,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const mountedRef = useRef(false);
+  const previousUserIdRef = useRef<string | null>(null);
+
+  const handleStudioSessionForUser = useCallback((uid: string) => {
+    setStudioScopedUserId(uid);
+    migrateLegacySessionStorageToLocal(uid);
+    if (shouldResetStudioWorkflow(uid)) {
+      void clearAllViralWorksStudioPersistence(uid).then(() => {
+        touchStudioWorkflowLease(uid);
+      });
+    } else {
+      touchStudioWorkflowLease(uid);
+    }
+    previousUserIdRef.current = uid;
+  }, []);
 
   useEffect(() => {
     if (!session) return;
@@ -94,6 +110,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         const validSession = data.session;
         updateLastActivity();
+        if (validSession.user?.id) {
+          setStudioScopedUserId(validSession.user.id);
+          migrateLegacySessionStorageToLocal(validSession.user.id);
+        }
         
         setSession(validSession);
         setLoading(false);
@@ -123,9 +143,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           try {
             localStorage.removeItem("onetool_oauth_remember");
             updateLastActivity();
-            void clearAllViralWorksStudioPersistence().then(() => {
-              touchStudioWorkflowLease(s.user.id);
-            });
+            const newUserId = s.user.id;
+            const previousUserId = previousUserIdRef.current;
+            setStudioScopedUserId(newUserId);
+            if (previousUserId && previousUserId !== newUserId) {
+              void clearAllViralWorksStudioPersistence(previousUserId).then(() => {
+                migrateLegacySessionStorageToLocal(newUserId);
+                touchStudioWorkflowLease(newUserId);
+              });
+            } else {
+              migrateLegacySessionStorageToLocal(newUserId);
+              touchStudioWorkflowLease(newUserId);
+            }
+            previousUserIdRef.current = newUserId;
             void syncPostHogUserFromSession({
               id: s.user.id,
               email: s.user.email,
@@ -143,14 +173,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             email: s.user.email,
           });
           try {
-            const uid = s.user.id;
-            if (shouldResetStudioWorkflow(uid)) {
-              void clearAllViralWorksStudioPersistence().then(() => {
-                touchStudioWorkflowLease(uid);
-              });
-            } else {
-              touchStudioWorkflowLease(uid);
-            }
+            handleStudioSessionForUser(s.user.id);
           } catch (err) {
             console.warn("[Auth] Erreur reset workflow studio (INITIAL_SESSION):", err);
           }
@@ -160,7 +183,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           try {
             resetPostHogUser();
             localStorage.removeItem(LAST_ACTIVITY_KEY);
-            void clearAllViralWorksStudioPersistence();
+            const signedOutUserId = previousUserIdRef.current;
+            setStudioScopedUserId(null);
+            previousUserIdRef.current = null;
+            void clearAllViralWorksStudioPersistence(signedOutUserId ?? undefined);
             console.log("[Auth] Utilisateur déconnecté, activité nettoyée");
           } catch (err) {
             console.warn("[Auth] Erreur lors du nettoyage:", err);
@@ -181,22 +207,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isMounted = false;
       if (unsub) unsub();
     };
-  }, [supabase]);
+  }, [supabase, handleStudioSessionForUser]);
 
   const signOut = useCallback(async () => {
+    const signedOutUserId = previousUserIdRef.current ?? session?.user?.id ?? null;
     try {
       resetPostHogUser();
       await supabase.auth.signOut();
       setSession(null);
       try {
         localStorage.removeItem(LAST_ACTIVITY_KEY);
-        await clearAllViralWorksStudioPersistence();
+        setStudioScopedUserId(null);
+        previousUserIdRef.current = null;
+        await clearAllViralWorksStudioPersistence(signedOutUserId ?? undefined);
       } catch {}
     } catch (error) {
       console.error("Erreur lors de la déconnexion:", error);
       throw error;
     }
-  }, [supabase]);
+  }, [supabase, session?.user?.id]);
 
   const value = useMemo(
     () => ({ session, loading, supabase, signOut }),
