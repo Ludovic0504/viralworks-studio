@@ -22,6 +22,8 @@ export interface ProductOpeningHookDef {
   name: string;
   description: string;
   iconId: string;
+  /** Variante "Veo3-safe" utilisée uniquement dans le prompt vidéo (fallback = description). */
+  video_hook_description?: string;
   frame0_directives: string[];
   frame0_negatives: string[];
   product_visibility_at_t0: "not_held" | "in_air" | "hidden" | "held" | "destroyed" | "offscreen";
@@ -152,6 +154,7 @@ export const PRODUCT_OPENING_HOOKS: ProductOpeningHookDef[] = [
     name: "Product Crash",
     description: "Le produit tombe de haut et se détruit — chaos visuel immédiat",
     iconId: "TrendingDown",
+    video_hook_description: "Le produit glisse ou est mal posé — il tombe au sol, impact net, réaction brève.",
     frame0_directives: [
       "subject facing camera, neutral expression, unaware of what is about to happen",
       "product out of frame or barely visible above, intact",
@@ -168,6 +171,8 @@ export const PRODUCT_OPENING_HOOKS: ProductOpeningHookDef[] = [
     name: "Blizzard",
     description: "Une tempête violente et impossible surgit dans la scène",
     iconId: "Snowflake",
+    video_hook_description:
+      "Un courant d'air soudain fait voler des objets légers, rideaux, feuilles ou papiers bougent, le sujet se retourne.",
     frame0_directives: [
       "calm scene, normal atmosphere",
       "subtle environmental hints: slightly dark sky, a few leaves or dust particles",
@@ -184,6 +189,8 @@ export const PRODUCT_OPENING_HOOKS: ProductOpeningHookDef[] = [
     name: "Camera Bump",
     description: "La caméra percute accidentellement quelqu'un — chaos immédiat",
     iconId: "Video",
+    video_hook_description:
+      "Caméra portée trop proche — quelqu'un frôle le cadre, léger à-coup, cadrage se décale un instant.",
     frame0_directives: [
       "slight handheld instability, not yet a shock",
       "obstacle or person entering frame at the edge",
@@ -212,6 +219,8 @@ export const PRODUCT_OPENING_HOOKS: ProductOpeningHookDef[] = [
     name: "Epic Fail",
     description: "Tentative ratée, chute spectaculaire — l'humour crée l'attention",
     iconId: "Frown",
+    video_hook_description:
+      "Le sujet tente un geste simple mais maladroit — il rate, petite gaffe visible, moment gênant mais réaliste.",
     frame0_directives: [
       "subject in overconfident pose, about to attempt something",
       "precarious balance or awkward grip suggesting imminent failure",
@@ -459,7 +468,8 @@ export function buildProductSceneDecorSentence(decorId: string | null | undefine
 export function buildProductOpeningHookSentence(hookId: string | null | undefined): string | null {
   const h = getProductHookById(hookId);
   if (!h) return null;
-  return `Hook d'accroche (3 premières secondes) : ${h.name} — ${h.description}`;
+  const desc = h.video_hook_description ?? h.description;
+  return `Hook d'accroche (3 premières secondes) : ${h.name} — ${desc}`;
 }
 
 /**
