@@ -30,6 +30,45 @@ function setBannerHeight(px) {
   document.documentElement.style.setProperty(BANNER_HEIGHT_VAR, `${px}px`);
 }
 
+const IOS_INSTALL_STEPS = [
+  {
+    step: 1,
+    Icon: Share,
+    iconClassName: "text-blue-400",
+    text: "Appuie sur le bouton Partager en bas",
+    note: null,
+  },
+  {
+    step: 2,
+    Icon: Plus,
+    iconClassName: "text-gray-100",
+    text: "Appuie sur « Sur l'écran d'accueil »",
+    note: "Fais défiler si tu ne le vois pas",
+  },
+];
+
+function IosInstallStep({ step, Icon, iconClassName, text, note }) {
+  return (
+    <li className="flex items-start gap-4">
+      <span
+        className="flex h-8 w-8 shrink-0 items-center justify-center text-lg font-bold text-emerald-400"
+        aria-hidden
+      >
+        {step}
+      </span>
+      <span
+        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 ${iconClassName}`}
+      >
+        <Icon size={22} aria-hidden />
+      </span>
+      <div className="min-w-0 flex-1 pt-0.5">
+        <p className="text-base font-medium leading-snug text-white">{text}</p>
+        {note ? <p className="mt-1.5 text-xs leading-relaxed text-gray-400">{note}</p> : null}
+      </div>
+    </li>
+  );
+}
+
 function IosInstallSheet({ open, onClose }) {
   if (!open) return null;
 
@@ -45,40 +84,25 @@ function IosInstallSheet({ open, onClose }) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="pwa-ios-sheet-title"
-        className="fixed inset-x-0 bottom-0 z-[70] rounded-t-2xl border-t border-white/10 bg-[#0C1116] px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4 shadow-2xl"
+        className="fixed inset-x-0 bottom-0 z-[70] rounded-t-2xl border-t border-white/10 bg-[#161C23] px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-5 shadow-2xl"
       >
-        <div className="mb-4 flex items-center justify-between">
-          <h2 id="pwa-ios-sheet-title" className="text-sm font-semibold text-gray-100">
+        <div className="mb-5 flex items-start justify-between gap-3 border-b border-white/10 pb-4">
+          <h2 id="pwa-ios-sheet-title" className="text-lg font-bold text-white">
             Installer l&apos;app
           </h2>
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-white/10 hover:text-gray-200"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-white/10 hover:text-gray-200"
             aria-label="Fermer"
           >
-            <X size={18} />
+            <X size={20} />
           </button>
         </div>
-        <ol className="space-y-3 text-sm text-gray-300">
-          <li className="flex items-center gap-3">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/10 text-blue-400">
-              <Share size={20} aria-hidden />
-            </span>
-            <span className="text-gray-500">Bouton Partager Safari</span>
-          </li>
-          <li className="flex items-center gap-3 pl-12">
-            <span>Appuie sur Partager</span>
-          </li>
-          <li className="flex items-center gap-3">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/10 text-gray-100">
-              <Plus size={20} aria-hidden />
-            </span>
-            <span className="text-gray-500">Ajouter à l&apos;écran d&apos;accueil</span>
-          </li>
-          <li className="flex items-center gap-3 pl-12">
-            <span>Puis Sur l&apos;écran d&apos;accueil</span>
-          </li>
+        <ol className="space-y-6">
+          {IOS_INSTALL_STEPS.map((item) => (
+            <IosInstallStep key={item.step} {...item} />
+          ))}
         </ol>
       </div>
     </>
