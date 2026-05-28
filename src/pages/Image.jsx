@@ -1333,6 +1333,15 @@ export default function ImagePage({
             : undefined,
       };
 
+      console.log("[Visuel] debug avatar", {
+        isProductMode,
+        productAvatarRefUrl: productAvatarRefUrl?.slice(0, 80) ?? null,
+        refCharDataUrl: refCharDataUrl?.slice(0, 80) ?? null,
+        subjectReferencesCount: image1RequestBody.subjectReferences?.length ?? 0,
+        subjectReferences: image1RequestBody.subjectReferences,
+        hookId: image1RequestBody.hookId,
+      });
+
       const debugRequestBody = {
         ...image1RequestBody,
         ...(Array.isArray(image1RequestBody.subjectReferences)
