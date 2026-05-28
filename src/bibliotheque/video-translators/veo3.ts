@@ -71,12 +71,17 @@ export function buildVeo3Prompt(spec: CampaignGenerationSpec, sceneIndex: number
     }
   }
   const dialogueLine = String(scene?.dialogue_text ?? "").trim();
-  // dialogueText exclu du prompt Veo3 — ce modèle rend le texte visuellement. D'autres traducteurs (Kling, Runway...) pourront l'injecter dans leur propre prompt si le moteur le supporte.
   const dialogueText: string | null = dialogueLine ? dialogueLine : null;
   ideaBody += buildCampaignContextLines(spec);
 
+  const dialogueOn = spec.rendering.audio.dialogue_enabled !== false;
+  const notSilentMusic = !wantsNoMusic(spec.rendering.audio.music_style);
+
   const blocks: string[] = [];
   blocks.push(`Idée: ${ideaBody}`);
+  if (dialogueLine && dialogueOn && notSilentMusic) {
+    blocks.push(`Character says naturally: ${dialogueLine}`);
+  }
   blocks.push(`Format: ${spec.rendering.aspect_ratio} (aligné sur le visuel d’accroche)`);
   blocks.push(`Durée: ${formatDurationLabel(spec.rendering.duration_seconds)}`);
 
@@ -120,7 +125,6 @@ export function buildVeo3Prompt(spec: CampaignGenerationSpec, sceneIndex: number
     );
     blocks.push("No background music, no soundtrack.");
   } else {
-    const dialogueOn = spec.rendering.audio.dialogue_enabled !== false;
     blocks.push(`audio_mode: ${dialogueOn ? "dialogue" : "silent"}`);
     if (!dialogueOn) {
       blocks.push(

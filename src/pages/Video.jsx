@@ -1871,7 +1871,7 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
                 video_url: videoUrl,
                 voice_text: dialogueEnabled ? voiceText : "",
                 music_style: musicStyle,
-                enable_tts: dialogueEnabled,
+                enable_tts: dialogueEnabled && dialogueAuto,
                 enable_music: true,
                 model: "veo3",
               },
@@ -2416,6 +2416,40 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
     });
   };
 
+  const sceneScriptForDialoguePrefill = useCallback(
+    (sceneIndex) => {
+      const fromCanon = String(canonicalScenes[sceneIndex]?.script_text ?? "").trim();
+      const fromUi = String(scripts[sceneIndex] ?? "").trim();
+      return fromCanon || fromUi || "";
+    },
+    [canonicalScenes, scripts]
+  );
+
+  const handleDialogueAutoChange = useCallback(
+    (on) => {
+      setDialogueAuto(on);
+      if (on) {
+        setDialoguePerScene(false);
+        return;
+      }
+      if (dialoguePerScene && sceneCount > 1) {
+        setDialogueByScene((prev) => {
+          const next = [...ensureVeo3SceneScripts(prev)];
+          for (let i = 0; i < sceneCount; i++) {
+            if (!String(next[i] ?? "").trim()) {
+              next[i] = sceneScriptForDialoguePrefill(i);
+            }
+          }
+          return next;
+        });
+      } else {
+        const prefill = sceneScriptForDialoguePrefill(activeTab);
+        setDialogueGlobal((prev) => (String(prev ?? "").trim() ? prev : prefill));
+      }
+    },
+    [activeTab, dialoguePerScene, sceneCount, sceneScriptForDialoguePrefill]
+  );
+
   const ceQueMontreSceneContent = useCallback(
     (sceneIndex) => {
       if (duration === "24s" && isStudio && sceneCount >= 3) {
@@ -2870,11 +2904,7 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
                     className="mt-0.5 rounded border-white/20 bg-white/5 text-emerald-500 input-vws-check"
                     checked={dialogueAuto}
                     disabled={!dialogueEnabled}
-                    onChange={(e) => {
-                      const on = e.target.checked;
-                      setDialogueAuto(on);
-                      if (on) setDialoguePerScene(false);
-                    }}
+                    onChange={(e) => handleDialogueAutoChange(e.target.checked)}
                   />
                   <span>Dialogue automatique</span>
                 </label>
@@ -3524,11 +3554,7 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
                         className="mt-0.5 rounded border-white/20 bg-white/5 text-emerald-500 input-vws-check"
                         checked={dialogueAuto}
                         disabled={!dialogueEnabled}
-                        onChange={(e) => {
-                          const on = e.target.checked;
-                          setDialogueAuto(on);
-                          if (on) setDialoguePerScene(false);
-                        }}
+                        onChange={(e) => handleDialogueAutoChange(e.target.checked)}
                       />
                       <span>Dialogue automatique</span>
                     </label>

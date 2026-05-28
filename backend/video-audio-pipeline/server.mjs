@@ -17,6 +17,10 @@ const SUPABASE_SERVICE_ROLE_KEY = String(
 const OUTPUT_BUCKET = String(process.env.VIDEO_OUTPUT_BUCKET || "generated-videos").trim();
 const TTS_MODEL = String(process.env.TTS_MODEL || "gpt-4o-mini-tts").trim();
 const TTS_VOICE = String(process.env.TTS_VOICE || "alloy").trim();
+const TTS_INSTRUCTIONS = String(
+  process.env.TTS_INSTRUCTIONS ||
+    "Speak in standard metropolitan French (France). No regional accent. No Québécois, Belgian or Swiss inflection. Clear, neutral French pronunciation."
+).trim();
 const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || "").trim();
 
 const app = express();
@@ -86,6 +90,7 @@ async function generateTtsMp3(text, outPath) {
       voice: TTS_VOICE,
       input: t,
       format: "mp3",
+      instructions: TTS_INSTRUCTIONS,
     }),
   });
   if (!res.ok) {
