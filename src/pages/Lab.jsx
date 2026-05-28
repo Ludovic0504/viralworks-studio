@@ -217,6 +217,18 @@ export default function Lab() {
           subtitle="Découvrez l'évolution et les nouveautés de la plateforme"
         />
 
+        <div className="mt-6 mb-8 glass-strong rounded-xl border border-white/10 p-5 flex items-start gap-3">
+          <div className="mt-0.5 h-9 w-9 shrink-0 rounded-lg bg-emerald-500/15 border border-emerald-500/25 flex items-center justify-center">
+            <Sparkles className="w-5 h-5 text-emerald-200" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-gray-100">Nouveau : l’app est installable (PWA)</p>
+            <p className="mt-1 text-sm text-gray-300">
+              Ajoutez ViralWorks Studio à l’écran d’accueil depuis le menu de votre navigateur (sur mobile et desktop compatibles).
+            </p>
+          </div>
+        </div>
+
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mt-8 mb-8">
           <div className="glass-strong rounded-xl border border-white/10 p-4 text-center">
             <div className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 to-violet-300">
