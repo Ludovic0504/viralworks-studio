@@ -47,7 +47,6 @@ export default defineConfig(({ mode }) => {
           })
         },
       },
-      // Autres routes /api → Netlify Dev si lancé (npx netlify dev)
       '/api': {
         target: 'http://localhost:8888',
         changeOrigin: true,

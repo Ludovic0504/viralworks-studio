@@ -8,7 +8,7 @@ export default [
     ignores: ['dist/**', 'node_modules/**'],
   },
   {
-    files: ['**/*.config.js', 'netlify/functions/**/*.js', 'api/**/*.js'],
+    files: ['**/*.config.js', 'api/**/*.js'],
     languageOptions: {
       ecmaVersion: 2020,
       globals: {

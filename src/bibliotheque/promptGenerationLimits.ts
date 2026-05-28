@@ -1,6 +1,5 @@
 /**
  * Limites communes pour la génération de prompts (script / vidéo).
- * À garder aligné avec netlify/functions/generate-prompt.js (valeurs numériques).
  */
 
 /** Taille max du texte « idée » envoyé au modèle (caractères) */
