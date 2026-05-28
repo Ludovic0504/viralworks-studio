@@ -1,6 +1,7 @@
 /// <reference types="vitest/config" />
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
+import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { studioAvatarApiDev } from './vite-plugins/studioAvatarApiDev.js'
@@ -19,7 +20,36 @@ export default defineConfig(({ mode }) => {
     environment: 'node',
     include: ['src/**/*.test.{ts,tsx}'],
   },
-  plugins: [studioAvatarApiDev(), react()],
+  plugins: [
+    studioAvatarApiDev(),
+    VitePWA({
+      registerType: 'autoUpdate',
+      includeAssets: ['logo.png'],
+      manifest: {
+        name: 'ViralWorks Studio',
+        short_name: 'ViralWorks',
+        description: 'Créez des vidéos virales pour vos réseaux sociaux',
+        theme_color: '#0C1116',
+        background_color: '#0C1116',
+        display: 'standalone',
+        scope: '/',
+        start_url: '/',
+        icons: [
+          {
+            src: 'logo.png',
+            sizes: '192x192',
+            type: 'image/png'
+          },
+          {
+            src: 'logo.png',
+            sizes: '512x512',
+            type: 'image/png'
+          }
+        ]
+      }
+    }),
+    react(),
+  ],
   optimizeDeps: {
     exclude: ["@ffmpeg/ffmpeg", "@ffmpeg/util"],
   },

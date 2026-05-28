@@ -1,3 +1,13 @@
+<FilesMatch "sw\.js$">
+  Header set Cache-Control "no-cache, no-store, must-revalidate"
+  Header set Pragma "no-cache"
+  Header set Expires 0
+</FilesMatch>
+
+<FilesMatch "manifest\.webmanifest$">
+  Header set Cache-Control "no-cache"
+</FilesMatch>
+
 # Hébergement mutualisé OVH (Apache) — routage SPA (React Router)
 # Les routes /go/* sont gérées côté client (GoRedirect), pas ici.
 
