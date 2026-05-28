@@ -123,6 +123,66 @@ export async function getUserWorkflowVideoWallet(): Promise<{ balance: number; c
 }
 
 /**
+ * Wallet "workflow complet" (barre verte du profil).
+ * On ne compte que les workflows complets: débit au téléchargement vidéo final.
+ */
+export async function getUserWorkflowCompleteVideoWallet(): Promise<{ balance: number; cap: number }> {
+  const supabase = getBrowserSupabase();
+
+  const {
+    data: { user },
+    error: userErr,
+  } = await supabase.auth.getUser();
+  if (userErr || !user) {
+    return { balance: 0, cap: 30 };
+  }
+
+  try {
+    await supabase.functions.invoke("sync-subscription-credits", { body: {} });
+  } catch {
+    // no-op
+  }
+
+  // Cap: même source qu'aujourd'hui (user_credits.video_display_cap)
+  const { data: capRows, error: capError } = await supabase
+    .from("user_credits")
+    .select("video_display_cap")
+    .eq("user_id", user.id);
+
+  if (capError) {
+    console.error("Erreur récupération cap wallet workflow:", capError);
+    return { balance: 0, cap: 30 };
+  }
+
+  const maxCap = (capRows || []).reduce((m, r) => {
+    const c = (r as { video_display_cap?: number | null })?.video_display_cap;
+    if (c == null || Number.isNaN(Number(c))) return m;
+    return Math.max(m, Number(c));
+  }, 0);
+  const capBase = maxCap > 0 ? maxCap : 30;
+  const cap = Math.max(capBase, 1);
+
+  // spent_workflows = COUNT des débits "video_generation" au step=telecharger_video
+  const { count, error: countError } = await supabase
+    .from("credit_transactions")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", user.id)
+    .eq("reason", "video_generation")
+    .lt("amount", 0)
+    .eq("metadata->>step", "telecharger_video");
+
+  if (countError) {
+    console.error("Erreur comptage workflows complets:", countError);
+    return { balance: 0, cap };
+  }
+
+  const spentWorkflows = Math.max(0, Number(count || 0));
+  const remaining = Math.max(0, cap - spentWorkflows);
+
+  return { balance: remaining, cap };
+}
+
+/**
  * Récupère les crédits dédiés par catégorie (texte/image/vidéo).
  */
 export async function getUserCreditBuckets(): Promise<UserCreditBuckets> {

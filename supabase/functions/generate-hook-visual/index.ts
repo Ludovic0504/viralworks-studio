@@ -379,7 +379,7 @@ serve(async (req) => {
     if (!prompt) return jsonResponse({ error: "Le prompt est requis et doit être une chaîne non vide." }, 400);
 
     const provider: Provider = hookId ? "gpt-image-2" : "hailuo";
-    const creditsUsed = provider === "gpt-image-2" ? 2 : 1;
+    const creditsUsed = 1;
 
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },
