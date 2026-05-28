@@ -25,7 +25,7 @@ export default defineConfig(({ mode }) => {
       includeAssets: ['logo.png', 'pwa-192x192.png', 'pwa-512x512.png'],
       manifest: {
         name: 'ViralWorks Studio',
-        short_name: 'VWS Studio',
+        short_name: 'ViralWorks',
         description: 'Créez des vidéos virales pour vos réseaux sociaux',
         theme_color: '#0C1116',
         background_color: '#0C1116',
