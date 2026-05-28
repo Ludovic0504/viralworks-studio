@@ -410,18 +410,7 @@ serve(async (req) => {
       const pngBytes = base64ToUint8Array(b64);
       imageUrl = await uploadPngToGeneratedImages({ supabaseUrl, serviceRoleKey, userId: user.id, pngBytes });
     } else {
-      // Reprendre exactement la logique hailuo-image (env key fallbacks + prompt_optimizer + 1500 chars)
-      const env = Deno.env.toObject();
-      let minimaxApiKey =
-        env["CléAPI_Hailuo_Image"] ||
-        env["CleAPI_Hailuo_Image"] ||
-        env["MINIMAX_API_KEY"] ||
-        env["HAILUO_API_KEY"] ||
-        env["HAILUO_IMAGE_API_KEY"] ||
-        Deno.env.get("CléAPI_Hailuo_Image") ||
-        Deno.env.get("MINIMAX_API_KEY") ||
-        Deno.env.get("HAILUO_API_KEY");
-      minimaxApiKey = minimaxApiKey ? minimaxApiKey.trim() : "";
+      const minimaxApiKey = Deno.env.get("MINIMAX_API_KEY")?.trim() ?? "";
       if (!minimaxApiKey) {
         return jsonResponse({ error: "Configuration serveur manquante. Contactez l'administrateur." }, 500);
       }
