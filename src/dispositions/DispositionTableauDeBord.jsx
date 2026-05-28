@@ -56,7 +56,7 @@ function DashboardShellWithSectorGate() {
         }`}
       >
         <Header onOpenMenu={() => setMenuOpen(true)} />
-        <div className="flex min-h-0 flex-1 flex-col pt-16">
+        <div className="flex min-h-0 flex-1 flex-col pt-16 max-md:pt-[calc(4rem+var(--pwa-install-banner-height,0px))]">
           <SidebarShell
             open={menuOpen}
             onCloseMenu={() => setMenuOpen(false)}

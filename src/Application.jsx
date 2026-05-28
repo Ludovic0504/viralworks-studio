@@ -23,6 +23,7 @@ import { AuthActionProvider } from "./contexte/ActionAuthModalContext";
 import { FournisseurCommunauteVWSNotif } from "./contexte/FournisseurCommunauteVWSNotif.jsx";
 import { initMetaPixel, trackPageView } from "./bibliotheque/meta/pixel";
 import { initPostHog, trackPostHogPageView } from "./bibliotheque/posthog/client";
+import BannerInstallPWA from "@/composants/BannerInstallPWA";
 
 class RouteErrorBoundary extends Component {
   constructor(props) {
@@ -89,6 +90,7 @@ function RootRouteLayout() {
     <AuthActionProvider>
       <FournisseurCommunauteVWSNotif>
         <AnalyticsRouteListener />
+        <BannerInstallPWA />
         <Outlet />
       </FournisseurCommunauteVWSNotif>
     </AuthActionProvider>

@@ -178,7 +178,7 @@ export default function Header({ onOpenMenu }) {
   );
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-50">
+    <header className="fixed left-0 right-0 top-0 z-50 max-md:top-[var(--pwa-install-banner-height,0px)]">
       <div className="absolute inset-0 bg-[#0C1116]/30 backdrop-blur-xl" />
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 w-full items-center gap-2 md:justify-between">
