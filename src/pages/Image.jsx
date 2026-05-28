@@ -1331,68 +1331,77 @@ export default function ImagePage({
         };
       });
 
-      const response = await fetch(functionUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-          apikey: supabaseAnonKey,
-        },
-        body: JSON.stringify(image1RequestBody),
-      });
-
       setProgress(40);
       setProgressMessage("Génération des images en cours...");
 
-      let responseData;
-      const responseText = await response.text();
-      
-      try {
-        responseData = JSON.parse(responseText);
-      } catch {
-        console.error("❌ Impossible de parser la réponse JSON:", responseText);
-        throw new Error(`Erreur serveur (${response.status}): ${responseText.substring(0, 200)}`);
-      }
+      const callGenerateHookVisualOnce = async () => {
+        const response = await fetch(functionUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+            apikey: supabaseAnonKey,
+          },
+          body: JSON.stringify(image1RequestBody),
+        });
 
-      if (!response.ok) {
-        console.error("❌ Erreur API:", response.status, responseData);
-        console.error("📋 Détails complets de la réponse:", JSON.stringify(responseData, null, 2));
-        
-        let errorMessage = responseData?.error || `Erreur HTTP ${response.status}`;
-        
-        if (responseData?.details) {
-          console.error("📦 Détails de l'erreur:", responseData.details);
-          if (responseData.details.base_resp?.status_msg) {
-            errorMessage = responseData.details.base_resp.status_msg;
-          } else if (responseData.details.metadata) {
-            errorMessage += ` (${JSON.stringify(responseData.details.metadata)})`;
-          }
+        const responseText = await response.text();
+
+        let responseData;
+        try {
+          responseData = responseText ? JSON.parse(responseText) : {};
+        } catch {
+          console.error("❌ Impossible de parser la réponse JSON:", responseText);
+          throw new Error(`Erreur serveur (${response.status}): ${responseText.substring(0, 200)}`);
         }
-        
-        throw new Error(errorMessage);
-      }
+
+        if (!response.ok) {
+          console.error("❌ Erreur API:", response.status, responseData);
+          console.error("📋 Détails complets de la réponse:", JSON.stringify(responseData, null, 2));
+
+          let errorMessage = responseData?.error || `Erreur HTTP ${response.status}`;
+
+          if (responseData?.details) {
+            console.error("📦 Détails de l'erreur:", responseData.details);
+            if (responseData.details.base_resp?.status_msg) {
+              errorMessage = responseData.details.base_resp.status_msg;
+            } else if (responseData.details.metadata) {
+              errorMessage += ` (${JSON.stringify(responseData.details.metadata)})`;
+            }
+          }
+
+          throw new Error(errorMessage);
+        }
+
+        const debitWarning = responseData?.debitWarning === true;
+        const rawImageUrl =
+          typeof responseData?.imageUrl === "string" ? responseData.imageUrl.trim() : "";
+        if (!rawImageUrl) {
+          throw new Error("Aucune image reçue");
+        }
+
+        const imageUrl = rawImageUrl.startsWith("http://")
+          ? rawImageUrl.replace("http://", "https://")
+          : rawImageUrl;
+
+        return { imageUrl, debitWarning };
+      };
+
+      const safeQuantity = Math.max(1, Math.min(4, Number(quantity) || 1));
+      const results = await Promise.all(
+        Array.from({ length: safeQuantity }, () => callGenerateHookVisualOnce())
+      );
 
       setProgress(60);
       setProgressMessage("Traitement de la réponse...");
 
-      const debitWarning = responseData?.debitWarning === true;
-      if (debitWarning) {
+      const debitWarnings = results.filter((r) => r.debitWarning).length;
+      if (debitWarnings > 0) {
         console.warn(
-          "[generate-hook-visual] debitWarning=true: image generated but credit debit failed post-success."
+          `[generate-hook-visual] debitWarning=true on ${debitWarnings}/${safeQuantity} call(s): image generated but credit debit failed post-success.`
         );
       }
-
-      const rawImageUrl =
-        typeof responseData?.imageUrl === "string" ? responseData.imageUrl.trim() : "";
-      if (!rawImageUrl) {
-        throw new Error("Aucune image reçue");
-      }
-
-      const imageUrl = rawImageUrl.startsWith("http://")
-        ? rawImageUrl.replace("http://", "https://")
-        : rawImageUrl;
-
-      const urls = [imageUrl];
+      const urls = results.map((r) => r.imageUrl);
 
       setProgress(80);
       setProgressMessage("Téléchargement vers le stockage...");
