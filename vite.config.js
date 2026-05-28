@@ -4,7 +4,6 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { studioAvatarApiDev } from './vite-plugins/studioAvatarApiDev.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -21,7 +20,6 @@ export default defineConfig(({ mode }) => {
     include: ['src/**/*.test.{ts,tsx}'],
   },
   plugins: [
-    studioAvatarApiDev(),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['logo.png', 'pwa-192x192.png', 'pwa-512x512.png'],
