@@ -14,7 +14,7 @@ const projectRoot = path.resolve(__dirname, "..");
 const publicDir = path.join(projectRoot, "public");
 const sourcePath = path.join(publicDir, "logo.png");
 
-const PWA_ICON_BG = { r: 12, g: 17, b: 22 }; // #0C1116
+const PWA_ICON_BG = { r: 0, g: 0, b: 0 }; // #000000
 
 const outputs = [
   { file: "pwa-192x192.png", size: 192 },
@@ -30,7 +30,7 @@ for (const { file, size } of outputs) {
   const dest = path.join(publicDir, file);
   await sharp(sourcePath)
     .flatten({ background: PWA_ICON_BG })
-    .resize(size, size, { fit: "contain", background: PWA_ICON_BG })
+    .resize(size, size, { fit: "cover", background: PWA_ICON_BG })
     .png()
     .toFile(dest);
   console.log(`OK ${file} (${size}x${size})`);
