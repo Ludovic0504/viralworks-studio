@@ -81,12 +81,6 @@ export default defineConfig(({ mode }) => {
         target: 'http://localhost:8888',
         changeOrigin: true,
         secure: false,
-        bypass(req) {
-          const pathname = req.url?.split('?')[0] ?? '';
-          if (pathname === '/api/studio/generate-avatar') {
-            return false;
-          }
-        },
       },
     },
   },

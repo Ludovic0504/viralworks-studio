@@ -8,6 +8,7 @@ import StudioAvatarPreview from "@/composants/studio/avatar/StudioAvatarPreview"
 import StudioOptionsPanel from "@/composants/studio/avatar/StudioOptionsPanel";
 import StudioCategoryPanel from "@/composants/studio/avatar/StudioCategoryPanel";
 import ModalAbonnementRequis from "@/composants/studio/avatar/ModalAbonnementRequis";
+import StudioPhotoRefUpload from "@/composants/studio/avatar/StudioPhotoRefUpload";
 import { DEFAULT_AVATAR_CONFIG } from "@/bibliotheque/studio/avatarOptions";
 import { generateAvatar } from "@/bibliotheque/studio/generateAvatar";
 import {
@@ -19,6 +20,11 @@ import { getUserSubscription } from "@/bibliotheque/supabase/stripe";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { capturePostHog, trackPostHogError } from "@/bibliotheque/posthog/client";
+
+const AVATAR_MODES = [
+  { id: "from_scratch", label: "Créer depuis zéro" },
+  { id: "from_photo", label: "À partir de ma photo" },
+];
 
 export default function Studio() {
   const { session } = useAuth();
@@ -33,6 +39,8 @@ export default function Studio() {
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [libraryRefreshKey, setLibraryRefreshKey] = useState(0);
   const [libraryExpandSignal, setLibraryExpandSignal] = useState(0);
+  const [avatarMode, setAvatarMode] = useState("from_scratch");
+  const [photoDataUrl, setPhotoDataUrl] = useState(null);
 
   useEffect(() => {
     capturePostHog("avatar_creator_opened");
@@ -106,7 +114,10 @@ export default function Studio() {
     return true;
   }, [hasActiveSubscription, subscriptionLoading]);
 
-  const canGenerate = Boolean(config.metier) && !config.generating;
+  const canGenerate =
+    Boolean(config.metier) &&
+    !config.generating &&
+    (avatarMode !== "from_photo" || Boolean(photoDataUrl));
 
   const handleGenerate = async () => {
     if (!canGenerate) return;
@@ -115,6 +126,9 @@ export default function Studio() {
     try {
       const result = await generateAvatar({
         config,
+        ...(avatarMode === "from_photo" && photoDataUrl
+          ? { photoDataUrl }
+          : {}),
       });
       update({
         previewUrl: result.avatarUrl,
@@ -210,6 +224,39 @@ export default function Studio() {
             canGenerate={canGenerate}
             generating={config.generating}
           >
+            <div
+              className="flex w-full min-w-0 rounded-xl border border-white/10 bg-white/[0.03] p-1"
+              role="tablist"
+              aria-label="Mode de création d'avatar"
+            >
+              {AVATAR_MODES.map((mode) => (
+                <button
+                  key={mode.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={avatarMode === mode.id}
+                  onClick={() => {
+                    setAvatarMode(mode.id);
+                    if (mode.id === "from_scratch") setPhotoDataUrl(null);
+                  }}
+                  disabled={config.generating}
+                  className={`flex-1 rounded-lg px-2 py-2 text-center text-[11px] font-medium transition sm:text-xs ${
+                    avatarMode === mode.id
+                      ? "bg-emerald-500/20 text-emerald-300"
+                      : "text-gray-400 hover:text-gray-200"
+                  } disabled:opacity-50`}
+                >
+                  {mode.label}
+                </button>
+              ))}
+            </div>
+            {avatarMode === "from_photo" ? (
+              <StudioPhotoRefUpload
+                photoDataUrl={photoDataUrl}
+                onPhotoChange={setPhotoDataUrl}
+                disabled={config.generating}
+              />
+            ) : null}
             <StudioCategoryPanel
               activeCategory={config.activeCategory}
               config={config}

@@ -1,10 +1,11 @@
 import type { AvatarConfig } from "@/bibliotheque/studio/avatarOptions";
-import { AVATAR_ENVIRONMENT, DEFAULT_AVATAR_CONFIG } from "@/bibliotheque/studio/avatarOptions";
+import { DEFAULT_AVATAR_CONFIG } from "@/bibliotheque/studio/avatarOptions";
 import { persistGeneratedAvatar } from "@/bibliotheque/studio/studioAvatars";
 import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
 
 export interface GenerateAvatarRequest {
   config: Partial<AvatarConfig>;
+  photoDataUrl?: string;
 }
 
 export interface GenerateAvatarResponse {
@@ -135,17 +136,24 @@ export async function generateAvatar(
 ): Promise<GenerateAvatarResponse> {
   const config = { ...DEFAULT_AVATAR_CONFIG, ...payload.config } as AvatarConfig;
   const prompt = buildCharacterSheetPrompt(config);
+  const photoDataUrl =
+    typeof payload.photoDataUrl === "string" ? payload.photoDataUrl.trim() : "";
+  const fromPhoto = photoDataUrl.startsWith("data:image/");
 
   if (import.meta.env.DEV) {
-    console.log("[studio/avatar] character_sheet payload:", prompt);
+    console.log("[studio/avatar] character_sheet", {
+      mode: fromPhoto ? "create-from-photo" : "create",
+      promptLength: prompt.length,
+      photoBytes: fromPhoto ? photoDataUrl.length : 0,
+    });
   }
 
   const auth = await getStudioApiAuth();
 
   const create = await callStudioAvatarApi<CreateResponse>(auth, {
-    action: "create",
+    action: fromPhoto ? "create-from-photo" : "create",
     prompt,
-    config: { ...config, environment: AVATAR_ENVIRONMENT },
+    ...(fromPhoto ? { photoDataUrl } : {}),
   });
 
   if (create.status !== "completed" || !create.avatarUrl) {

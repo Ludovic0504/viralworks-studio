@@ -415,6 +415,13 @@ export default function Lab() {
                           
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap mb-2">
+                              {event.link === "/studio" &&
+                              event.linkLabel === "Essayer" &&
+                              event.title === "Créez votre avatar à votre image" ? (
+                                <span className="text-xs font-semibold px-2 py-1 rounded bg-emerald-500/20 border border-emerald-400/40 text-emerald-300">
+                                  NOUVEAU
+                                </span>
+                              ) : null}
                               <span className={`text-xs font-medium px-2 py-1 rounded ${eventType.bg} ${eventType.border} border ${eventType.text}`}>
                                 {eventType.label}
                               </span>
