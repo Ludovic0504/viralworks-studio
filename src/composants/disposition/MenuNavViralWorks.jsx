@@ -6,10 +6,21 @@ import { FEATURE_DECORS } from "@/bibliotheque/featureFlags";
 
 const STUDIO_ITEMS = [
   { to: "/studio", label: "Avatar IA", matchDecors: false, showNew: true },
+  {
+    to: "/edit-video",
+    label: "Éditer ma vidéo",
+    matchDecors: false,
+    matchEditVideo: true,
+    showNew: true,
+  },
   ...(FEATURE_DECORS
     ? [{ to: "/studio?mode=decors", label: "Décors & Lieux", matchDecors: true }]
     : []),
 ];
+
+function visibleStudioItems(showEditVideo) {
+  return STUDIO_ITEMS.filter((item) => showEditVideo || !item.matchEditVideo);
+}
 
 function useViralWorksNavState() {
   const location = useLocation();
@@ -19,17 +30,21 @@ function useViralWorksNavState() {
   const isCreatorActive =
     location.pathname === "/viralworks" || location.pathname.startsWith("/viralworks/");
 
-  const isStudioItemActive = (matchDecors) => {
+  const isEditVideoActive = location.pathname === "/edit-video";
+
+  const isStudioItemActive = (item) => {
+    if (item.matchEditVideo) return isEditVideoActive;
     if (location.pathname !== "/studio" && !location.pathname.startsWith("/studio/")) {
       return false;
     }
-    return matchDecors ? isDecorsMode : !isDecorsMode;
+    return item.matchDecors ? isDecorsMode : !isDecorsMode;
   };
 
   const isTriggerActive =
     isCreatorActive ||
     location.pathname === "/studio" ||
-    location.pathname.startsWith("/studio/");
+    location.pathname.startsWith("/studio/") ||
+    isEditVideoActive;
 
   return { isCreatorActive, isStudioItemActive, isTriggerActive };
 }
@@ -62,7 +77,8 @@ function MenuLink({ to, label, active, onNavigate, showNew = false }) {
   );
 }
 
-function DropdownPanel({ onClose, isCreatorActive, isStudioItemActive }) {
+function DropdownPanel({ onClose, isCreatorActive, isStudioItemActive, showEditVideo }) {
+  const studioItems = visibleStudioItems(showEditVideo);
   return (
     <div
       className="absolute left-1/2 top-full z-[60] mt-2 w-[220px] -translate-x-1/2 rounded-xl border border-white/[0.12] bg-[#181b26] p-1.5 shadow-xl"
@@ -82,12 +98,12 @@ function DropdownPanel({ onClose, isCreatorActive, isStudioItemActive }) {
         </div>
       </div>
 
-      {STUDIO_ITEMS.map((item) => (
+      {studioItems.map((item) => (
         <MenuLink
           key={item.to}
           to={item.to}
           label={item.label}
-          active={isStudioItemActive(item.matchDecors)}
+          active={isStudioItemActive(item)}
           onNavigate={onClose}
           showNew={Boolean(item.showNew)}
         />
@@ -97,7 +113,7 @@ function DropdownPanel({ onClose, isCreatorActive, isStudioItemActive }) {
 }
 
 /** Dropdown desktop : trigger "ViralWorks" au clic. */
-export function MenuNavViralWorksDesktop() {
+export function MenuNavViralWorksDesktop({ showEditVideo = false }) {
   const rootRef = useRef(null);
   const [open, setOpen] = useState(false);
   const { isCreatorActive, isStudioItemActive, isTriggerActive } = useViralWorksNavState();
@@ -146,6 +162,7 @@ export function MenuNavViralWorksDesktop() {
           onClose={close}
           isCreatorActive={isCreatorActive}
           isStudioItemActive={isStudioItemActive}
+          showEditVideo={showEditVideo}
         />
       ) : null}
     </div>
@@ -153,9 +170,10 @@ export function MenuNavViralWorksDesktop() {
 }
 
 /** Section mobile : accordion ViralWorks dans la sidebar. */
-export function MenuNavViralWorksMobile({ onNavigate }) {
+export function MenuNavViralWorksMobile({ onNavigate, showEditVideo = false }) {
   const [expanded, setExpanded] = useState(false);
   const { isCreatorActive, isStudioItemActive, isTriggerActive } = useViralWorksNavState();
+  const studioItems = visibleStudioItems(showEditVideo);
 
   const close = () => {
     setExpanded(false);
@@ -195,11 +213,11 @@ export function MenuNavViralWorksMobile({ onNavigate }) {
             Studio
           </div>
 
-          {STUDIO_ITEMS.map((item) => (
+          {studioItems.map((item) => (
             <LienNavSync
               key={item.to}
               to={item.to}
-              className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${itemClass(isStudioItemActive(item.matchDecors))}`}
+              className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${itemClass(isStudioItemActive(item))}`}
               onClick={close}
             >
               <span>{item.label}</span>

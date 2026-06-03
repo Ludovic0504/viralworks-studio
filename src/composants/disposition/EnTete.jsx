@@ -14,6 +14,7 @@ const navLinks = [
   { path: "/", label: "Accueil" },
   { path: "/lab", label: "Nouveautés" },
   { path: "/communaute-vws", label: "Communauté VWS" },
+  { path: "/playbook", label: "Playbook" },
   { path: "/boutique", label: "Boutique" },
 ];
 
@@ -160,7 +161,7 @@ export default function Header({ onOpenMenu }) {
   const navItems = (
     <>
       {navLinks.slice(0, 2).map(navLinkItem)}
-      <MenuNavViralWorksDesktop />
+      <MenuNavViralWorksDesktop showEditVideo={adminBar.isAdmin} />
       {navLinks.slice(2).map(navLinkItem)}
     </>
   );

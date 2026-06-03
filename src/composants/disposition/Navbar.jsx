@@ -1,14 +1,17 @@
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { Home, Sparkles, X, ShoppingBag, Users, FileText } from "lucide-react";
+import { Home, Sparkles, X, ShoppingBag, Users, FileText, Info } from "lucide-react";
 import LienNavSync from "@/composants/disposition/LienNavSync";
 import { MenuNavViralWorksMobile } from "@/composants/disposition/MenuNavViralWorks";
+import { useAuth } from "@/contexte/FournisseurAuth";
+import { isAdmin } from "@/bibliotheque/supabase/credits";
 
 const links = [
   { path: "/", label: "Accueil", icon: Home },
   { path: "/lab", label: "Nouveautés", icon: Sparkles },
   { path: "/communaute-vws", label: "Communauté VWS", icon: Users },
+  { path: "/playbook", label: "Playbook", icon: Info },
   { path: "/boutique", label: "Boutique", icon: ShoppingBag },
 ];
 
@@ -21,6 +24,32 @@ export default function SidebarShell({
   const panelRef = useRef(null);
   const location = useLocation();
   const previousPathRef = useRef(location.pathname);
+  const { session } = useAuth();
+  const [showEditVideo, setShowEditVideo] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function checkAdminAccess() {
+      if (!session?.user?.id) {
+        if (!cancelled) setShowEditVideo(false);
+        return;
+      }
+
+      try {
+        const admin = await isAdmin();
+        if (!cancelled) setShowEditVideo(admin);
+      } catch (err) {
+        console.error("Erreur vérification admin:", err);
+        if (!cancelled) setShowEditVideo(false);
+      }
+    }
+
+    checkAdminAccess();
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.user?.id]);
 
   useEffect(() => {
     // Close only after a real route change (not when `open` flips to true).
@@ -99,7 +128,10 @@ export default function SidebarShell({
           <nav className="flex flex-col gap-2 px-4 py-4 flex-1">
             <Item path={links[0].path} label={links[0].label} icon={links[0].icon} />
             <Item path={links[1].path} label={links[1].label} icon={links[1].icon} />
-            <MenuNavViralWorksMobile onNavigate={() => onCloseMenu?.()} />
+            <MenuNavViralWorksMobile
+              showEditVideo={showEditVideo}
+              onNavigate={() => onCloseMenu?.()}
+            />
             {links.slice(2).map((link) => (
               <Item key={link.path} {...link} />
             ))}

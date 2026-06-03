@@ -1,10 +1,11 @@
 import { createBrowserRouter, RouterProvider, Outlet, Navigate, useLocation } from "react-router-dom";
-import { useEffect, Component } from "react";
+import { useEffect, useState, Component } from "react";
 import DashboardLayout from "./dispositions/DispositionTableauDeBord.jsx";
 import RappelAuth from "./pages/RappelAuth.jsx";
 import ConfirmerEmail from "./pages/ConfirmerEmail.jsx";
 import Accueil from "./pages/Accueil.jsx";
 import Lab from "./pages/Lab.jsx";
+import Asavoir from "@/pages/Asavoir";
 import RouteDeconnexion from "./pages/RouteDeconnexion.jsx";
 import ReinitialiserMotDePasse from "./pages/ReinitialiserMotDePasse.jsx";
 import Profil from "./pages/Profil.jsx";
@@ -16,9 +17,11 @@ import AdminStats from "./pages/AdminStats.jsx";
 import MentionsLegales from "./pages/MentionsLegales.jsx";
 import ViralWorks from "./pages/ViralWorks.jsx";
 import Studio from "./pages/Studio.jsx";
+import EditVideo from "./pages/EditVideo.jsx";
 import GoRedirect from "./pages/GoRedirect.jsx";
 import ProtectedRoute from "./composants/auth/RouteProtegee.jsx";
-import { AuthProvider } from "./contexte/FournisseurAuth";
+import { AuthProvider, useAuth } from "./contexte/FournisseurAuth";
+import { isAdmin } from "@/bibliotheque/supabase/credits";
 import { AuthActionProvider } from "./contexte/ActionAuthModalContext";
 import { FournisseurCommunauteVWSNotif } from "./contexte/FournisseurCommunauteVWSNotif.jsx";
 import { initMetaPixel, trackPageView } from "./bibliotheque/meta/pixel";
@@ -105,6 +108,58 @@ function LoginRedirect() {
   return <Navigate to={`/${search ? `?${search}` : ""}`} replace />;
 }
 
+/** Même logique que AdminStats : isAdmin() sur profiles.role, sinon redirect accueil. */
+function AdminOnlyRoute({ children }) {
+  const { session, loading: authLoading } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [isAdminUser, setIsAdminUser] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function checkAdminAccess() {
+      if (authLoading) return;
+
+      if (!session) {
+        if (!cancelled) {
+          setIsAdminUser(false);
+          setLoading(false);
+        }
+        return;
+      }
+
+      try {
+        const admin = await isAdmin();
+        if (!cancelled) setIsAdminUser(admin);
+      } catch (err) {
+        console.error("Erreur vérification admin:", err);
+        if (!cancelled) setIsAdminUser(false);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    checkAdminAccess();
+    return () => {
+      cancelled = true;
+    };
+  }, [session, authLoading]);
+
+  if (authLoading || loading) {
+    return (
+      <div className="max-w-7xl mx-auto w-full min-w-0 px-4 sm:px-6 lg:px-8 py-4 lg:py-8">
+        <div className="text-center py-12 text-gray-400">Chargement...</div>
+      </div>
+    );
+  }
+
+  if (!isAdminUser) {
+    return <Navigate to="/" replace />;
+  }
+
+  return children;
+}
+
 const router = createBrowserRouter([
   {
     path: "/",
@@ -126,7 +181,8 @@ const router = createBrowserRouter([
         children: [
           { index: true, element: <Accueil /> },
           { path: "lab", element: <Lab /> },
-          { path: "a-savoir", element: <Navigate to="/" replace /> },
+          { path: "playbook", element: <Asavoir /> },
+          { path: "a-savoir", element: <Navigate to="/playbook" replace /> },
           { path: "mentions-legales", element: <MentionsLegales /> },
           { path: "dashboard", element: <Navigate to="/" replace /> },
           { path: "prompt", element: <Navigate to="/viralworks" replace /> },
@@ -134,6 +190,14 @@ const router = createBrowserRouter([
           { path: "image", element: <Navigate to="/viralworks" replace /> },
           { path: "video", element: <Navigate to="/viralworks" replace /> },
           { path: "studio", element: <Studio /> },
+          {
+            path: "edit-video",
+            element: (
+              <AdminOnlyRoute>
+                <EditVideo />
+              </AdminOnlyRoute>
+            ),
+          },
           {
             path: "profil",
             element: (
