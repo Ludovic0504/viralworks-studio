@@ -166,7 +166,8 @@ serve(async (req) => {
       {
         type: "text",
         text:
-          `Here are the video frames numbered 1 to ${frameCount}, followed by the reference image. Which frame number is visually closest to the reference?`,
+          `I have extracted ${totalFrames} frames from a video at regular intervals. Below are the frames in order, followed by a reference image that is a modified or rendered version of one specific frame.
+Identify which frame number (1 to ${totalFrames}) best matches the camera angle and spatial layout of the reference image.`,
       },
     ];
 
@@ -199,7 +200,17 @@ serve(async (req) => {
             {
               role: "system",
               content:
-                'You are a video frame matching assistant. Your only job is to identify which frame number is visually most similar to a reference image. Reply ONLY with valid JSON: { "frameIndex": <number> } No explanation, no markdown, no extra text.',
+                `You are a precise video frame matching assistant.
+You receive numbered video frames (Frame 1, Frame 2, ...) 
+extracted from a video at regular intervals, followed by 
+a reference image.
+Your task: find which frame number is visually most similar 
+to the reference image, based on camera angle, spatial geometry, 
+and overall scene composition — NOT color or lighting.
+The reference image is typically a modified/rendered version 
+of one of the frames.
+Reply ONLY with valid JSON: { "frameIndex": <number> }
+No explanation, no markdown, no extra text.`,
             },
             {
               role: "user",
@@ -244,6 +255,17 @@ serve(async (req) => {
     const anchorSecond = Math.round(
       ((frameIndex - 1) / totalFrames) * durationSec * 10,
     ) / 10;
+
+    console.log(
+      "[detect-timing] frameIndex from GPT:",
+      frameIndex,
+      "anchorSecond:",
+      anchorSecond,
+      "totalFrames:",
+      totalFrames,
+      "durationSec:",
+      durationSec,
+    );
 
     return jsonResponse({ anchorSecond });
   } catch (error) {

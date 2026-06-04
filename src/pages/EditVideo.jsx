@@ -1374,10 +1374,18 @@ export default function EditVideo() {
           selectionDurationSec,
         );
         if (timing.anchorSecond !== null) {
-          anchorSecond =
+          const detectedAnchor =
             Math.round(timing.anchorSecond * 10) / 10;
-          transformationStart =
-            Math.round(Math.max(0.5, anchorSecond - 1.5) * 10) / 10;
+          if (detectedAnchor < 1.5) {
+            console.warn(
+              "[timing] anchorSecond trop faible, ignoré:",
+              detectedAnchor,
+            );
+          } else {
+            anchorSecond = detectedAnchor;
+            transformationStart =
+              Math.round(Math.max(0.5, anchorSecond - 1.5) * 10) / 10;
+          }
         }
         setTrimStatusMessage("Préparation de l'extrait…");
       }
