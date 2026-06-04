@@ -8,6 +8,7 @@ import { getFFmpeg } from "@/bibliotheque/videoUtils";
 import {
   buildVideoEditPrompt,
 } from "@/bibliotheque/video/buildVideoEditPrompt";
+import { detectTransformationTiming } from "@/bibliotheque/video/detectTransformationTiming";
 import { editVideoSeedance, pollKieTask } from "@/bibliotheque/video/editVideoSeedance";
 
 const FFMPEG_EDIT_SRC = "edit_src.mp4";
@@ -1263,6 +1264,9 @@ export default function EditVideo() {
   ]);
 
   const [comingSoonOpen, setComingSoonOpen] = useState(false);
+  const [trimStatusMessage, setTrimStatusMessage] = useState(
+    "Préparation de l'extrait…",
+  );
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState(null);
   const [resultVideoUrl, setResultVideoUrl] = useState(null);
@@ -1343,6 +1347,7 @@ export default function EditVideo() {
     if (!videoFile || trimming || generating) return;
     setTrimError(null);
     setGenerateError(null);
+    setTrimStatusMessage("Préparation de l'extrait…");
     setTrimming(true);
     try {
       const blob = await trimVideoSegmentWithFfmpeg(
@@ -1354,6 +1359,28 @@ export default function EditVideo() {
       trimmedSegmentBlobRef.current = blob;
 
       const aspectRatio = await getBlobVideoAspectRatio(blob);
+
+      let anchorSecond = null;
+      let transformationStart = null;
+
+      if (
+        refImageDataUrl &&
+        toVideoEditRefImageMode(refImageMode) === "état_final"
+      ) {
+        setTrimStatusMessage("Analyse de la vidéo en cours...");
+        const timing = await detectTransformationTiming(
+          blob,
+          refImageDataUrl,
+          selectionDurationSec,
+        );
+        if (timing.anchorSecond !== null) {
+          anchorSecond =
+            Math.round(timing.anchorSecond * 10) / 10;
+          transformationStart =
+            Math.round(Math.max(0.5, anchorSecond - 1.5) * 10) / 10;
+        }
+        setTrimStatusMessage("Préparation de l'extrait…");
+      }
 
       const videoEditConfig = {
         avatarUrls: avatars.map((a) => a?.url ?? null),
@@ -1369,6 +1396,9 @@ export default function EditVideo() {
         durationSec: selectionDurationSec,
         dialogueEnabled: dialogueEnabled,
         aspectRatio,
+        ...(anchorSecond != null && transformationStart != null
+          ? { anchorSecond, transformationStart }
+          : {}),
       };
 
       const prompt = buildVideoEditPrompt(videoEditConfig);
@@ -1659,7 +1689,7 @@ export default function EditVideo() {
         {trimming ? (
           <>
             <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
-            Préparation de l&apos;extrait…
+            {trimStatusMessage}
           </>
         ) : generating ? (
           <>

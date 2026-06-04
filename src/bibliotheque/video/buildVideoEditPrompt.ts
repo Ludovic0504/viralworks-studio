@@ -14,6 +14,8 @@ export interface VideoEditConfig {
   durationSec: number;
   dialogueEnabled: boolean;
   aspectRatio: string;
+  anchorSecond?: number;
+  transformationStart?: number;
 }
 
 export function buildVideoEditPrompt(config: VideoEditConfig): string {
@@ -68,6 +70,20 @@ around them.`,
   }
 
   if (config.refImageUrl && config.refImageMode === "état_final") {
+    const hasTiming =
+      config.anchorSecond != null && config.transformationStart != null;
+    const timingBlock = hasTiming
+      ? `
+
+TIMING:
+From 0s to ${config.transformationStart}s: reproduce @Video1 exactly
+as filmed — raw original state, no changes whatsoever,
+no transformation, no cleanup, no lighting change.
+From ${config.transformationStart}s: begin the progressive transformation.
+At ${config.anchorSecond}s: the space must match @Image${refImageIndex} exactly.
+The transformation is complete by ${config.anchorSecond}s.`
+      : "";
+
     sections.push(
       `TRANSFORMATION EFFECT
 
@@ -79,7 +95,7 @@ This is NOT a before/after cut. It is a continuous, flowing reveal:
 - The space completes itself section by section as the camera moves
 - The transformation follows the camera movement: what the camera 
   points at transforms first, background areas transform last.
-- The effect is smooth and deliberate — like a premium reveal.`,
+- The effect is smooth and deliberate — like a premium reveal.${timingBlock}`,
     );
   }
 
