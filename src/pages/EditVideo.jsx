@@ -8,6 +8,7 @@ import { getFFmpeg } from "@/bibliotheque/videoUtils";
 import {
   buildVideoEditPrompt,
 } from "@/bibliotheque/video/buildVideoEditPrompt";
+import { editVideoSeedance, pollKieTask } from "@/bibliotheque/video/editVideoSeedance";
 
 const FFMPEG_EDIT_SRC = "edit_src.mp4";
 const FFMPEG_EDIT_OUT = "edit_out.mp4";
@@ -333,6 +334,34 @@ async function trimVideoSegmentWithFfmpeg(file, startSec, durationSec, totalDura
   }
 
   return new Blob([raw], { type: "video/mp4" });
+}
+
+function getBlobVideoAspectRatio(blob) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const video = document.createElement("video");
+    video.preload = "metadata";
+
+    const cleanup = () => {
+      URL.revokeObjectURL(url);
+      video.removeAttribute("src");
+      video.load();
+    };
+
+    video.onloadedmetadata = () => {
+      const aspectRatio =
+        video.videoHeight > video.videoWidth ? "9:16" : "16:9";
+      cleanup();
+      resolve(aspectRatio);
+    };
+
+    video.onerror = () => {
+      cleanup();
+      reject(new Error("Impossible de lire les dimensions de la vidéo."));
+    };
+
+    video.src = url;
+  });
 }
 
 function getVideoDurationSeconds(file) {
@@ -758,6 +787,8 @@ function VideoPreviewBlock({
   videoFile,
   previewUrl,
   durationSec,
+  selectedResolution,
+  onSelectedResolutionChange,
   selectionStartSec,
   selectionDurationSec,
   needsTimeline,
@@ -774,7 +805,7 @@ function VideoPreviewBlock({
   const [filmstripFrames, setFilmstripFrames] = useState([]);
 
   useEffect(() => {
-    if (!videoFile || !previewUrl || durationSec <= 0) {
+    if (!videoFile || !previewUrl || durationSec <= 0 || durationSec <= MAX_VIDEO_SECONDS) {
       setFilmstripFrames((prev) => {
         revokeFilmstripUrls(prev);
         return [];
@@ -855,25 +886,31 @@ function VideoPreviewBlock({
             className="h-full w-full object-cover"
           />
         </div>
-        {stripLoading ? (
-          <div className="flex min-h-[50px] items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-6 sm:min-h-[80px]">
-            <Loader2 className="h-5 w-5 shrink-0 animate-spin text-emerald-400" aria-hidden />
-            <span className="text-sm text-gray-300">Analyse de la vidéo…</span>
-          </div>
-        ) : stripError ? (
-          <p className="text-xs text-red-400" role="alert">
-            {stripError}
-          </p>
+        {durationSec > MAX_VIDEO_SECONDS ? (
+          stripLoading ? (
+            <div className="flex min-h-[50px] items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-6 sm:min-h-[80px]">
+              <Loader2 className="h-5 w-5 shrink-0 animate-spin text-emerald-400" aria-hidden />
+              <span className="text-sm text-gray-300">Analyse de la vidéo…</span>
+            </div>
+          ) : stripError ? (
+            <p className="text-xs text-red-400" role="alert">
+              {stripError}
+            </p>
+          ) : (
+            <VideoFilmstrip
+              frames={filmstripFrames}
+              totalDurationSec={durationSec}
+              startSec={selectionStartSec}
+              selectionDurationSec={selectionDurationSec}
+              needsSelectionWindow={needsTimeline}
+              onRangeChange={onRangeChange}
+              disabled={stripLoading}
+            />
+          )
         ) : (
-          <VideoFilmstrip
-            frames={filmstripFrames}
-            totalDurationSec={durationSec}
-            startSec={selectionStartSec}
-            selectionDurationSec={selectionDurationSec}
-            needsSelectionWindow={needsTimeline}
-            onRangeChange={onRangeChange}
-            disabled={stripLoading}
-          />
+          <p className="text-xs text-gray-500">
+            Toute la vidéo sera envoyée à l&apos;IA ({durationSec}s)
+          </p>
         )}
         <div className="flex flex-wrap items-center gap-x-1 gap-y-1 self-start text-xs">
           <button
@@ -903,6 +940,36 @@ function VideoPreviewBlock({
               </button>
             </>
           ) : null}
+        </div>
+        <div className="flex flex-col gap-2">
+          <p className="text-sm text-gray-300">Qualité de génération</p>
+          <div
+            className="flex w-full min-w-0 rounded-xl border border-white/10 bg-white/[0.03] p-1"
+            role="tablist"
+            aria-label="Qualité de génération"
+          >
+            {(["480p", "720p"]).map((res) => (
+              <button
+                key={res}
+                type="button"
+                role="tab"
+                aria-selected={selectedResolution === res}
+                onClick={() => onSelectedResolutionChange(res)}
+                className={`flex-1 rounded-lg px-2 py-2 text-center text-[11px] font-medium transition sm:text-xs ${
+                  selectedResolution === res
+                    ? "bg-emerald-500/20 text-emerald-300"
+                    : "text-gray-400 hover:text-gray-200"
+                }`}
+              >
+                {res}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-gray-500">
+            {selectedResolution === "480p"
+              ? "Recommandé — rendu plus rapide, consommation de crédits réduite"
+              : "Rendu haute qualité — consomme environ 2.5x plus"}
+          </p>
         </div>
         {displayError && !stripError ? (
           <p className="text-xs text-red-400" role="alert">
@@ -1174,6 +1241,7 @@ export default function EditVideo() {
 
   const [videoFile, setVideoFile] = useState(null);
   const [videoPreviewUrl, setVideoPreviewUrl] = useState(null);
+  const [selectedResolution, setSelectedResolution] = useState("480p");
   const [videoDurationSec, setVideoDurationSec] = useState(0);
   const [selectionStartSec, setSelectionStartSec] = useState(0);
   const [selectionDurationSec, setSelectionDurationSec] = useState(MAX_VIDEO_SECONDS);
@@ -1184,6 +1252,7 @@ export default function EditVideo() {
   const [avatars, setAvatars] = useState(() => [null, null, null]);
   const [avatarLibraryOpen, setAvatarLibraryOpen] = useState(false);
   const [activeAvatarSlot, setActiveAvatarSlot] = useState(null);
+  const [dialogueEnabled, setDialogueEnabled] = useState(false);
 
   const [refImageDataUrl, setRefImageDataUrl] = useState(null);
   const [refImageMode, setRefImageMode] = useState("final");
@@ -1194,6 +1263,20 @@ export default function EditVideo() {
   ]);
 
   const [comingSoonOpen, setComingSoonOpen] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState(null);
+  const [resultVideoUrl, setResultVideoUrl] = useState(null);
+  const [kieTaskId, setKieTaskId] = useState(null);
+  const pollIntervalRef = useRef(null);
+  const pollAttemptsRef = useRef(0);
+
+  const stopKiePolling = useCallback(() => {
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+    pollAttemptsRef.current = 0;
+  }, []);
 
   const needsTimeline = videoDurationSec > MAX_VIDEO_SECONDS;
 
@@ -1208,6 +1291,14 @@ export default function EditVideo() {
     };
   }, [videoPreviewUrl]);
 
+  useEffect(() => () => stopKiePolling(), [stopKiePolling]);
+
+  useEffect(() => {
+    if (avatars.every((a) => a === null)) {
+      setDialogueEnabled(false);
+    }
+  }, [avatars]);
+
   const revokeAndSetPreview = useCallback((url) => {
     setVideoPreviewUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev);
@@ -1219,6 +1310,7 @@ export default function EditVideo() {
     async (file) => {
       setVideoError(null);
       setTrimError(null);
+      setSelectedResolution("480p");
       trimmedSegmentBlobRef.current = null;
       if (!file) return { ok: false };
 
@@ -1248,8 +1340,9 @@ export default function EditVideo() {
   );
 
   const handleGenerate = useCallback(async () => {
-    if (!videoFile || trimming) return;
+    if (!videoFile || trimming || generating) return;
     setTrimError(null);
+    setGenerateError(null);
     setTrimming(true);
     try {
       const blob = await trimVideoSegmentWithFfmpeg(
@@ -1259,6 +1352,8 @@ export default function EditVideo() {
         videoDurationSec
       );
       trimmedSegmentBlobRef.current = blob;
+
+      const aspectRatio = await getBlobVideoAspectRatio(blob);
 
       const videoEditConfig = {
         avatarUrls: avatars.map((a) => a?.url ?? null),
@@ -1272,6 +1367,8 @@ export default function EditVideo() {
             assetUrl: i.assetDataUrl,
           })),
         durationSec: selectionDurationSec,
+        dialogueEnabled: dialogueEnabled,
+        aspectRatio,
       };
 
       const prompt = buildVideoEditPrompt(videoEditConfig);
@@ -1281,7 +1378,59 @@ export default function EditVideo() {
         console.log("[edit-video] prompt construit :", prompt);
       }
 
-      setComingSoonOpen(true);
+      setTrimming(false);
+      setGenerating(true);
+      try {
+        const { taskId } = await editVideoSeedance({
+          prompt,
+          videoBlob: blob,
+          avatarUrls: avatars.map((a) => a?.url ?? null),
+          refImageDataUrl: refImageDataUrl ?? null,
+          dialogueEnabled,
+          resolution: selectedResolution,
+          durationSec: selectionDurationSec,
+          aspectRatio,
+        });
+        setKieTaskId(taskId);
+        stopKiePolling();
+        pollAttemptsRef.current = 0;
+        pollIntervalRef.current = setInterval(() => {
+          void (async () => {
+            pollAttemptsRef.current += 1;
+            if (pollAttemptsRef.current > 150) {
+              stopKiePolling();
+              setGenerateError("Timeout");
+              setGenerating(false);
+              return;
+            }
+            try {
+              const poll = await pollKieTask(taskId);
+              if (poll.status === "done" && poll.videoUrl) {
+                stopKiePolling();
+                setResultVideoUrl(poll.videoUrl);
+                setGenerating(false);
+              } else if (poll.status === "failed") {
+                stopKiePolling();
+                setGenerateError(poll.error ?? "La génération a échoué.");
+                setGenerating(false);
+              }
+            } catch (pollErr) {
+              stopKiePolling();
+              setGenerateError(
+                pollErr instanceof Error
+                  ? pollErr.message
+                  : "Erreur lors de la génération.",
+              );
+              setGenerating(false);
+            }
+          })();
+        }, 6000);
+      } catch (err) {
+        setGenerateError(
+          err instanceof Error ? err.message : "Erreur lors de la génération.",
+        );
+        setGenerating(false);
+      }
     } catch (err) {
       setTrimError(err instanceof Error ? err.message : "Impossible de préparer l'extrait vidéo.");
     } finally {
@@ -1290,6 +1439,7 @@ export default function EditVideo() {
   }, [
     videoFile,
     trimming,
+    generating,
     selectionStartSec,
     selectionDurationSec,
     videoDurationSec,
@@ -1297,6 +1447,9 @@ export default function EditVideo() {
     refImageDataUrl,
     refImageMode,
     instructions,
+    dialogueEnabled,
+    selectedResolution,
+    stopKiePolling,
   ]);
 
   const changeVideo = () => {
@@ -1382,6 +1535,8 @@ export default function EditVideo() {
           videoFile={videoFile}
           previewUrl={videoPreviewUrl}
           durationSec={videoDurationSec}
+          selectedResolution={selectedResolution}
+          onSelectedResolutionChange={setSelectedResolution}
           selectionStartSec={selectionStartSec}
           selectionDurationSec={selectionDurationSec}
           needsTimeline={needsTimeline}
@@ -1416,6 +1571,31 @@ export default function EditVideo() {
         <p className="mt-3 text-xs text-gray-500">
           L&apos;avatar présentera ta vidéo tout au long du clip
         </p>
+        {avatars.some((a) => a !== null) ? (
+          <div className="mt-3 flex items-center justify-between gap-4 border border-[#222] rounded-xl bg-[#111] px-4 py-3 min-h-[44px]">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-gray-200">Ajouter un dialogue</p>
+              <p className="mt-0.5 text-xs text-gray-500">
+                Un dialogue sera généré et synchronisé avec ta vidéo
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={dialogueEnabled}
+              onClick={() => setDialogueEnabled((prev) => !prev)}
+              className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors ${
+                dialogueEnabled ? "bg-emerald-500/80" : "bg-white/20"
+              }`}
+            >
+              <span
+                className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                  dialogueEnabled ? "translate-x-6" : "translate-x-1"
+                }`}
+              />
+            </button>
+          </div>
+        ) : null}
       </SectionCard>
 
       <SectionCard title="Image de référence (optionnel)">
@@ -1472,7 +1652,7 @@ export default function EditVideo() {
 
       <button
         type="button"
-        disabled={!videoFile || trimming}
+        disabled={!videoFile || trimming || generating}
         onClick={() => void handleGenerate()}
         className="btn-vws-primary inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
       >
@@ -1481,10 +1661,66 @@ export default function EditVideo() {
             <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
             Préparation de l&apos;extrait…
           </>
+        ) : generating ? (
+          <>
+            <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+            Génération en cours... (peut prendre plusieurs minutes)
+          </>
         ) : (
           <>Générer ma vidéo →</>
         )}
       </button>
+
+      {generating ? (
+        <div className="flex items-center justify-center gap-2 text-sm text-gray-400">
+          <Loader2 className="h-4 w-4 animate-spin shrink-0" aria-hidden />
+          Génération en cours... (peut prendre plusieurs minutes)
+        </div>
+      ) : null}
+
+      {generateError ? (
+        <div className="flex flex-col gap-3 rounded-xl border border-red-500/20 bg-red-500/5 p-4">
+          <p className="text-sm text-red-400" role="alert">
+            {generateError}
+          </p>
+          <button
+            type="button"
+            onClick={() => setGenerateError(null)}
+            className="inline-flex w-fit items-center justify-center rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-gray-300 transition hover:bg-white/10"
+          >
+            Réessayer
+          </button>
+        </div>
+      ) : null}
+
+      {resultVideoUrl ? (
+        <div className="flex flex-col gap-3">
+          <video
+            src={resultVideoUrl}
+            controls
+            autoPlay
+            className="mt-4 w-full rounded-xl border border-white/10 bg-black"
+          />
+          <div className="flex flex-wrap gap-2">
+            <a
+              href={resultVideoUrl}
+              download
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-gray-200 transition hover:bg-white/10"
+            >
+              Télécharger
+            </a>
+            <button
+              type="button"
+              onClick={() => setResultVideoUrl(null)}
+              className="inline-flex items-center justify-center rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-gray-200 transition hover:bg-white/10"
+            >
+              Nouvelle édition
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <ModalBibliothequeAvatars
         open={avatarLibraryOpen}

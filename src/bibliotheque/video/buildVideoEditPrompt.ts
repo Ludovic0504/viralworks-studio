@@ -12,94 +12,143 @@ export interface VideoEditConfig {
   refImageMode: VideoEditRefImageMode;
   modifications: VideoEditModification[];
   durationSec: number;
+  dialogueEnabled: boolean;
+  aspectRatio: string;
 }
 
 export function buildVideoEditPrompt(config: VideoEditConfig): string {
+  const aspectRatio = config.aspectRatio === "16:9" ? "16:9" : "9:16";
+  const sections: string[] = [];
+  const hasAvatars = config.avatarUrls.some(Boolean);
   const filledAvatarCount = config.avatarUrls.filter(Boolean).length;
+  const refImageIndex = filledAvatarCount > 0 ? filledAvatarCount + 1 : 1;
 
-  const promptPayload = {
-    prompt_parameters: {
-      references: {
-        video: {
-          source: "reference_video_1",
-          role: "scene environment and camera movement",
-          instructions:
-            "keep original camera path, geometry, lighting and scene structure intact throughout the entire video",
-        },
-        avatars: config.avatarUrls
-          .map((url, index) =>
-            url
-              ? {
-                  source: `reference_image_${index + 1}`,
-                  role: "character",
-                  instructions:
-                    "preserve face, body proportions and outfit exactly as shown",
-                }
-              : null
-          )
-          .filter(Boolean),
-        reference_image: config.refImageUrl
-          ? {
-              source: `reference_image_${filledAvatarCount + 1}`,
-              mode: config.refImageMode,
-              role:
-                config.refImageMode === "état_final"
-                  ? "target state for progressive scene transformation"
-                  : "visual style and atmosphere inspiration only, do not reproduce exactly",
-            }
-          : null,
-      },
-      scene: {
-        presenter: config.avatarUrls.some(Boolean)
-          ? {
-              behavior:
-                "stands naturally in the space, faces camera, gestures toward the scene",
-              tone: "confident and professional",
-              language: "french",
-              consistency:
-                "character must remain visually identical throughout entire video",
-            }
-          : null,
-        transformation:
-          config.refImageUrl && config.refImageMode === "état_final"
-            ? {
-                type: "progressive",
-                instructions:
-                  "scene transforms smoothly from original state to final state, transformation happens gradually without cuts",
-              }
-            : null,
-      },
-      modifications: config.modifications
-        .filter((m) => m.what.trim() !== "")
-        .map((mod) => ({
-          action: mod.what,
-          location: mod.where || "anywhere relevant in the scene",
-          asset_reference: mod.assetUrl
-            ? "provided as additional reference image"
-            : null,
-          timing:
-            "identify the relevant moment and location automatically from the video context",
-        })),
-      output: {
-        aspect_ratio: "9:16",
-        duration_seconds: config.durationSec,
-        resolution: "720p",
-        generate_audio: true,
-        style: "cinematic, photorealistic, natural lighting",
-        quality: "professional social media content",
-      },
-      general_instructions: {
-        scene_preservation:
-          "do not modify architectural elements, walls, floors or fixed structures unless explicitly requested in modifications",
-        character_consistency:
-          "maintain identical character appearance in every frame",
-        realism:
-          "all additions and modifications must match the scene lighting, perspective and style",
-        rendering:
-          "real photography style only, no CGI, no illustration, no cartoon",
-      },
-    },
-  };
+  const assetLines: string[] = [
+    `@Video1 — Source footage. 
+Reproduce exactly its spatial geometry, architecture, wall positions, 
+pillar locations, and all visible structural elements.
+Every element visible in @Video1 must appear at the exact same 
+position in the output — left side, right side, depth, proportions.
+Do NOT invent, mirror, or hallucinate any architectural element 
+that is not visible in @Video1.
+Use its original camera angles as strict reference.
+The left side and right side of the space must match @Video1 exactly — 
+do NOT swap, mirror, or flip the spatial layout.`,
+  ];
+  if (hasAvatars) {
+    assetLines.push(
+      `@Image1 — Presenter character. Visible on camera at all times.
+Maintain their exact face, outfit, and proportions throughout 
+the entire video. They NEVER disappear, teleport, or reappear.`,
+    );
+  }
+  if (config.refImageUrl && config.refImageMode === "état_final") {
+    assetLines.push(
+      `@Image${refImageIndex} — Final state reference frame. Defines the finished 
+visual state of the space: materials, lighting, surfaces, finishes.`,
+    );
+  }
+  if (config.refImageUrl && config.refImageMode === "inspiration") {
+    assetLines.push(
+      `@Image${refImageIndex} — Style and mood reference only. Extract color palette, 
+lighting atmosphere, material textures. Do not reproduce literally.`,
+    );
+  }
+  sections.push(`ASSETS\n\n${assetLines.join("\n\n")}`);
 
-  return JSON.stringify(promptPayload);
+  if (hasAvatars) {
+    sections.push(
+      `SCENE DESCRIPTION
+
+The presenter walks through the space, speaks naturally and 
+confidently to camera — documentary style. They move through 
+the space, gesture at walls and areas, and present the environment 
+around them.`,
+    );
+  }
+
+  if (config.refImageUrl && config.refImageMode === "état_final") {
+    sections.push(
+      `TRANSFORMATION EFFECT
+
+As the camera follows the presenter through the space, the 
+environment progressively transforms into the final state from 
+@Image${refImageIndex} — in real time, while they are still talking.
+This is NOT a before/after cut. It is a continuous, flowing reveal:
+- Raw elements gradually become the finished surfaces from @Image${refImageIndex}
+- The space completes itself section by section as the camera moves
+- The transformation follows the camera movement: what the camera 
+  points at transforms first, background areas transform last.
+- The effect is smooth and deliberate — like a premium reveal.`,
+    );
+  }
+
+  if (config.refImageUrl && config.refImageMode === "inspiration") {
+    sections.push(
+      `TRANSFORMATION EFFECT
+
+The visual style, color palette, and lighting atmosphere from 
+@Image${refImageIndex} are progressively applied to the environment as the 
+camera moves through the space. The transformation is smooth 
+and continuous — not a cut.`,
+    );
+  }
+
+  const activeModifications = config.modifications.filter(
+    (m) => m.what.trim() !== "",
+  );
+  if (activeModifications.length > 0) {
+    const modificationList = activeModifications
+      .map((mod) => {
+        const what = mod.what.trim();
+        const where = mod.where.trim();
+        return where ? `${what} — ${where}` : what;
+      })
+      .join("\n");
+    sections.push(
+      `MODIFICATIONS
+
+Apply the following modifications to the scene.
+Each modification integrates naturally — as if always part of the space:
+${modificationList}`,
+    );
+  }
+
+  if (hasAvatars) {
+    sections.push(
+      `CAMERA & MOVEMENT
+
+Handheld documentary-style camera that follows the presenter closely.
+They are always in frame — centered or slightly off-center.
+Camera moves with them as they walk and gesture.
+No jump cuts. No transitions. One continuous shot.
+Use the spatial geometry and camera angles from @Video1 as reference.`,
+    );
+  } else {
+    sections.push(
+      `CAMERA & MOVEMENT
+
+Use the original camera movement, angles, and spatial geometry 
+from @Video1 exactly as the base layer throughout the entire video.
+No jump cuts. No transitions. One continuous shot.`,
+    );
+  }
+
+  if (hasAvatars && config.dialogueEnabled) {
+    sections.push(
+      `DIALOGUE
+
+Generate natural spoken dialogue in FRENCH language only.
+Use a neutral French accent. Synchronize speech with the visual 
+transformation. Adapt content to what is visible on screen.`,
+    );
+  }
+
+  sections.push(
+    `FORMAT
+
+Vertical ${aspectRatio}. Duration exactly ${config.durationSec} seconds.`,
+  );
+
+  return sections.join("\n\n---\n\n");
 }
