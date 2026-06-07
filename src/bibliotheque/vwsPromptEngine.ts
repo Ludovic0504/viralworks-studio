@@ -162,6 +162,7 @@ export interface RefinePromptInput {
   proceedAnyway?: boolean;
   /** Aligné sur campaign.clarification.causal_agent : contrainte explicite dans le prompt final si défini. */
   causalAgentSelection?: "visible" | "automatic" | null;
+  formatFamilyInstruction?: string;
 }
 
 export interface InferGlobalIntentInput {
@@ -545,7 +546,13 @@ function buildFallbackFinalPrompt(input: RefinePromptInput): string {
     `Lighting: physically coherent light progression over the full shot.`,
     `Environment: ${input.modifiers || "profession-matched context"}, no discontinuity, no sudden object teleportation.`,
     `Tone: factual, grounded, visually explicit.`,
-    `Important: ${mode} routing applied. ${clarify} Build progression must unfold continuously from frame 0 to final frame with no temporal jump.`,
+    `${clarify}${
+      mode === "MODE_A"
+        ? "Frame 0: no human presence visible, autonomous transformation, subject absent at opening frame. Build progression must unfold continuously from frame 0 to final frame with no temporal jump."
+        : mode === "MODE_B"
+          ? "Frame 0: human or artisan visibly present and active, triggering action visible at opening frame. Build progression must unfold continuously from frame 0 to final frame with no temporal jump."
+          : "Build progression must unfold continuously from frame 0 to final frame with no temporal jump."
+    }`,
   ].join("\n");
 }
 
@@ -1535,6 +1542,7 @@ export function buildHookImageApiPrompt(
     cameraViewAngle?: "subjective_portee" | "exterieure_filmee" | null;
     globalIntent?: GlobalIntentProfile | null;
     selfieMode?: boolean;
+    cameraFixed?: boolean;
     /** Image 1 accroche : premier instant, sans laisser `show_finished_result` désactiver l’état initial. */
     openingHookStill?: boolean;
     hookId?: string;
@@ -1655,19 +1663,40 @@ export function buildHookImageApiPrompt(
   }
 
   if (enforceSelfiePov) {
-    assembled += [
-      "",
-      "CRITICAL — Selfie POV (must follow all lines):",
-      "Interpret as first-person POV from the subject's phone front camera placed at stable eye level ~60–80 cm in front of the face (like a phone on a mini tripod or resting on a fixed support), NOT an arm extended straight toward the lens.",
-      "FORBIDDEN: the camera-holding hand, its fingers, or wrist; any phone edge or screen bezel in frame; any arm or forearm reaching straight toward the lens or dominating the lower corners; any giant blurry foreground limb blob; selfie stick, pole, or grip visible.",
-      "ALLOWED: upper arms and shoulders at the sides in a natural pose (no reach toward the lens). The other hand may gesture toward the pool at torso side, fully visible with correct finger count and sharp detail.",
-      "Composition: centered face and upper torso, clean edges, no extreme wide-angle distortion on the face.",
-      "Never use a third-person or external camera showing someone filming themselves.",
-    ].join("\n");
+    if (options.cameraFixed) {
+      assembled += [
+        "",
+        "CRITICAL — Stable face-camera framing (must follow all lines):",
+        "Framing geometry: subject centered at bust level, stable eye-level framing 60–80cm in front of the face, fixed support, arms relaxed at sides, no reach toward the lens.",
+        "FORBIDDEN: any visible framing device, hand reaching toward lens, forearm dominating foreground, selfie stick, pole, extension, any device body or bezel in frame.",
+        "Composition: centered face and upper torso, clean edges, no wide-angle distortion on the face.",
+        "Never use a third-person or external camera showing someone filming themselves.",
+      ].join("\n");
+    } else {
+      assembled += [
+        "",
+        "CRITICAL — Handheld vlog POV framing (must follow all lines):",
+        "Framing geometry: arm pointing downward and inward toward the body,",
+        "framing held low near waist level, angled upward toward the subject's own face.",
+        "NOT an arm extended straight toward the lens.",
+        "Subject face and upper body occupy the upper portion of frame,",
+        "professional environment clearly visible in background and sides.",
+        "FORBIDDEN: arm or forearm extended straight toward the lens,",
+        "giant blurry foreground limb dominating lower frame,",
+        "any selfie stick, pole, extension, or grip visible,",
+        "any device body, screen, bezel, or lens visible in frame,",
+        "overly clean or studio-style composition.",
+        "No device body visible in frame.",
+        "Composition: face slightly off-center or centered, environment",
+        "visible around subject, raw authentic feel,",
+        "no extreme wide-angle distortion on the face.",
+        "Never use a third-person or external camera showing someone filming themselves.",
+      ].join("\n");
+    }
   }
 
   assembled +=
-    "\n\nImage integrity constraint: realistic human anatomy and object geometry only. No deformed fingers/hands/faces, no broken hat or clothing edges, no warped pool lines/margins, no duplicated or missing limbs, no floating/merged objects, no melted textures, no broken seams, and no visual glitches. Keep all objects, clothes, character details, and environment structures clean and physically coherent.";
+    "\n\nImage integrity constraint: realistic human anatomy and object geometry only. No deformed fingers/hands/faces, no broken hat or clothing edges, no warped surfaces or margins, no duplicated or missing limbs, no floating/merged objects, no melted textures, no broken seams, and no visual glitches. Keep all objects, clothes, character details, and environment structures clean and physically coherent.";
 
   let withViewpoint = assembled;
   if (options.cameraAerialAngle === "top_down") {
@@ -1819,7 +1848,12 @@ export async function refinePrompt(input: RefinePromptInput): Promise<Refinement
     `Causal: ${causalPayload}`,
   ].join("\n");
 
-  const raw = await generateResponse(payload, REFINEMENT_SYSTEM_INSTRUCTION, {
+  const system = input.formatFamilyInstruction?.trim()
+    ? `${REFINEMENT_SYSTEM_INSTRUCTION}\n\n${input.formatFamilyInstruction}`
+    : REFINEMENT_SYSTEM_INSTRUCTION;
+
+  console.log("[VWS-DIAG] refinePrompt → formatFamilyInstruction", input.formatFamilyInstruction?.slice(0, 80));
+  const raw = await generateResponse(payload, system, {
     model: "gpt-4o-mini",
     temperature: 0,
     max_tokens: 2400,

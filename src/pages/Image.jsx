@@ -49,6 +49,16 @@ import {
   User,
 } from "lucide-react";
 
+function clarificationModeToImagePromptLine(mode) {
+  if (mode === "MODE_A") {
+    return "Frame 0: no human presence visible, scene elements begin autonomous transformation, subject absent at opening frame.";
+  }
+  if (mode === "MODE_B") {
+    return "Frame 0: human or artisan visibly present and active from the first instant, triggering action visible at opening frame.";
+  }
+  return "";
+}
+
 function buildHookSubjectReferences({
   isProductMode,
   avatarRefDataUrl,
@@ -729,6 +739,7 @@ export default function ImagePage({
           cameraViewAngle: canonicalSpec.campaign.clarification.camera_view_angle,
           globalIntent: getSafeIntentProfile(canonicalSpec),
           selfieMode: canonicalSpec.rendering.camera.selfie_mode === true,
+          cameraFixed: canonicalSpec.rendering.camera.fixed === true,
           openingHookStill: false,
         }
       );
@@ -1274,9 +1285,7 @@ export default function ImagePage({
           canonicalSpec.campaign.style_details
             ? `Style: ${canonicalSpec.campaign.style_details}`
             : "",
-          canonicalSpec.campaign.clarification.mode
-            ? `Mode de transformation: ${canonicalSpec.campaign.clarification.mode}`
-            : "",
+          clarificationModeToImagePromptLine(canonicalSpec.campaign.clarification.mode),
           canonicalSpec.campaign.clarification.last_user_freeform_answer
             ? `Précision utilisateur: ${canonicalSpec.campaign.clarification.last_user_freeform_answer}`
             : "",
@@ -1300,6 +1309,7 @@ export default function ImagePage({
           // Guard: fallback neutre si intent profile absent/incomplet.
           globalIntent: getSafeIntentProfile(canonicalSpec),
           selfieMode: canonicalSpec.rendering.camera.selfie_mode === true,
+          cameraFixed: canonicalSpec.rendering.camera.fixed === true,
           openingHookStill: true,
           hookId: canonicalSpec.campaign.product_opening_hook_id,
           stagingIds: canonicalSpec.campaign.staging_chips,
@@ -1902,7 +1912,7 @@ export default function ImagePage({
           String(canonicalSpec.campaign.core_idea || "").trim(),
         canonicalSpec.campaign.profession ? `Métier: ${canonicalSpec.campaign.profession}` : "",
         canonicalSpec.campaign.style_details ? `Style: ${canonicalSpec.campaign.style_details}` : "",
-        canonicalSpec.campaign.clarification.mode ? `Mode de transformation: ${canonicalSpec.campaign.clarification.mode}` : "",
+        clarificationModeToImagePromptLine(canonicalSpec.campaign.clarification.mode),
         canonicalSpec.campaign.clarification.last_user_freeform_answer
           ? `Précision utilisateur: ${canonicalSpec.campaign.clarification.last_user_freeform_answer}`
           : "",
@@ -1923,6 +1933,7 @@ export default function ImagePage({
         cameraViewAngle: canonicalSpec.campaign.clarification.camera_view_angle,
         globalIntent: getSafeIntentProfile(canonicalSpec),
         selfieMode: canonicalSpec.rendering.camera.selfie_mode === true,
+        cameraFixed: canonicalSpec.rendering.camera.fixed === true,
         openingHookStill: true,
       }
     );
@@ -1974,6 +1985,7 @@ export default function ImagePage({
           cameraViewAngle: canonicalSpec.campaign.clarification.camera_view_angle,
           globalIntent: getSafeIntentProfile(canonicalSpec),
           selfieMode: canonicalSpec.rendering.camera.selfie_mode === true,
+          cameraFixed: canonicalSpec.rendering.camera.fixed === true,
           openingHookStill: false,
         }
       );

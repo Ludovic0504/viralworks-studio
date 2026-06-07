@@ -30,6 +30,7 @@ import ModaleChoixDecorProduit from "../composants/campagne/ModaleChoixDecorProd
 import ModaleChoixHookProduit from "../composants/campagne/ModaleChoixHookProduit.jsx";
 import { ProductCampagneLucideIcon } from "../composants/campagne/productCampagneLucide.jsx";
 import CampagneVwsExplicationSheet from "../composants/campagne/CampagneVwsExplicationSheet.jsx";
+import { resolveClarifyModeForFormat } from "../bibliotheque/clarifyModeForFormat";
 import {
   getFormatById,
   getFormatHintForEngine,
@@ -1485,7 +1486,8 @@ Réponds uniquement en JSON :
         void err;
       }
 
-      const clarificationMode = gate?.status === "VALID" ? gate?.mode ?? null : null;
+      const rawClarificationMode = gate?.status === "VALID" ? gate?.mode ?? null : null;
+      const clarificationMode = resolveClarifyModeForFormat(rawClarificationMode, videoFormatId);
       const clarificationDiagnostic =
         gate?.status === "VALID" ? gate?.diagnostic ?? null : null;
       const finalPayloadSpec = stampCampaignGenerationMeta({

@@ -1,3 +1,4 @@
+import { getRefinePromptFormatFamilyInstruction } from "@/bibliotheque/refinePromptFormatFamilies";
 import { refinePrompt } from "@/bibliotheque/vwsPromptEngine";
 import { clampGeneratedPrompt, validateIdeaLength } from "@/bibliotheque/promptGenerationLimits";
 import { hasEnoughCredits } from "@/bibliotheque/supabase/credits";
@@ -110,6 +111,7 @@ export async function runStudioScriptRefinement({
   persistHistory = true,
   consumeQuota = true,
 }) {
+  console.log("[VWS-DIAG] runStudioScriptRefinement appelé", idea?.slice(0, 40));
   const lenCheck = validateIdeaLength(idea);
   if (!lenCheck.ok) {
     return { ok: false, code: "validation", message: lenCheck.message };
@@ -140,9 +142,13 @@ export async function runStudioScriptRefinement({
   const canonicalClarificationMode = canonicalSpec.campaign.clarification.mode ?? null;
   const canonicalClarificationDiagnostic = canonicalSpec.campaign.clarification.diagnostic ?? null;
   const isMultiScene = canonicalSpec.creative.sequence_type === "three_x_8s";
+  const videoFormatId =
+    canonicalSpec?.campaign?.video_format_id ?? campaignData?.videoFormatId ?? null;
+  const formatFamilyInstruction = getRefinePromptFormatFamilyInstruction(videoFormatId);
 
   let refineResult;
   try {
+    console.log("[FORMAT FAMILLE]", videoFormatId, "→", formatFamilyInstruction?.slice(0, 80));
     refineResult = await refinePrompt({
       jobType: canonicalSpec.campaign.profession ?? campaignData?.profession ?? "",
       mainIdea: idea,
@@ -158,6 +164,7 @@ export async function runStudioScriptRefinement({
         canonicalSpec.campaign.clarification.proceed_anyway === true || campaignData?.proceedAnyway === true,
       causalAgentSelection:
         canonicalSpec.campaign.clarification.causal_agent ?? campaignData?.causalAgentSelection ?? null,
+      formatFamilyInstruction,
     });
   } catch (err) {
     return {
