@@ -80,7 +80,7 @@ serve(async (req) => {
       { data: adminNotifications, error: adminNotificationsError },
       { data: authUsers, error: authUsersError },
     ] = await Promise.all([
-      supabaseAdminClient.from("profiles").select("user_id, email, full_name, first_name, last_name, created_at, role").order("created_at", { ascending: false }),
+      supabaseAdminClient.from("profiles").select("user_id, email, full_name, first_name, last_name, created_at, role, is_tester").order("created_at", { ascending: false }),
       supabaseAdminClient.from("user_credits").select("user_id, credits"),
       supabaseAdminClient.from("user_credit_buckets").select("user_id, text_generation, image_generation, image_modification, video_generation"),
       supabaseAdminClient.from("stripe_subscriptions").select("*").order("created_at", { ascending: false }),

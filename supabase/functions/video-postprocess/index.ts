@@ -9,28 +9,15 @@ const corsHeaders = {
   "Access-Control-Max-Age": "86400",
 };
 
-type PostprocessPayload = {
-  video_url?: string;
-  voice_text?: string;
-  music_style?: string;
-  enable_tts?: boolean;
-  enable_music?: boolean;
-  model?: string;
-};
-
-function cleanText(value: unknown, max = 2000): string {
+function cleanText(value: unknown, max = 3500): string {
   return String(value || "").replace(/\s+/g, " ").trim().slice(0, max);
 }
 
-/** Les Edge Functions Supabase ne peuvent pas joindre localhost /127.0.0.1 sur ta machine. */
-function isUnreachableHostFromEdge(url: string): boolean {
-  try {
-    const u = new URL(url);
-    const h = u.hostname.toLowerCase();
-    return h === "localhost" || h === "127.0.0.1" || h === "[::1]" || h.endsWith(".local");
-  } catch {
-    return false;
-  }
+function resolveMusicUrl(musicStyle: string): string {
+  const style = musicStyle.toUpperCase().replace(/[^A-Z0-9_]/g, "_");
+  const specific = Deno.env.get(`MUSIC_BED_URL_${style}`) || "";
+  if (specific) return specific;
+  return Deno.env.get("MUSIC_BED_URL_DEFAULT") || "";
 }
 
 serve(async (req) => {
@@ -39,172 +26,134 @@ serve(async (req) => {
   }
 
   try {
+    // Auth
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
-      return new Response(JSON.stringify({ error: "Token d'authentification manquant" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "Token d'authentification manquant" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
     const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } },
     });
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
-      return new Response(JSON.stringify({ error: "Non autorisé. Veuillez vous connecter." }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "Non autorisé. Veuillez vous connecter." }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    const body = (await req.json()) as PostprocessPayload;
-    const inputVideoUrl = String(body?.video_url || "").trim();
-    if (!inputVideoUrl) {
-      return new Response(JSON.stringify({ error: "video_url requis." }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    const body = await req.json();
+    const sourceVideoUrl = String(body?.video_url || "").trim();
+    if (!sourceVideoUrl) {
+      return new Response(
+        JSON.stringify({ error: "video_url requis." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    const pipelineUrl = String(Deno.env.get("VIDEO_AUDIO_PIPELINE_URL") || "").trim();
-    const pipelineToken = String(Deno.env.get("VIDEO_AUDIO_PIPELINE_TOKEN") || "").trim();
     const enableTts = body?.enable_tts !== false;
     const enableMusic = body?.enable_music !== false;
     const voiceText = cleanText(body?.voice_text);
     const musicStyle = cleanText(body?.music_style || "cinematic", 64);
-    const model = cleanText(body?.model || "video", 32);
 
-    // Mode "prêt à brancher": si aucun pipeline externe n'est configuré,
-    // on retourne la vidéo originale sans bloquer la génération.
-    if (!pipelineUrl) {
-      return new Response(
-        JSON.stringify({
-          status: "ready_without_external_pipeline",
-          audio_applied: false,
-          video_url: inputVideoUrl,
-          message: "Pipeline audio externe non configuré (VIDEO_AUDIO_PIPELINE_URL).",
-        }),
-        {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+    let voiceUrl: string | null = null;
+    let musicUrl: string | null = null;
+
+    // TTS ElevenLabs
+    if (enableTts && voiceText) {
+      const elevenlabsKey = Deno.env.get("ELEVENLABS_API_KEY") || "";
+      const elevenlabsVoiceId =
+        Deno.env.get("ELEVENLABS_VOICE_ID") || "OOiDJrD1goukqfTpiySr";
+      const elevenlabsModel =
+        Deno.env.get("ELEVENLABS_MODEL") || "eleven_multilingual_v2";
+
+      if (elevenlabsKey) {
+        const ttsRes = await fetch(
+          `https://api.elevenlabs.io/v1/text-to-speech/${elevenlabsVoiceId}`,
+          {
+            method: "POST",
+            headers: {
+              "xi-api-key": elevenlabsKey,
+              "Content-Type": "application/json",
+              Accept: "audio/mpeg",
+            },
+            body: JSON.stringify({
+              text: voiceText,
+              model_id: elevenlabsModel,
+              voice_settings: {
+                stability: 0.5,
+                similarity_boost: 0.75,
+                style: 0.3,
+                use_speaker_boost: true,
+              },
+            }),
+          }
+        );
+
+        if (ttsRes.ok) {
+          const audioBuffer = await ttsRes.arrayBuffer();
+          const audioBytes = new Uint8Array(audioBuffer);
+
+          // Upload dans Supabase Storage avec service role
+          const adminClient = createClient(supabaseUrl, supabaseServiceKey, {
+            auth: { persistSession: false },
+          });
+
+          const audioPath = `${user.id}/${Date.now()}-voice.mp3`;
+
+          const { error: uploadErr } = await adminClient.storage
+            .from("audio-temp")
+            .upload(audioPath, audioBytes, {
+              contentType: "audio/mpeg",
+              upsert: false,
+              cacheControl: "3600",
+            });
+
+          if (!uploadErr) {
+            const { data: pubData } = adminClient.storage
+              .from("audio-temp")
+              .getPublicUrl(audioPath);
+            voiceUrl = pubData.publicUrl;
+          } else {
+            console.error("audio upload error:", uploadErr.message);
+          }
+        } else {
+          const errText = await ttsRes.text();
+          console.error("ElevenLabs TTS error:", ttsRes.status, errText);
         }
-      );
+      }
     }
 
-    if (isUnreachableHostFromEdge(pipelineUrl)) {
-      return new Response(
-        JSON.stringify({
-          status: "pipeline_unreachable",
-          audio_applied: false,
-          video_url: inputVideoUrl,
-          message:
-            "VIDEO_AUDIO_PIPELINE_URL pointe vers localhost : inaccessible depuis Supabase Edge. " +
-            "Expose le pipeline (HTTPS public) ou laisse le secret vide pour garder la vidéo telle quelle.",
-        }),
-        {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+    // Music URL
+    if (enableMusic) {
+      musicUrl = resolveMusicUrl(musicStyle) || null;
     }
-
-    let externalRes: Response;
-    try {
-      externalRes = await fetch(pipelineUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(pipelineToken ? { Authorization: `Bearer ${pipelineToken}` } : {}),
-        },
-        body: JSON.stringify({
-          user_id: user.id,
-          model,
-          source_video_url: inputVideoUrl,
-          enable_tts: enableTts,
-          enable_music: enableMusic,
-          voice_text: voiceText,
-          music_style: musicStyle,
-        }),
-      });
-    } catch (err) {
-      console.error("video-postprocess: échec réseau vers le pipeline", err);
-      return new Response(
-        JSON.stringify({
-          status: "pipeline_unreachable",
-          audio_applied: false,
-          video_url: inputVideoUrl,
-          message:
-            "Impossible de joindre le pipeline audio (réseau / DNS / timeout). Vidéo d’origine renvoyée.",
-        }),
-        {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    const raw = await externalRes.text();
-    let data: Record<string, unknown> = {};
-    try {
-      data = raw ? JSON.parse(raw) : {};
-    } catch {
-      data = { raw };
-    }
-
-    if (!externalRes.ok) {
-      console.error(
-        "video-postprocess: pipeline HTTP",
-        externalRes.status,
-        raw?.slice?.(0, 500) ?? raw,
-      );
-      return new Response(
-        JSON.stringify({
-          status: "pipeline_error",
-          audio_applied: false,
-          video_url: inputVideoUrl,
-          message: String(
-            data?.error || data?.message || "Le pipeline audio a renvoyé une erreur.",
-          ),
-          pipeline_status: externalRes.status,
-        }),
-        {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    const outputUrl = cleanText(
-      (data?.video_url as string) ||
-        (data?.output_video_url as string) ||
-        (data?.result_url as string) ||
-        inputVideoUrl,
-      4000
-    );
 
     return new Response(
       JSON.stringify({
-        status: "success",
-        audio_applied: outputUrl !== inputVideoUrl,
-        video_url: outputUrl || inputVideoUrl,
-        provider_response: data,
+        status: "ready",
+        source_video_url: sourceVideoUrl,
+        voice_url: voiceUrl,
+        music_url: musicUrl,
+        merge_client_side: true,
       }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
     console.error("Erreur Edge Function video-postprocess:", error);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Erreur serveur" }),
+      JSON.stringify({
+        error: error instanceof Error ? error.message : "Erreur serveur",
+      }),
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -212,4 +161,3 @@ serve(async (req) => {
     );
   }
 });
-

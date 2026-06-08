@@ -5,7 +5,7 @@ import ModalBibliothequeAvatars from "@/composants/studio/avatar/ModalBibliotheq
 import { saveHistory as saveHistorySupabase } from "@/bibliotheque/supabase/historique";
 import { hasEnoughCredits, getUserCredits } from "@/bibliotheque/supabase/credits";
 import { uploadImagesFromUrls } from "@/bibliotheque/supabase/storage";
-import { getUserSubscription } from "@/bibliotheque/supabase/stripe";
+import { usePremiumAccess } from "@/hooks/usePremiumAccess";
 import {
   canUseImageGeneration,
   canUseImageModification,
@@ -1069,7 +1069,7 @@ export default function ImagePage({
   }, [lastGeneratedImages]);
   const [showQuotaModal, setShowQuotaModal] = useState(false);
   const [quotaModalMessage, setQuotaModalMessage] = useState(VIDEO_QUOTA_EXHAUSTED_MESSAGE);
-  const [hasActiveSubscription, setHasActiveSubscription] = useState(false);
+  const { hasAccess } = usePremiumAccess();
   const historyPanelRef = useRef(null);
   /** Valeur réelle du champ au clic (évite instruction vide si le state parent n’est pas encore recalé). */
   const bottomFieldInputRef = useRef(null);
@@ -1128,26 +1128,6 @@ export default function ImagePage({
   }, [session, uid]);
 
   useEffect(() => {
-    let active = true;
-    const loadSubscriptionState = async () => {
-      if (!session?.user?.id) {
-        if (active) setHasActiveSubscription(false);
-        return;
-      }
-      try {
-        const sub = await getUserSubscription();
-        if (active) setHasActiveSubscription(Boolean(sub));
-      } catch {
-        if (active) setHasActiveSubscription(false);
-      }
-    };
-    loadSubscriptionState();
-    return () => {
-      active = false;
-    };
-  }, [session?.user?.id]);
-
-  useEffect(() => {
     if (!patchImageStep) return;
     const justEntered = visualStepActive && !wasVisualStepActiveRef.current;
     wasVisualStepActiveRef.current = visualStepActive;
@@ -1184,7 +1164,7 @@ export default function ImagePage({
 
   const openQuotaModal = (message) => {
     setQuotaModalMessage(
-      message || (hasActiveSubscription ? VIDEO_QUOTA_EXHAUSTED_MESSAGE : NON_SUBSCRIBER_BLOCKED_MESSAGE)
+      message || (hasAccess ? VIDEO_QUOTA_EXHAUSTED_MESSAGE : NON_SUBSCRIBER_BLOCKED_MESSAGE)
     );
     setShowQuotaModal(true);
   };
@@ -2218,13 +2198,13 @@ export default function ImagePage({
     <>
       <QuotaBlockedModal
         open={showQuotaModal}
-        title={hasActiveSubscription ? "Quota mensuel épuisé" : "Accès abonnement requis"}
+        title={hasAccess ? "Quota mensuel épuisé" : "Accès abonnement requis"}
         message={quotaModalMessage}
-        actionLabel={hasActiveSubscription ? "Aller vers Packs vidéos" : "Voir les abonnements"}
+        actionLabel={hasAccess ? "Aller vers Packs vidéos" : "Voir les abonnements"}
         onClose={() => setShowQuotaModal(false)}
         onGoToShop={() => {
           setShowQuotaModal(false);
-          window.location.href = hasActiveSubscription
+          window.location.href = hasAccess
             ? "/boutique?section=packs-videos"
             : "/boutique?section=subscription";
         }}

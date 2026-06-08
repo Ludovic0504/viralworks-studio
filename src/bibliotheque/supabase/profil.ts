@@ -14,6 +14,8 @@ export interface UserProfile {
   created_at: string;
   updated_at: string;
   role: string;
+  /** Accès premium sans abonnement actif (compte testeur). */
+  is_tester?: boolean;
 }
 
 /**

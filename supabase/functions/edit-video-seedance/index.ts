@@ -4,6 +4,7 @@
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { userHasPremiumAccess } from "../_shared/premium-access.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -90,30 +91,6 @@ interface RequestBody {
   resolution?: string;
   duration?: number;
   aspectRatio?: string;
-}
-
-/** Aligné sur studio-generate-avatar + cancel-subscription / sync-subscription-credits */
-async function userHasActiveSubscription(
-  supabase: ReturnType<typeof createClient>,
-  userId: string,
-): Promise<boolean> {
-  const { data, error } = await supabase
-    .from("stripe_subscriptions")
-    .select("status, cancel_at_period_end, current_period_end")
-    .eq("user_id", userId)
-    .eq("status", "active")
-    .maybeSingle();
-
-  if (error || !data) return false;
-
-  if (data.cancel_at_period_end) {
-    const periodEndMs = new Date(data.current_period_end).getTime();
-    if (Number.isFinite(periodEndMs) && Date.now() >= periodEndMs) {
-      return false;
-    }
-  }
-
-  return true;
 }
 
 async function kieCreateTask(
@@ -228,8 +205,8 @@ serve(async (req) => {
       return jsonError(400, "NO_INPUT", "Aucune modification demandée");
     }
 
-    const hasSubscription = await userHasActiveSubscription(supabase, user.id);
-    if (!hasSubscription) {
+    const hasAccess = await userHasPremiumAccess(supabase, user.id);
+    if (!hasAccess) {
       return jsonError(403, "SUBSCRIPTION_REQUIRED", "Abonnement requis");
     }
 

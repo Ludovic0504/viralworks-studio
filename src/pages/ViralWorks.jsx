@@ -36,7 +36,7 @@ import { useAuth } from "@/contexte/FournisseurAuth";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { useProfilStudio } from "@/contexte/FournisseurProfilStudio";
 import { useStudioLayoutOptions } from "@/contexte/StudioLayoutOptionsContext";
-import { getUserSubscription } from "@/bibliotheque/supabase/stripe";
+import { usePremiumAccess } from "@/hooks/usePremiumAccess";
 import { capturePostHog, trackPostHogError } from "@/bibliotheque/posthog/client";
 import {
   createDefaultCampaignGenerationSpec,
@@ -858,7 +858,7 @@ export default function ViralWorks() {
   const { setStudioLayout } = useStudioLayoutOptions();
   const [showScriptQuotaModal, setShowScriptQuotaModal] = useState(false);
   const [scriptQuotaModalMessage, setScriptQuotaModalMessage] = useState(SCRIPT_STEP_VIDEO_QUOTA_MSG);
-  const [hasActiveSubscriptionVw, setHasActiveSubscriptionVw] = useState(false);
+  const { hasAccess } = usePremiumAccess();
   /** idle | running | error — après succès on repasse à idle (navigation auto vers le Visuel). */
   const [scriptGenStatus, setScriptGenStatus] = useState("idle");
   const scriptGenInFlightRef = useRef(false);
@@ -1285,26 +1285,6 @@ export default function ViralWorks() {
     location.pathname,
   ]);
 
-  useEffect(() => {
-    let active = true;
-    const loadSubscriptionState = async () => {
-      if (!session?.user?.id) {
-        if (active) setHasActiveSubscriptionVw(false);
-        return;
-      }
-      try {
-        const sub = await getUserSubscription();
-        if (active) setHasActiveSubscriptionVw(Boolean(sub));
-      } catch {
-        if (active) setHasActiveSubscriptionVw(false);
-      }
-    };
-    loadSubscriptionState();
-    return () => {
-      active = false;
-    };
-  }, [session?.user?.id]);
-
   /**
    * Navigation entre étapes : retour arrière toujours autorisé ; pour avancer au-delà de l’étape
    * courante, toutes les étapes précédentes doivent être marquées validées (bouton global ou raccourci visuel).
@@ -1382,14 +1362,14 @@ export default function ViralWorks() {
           if (!result.ok) {
             if (result.code === "credits") {
               setScriptQuotaModalMessage(
-                hasActiveSubscriptionVw ? SCRIPT_STEP_VIDEO_QUOTA_MSG : SCRIPT_STEP_NON_SUB_MSG
+                hasAccess ? SCRIPT_STEP_VIDEO_QUOTA_MSG : SCRIPT_STEP_NON_SUB_MSG
               );
               setShowScriptQuotaModal(true);
               capturePostHog("quota_limit_reached", { step: "script", code: "credits" });
             } else if (result.code === "quota") {
               setScriptQuotaModalMessage(
                 result.message ||
-                  (hasActiveSubscriptionVw ? SCRIPT_STEP_VIDEO_QUOTA_MSG : SCRIPT_STEP_NON_SUB_MSG)
+                  (hasAccess ? SCRIPT_STEP_VIDEO_QUOTA_MSG : SCRIPT_STEP_NON_SUB_MSG)
               );
               setShowScriptQuotaModal(true);
               capturePostHog("quota_limit_reached", { step: "script", code: "quota" });
@@ -1421,7 +1401,7 @@ export default function ViralWorks() {
       };
       void run();
     },
-    [campaignGenerationSpec, resetImageStep, session, hasActiveSubscriptionVw]
+    [campaignGenerationSpec, resetImageStep, session, hasAccess]
   );
 
   const applyStudioWorkflowResetState = useCallback(() => {
@@ -1582,13 +1562,13 @@ export default function ViralWorks() {
     >
       <ScriptStepQuotaModal
         open={showScriptQuotaModal}
-        title={hasActiveSubscriptionVw ? "Quota mensuel épuisé" : "Accès abonnement requis"}
+        title={hasAccess ? "Quota mensuel épuisé" : "Accès abonnement requis"}
         message={scriptQuotaModalMessage}
-        actionLabel={hasActiveSubscriptionVw ? "Aller vers Packs vidéos" : "Voir les abonnements"}
+        actionLabel={hasAccess ? "Aller vers Packs vidéos" : "Voir les abonnements"}
         onClose={() => setShowScriptQuotaModal(false)}
         onGoToShop={() => {
           setShowScriptQuotaModal(false);
-          window.location.href = hasActiveSubscriptionVw
+          window.location.href = hasAccess
             ? "/boutique?section=packs-videos"
             : "/boutique?section=subscription";
         }}

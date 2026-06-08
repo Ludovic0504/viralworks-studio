@@ -18,7 +18,7 @@ import {
   getUserCredits,
   USER_CREDITS_UPDATED_EVENT,
 } from "@/bibliotheque/supabase/credits";
-import { getUserSubscription } from "@/bibliotheque/supabase/stripe";
+import { usePremiumAccess } from "@/hooks/usePremiumAccess";
 import {
   canProceedWithScriptGeneration,
   consumeScriptAttempt,
@@ -1078,7 +1078,7 @@ function ScriptPromptGenerator({
   const [loading, setLoading] = useState(false);
   const [showQuotaModal, setShowQuotaModal] = useState(false);
   const [quotaModalMessage, setQuotaModalMessage] = useState(VIDEO_QUOTA_EXHAUSTED_MESSAGE);
-  const [hasActiveSubscription, setHasActiveSubscription] = useState(false);
+  const { hasAccess } = usePremiumAccess();
   const [items, setItems] = useState([]);
   const [selectedItem, setSelectedItem] = useState(null);
   const prevInitialIdeaRef = useRef(initialIdea);
@@ -1147,26 +1147,6 @@ function ScriptPromptGenerator({
     return () => window.removeEventListener("onetool:history:changed", refresh);
   }, [session]);
 
-  useEffect(() => {
-    let active = true;
-    const loadSubscriptionState = async () => {
-      if (!session?.user?.id) {
-        if (active) setHasActiveSubscription(false);
-        return;
-      }
-      try {
-        const sub = await getUserSubscription();
-        if (active) setHasActiveSubscription(Boolean(sub));
-      } catch {
-        if (active) setHasActiveSubscription(false);
-      }
-    };
-    loadSubscriptionState();
-    return () => {
-      active = false;
-    };
-  }, [session?.user?.id]);
-
   const reset = () => {
     setLoading(false);
     setIdea("");
@@ -1199,7 +1179,7 @@ function ScriptPromptGenerator({
 
   const openQuotaModal = (message) => {
     setQuotaModalMessage(
-      message || (hasActiveSubscription ? VIDEO_QUOTA_EXHAUSTED_MESSAGE : NON_SUBSCRIBER_BLOCKED_MESSAGE)
+      message || (hasAccess ? VIDEO_QUOTA_EXHAUSTED_MESSAGE : NON_SUBSCRIBER_BLOCKED_MESSAGE)
     );
     setShowQuotaModal(true);
   };
@@ -1347,13 +1327,13 @@ function ScriptPromptGenerator({
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <QuotaBlockedModal
         open={showQuotaModal}
-        title={hasActiveSubscription ? "Quota mensuel épuisé" : "Accès abonnement requis"}
+        title={hasAccess ? "Quota mensuel épuisé" : "Accès abonnement requis"}
         message={quotaModalMessage}
-        actionLabel={hasActiveSubscription ? "Aller vers Packs vidéos" : "Voir les abonnements"}
+        actionLabel={hasAccess ? "Aller vers Packs vidéos" : "Voir les abonnements"}
         onClose={() => setShowQuotaModal(false)}
         onGoToShop={() => {
           setShowQuotaModal(false);
-          window.location.href = hasActiveSubscription
+          window.location.href = hasAccess
             ? "/boutique?section=packs-videos"
             : "/boutique?section=subscription";
         }}

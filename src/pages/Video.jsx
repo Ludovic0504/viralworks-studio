@@ -16,7 +16,7 @@ import {
   deleteHistory,
 } from "@/bibliotheque/supabase/historique";
 import { hasEnoughCredits, debitCredits, getUserCredits, isAdmin } from "@/bibliotheque/supabase/credits";
-import { getUserSubscription } from "@/bibliotheque/supabase/stripe";
+import { usePremiumAccess } from "@/hooks/usePremiumAccess";
 import {
   capturePostHog,
   classifyErrorType,
@@ -1149,7 +1149,7 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
   const [needsReloadFromCache, setNeedsReloadFromCache] = useState(false);
   const [showQuotaNotice, setShowQuotaNotice] = useState(false);
   const [quotaNoticeMessage, setQuotaNoticeMessage] = useState(VIDEO_QUOTA_EXHAUSTED_MESSAGE);
-  const [hasActiveSubscription, setHasActiveSubscription] = useState(false);
+  const { hasAccess } = usePremiumAccess();
   const [validatedHookImage, setValidatedHookImage] = useState(null);
   const [customHookImage, setCustomHookImage] = useState(null);
   const studioHookImage = useMemo(() => getHookImageFromStudioStep(studioImageStep), [studioImageStep]);
@@ -1366,26 +1366,6 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
       loadCredits();
     }
   }, [session]);
-
-  useEffect(() => {
-    let active = true;
-    const loadSubscriptionState = async () => {
-      if (!session?.user?.id) {
-        if (active) setHasActiveSubscription(false);
-        return;
-      }
-      try {
-        const sub = await getUserSubscription();
-        if (active) setHasActiveSubscription(Boolean(sub));
-      } catch {
-        if (active) setHasActiveSubscription(false);
-      }
-    };
-    loadSubscriptionState();
-    return () => {
-      active = false;
-    };
-  }, [session?.user?.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1638,7 +1618,7 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
       if (!hasCredits) {
         console.warn("[Video.jsx] generate() blocked: insufficient server credits");
         setQuotaNoticeMessage(
-          hasActiveSubscription ? VIDEO_QUOTA_EXHAUSTED_MESSAGE : NON_SUBSCRIBER_BLOCKED_MESSAGE
+          hasAccess ? VIDEO_QUOTA_EXHAUSTED_MESSAGE : NON_SUBSCRIBER_BLOCKED_MESSAGE
         );
         setShowQuotaNotice(true);
         capturePostHog("quota_limit_reached", { step: "video" });
@@ -1904,6 +1884,7 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
           setProgress(90);
           setProgressMessage("Finalisation de la piste sonore…");
           try {
+            console.log('[DEBUG scriptForGeneration]', scriptForGeneration);
             const voiceText = dialogueAuto
               ? scriptForGeneration.trim()
               : dialogueText ?? (manualDialogueLine || scriptForGeneration.trim());
@@ -2016,7 +1997,7 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
 
   const goToVideoPacks = () => {
     navigate(
-      hasActiveSubscription ? "/boutique?section=packs-videos" : "/boutique?section=subscription"
+      hasAccess ? "/boutique?section=packs-videos" : "/boutique?section=subscription"
     );
   };
 
@@ -2284,7 +2265,7 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
         const hasCredits = await hasEnoughCredits(VIDEO_GENERATION_COST);
         if (!hasCredits) {
           setQuotaNoticeMessage(
-            hasActiveSubscription ? VIDEO_QUOTA_EXHAUSTED_MESSAGE : NON_SUBSCRIBER_BLOCKED_MESSAGE
+            hasAccess ? VIDEO_QUOTA_EXHAUSTED_MESSAGE : NON_SUBSCRIBER_BLOCKED_MESSAGE
           );
           setShowQuotaNotice(true);
           capturePostHog("quota_limit_reached", { step: "video_download" });
@@ -2708,9 +2689,9 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
     <>
       <QuotaExhaustedNotice
         open={showQuotaNotice}
-        title={hasActiveSubscription ? "Quota mensuel épuisé" : "Accès abonnement requis"}
+        title={hasAccess ? "Quota mensuel épuisé" : "Accès abonnement requis"}
         message={quotaNoticeMessage}
-        actionLabel={hasActiveSubscription ? "Aller vers Packs vidéos" : "Voir les abonnements"}
+        actionLabel={hasAccess ? "Aller vers Packs vidéos" : "Voir les abonnements"}
         onClose={() => setShowQuotaNotice(false)}
         onGoToPacks={goToVideoPacks}
       />
@@ -4001,7 +3982,7 @@ function HailuoVideoForm({
   const [progressMessage, setProgressMessage] = useState("");
   const [showQuotaNotice, setShowQuotaNotice] = useState(false);
   const [quotaNoticeMessage, setQuotaNoticeMessage] = useState(VIDEO_QUOTA_EXHAUSTED_MESSAGE);
-  const [hasActiveSubscription, setHasActiveSubscription] = useState(false);
+  const { hasAccess } = usePremiumAccess();
   const studioHookImage = useMemo(() => getHookImageFromStudioStep(studioImageStep), [studioImageStep]);
   const [customHookImage, setCustomHookImage] = useState(null);
   const hookImageInputRef = useRef(null);
@@ -4032,26 +4013,6 @@ function HailuoVideoForm({
       loadCredits();
     }
   }, [session]);
-
-  useEffect(() => {
-    let active = true;
-    const loadSubscriptionState = async () => {
-      if (!session?.user?.id) {
-        if (active) setHasActiveSubscription(false);
-        return;
-      }
-      try {
-        const sub = await getUserSubscription();
-        if (active) setHasActiveSubscription(Boolean(sub));
-      } catch {
-        if (active) setHasActiveSubscription(false);
-      }
-    };
-    loadSubscriptionState();
-    return () => {
-      active = false;
-    };
-  }, [session?.user?.id]);
 
   const loadCredits = async () => {
     try {
@@ -4197,7 +4158,7 @@ function HailuoVideoForm({
       const hasCredits = await hasEnoughCredits(VIDEO_GENERATION_COST);
       if (!hasCredits) {
         setQuotaNoticeMessage(
-          hasActiveSubscription ? VIDEO_QUOTA_EXHAUSTED_MESSAGE : NON_SUBSCRIBER_BLOCKED_MESSAGE
+          hasAccess ? VIDEO_QUOTA_EXHAUSTED_MESSAGE : NON_SUBSCRIBER_BLOCKED_MESSAGE
         );
         setShowQuotaNotice(true);
         capturePostHog("quota_limit_reached", { step: "video" });
@@ -4372,7 +4333,7 @@ function HailuoVideoForm({
 
   const goToVideoPacks = () => {
     navigate(
-      hasActiveSubscription ? "/boutique?section=packs-videos" : "/boutique?section=subscription"
+      hasAccess ? "/boutique?section=packs-videos" : "/boutique?section=subscription"
     );
   };
 
@@ -4469,7 +4430,7 @@ function HailuoVideoForm({
         const hasCredits = await hasEnoughCredits(VIDEO_GENERATION_COST);
         if (!hasCredits) {
           setQuotaNoticeMessage(
-            hasActiveSubscription ? VIDEO_QUOTA_EXHAUSTED_MESSAGE : NON_SUBSCRIBER_BLOCKED_MESSAGE
+            hasAccess ? VIDEO_QUOTA_EXHAUSTED_MESSAGE : NON_SUBSCRIBER_BLOCKED_MESSAGE
           );
           setShowQuotaNotice(true);
           capturePostHog("quota_limit_reached", { step: "video_download" });
@@ -4596,9 +4557,9 @@ function HailuoVideoForm({
     <>
       <QuotaExhaustedNotice
         open={showQuotaNotice}
-        title={hasActiveSubscription ? "Quota mensuel épuisé" : "Accès abonnement requis"}
+        title={hasAccess ? "Quota mensuel épuisé" : "Accès abonnement requis"}
         message={quotaNoticeMessage}
-        actionLabel={hasActiveSubscription ? "Aller vers Packs vidéos" : "Voir les abonnements"}
+        actionLabel={hasAccess ? "Aller vers Packs vidéos" : "Voir les abonnements"}
         onClose={() => setShowQuotaNotice(false)}
         onGoToPacks={goToVideoPacks}
       />

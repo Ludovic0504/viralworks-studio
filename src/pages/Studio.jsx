@@ -16,8 +16,8 @@ import {
   listStudioAvatars,
 } from "@/bibliotheque/studio/studioAvatars";
 import { deleteHistory } from "@/bibliotheque/supabase/historique";
-import { getUserSubscription } from "@/bibliotheque/supabase/stripe";
 import { useAuth } from "@/contexte/FournisseurAuth";
+import { usePremiumAccess } from "@/hooks/usePremiumAccess";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { capturePostHog, trackPostHogError } from "@/bibliotheque/posthog/client";
 
@@ -32,8 +32,7 @@ export default function Studio() {
   const { setStudioLayout } = useStudioLayoutOptions();
   const [config, setConfig] = useState(DEFAULT_AVATAR_CONFIG);
   const [error, setError] = useState(null);
-  const [hasActiveSubscription, setHasActiveSubscription] = useState(false);
-  const [subscriptionLoading, setSubscriptionLoading] = useState(true);
+  const { hasAccess, loading: subscriptionLoading } = usePremiumAccess();
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   const [avatarLibrary, setAvatarLibrary] = useState([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
@@ -52,32 +51,6 @@ export default function Studio() {
   }, [setStudioLayout]);
 
   const update = (patch) => setConfig((prev) => ({ ...prev, ...patch }));
-
-  useEffect(() => {
-    let active = true;
-    const loadSubscription = async () => {
-      if (!session?.user?.id) {
-        if (active) {
-          setHasActiveSubscription(false);
-          setSubscriptionLoading(false);
-        }
-        return;
-      }
-      setSubscriptionLoading(true);
-      try {
-        const sub = await getUserSubscription();
-        if (active) setHasActiveSubscription(Boolean(sub));
-      } catch {
-        if (active) setHasActiveSubscription(false);
-      } finally {
-        if (active) setSubscriptionLoading(false);
-      }
-    };
-    loadSubscription();
-    return () => {
-      active = false;
-    };
-  }, [session?.user?.id]);
 
   useEffect(() => {
     let active = true;
@@ -107,12 +80,12 @@ export default function Studio() {
 
   const requireSubscription = useCallback(() => {
     if (subscriptionLoading) return false;
-    if (!hasActiveSubscription) {
+    if (!hasAccess) {
       setShowSubscriptionModal(true);
       return false;
     }
     return true;
-  }, [hasActiveSubscription, subscriptionLoading]);
+  }, [hasAccess, subscriptionLoading]);
 
   const canGenerate =
     Boolean(config.metier) &&
@@ -219,7 +192,7 @@ export default function Studio() {
             activeCategory={config.activeCategory}
             onGenerate={requestGenerate}
             onSubscriptionRequired={() => setShowSubscriptionModal(true)}
-            hasActiveSubscription={hasActiveSubscription}
+            hasAccess={hasAccess}
             subscriptionLoading={subscriptionLoading}
             canGenerate={canGenerate}
             generating={config.generating}

@@ -269,6 +269,45 @@ export default function Admin() {
     }
   };
 
+  const handleToggleTester = async () => {
+    if (!selectedUser) return;
+
+    const targetUserId = selectedUser.user_id || selectedUser.id;
+    if (!targetUserId) return;
+
+    const nextValue = !selectedUser.is_tester;
+    setProcessing(true);
+    try {
+      const supabase = getBrowserSupabase();
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      if (!currentSession?.access_token) {
+        throw new Error("Session expirée, reconnectez-vous");
+      }
+
+      const { error } = await supabase.functions.invoke("admin-tester", {
+        headers: {
+          Authorization: `Bearer ${currentSession.access_token}`,
+        },
+        body: {
+          target_user_id: targetUserId,
+          is_tester: nextValue,
+        },
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      setSelectedUser((prev) => (prev ? { ...prev, is_tester: nextValue } : prev));
+      await loadDashboardData();
+      alert(nextValue ? "✅ Compte testeur activé" : "✅ Compte testeur désactivé");
+    } catch (err) {
+      alert(`❌ Erreur: ${err.message}`);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   const handleRemoveCredits = async () => {
     if (!selectedUser || !creditAmount) return;
 
@@ -629,6 +668,11 @@ export default function Admin() {
                                 )}
                                 {user.role === "admin" && (
                                   <Shield className="w-4 h-4 text-violet-400 flex-shrink-0" title="Administrateur" />
+                                )}
+                                {user.is_tester && (
+                                  <span className="text-xs text-amber-300 flex-shrink-0" title="Compte testeur">
+                                    🧪 Testeur
+                                  </span>
                                 )}
                               </div>
                               <p className="text-xs text-gray-400 font-mono truncate">{user.user_id}</p>
@@ -1100,6 +1144,27 @@ export default function Admin() {
                   <p className="text-sm text-gray-400 mb-1">Utilisateur sélectionné</p>
                   <p className="text-sm font-medium text-gray-200 truncate">{selectedUser.email || "Sans email"}</p>
                   <p className="text-xs text-gray-400 font-mono mt-1 truncate">{selectedUser.user_id}</p>
+                  {selectedUser.is_tester ? (
+                    <p className="mt-2 text-xs text-amber-300">🧪 Compte testeur actif</p>
+                  ) : null}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Accès testeur
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleToggleTester}
+                    disabled={processing}
+                    className={`w-full px-4 py-2 rounded-lg border transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                      selectedUser.is_tester
+                        ? "bg-amber-500/20 border-amber-500/30 text-amber-300 hover:bg-amber-500/30"
+                        : "bg-white/5 border-white/10 text-gray-300 hover:bg-white/10"
+                    }`}
+                  >
+                    {selectedUser.is_tester ? "Désactiver le compte testeur" : "Activer le compte testeur"}
+                  </button>
                 </div>
 
                 <div>

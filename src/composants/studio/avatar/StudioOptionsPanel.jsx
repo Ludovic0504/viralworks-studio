@@ -5,14 +5,14 @@ export default function StudioOptionsPanel({
   children,
   onGenerate,
   onSubscriptionRequired,
-  hasActiveSubscription = false,
+  hasAccess = false,
   subscriptionLoading = false,
   canGenerate,
   generating,
 }) {
   const handleGenerateClick = () => {
     if (subscriptionLoading) return;
-    if (!hasActiveSubscription) {
+    if (!hasAccess) {
       onSubscriptionRequired?.();
       return;
     }
