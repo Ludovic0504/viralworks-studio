@@ -79,6 +79,11 @@ export function buildVeo3Prompt(spec: CampaignGenerationSpec, sceneIndex: number
   const notSilentMusic = !wantsNoMusic(spec.rendering.audio.music_style);
 
   const blocks: string[] = [];
+  if (!dialogueOn) {
+    blocks.push(
+      "Audio mode: SILENT. No dialogue, no speech, no lip movement, no voice over, no character addressing camera verbally. Visual-only sequence.",
+    );
+  }
   blocks.push(`Idée: ${ideaBody}`);
   if (dialogueLine && dialogueOn && notSilentMusic) {
     blocks.push(`Character says naturally: ${dialogueLine}`);
@@ -121,17 +126,14 @@ export function buildVeo3Prompt(spec: CampaignGenerationSpec, sceneIndex: number
   const noMusic = wantsNoMusic(spec.rendering.audio.music_style);
   if (noMusic) {
     blocks.push("audio_mode: silent");
-    blocks.push(
-      "Silent constraints: no dialogue, no speech, no voice over, no talking, no lip sync, no TTS, visual-only sequence.",
-    );
-    blocks.push("No background music, no soundtrack.");
-  } else {
-    blocks.push(`audio_mode: ${dialogueOn ? "dialogue" : "silent"}`);
-    if (!dialogueOn) {
+    if (dialogueOn) {
       blocks.push(
         "Silent constraints: no dialogue, no speech, no voice over, no talking, no lip sync, no TTS, visual-only sequence.",
       );
     }
+    blocks.push("No background music, no soundtrack.");
+  } else {
+    blocks.push(`audio_mode: ${dialogueOn ? "dialogue" : "silent"}`);
   }
 
   if (spec.rendering.camera.fixed === true) {

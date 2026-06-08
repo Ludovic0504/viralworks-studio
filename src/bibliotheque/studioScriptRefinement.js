@@ -145,6 +145,7 @@ export async function runStudioScriptRefinement({
   const videoFormatId =
     canonicalSpec?.campaign?.video_format_id ?? campaignData?.videoFormatId ?? null;
   const formatFamilyInstruction = getRefinePromptFormatFamilyInstruction(videoFormatId);
+  const dialogueEnabled = canonicalSpec?.rendering?.audio?.dialogue_enabled !== false;
 
   let refineResult;
   try {
@@ -165,6 +166,7 @@ export async function runStudioScriptRefinement({
       causalAgentSelection:
         canonicalSpec.campaign.clarification.causal_agent ?? campaignData?.causalAgentSelection ?? null,
       formatFamilyInstruction,
+      dialogueEnabled,
     });
   } catch (err) {
     return {

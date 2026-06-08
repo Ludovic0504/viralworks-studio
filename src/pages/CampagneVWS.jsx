@@ -1364,7 +1364,7 @@ Réponds uniquement en JSON :
       }
 
       if (
-        effectiveTempo !== "timelapse" &&
+        effectiveTempo === "real_time" &&
         !effectiveTempoCompressionDecision &&
         effectiveSequenceType === "single_8s" &&
         isIdeaTooDenseForRealtime(ideaWithSceneContext)

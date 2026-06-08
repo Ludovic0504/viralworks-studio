@@ -163,6 +163,8 @@ export interface RefinePromptInput {
   /** Aligné sur campaign.clarification.causal_agent : contrainte explicite dans le prompt final si défini. */
   causalAgentSelection?: "visible" | "automatic" | null;
   formatFamilyInstruction?: string;
+  /** Aligné sur rendering.audio.dialogue_enabled : mode visuel uniquement si false. */
+  dialogueEnabled?: boolean;
 }
 
 export interface InferGlobalIntentInput {
@@ -1850,7 +1852,7 @@ export async function refinePrompt(input: RefinePromptInput): Promise<Refinement
     input.causalAgentSelection === "automatic" || input.causalAgentSelection === "visible"
       ? input.causalAgentSelection
       : "null";
-  const payload = [
+  let payload = [
     `Job: ${input.jobType}`,
     `User-Idea (FR-Signal): ${stripMetierSceneFormLabels(input.mainIdea)}`,
     `Context: ${input.modifiers || "none"}`,
@@ -1864,9 +1866,26 @@ export async function refinePrompt(input: RefinePromptInput): Promise<Refinement
     `Causal: ${causalPayload}`,
   ].join("\n");
 
+  if (input.dialogueEnabled === false) {
+    payload += `\nDialogue: DISABLED — visual-only sequence.
+No spoken lines, no addressing camera verbally, no narration,
+no voice over. Characters visible but silent.
+Describe only what is seen, not what is said.`;
+  }
+
+  const visualOnlySystemAppendix =
+    input.dialogueEnabled === false
+      ? `
+
+Visual-only mode: the script must describe purely visual action.
+No dialogue lines, no spoken words, no camera address, no lip movement.
+Replace any verbal interaction with a visual equivalent
+(gesture, demonstration, reaction, close-up on object).`
+      : "";
+
   const system = input.formatFamilyInstruction?.trim()
-    ? `${REFINEMENT_SYSTEM_INSTRUCTION}\n\n${input.formatFamilyInstruction}`
-    : REFINEMENT_SYSTEM_INSTRUCTION;
+    ? `${REFINEMENT_SYSTEM_INSTRUCTION}${visualOnlySystemAppendix}\n\n${input.formatFamilyInstruction}`
+    : `${REFINEMENT_SYSTEM_INSTRUCTION}${visualOnlySystemAppendix}`;
 
   console.log("[VWS-DIAG] refinePrompt → formatFamilyInstruction", input.formatFamilyInstruction?.slice(0, 80));
   const raw = await generateResponse(payload, system, {

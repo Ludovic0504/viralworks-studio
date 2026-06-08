@@ -1,12 +1,36 @@
 import express from "express";
 import cors from "cors";
 import fs from "node:fs/promises";
+import fsSync from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { createClient } from "@supabase/supabase-js";
 import { capture, shutdown } from "./posthog.mjs";
+
+function loadDotEnvFile(filePath) {
+  if (!fsSync.existsSync(filePath)) return;
+  let raw = fsSync.readFileSync(filePath, "utf8");
+  if (raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1);
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq === -1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    let val = trimmed.slice(eq + 1).trim();
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1);
+    }
+    process.env[key] = val;
+  }
+}
+
+const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+loadDotEnvFile(path.join(projectRoot, ".env.local"));
+loadDotEnvFile(path.join(projectRoot, ".env"));
 
 const PORT = Number(process.env.VIDEO_AUDIO_PORT || process.env.PORT || 8788);
 const PIPELINE_TOKEN = String(process.env.VIDEO_AUDIO_PIPELINE_TOKEN || "").trim();
@@ -16,12 +40,23 @@ const SUPABASE_SERVICE_ROLE_KEY = String(
 ).trim();
 const OUTPUT_BUCKET = String(process.env.VIDEO_OUTPUT_BUCKET || "generated-videos").trim();
 const TTS_MODEL = String(process.env.TTS_MODEL || "gpt-4o-mini-tts").trim();
-const TTS_VOICE = String(process.env.TTS_VOICE || "alloy").trim();
+const TTS_VOICE = String(process.env.TTS_VOICE || "sage").trim();
 const TTS_INSTRUCTIONS = String(
   process.env.TTS_INSTRUCTIONS ||
-    "Speak in standard metropolitan French (France). No regional accent. No Québécois, Belgian or Swiss inflection. Clear, neutral French pronunciation."
+    "Tu parles en français de France, accent parisien neutre et naturel. " +
+    "Ton posé, professionnel mais accessible, comme un artisan expert qui explique son métier. " +
+    "Rythme modéré, ni trop rapide ni trop lent. " +
+    "Aucun accent québécois, belge ou suisse. " +
+    "Prononciation claire et standard, français métropolitain uniquement."
 ).trim();
 const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || "").trim();
+const ELEVENLABS_API_KEY = String(process.env.ELEVENLABS_API_KEY || "").trim();
+const ELEVENLABS_VOICE_ID = String(
+  process.env.ELEVENLABS_VOICE_ID || "OOiDJrD1goukqfTpiySr"
+).trim();
+const ELEVENLABS_MODEL = String(
+  process.env.ELEVENLABS_MODEL || "eleven_multilingual_v2"
+).trim();
 
 const app = express();
 app.use(cors());
@@ -76,9 +111,42 @@ function runCmd(bin, args, cwd) {
 }
 
 async function generateTtsMp3(text, outPath) {
-  if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is missing for TTS.");
+  console.log("[TTS DEBUG] Provider:", ELEVENLABS_API_KEY ? "elevenlabs" : "openai");
+  console.log("[TTS DEBUG] Voice ID:", ELEVENLABS_VOICE_ID);
+  console.log("[TTS DEBUG] Text (50 chars):", text?.slice(0, 50));
   const t = cleanText(text, 3500);
   if (!t) throw new Error("voice_text is empty.");
+
+  if (ELEVENLABS_API_KEY) {
+    const url = `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "xi-api-key": ELEVENLABS_API_KEY,
+        "Content-Type": "application/json",
+        Accept: "audio/mpeg",
+      },
+      body: JSON.stringify({
+        text: t,
+        model_id: ELEVENLABS_MODEL,
+        voice_settings: {
+          stability: 0.5,
+          similarity_boost: 0.75,
+          style: 0.3,
+          use_speaker_boost: true,
+        },
+      }),
+    });
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(`ElevenLabs TTS error: ${response.status} — ${err}`);
+    }
+    const buffer = await response.arrayBuffer();
+    await fs.writeFile(outPath, Buffer.from(buffer));
+    return;
+  }
+
+  if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is missing for TTS (no ELEVENLABS_API_KEY).");
   const res = await fetch("https://api.openai.com/v1/audio/speech", {
     method: "POST",
     headers: {
@@ -257,7 +325,8 @@ app.get("/health", (_req, res) => {
     ok: true,
     ffmpegRequired: true,
     supabaseConfigured: Boolean(supabase),
-    ttsConfigured: Boolean(OPENAI_API_KEY),
+    ttsConfigured: Boolean(ELEVENLABS_API_KEY || OPENAI_API_KEY),
+    ttsProvider: ELEVENLABS_API_KEY ? "elevenlabs" : OPENAI_API_KEY ? "openai" : null,
   });
 });
 
