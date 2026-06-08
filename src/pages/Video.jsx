@@ -53,6 +53,7 @@ import {
   generateVeo3EightSecondsAndLastFrame,
   generateVeo3DiagnosticSegment1Through3AndConcat,
 } from "@/bibliotheque/videoPipeline";
+import { mergeClientSideAudioVideo } from "@/bibliotheque/video/clientAudioMerge";
 import { splitCampaignPromptIntoThreeVideoSegments } from "@/bibliotheque/splitVideoPromptThreeSegments";
 import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
 import PageTitle from "../composants/interface/TitrePage";
@@ -707,6 +708,14 @@ function audioPostprocessStatusLabel(postData) {
     return "Post-traitement audio : réponse inattendue.";
   }
   const status = String(postData.status || "").trim();
+  if (status === "ready") {
+    if (postData.voice_url || postData.music_url) {
+      return postData.merge_client_side
+        ? "Pistes audio prêtes."
+        : "Audio ajouté automatiquement.";
+    }
+    return "Vidéo prête (sans couche audio).";
+  }
   if (status === "ready_without_external_pipeline") {
     return "Vidéo prête : aucun pipeline audio distant (secret VIDEO_AUDIO_PIPELINE_URL).";
   }
@@ -725,6 +734,41 @@ function audioPostprocessStatusLabel(postData) {
     return "Audio ajouté automatiquement.";
   }
   return "Vidéo prête ; couche audio optionnelle non appliquée.";
+}
+
+async function applyAudioPostprocessResult({
+  postData,
+  fallbackVideoUrl,
+  setProgressMessage,
+  setAudioStatus,
+}) {
+  const fallback = String(
+    fallbackVideoUrl || postData?.source_video_url || ""
+  ).trim();
+
+  if (
+    postData?.merge_client_side &&
+    (postData?.voice_url || postData?.music_url)
+  ) {
+    try {
+      setProgressMessage("Ajout de la voix en cours…");
+      const mergedUrl = await mergeClientSideAudioVideo(postData, {
+        onProgress: (msg) => setProgressMessage(msg),
+      });
+      setAudioStatus("Audio ajouté automatiquement.");
+      return mergedUrl || fallback;
+    } catch (mergeErr) {
+      console.warn("Fusion audio côté client échouée:", mergeErr);
+      setAudioStatus("Fusion audio impossible ; vidéo d'origine affichée.");
+      return fallback;
+    }
+  }
+
+  const resolvedUrl = String(
+    postData?.video_url || postData?.source_video_url || fallback
+  ).trim();
+  setAudioStatus(audioPostprocessStatusLabel(postData));
+  return resolvedUrl || fallback;
 }
 
 const Video = forwardRef(function Video(
@@ -1871,15 +1915,18 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
                 video_url: videoUrl,
                 voice_text: dialogueEnabled ? voiceText : "",
                 music_style: musicStyle,
-                enable_tts: dialogueEnabled && dialogueAuto,
+                enable_tts: dialogueEnabled,
                 enable_music: true,
                 model: "veo3",
               },
               postToken
             );
-            const processedUrl = String(postData?.video_url || "").trim();
-            if (processedUrl) finalVideoUrl = processedUrl;
-            setAudioStatus(audioPostprocessStatusLabel(postData));
+            finalVideoUrl = await applyAudioPostprocessResult({
+              postData,
+              fallbackVideoUrl: videoUrl,
+              setProgressMessage,
+              setAudioStatus,
+            });
           } catch (postErr) {
             console.warn("Post-traitement audio non appliqué:", postErr);
             setAudioStatus(
@@ -4273,9 +4320,12 @@ function HailuoVideoForm({
             },
             session.access_token
           );
-          const processedUrl = String(postData?.video_url || "").trim();
-          if (processedUrl) finalVideoUrl = processedUrl;
-          setAudioStatus(audioPostprocessStatusLabel(postData));
+          finalVideoUrl = await applyAudioPostprocessResult({
+            postData,
+            fallbackVideoUrl: videoUrl,
+            setProgressMessage,
+            setAudioStatus,
+          });
         } catch (postErr) {
           console.warn("Post-traitement audio non appliqué:", postErr);
           setAudioStatus(
