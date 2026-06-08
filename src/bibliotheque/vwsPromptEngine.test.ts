@@ -3,6 +3,7 @@ import {
   buildHookImageApiPrompt,
   extractOpeningHookNarrativeSeed,
   normalizeProductCampaignIdeaForHook,
+  stripMetierSceneFormLabels,
   truncateOpeningHookFallback,
 } from "./vwsPromptEngine";
 
@@ -41,15 +42,26 @@ describe("normalizeProductCampaignIdeaForHook", () => {
     const out = normalizeProductCampaignIdeaForHook(triple);
     expect((out.match(/Décor de la scène\s*:/gi) ?? []).length).toBe(1);
     expect((out.match(/Hook d'accroche/gi) ?? []).length).toBe(1);
-    expect((out.match(/DESCRIPTION\s+DE\s+LA\s+SCÈNE\s*:/gi) ?? []).length).toBe(1);
+    expect((out.match(/DESCRIPTION\s+DE\s+LA\s+SCÈNE\s*:/gi) ?? []).length).toBe(0);
     expect((out.match(/Mise en scène souhaitée\s*:/gi) ?? []).length).toBe(1);
     expect(out).toContain(productPromo);
   });
 
-  it("brief métier LIEU DE LA SCÈNE → inchangé", () => {
+  it("brief métier LIEU DE LA SCÈNE → labels retirés", () => {
     const metier =
       "LIEU DE LA SCÈNE : Atelier chez le client.\n\nDESCRIPTION DE LA SCÈNE : Réparation express.";
-    expect(normalizeProductCampaignIdeaForHook(metier)).toBe(metier);
+    expect(stripMetierSceneFormLabels(metier)).toBe(
+      "Atelier chez le client.\n\nRéparation express."
+    );
+  });
+
+  it("brief métier avec Métier prefix → labels retirés, contenu conservé", () => {
+    const labeled =
+      "Métier: Jardinier\n\nLIEU DE LA SCÈNE : La scène se déroule chez un client particulier.\n\nDESCRIPTION DE LA SCÈNE : Je veux montrer une journée type sur un chantier.";
+    const out = stripMetierSceneFormLabels(labeled);
+    expect(out).not.toMatch(/LIEU DE LA SCÈNE/i);
+    expect(out).not.toMatch(/DESCRIPTION DE LA SCÈNE/i);
+    expect(out).toContain("journée type sur un chantier");
   });
 });
 
@@ -128,5 +140,38 @@ describe("buildHookImageApiPrompt — openingHookStill vs show_finished_result",
     expect((p.match(/Décor de la scène\s*:/gi) ?? []).length).toBe(1);
     expect((p.match(/Hook d'accroche/gi) ?? []).length).toBe(1);
     expect((p.match(/Mise en scène souhaitée\s*:/gi) ?? []).length).toBe(1);
+  });
+
+  it("brief métier : aucun label LIEU / DESCRIPTION dans le prompt image", () => {
+    const labeledIdea =
+      "LIEU DE LA SCÈNE : La scène se déroule chez un client particulier.\n\nDESCRIPTION DE LA SCÈNE : Je veux montrer une journée type sur un chantier.";
+    const p = buildHookImageApiPrompt(
+      [`Métier: Jardinier`, labeledIdea].join("\n\n"),
+      {
+        revealMode: false,
+        initialStateMode: null,
+        jobTypeLabel: "Jardinier",
+        openingHookStill: true,
+        selfieMode: false,
+        cameraFixed: false,
+      }
+    );
+    expect(p).not.toMatch(/LIEU DE LA SCÈNE/i);
+    expect(p).not.toMatch(/DESCRIPTION DE LA SCÈNE/i);
+    expect(p).toContain("chez un client particulier");
+    expect(p).toContain("journée type sur un chantier");
+  });
+
+  it("selfie POV : exterieure_filmee n'injecte pas la directive caméra externe", () => {
+    const p = buildHookImageApiPrompt("Je veux montrer une journée type sur un chantier.", {
+      revealMode: false,
+      jobTypeLabel: "Jardinier",
+      openingHookStill: true,
+      selfieMode: true,
+      cameraFixed: false,
+      cameraViewAngle: "exterieure_filmee",
+    });
+    expect(p).not.toMatch(/filme le professionnel de l'extérieur/i);
+    expect(p).toContain("CRITICAL — Handheld selfie POV framing");
   });
 });

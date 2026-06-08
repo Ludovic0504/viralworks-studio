@@ -8,6 +8,7 @@ import {
 import type { CampaignGenerationSpec } from "../campaignGenerationSpec";
 import { getSafeScenes } from "../campaignGenerationSpec";
 import { getFormatById } from "../vwsVideoFormatsCatalog";
+import { stripMetierSceneFormLabels } from "../vwsPromptEngine";
 
 function clampSceneIndex(i: number): 0 | 1 | 2 {
   const n = Math.floor(Number(i));
@@ -38,7 +39,7 @@ function formatDurationLabel(seconds: number): string {
 
 function buildCampaignContextLines(spec: CampaignGenerationSpec): string {
   const parts: string[] = [];
-  const core = String(spec.campaign.core_idea ?? "").trim();
+  const core = stripMetierSceneFormLabels(String(spec.campaign.core_idea ?? "").trim());
   const style = String(spec.campaign.style_details ?? "").trim();
   if (core) parts.push(`Campaign core idea: ${core}`);
   if (style) parts.push(`Style direction: ${style}`);

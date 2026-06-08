@@ -48,51 +48,6 @@ function getServiceRoleKey(): string | null {
   );
 }
 
-async function sumUserCredits(
-  supabaseAdmin: ReturnType<typeof createClient>,
-  userId: string
-): Promise<number> {
-  const { data, error } = await supabaseAdmin.from("user_credits").select("credits").eq("user_id", userId);
-  if (error) throw new Error(error.message || "Erreur lecture crédits.");
-  const rows = Array.isArray(data) ? data : [];
-  return rows.reduce((sum, r) => sum + Number((r as { credits?: unknown })?.credits ?? 0), 0);
-}
-
-async function debitUserCreditsAtomic(params: {
-  supabaseAdmin: ReturnType<typeof createClient>;
-  userId: string;
-  amount: number;
-  reason: string;
-  metadata: Record<string, unknown>;
-}): Promise<{ remainingCredits: number }> {
-  const { data: rpcRaw, error: rpcError } = await params.supabaseAdmin.rpc("debit_user_credits_atomic", {
-    p_user_id: params.userId,
-    p_amount: Math.floor(params.amount),
-    p_reason: params.reason,
-    p_metadata: params.metadata,
-  });
-
-  if (rpcError) {
-    throw new Error(
-      rpcError.message || "Erreur lors du débit (vérifie que la migration SQL est appliquée)."
-    );
-  }
-
-  const rpcData = rpcRaw as
-    | { success?: boolean; error?: string; remaining_credits?: number; debited?: number }
-    | null;
-
-  if (!rpcData || rpcData.success !== true) {
-    const msg = String(rpcData?.error || "Débit refusé");
-    const insufficient = msg === "Crédits insuffisants";
-    const err = new Error(msg);
-    (err as { status?: number }).status = insufficient ? 402 : 400;
-    throw err;
-  }
-
-  return { remainingCredits: Number(rpcData.remaining_credits ?? 0) };
-}
-
 function base64ToUint8Array(b64: string): Uint8Array {
   const binary = atob(b64);
   const bytes = new Uint8Array(binary.length);
@@ -388,26 +343,12 @@ serve(async (req) => {
 
     const provider: Provider =
       subjectReferences.length > 0 ? "hailuo" : hookId ? "gpt-image-2" : "hailuo";
-    const creditsUsed = 1;
 
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    // 1) Vérifier le solde côté serveur (avant appel modèle)
-    const currentCredits = await sumUserCredits(supabaseAdmin, user.id);
-    if (currentCredits < creditsUsed) {
-      return jsonResponse(
-        {
-          error: "Crédits insuffisants",
-          current_credits: currentCredits,
-          required: creditsUsed,
-        },
-        402
-      );
-    }
-
-    // 2) Appeler le modèle
+    // Le visuel d'accroche ne débite pas le solde workflow — seul le téléchargement vidéo le fait.
     let imageUrl = "";
     if (provider === "gpt-image-2") {
       const openaiKey = Deno.env.get("OPENAI_API_KEY")?.trim();
@@ -436,33 +377,9 @@ serve(async (req) => {
 
     if (!imageUrl) return jsonResponse({ error: "Aucune image générée." }, 500);
 
-    // 3) Débiter post-succès (si race condition, on ne casse pas l'UX)
-    let debitWarning = false;
-    let remainingCredits: number | null = null;
-    try {
-      const debit = await debitUserCreditsAtomic({
-        supabaseAdmin,
-        userId: user.id,
-        amount: creditsUsed,
-        reason: "hook_visual_generation",
-        metadata: {
-          provider,
-          hookId,
-          stagingIds,
-          aspectRatio,
-        },
-      });
-      remainingCredits = debit.remainingCredits;
-    } catch {
-      debitWarning = true;
-    }
-
     return jsonResponse({
       imageUrl,
       provider,
-      creditsUsed,
-      remainingCredits,
-      debitWarning,
     });
   } catch (err) {
     const status = typeof (err as { status?: number })?.status === "number" ? (err as { status?: number }).status! : 500;

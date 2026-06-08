@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { ChevronDown } from "lucide-react";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import LienNavSync from "@/composants/disposition/LienNavSync";
-import { getUserWorkflowCompleteVideoWallet, USER_CREDITS_UPDATED_EVENT } from "@/bibliotheque/supabase/credits";
+import { getUserWorkflowVideoWallet, USER_CREDITS_UPDATED_EVENT } from "@/bibliotheque/supabase/credits";
 import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
 import { getUserProfile } from "@/bibliotheque/supabase/profil";
 import { getUserSubscription } from "@/bibliotheque/supabase/stripe";
@@ -56,7 +56,7 @@ export default function MenuProfilConnecte({ onLogout, signingOut }) {
     if (!session?.user?.id) return;
     try {
       const [wallet, sub, prof] = await Promise.all([
-        getUserWorkflowCompleteVideoWallet(),
+        getUserWorkflowVideoWallet(),
         getUserSubscription(),
         getUserProfile(),
       ]);
@@ -93,6 +93,13 @@ export default function MenuProfilConnecte({ onLogout, signingOut }) {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "user_credits", filter: `user_id=eq.${userId}` },
+        () => {
+          void loadWallet();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "credit_transactions", filter: `user_id=eq.${userId}` },
         () => {
           void loadWallet();
         }

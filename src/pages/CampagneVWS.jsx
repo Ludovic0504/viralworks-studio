@@ -1081,10 +1081,10 @@ Réponds uniquement en JSON : { "person_visible": true/false }`;
       const sceneContextHeading = isProductModeRun
         ? [decorLine, hookLineRun].filter(Boolean).join("\n\n") ||
           "Environnement / décor : à déduire de la promesse produit et du format."
-        : `LIEU DE LA SCÈNE : ${selectedLieu.sentence}`;
-      const ideaWithSceneContext = `${sceneContextHeading}
-
-DESCRIPTION DE LA SCÈNE : ${sceneDescriptionBody}`;
+        : selectedLieu.sentence;
+      const ideaWithSceneContext = sceneContextHeading
+        ? `${sceneContextHeading}\n\n${sceneDescriptionBody}`
+        : sceneDescriptionBody;
       const lieuSentenceForGate = isProductModeRun ? decorLine : selectedLieu.sentence;
 
       const shouldSkipContradictionCheck = flowOptions?.skipContradictionCheck === true;
@@ -1327,7 +1327,8 @@ Réponds uniquement en JSON :
 
       const isPubliciteProduitFormat =
         selectedFormatLabel.toLowerCase() === "publicité produit (shooting esthétique)".toLowerCase();
-      if (!effectiveCameraViewAngle && !isPubliciteProduitFormat) {
+      const isSelfieFormat = Boolean(catalogFormatDef?.rendering?.selfieMode ?? selfieMode);
+      if (!effectiveCameraViewAngle && !isPubliciteProduitFormat && !isSelfieFormat) {
         const personVisible = await detectPersonVisibleInIdea(safeIdea);
         if (personVisible) {
           setMicroQuestion({

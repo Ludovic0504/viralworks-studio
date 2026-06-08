@@ -123,8 +123,8 @@ export async function getUserWorkflowVideoWallet(): Promise<{ balance: number; c
 }
 
 /**
- * Wallet "workflow complet" (barre verte du profil).
- * On ne compte que les workflows complets: débit au téléchargement vidéo final.
+ * @deprecated Préférer getUserWorkflowVideoWallet() — lit SUM(user_credits.credits), source unique d'affichage.
+ * Ancienne formule cap − COUNT(telecharger_video) : diverge du solde réel après admin ou faux débits image.
  */
 export async function getUserWorkflowCompleteVideoWallet(): Promise<{ balance: number; cap: number }> {
   const supabase = getBrowserSupabase();

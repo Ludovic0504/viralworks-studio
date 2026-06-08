@@ -540,7 +540,7 @@ function buildFallbackFinalPrompt(input: RefinePromptInput): string {
   const clarify = input.clarifyAnswer ? `Clarification: ${input.clarifyAnswer}.` : "";
   return [
     "Cinematic transformation shot, deterministic sequence, 8-second continuity.",
-    `Idea: ${input.mainIdea}.`,
+    `Idea: ${stripMetierSceneFormLabels(input.mainIdea)}.`,
     `Style: realistic details, coherent materials, and stable scene logic.`,
     `Camera: ${input.cameraLocked ? "locked-off stable framing" : "controlled movement with spatial continuity"}, ${input.projectFormat}.`,
     `Lighting: physically coherent light progression over the full shot.`,
@@ -1310,6 +1310,19 @@ const PRODUCT_DECOR_LINE_RE = /Décor de la scène\s*:[^\n]+/i;
 const PRODUCT_HOOK_LINE_RE = /Hook d'accroche[^\n]*/i;
 const PRODUCT_MISE_LINE_RE = /Mise en scène souhaitée\s*:[^\n]+/i;
 const PRODUCT_DESC_MARKER_RE = /DESCRIPTION\s+DE\s+LA\s+SCÈNE\s*:\s*/i;
+const METIER_LIEU_LINE_RE = /(?:^|\n)LIEU\s+DE\s+LA\s+SCÈNE\s*:\s*([^\n]*)/i;
+
+/**
+ * Retire les labels formulaire métier (LIEU / DESCRIPTION) — ne garde que les valeurs.
+ * Idempotent : safe sur un texte déjà nettoyé.
+ */
+export function stripMetierSceneFormLabels(raw: string): string {
+  let text = clean(raw);
+  if (!text) return text;
+  text = text.replace(/(?:^|\n)LIEU\s+DE\s+LA\s+SCÈNE\s*:\s*/gi, "\n");
+  text = text.replace(/DESCRIPTION\s+DE\s+LA\s+SCÈNE\s*:\s*/gi, "");
+  return text.replace(/^\n+/, "").replace(/\n{3,}/g, "\n\n").trim();
+}
 
 function stripProductStructuralBlocksFromBody(body: string): string {
   let out = body;
@@ -1367,7 +1380,7 @@ export function normalizeProductCampaignIdeaForHook(raw: string): string {
   const parts: string[] = [];
   if (decor) parts.push(decor);
   if (hook) parts.push(hook);
-  if (body) parts.push(`DESCRIPTION DE LA SCÈNE : ${body}`);
+  if (body) parts.push(body);
 
   const result = parts.length ? parts.join("\n\n") : text;
   console.log("🔍 OUTPUT normalize:", result.substring(0, 200));
@@ -1496,8 +1509,8 @@ function firstSentenceForHook(s: string): string | null {
 }
 
 function extractLieuLineFromCampaignIdea(full: string): string {
-  const m = full.match(/(?:^|\n)(LIEU\s+DE\s+LA\s+SCÈNE\s*:[^\n]+)/i);
-  return m ? m[1].trim() : "";
+  const m = full.match(METIER_LIEU_LINE_RE);
+  return m?.[1]?.trim() ?? "";
 }
 
 const HOOK_FIRST_INSTANT_DIRECTIVE_FR = [
@@ -1551,12 +1564,13 @@ export function buildHookImageApiPrompt(
 ): string {
   const antiDistortionBlock =
     "Contraintes absolues : aucune distorsion anatomique sur les humains, les membres et le corps doivent respecter des proportions et positions physiquement possibles. Si une personne est sous ou près d'un véhicule/objet, sa posture doit être réaliste et cohérente avec l'espace disponible (allongée sur le dos, accroupie, penchée selon le contexte). Aucun objet ne doit avoir une taille ou une position physiquement impossible par rapport aux autres éléments de la scène. Pas de membres supplémentaires, pas de doigts mal formés, pas de visage déformé.";
-  const idea = normalizeProductCampaignIdeaForHook(clean(userIdea));
+  const idea = stripMetierSceneFormLabels(normalizeProductCampaignIdeaForHook(clean(userIdea)));
   if (!idea) return idea;
   const lower = idea.toLowerCase();
   const openingHookStill = options.openingHookStill === true;
+  // "vlog" retiré — déclenche le bloc selfie sur des cas terrain non pertinents
   const selfieSignalFromIdea =
-    /\b(selfie|face cam[ée]ra|vlog|se filme|se filmant|filming myself)\b/.test(lower);
+    /\b(selfie|face cam[ée]ra|se filme|se filmant|filming myself)\b/.test(lower);
   const enforceSelfiePov =
     Boolean(options.selfieMode) ||
     options.globalIntent?.humanPresence === "selfie" ||
@@ -1618,8 +1632,12 @@ export function buildHookImageApiPrompt(
       if (seed.length < OPENING_HOOK_MIN_SEED_LEN) {
         seed = truncateOpeningHookFallback(idea, 480);
       }
-      const lieuLine = extractLieuLineFromCampaignIdea(idea);
-      narrativeBody = [lieuLine, seed].filter(Boolean).join("\n\n") || idea;
+      const ideaParagraphs = idea.split(/\n\n+/).map((p) => p.trim()).filter(Boolean);
+      const seedParagraphs = seed.split(/\n\n+/).map((p) => p.trim()).filter(Boolean);
+      narrativeBody =
+        ideaParagraphs.length > 1 && seedParagraphs.length < ideaParagraphs.length
+          ? idea
+          : seed || idea;
     }
   }
 
@@ -1646,16 +1664,8 @@ export function buildHookImageApiPrompt(
     assembled = `${baseIdea}\n\n${beforeOnly}`;
   }
 
-  if (cameraViewAngleDirective) {
-    const lieuMarker = /(^|\n)(LIEU DE LA SCÈNE\s*:[^\n]*)(\n|$)/i;
-    if (lieuMarker.test(assembled)) {
-      assembled = assembled.replace(
-        lieuMarker,
-        (_m, prefix, marker, suffix) => `${prefix}${marker}\n${cameraViewAngleDirective}${suffix}`
-      );
-    } else {
-      assembled = `${cameraViewAngleDirective}\n\n${assembled}`;
-    }
+  if (cameraViewAngleDirective && !enforceSelfiePov) {
+    assembled = `${cameraViewAngleDirective}\n\n${assembled}`;
   }
 
   if (options.lockedVideoScriptScene0?.trim()) {
@@ -1667,30 +1677,36 @@ export function buildHookImageApiPrompt(
       assembled += [
         "",
         "CRITICAL — Stable face-camera framing (must follow all lines):",
-        "Framing geometry: subject centered at bust level, stable eye-level framing 60–80cm in front of the face, fixed support, arms relaxed at sides, no reach toward the lens.",
-        "FORBIDDEN: any visible framing device, hand reaching toward lens, forearm dominating foreground, selfie stick, pole, extension, any device body or bezel in frame.",
-        "Composition: centered face and upper torso, clean edges, no wide-angle distortion on the face.",
-        "Never use a third-person or external camera showing someone filming themselves.",
+        "Shot type: MCU (Medium Close-Up) — shoulders to top of head,",
+        "subject centered in frame.",
+        "Camera: Static / Fixed Camera, immobile on axis.",
+        "Lens: 50mm — natural human perspective, no wide-angle distortion.",
+        "Lighting: Soft Light or 3-Point Lighting — flattering, no harsh shadows.",
+        "Arm geometry: arms relaxed at sides, no reach toward the lens.",
+        "FORBIDDEN: arm or forearm extended straight toward the lens,",
+        "any elongated object pointing straight toward the lens,",
+        "any blurry large foreground mass dominating lower frame.",
+        "No device body visible in frame.",
+        "Never show someone filming themselves from a third-person angle.",
       ].join("\n");
     } else {
       assembled += [
         "",
-        "CRITICAL — Handheld vlog POV framing (must follow all lines):",
-        "Framing geometry: arm pointing downward and inward toward the body,",
-        "framing held low near waist level, angled upward toward the subject's own face.",
+        "CRITICAL — Handheld selfie POV framing (must follow all lines):",
+        "Shot type: MCU (Medium Close-Up) self-filmed — the subject is",
+        "filming themselves, face and upper torso visible, environment in background.",
+        "Camera: Handheld, 35mm lens — organic documentary feel,",
+        "slight natural perspective, no studio setup.",
+        "Lighting: Ambient Light — natural existing light of the environment.",
+        "Arm geometry: arm pointing downward and inward toward the body,",
+        "framing held low near waist level, angled upward toward face.",
         "NOT an arm extended straight toward the lens.",
-        "Subject face and upper body occupy the upper portion of frame,",
-        "professional environment clearly visible in background and sides.",
         "FORBIDDEN: arm or forearm extended straight toward the lens,",
-        "giant blurry foreground limb dominating lower frame,",
-        "any selfie stick, pole, extension, or grip visible,",
-        "any device body, screen, bezel, or lens visible in frame,",
-        "overly clean or studio-style composition.",
+        "any elongated object pointing straight toward the lens,",
+        "any blurry large foreground mass dominating lower frame.",
         "No device body visible in frame.",
-        "Composition: face slightly off-center or centered, environment",
-        "visible around subject, raw authentic feel,",
-        "no extreme wide-angle distortion on the face.",
-        "Never use a third-person or external camera showing someone filming themselves.",
+        "Composition: face slightly off-center, environment clearly readable",
+        "around subject, raw authentic feel.",
       ].join("\n");
     }
   }
@@ -1742,7 +1758,7 @@ export async function clarifyIdea(input: ClarifyIdeaInput): Promise<ClarifyIdeaR
       activePhase: phase,
     };
   }
-  const lines = [`Métier: ${input.jobType}`, `Idée: ${input.mainIdea}`, `Paramètres: ${input.modifiers || ""}`];
+  const lines = [`Métier: ${input.jobType}`, `Idée: ${stripMetierSceneFormLabels(input.mainIdea)}`, `Paramètres: ${input.modifiers || ""}`];
   if (input.clarificationHistory?.trim()) {
     lines.push(`Historique de clarification (chronologique):\n${input.clarificationHistory.trim()}`);
   }
@@ -1836,7 +1852,7 @@ export async function refinePrompt(input: RefinePromptInput): Promise<Refinement
       : "null";
   const payload = [
     `Job: ${input.jobType}`,
-    `User-Idea (FR-Signal): ${input.mainIdea}`,
+    `User-Idea (FR-Signal): ${stripMetierSceneFormLabels(input.mainIdea)}`,
     `Context: ${input.modifiers || "none"}`,
     `Reveal: ${input.revealMode}`,
     `Tempo-Literal: ${input.tempoSelection}`,
@@ -1870,7 +1886,7 @@ export function runVwsPromptEngine(input: UserIdeaInput): VwsEngineOutput {
   const routing = toRoutingCategory(scenarioType);
   const rulesLayer = buildRulesLayer();
   const sequences = buildSequences(input.sequenceType, scenarioType);
-  const rawIdea = clean(input.idea);
+  const rawIdea = stripMetierSceneFormLabels(clean(input.idea));
   const timelapsePovLocksCamera =
     input.timelapseCameraPov === "aerial_drone" ||
     input.timelapseCameraPov === "ground_human" ||

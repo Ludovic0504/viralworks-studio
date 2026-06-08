@@ -1233,7 +1233,7 @@ export default function ImagePage({
 
     if (!canUseImageGeneration()) {
       // Le quota local peut être désynchronisé (ex: crédits workflow rajoutés côté admin).
-      // Le gate crédits est désormais côté serveur (generate-hook-visual).
+      // Quota local studio ; le solde workflow vidéo n'est débité qu'au téléchargement (Video.jsx).
       if (!session) {
         const usage = getWorkflowUsage();
         if (usage.videoAttemptsUsed >= 1) {
@@ -1323,6 +1323,8 @@ export default function ImagePage({
       const image1Prompt = refPromptPrefix
         ? `${refPromptPrefix}\n\n${baseImage1Prompt}`
         : baseImage1Prompt;
+
+      patchImageStep({ prompt: image1Prompt });
 
       const hookSubjectRefs = buildHookSubjectReferences({
         isProductMode,
@@ -1426,7 +1428,6 @@ export default function ImagePage({
           throw new Error(errorMessage);
         }
 
-        const debitWarning = responseData?.debitWarning === true;
         const rawImageUrl =
           typeof responseData?.imageUrl === "string" ? responseData.imageUrl.trim() : "";
         if (!rawImageUrl) {
@@ -1437,7 +1438,7 @@ export default function ImagePage({
           ? rawImageUrl.replace("http://", "https://")
           : rawImageUrl;
 
-        return { imageUrl, debitWarning };
+        return { imageUrl };
       };
 
       const safeQuantity = Math.max(1, Math.min(4, Number(quantity) || 1));
@@ -1448,12 +1449,6 @@ export default function ImagePage({
       setProgress(60);
       setProgressMessage("Traitement de la réponse...");
 
-      const debitWarnings = results.filter((r) => r.debitWarning).length;
-      if (debitWarnings > 0) {
-        console.warn(
-          `[generate-hook-visual] debitWarning=true on ${debitWarnings}/${safeQuantity} call(s): image generated but credit debit failed post-success.`
-        );
-      }
       const urls = results.map((r) => r.imageUrl);
 
       setProgress(80);
