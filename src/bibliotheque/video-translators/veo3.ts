@@ -156,7 +156,13 @@ export function buildVeo3Prompt(spec: CampaignGenerationSpec, sceneIndex: number
     blocks.push("- Dialogue in French, without a regional accent, French from France only");
   }
   blocks.push(
-    "Build progression must unfold continuously from frame 0 to final frame with no temporal jump.",
+    "Build progression must unfold continuously from frame 0 to final frame with no temporal jump. " +
+      "Full scene consistency across all frames: " +
+      "Objects — every tool, product or equipment must maintain identical shape, color, texture and number of parts from first to last frame, no morphing, no part duplication, no detail change. " +
+      "Characters — the person must maintain identical face, hair, skin tone, clothing, body proportions and accessories throughout, no identity drift between frames. " +
+      "Facial expression — natural and grounded, realistic micro-expressions only, no exaggerated surprise, no comedic over-reaction, no performative acting. " +
+      "Environment — background elements, walls, furniture, lighting sources and spatial layout must remain stable and consistent, no object teleportation, no room reconfiguration. " +
+      "Physics — materials behave consistently, no impossible deformations, no sudden texture changes on surfaces.",
   );
 
   return { prompt: blocks.filter(Boolean).join("\n"), dialogueText };
