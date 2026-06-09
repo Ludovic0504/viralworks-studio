@@ -25,7 +25,6 @@
     "supabase:deploy:anthropic-messages": "supabase functions deploy anthropic-messages",
     "supabase:deploy:vertex-veo-video": "supabase functions deploy vertex-veo-video",
     "supabase:deploy:video-postprocess": "supabase functions deploy video-postprocess",
-    "backend:video-audio": "node backend/video-audio-pipeline/server.mjs",
     "supabase:login": "supabase login",
     "supabase:link": "supabase link --project-ref wuvtfhletxieocetzppo",
     "supabase:dashboard-auth": "node scripts/open-supabase-auth-dashboard.mjs",
