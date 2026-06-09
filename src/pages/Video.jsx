@@ -922,6 +922,8 @@ const Video = forwardRef(function Video(
             <HailuoVideoForm
               onCreditsUpdate={loadCredits}
               studioImageStep={studioImageStep}
+              studioScriptPrompt={studioScriptPrompt}
+              studioCampaignGenerationSpec={studioCampaignGenerationSpec}
               dialogueEnabled={dialogueEnabled}
               studioOnResetImageStep={studioOnResetImageStep}
               onWorkflowVideoStateChange={onWorkflowVideoStateChange}
@@ -1884,17 +1886,19 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
           setProgress(90);
           setProgressMessage("Finalisation de la piste sonore…");
           try {
-            console.log('[DEBUG scriptForGeneration]', scriptForGeneration);
-            const voiceText = dialogueAuto
-              ? scriptForGeneration.trim()
-              : dialogueText ?? (manualDialogueLine || scriptForGeneration.trim());
             const postToken =
               (await getSessionAccessTokenForVertexVeo()) || session.access_token;
-            console.log('[DEBUG voiceText]', voiceText);
             const postData = await callVideoPostprocessApi(
               {
                 video_url: videoUrl,
-                voice_text: dialogueEnabled ? voiceText : "",
+                voice_text: "",
+                voice_context: {
+                  profession: generationOwnedSpec?.campaign?.profession || "",
+                  scene_idea:
+                    generationOwnedSpec?.campaign?.core_idea ||
+                    scripts[sceneIndexForGeneration] ||
+                    "",
+                },
                 music_style: musicStyle,
                 enable_tts: dialogueEnabled,
                 enable_music: true,
@@ -3955,6 +3959,8 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
 function HailuoVideoForm({
   onCreditsUpdate,
   studioImageStep,
+  studioScriptPrompt,
+  studioCampaignGenerationSpec: campaignSpec = null,
   dialogueEnabled = true,
   studioOnResetImageStep,
   onWorkflowVideoStateChange,
@@ -4273,7 +4279,14 @@ function HailuoVideoForm({
           const postData = await callVideoPostprocessApi(
             {
               video_url: videoUrl,
-              voice_text: dialogueEnabled ? scriptForGeneration.trim() : "",
+              voice_text: "",
+              voice_context: {
+                profession:
+                  studioScriptPrompt?.profession ||
+                  campaignSpec?.campaign?.profession ||
+                  "",
+                scene_idea: scriptForGeneration?.slice(0, 300) || "",
+              },
               music_style: musicStyle,
               enable_tts: dialogueEnabled,
               enable_music: true,

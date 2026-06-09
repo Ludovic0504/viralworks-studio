@@ -20,6 +20,41 @@ function resolveMusicUrl(musicStyle: string): string {
   return Deno.env.get("MUSIC_BED_URL_DEFAULT") || "";
 }
 
+async function generateDialogueText(
+  profession: string,
+  sceneIdea: string,
+  openaiKey: string
+): Promise<string> {
+  const prompt = `Tu es un expert en marketing vidéo pour artisans.
+Génère UNE seule phrase courte en français naturel (10-12 mots maximum) 
+qu'un ${profession} dirait face caméra dans cette situation :
+"${sceneIdea.slice(0, 200)}"
+
+Règles strictes :
+- Français de France, neutre, professionnel
+- Déclaratif uniquement (pas de question, pas d'exclamation)
+- Maximum 12 mots
+- Pas de guillemets dans ta réponse
+- Réponds uniquement avec la phrase, rien d'autre`;
+
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${openaiKey}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.7,
+      max_tokens: 60,
+    }),
+  });
+  if (!res.ok) throw new Error(`OpenAI dialogue gen failed: ${res.status}`);
+  const data = await res.json();
+  return String(data.choices?.[0]?.message?.content || "").trim();
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -68,8 +103,28 @@ serve(async (req) => {
     let voiceUrl: string | null = null;
     let musicUrl: string | null = null;
 
+    // Résoudre le texte TTS : voice_text explicite OU génération auto
+    let resolvedVoiceText = voiceText;
+    if (enableTts && !resolvedVoiceText) {
+      const openaiKey = Deno.env.get("OPENAI_API_KEY") || "";
+      const profession = String(body?.voice_context?.profession || "").trim();
+      const sceneIdea = String(body?.voice_context?.scene_idea || "").trim();
+      if (openaiKey && profession && sceneIdea) {
+        try {
+          resolvedVoiceText = await generateDialogueText(
+            profession,
+            sceneIdea,
+            openaiKey
+          );
+          console.log("[TTS] dialogue généré:", resolvedVoiceText);
+        } catch (err) {
+          console.error("[TTS] génération dialogue échouée:", err);
+        }
+      }
+    }
+
     // TTS ElevenLabs
-    if (enableTts && voiceText) {
+    if (enableTts && resolvedVoiceText) {
       const elevenlabsKey = Deno.env.get("ELEVENLABS_API_KEY") || "";
       const elevenlabsVoiceId =
         Deno.env.get("ELEVENLABS_VOICE_ID") || "OOiDJrD1goukqfTpiySr";
@@ -87,7 +142,7 @@ serve(async (req) => {
               Accept: "audio/mpeg",
             },
             body: JSON.stringify({
-              text: voiceText,
+              text: resolvedVoiceText,
               model_id: elevenlabsModel,
               voice_settings: {
                 stability: 0.5,
