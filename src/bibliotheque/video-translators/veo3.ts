@@ -67,8 +67,8 @@ export function buildVeo3Prompt(spec: CampaignGenerationSpec, sceneIndex: number
     const hookPrompt = String(spec.creative.hook_visual.prompt_text ?? "").trim();
     if (hookPrompt) {
       ideaBody = ideaBody
-        ? `${ideaBody}\n\nVisuel d'accroche :\n${hookPrompt}`
-        : `Visuel d'accroche :\n${hookPrompt}`;
+        ? `${ideaBody}\n\nHook visual:\n${hookPrompt}`
+        : `Hook visual:\n${hookPrompt}`;
     }
   }
   const dialogueLine = String(scene?.dialogue_text ?? "").trim();
@@ -84,12 +84,12 @@ export function buildVeo3Prompt(spec: CampaignGenerationSpec, sceneIndex: number
       "Audio mode: SILENT. No dialogue, no speech, no lip movement, no voice over, no character addressing camera verbally. Visual-only sequence.",
     );
   }
-  blocks.push(`Idée: ${ideaBody}`);
+  blocks.push(`Idea: ${ideaBody}`);
   if (dialogueLine && dialogueOn && notSilentMusic) {
     blocks.push(`Character says naturally: ${dialogueLine}`);
   }
-  blocks.push(`Format: ${spec.rendering.aspect_ratio} (aligné sur le visuel d’accroche)`);
-  blocks.push(`Durée: ${formatDurationLabel(spec.rendering.duration_seconds)}`);
+  blocks.push(`Format: ${spec.rendering.aspect_ratio} (aligned with hook visual)`);
+  blocks.push(`Duration: ${formatDurationLabel(spec.rendering.duration_seconds)}`);
 
   const hookUrl = String(spec.creative.hook_visual.selected_image_url ?? "").trim();
   if (hookUrl) {
@@ -142,7 +142,9 @@ export function buildVeo3Prompt(spec: CampaignGenerationSpec, sceneIndex: number
   }
 
   const intentProfile = spec.campaign.intent_profile;
-  const isSelfieIntent = intentProfile?.humanPresence === "selfie";
+  const isSelfieIntent =
+    spec.rendering.camera.selfie_mode === true ||
+    intentProfile?.humanPresence === "selfie";
 
   if (spec.rendering.camera.fixed === true) {
     if (isSelfieIntent) {
@@ -177,9 +179,6 @@ export function buildVeo3Prompt(spec: CampaignGenerationSpec, sceneIndex: number
     blocks.push(formatVideoFormatParamsPromptAppendix(formatParamsFromCatalog));
   }
 
-  if (dialogueOn) {
-    blocks.push("- Dialogue in French, without a regional accent, French from France only");
-  }
   blocks.push(
     "Build progression must unfold continuously from frame 0 to final frame with no temporal jump. " +
       "Full scene consistency across all frames: " +

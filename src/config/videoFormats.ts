@@ -726,15 +726,15 @@ export function getVideoFormatConfigForCatalogId(catalogId: string | null | unde
 export function formatVideoFormatParamsPromptAppendix(params: VideoFormatParams): string {
   const [dMin, dMax] = params.duree_secondes;
   return [
-    "Paramètres format vidéo (fixes, config) :",
-    `vitesse: ${params.vitesse}`,
+    "Video format parameters (fixed, config):",
+    `pace: ${params.vitesse}`,
     `camera: ${params.camera.join(", ")}`,
-    `montage: ${params.montage}`,
-    `eclairage: ${params.eclairage}`,
-    `ambiance_sonore: ${params.ambiance_sonore}`,
-    `accroche_type: ${params.accroche_type}`,
-    `duree_secondes: ${dMin}-${dMax}`,
+    `editing: ${params.montage}`,
+    `lighting: ${params.eclairage}`,
+    `sound_atmosphere: ${params.ambiance_sonore}`,
+    `hook_type: ${params.accroche_type}`,
+    `duration_seconds: ${dMin}-${dMax}`,
     `ratio: ${params.ratio}`,
-    `mots_cles_prompt: ${params.mots_cles_prompt.join(", ")}`,
+    `prompt_keywords: ${params.mots_cles_prompt.join(", ")}`,
   ].join("\n");
 }
