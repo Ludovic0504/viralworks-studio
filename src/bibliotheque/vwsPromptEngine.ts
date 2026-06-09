@@ -165,6 +165,8 @@ export interface RefinePromptInput {
   formatFamilyInstruction?: string;
   /** Aligné sur rendering.audio.dialogue_enabled : mode visuel uniquement si false. */
   dialogueEnabled?: boolean;
+  /** Aligné sur rendering.camera.selfie_mode : consignes POV selfie dans le system prompt. */
+  selfieMode?: boolean;
 }
 
 export interface InferGlobalIntentInput {
@@ -1883,9 +1885,25 @@ Replace any verbal interaction with a visual equivalent
 (gesture, demonstration, reaction, close-up on object).`
       : "";
 
+  const selfieSystemAppendix =
+    input.selfieMode === true
+      ? `
+
+Selfie POV mode — MANDATORY camera section rules:
+The person is filming themselves holding their phone in one hand throughout the entire shot.
+The Camera section of the final prompt MUST describe:
+- Handheld selfie POV: arm extended, phone held at arm's length angled upward toward face
+- Heavy natural handheld shake throughout the full shot — constant subtle micro-vibrations from hand holding the device, never stabilized, never locked
+- Close wide-angle framing, subject filling 70-80% of frame height, characteristic selfie lens distortion maintained from first to last frame
+- No camera retreat, no zoom out, no reframing — the framing distance established at frame 0 is maintained until the last frame
+- No device body visible in frame at any time
+The Tone section MUST include: never theatrical, never posed — the person looks like a real tradesperson casually filming themselves, not performing for a camera crew.
+Facial expression throughout: calm natural delivery, subtle mouth movements when speaking — no wide eyes, no open mouth surprise, no raised eyebrows, no exaggerated reaction at any moment of the shot.`
+      : "";
+
   const system = input.formatFamilyInstruction?.trim()
-    ? `${REFINEMENT_SYSTEM_INSTRUCTION}${visualOnlySystemAppendix}\n\n${input.formatFamilyInstruction}`
-    : `${REFINEMENT_SYSTEM_INSTRUCTION}${visualOnlySystemAppendix}`;
+    ? `${REFINEMENT_SYSTEM_INSTRUCTION}${visualOnlySystemAppendix}${selfieSystemAppendix}\n\n${input.formatFamilyInstruction}`
+    : `${REFINEMENT_SYSTEM_INSTRUCTION}${visualOnlySystemAppendix}${selfieSystemAppendix}`;
 
   console.log("[VWS-DIAG] refinePrompt → formatFamilyInstruction", input.formatFamilyInstruction?.slice(0, 80));
   const raw = await generateResponse(payload, system, {
