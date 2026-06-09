@@ -1881,44 +1881,7 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
         setProgress(85);
         setProgressMessage("Vidéo générée");
 
-        let finalVideoUrl = videoUrl;
-        if (audioEnabled && session?.access_token) {
-          setProgress(90);
-          setProgressMessage("Finalisation de la piste sonore…");
-          try {
-            const postToken =
-              (await getSessionAccessTokenForVertexVeo()) || session.access_token;
-            const postData = await callVideoPostprocessApi(
-              {
-                video_url: videoUrl,
-                voice_text: "",
-                voice_context: {
-                  profession: generationOwnedSpec?.campaign?.profession || "",
-                  scene_idea:
-                    generationOwnedSpec?.campaign?.core_idea ||
-                    scripts[sceneIndexForGeneration] ||
-                    "",
-                },
-                music_style: musicStyle,
-                enable_tts: dialogueEnabled,
-                enable_music: true,
-                model: "veo3",
-              },
-              postToken
-            );
-            finalVideoUrl = await applyAudioPostprocessResult({
-              postData,
-              fallbackVideoUrl: videoUrl,
-              setProgressMessage,
-              setAudioStatus,
-            });
-          } catch (postErr) {
-            console.warn("Post-traitement audio non appliqué:", postErr);
-            setAudioStatus(
-              "Échec de l’appel au service de post-traitement ; vérifie la session et la console réseau."
-            );
-          }
-        }
+        const finalVideoUrl = videoUrl;
 
         setProgress(100);
         setProgressMessage("Vidéo prête");
