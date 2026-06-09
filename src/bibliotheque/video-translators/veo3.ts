@@ -141,10 +141,35 @@ export function buildVeo3Prompt(spec: CampaignGenerationSpec, sceneIndex: number
     }
   }
 
+  const intentProfile = spec.campaign.intent_profile;
+  const isSelfieIntent = intentProfile?.humanPresence === "selfie";
+
   if (spec.rendering.camera.fixed === true) {
-    blocks.push(
-      "Camera: locked-off static framing for the full shot; no camera movement — no pan, tilt, dolly, zoom, orbit, crane, or handheld drift.",
-    );
+    if (isSelfieIntent) {
+      blocks.push(
+        "Camera: maintain consistent handheld selfie POV from first to last frame — " +
+          "close wide-angle framing, subject filling 70-80% of frame height, " +
+          "slight upward tilt toward subject face, characteristic selfie lens distortion " +
+          "maintained throughout. " +
+          "Subtle continuous micro-movements from hand holding the device — " +
+          "small natural drift and sway, never fully locked, never pulling back or zooming out. " +
+          "The framing distance and angle established in frame 0 must remain identical " +
+          "until the last frame — no camera retreat, no reframing, no stabilization.",
+      );
+      blocks.push(
+        "Facial performance: completely natural and understated throughout the entire shot — " +
+          "calm resting expression, subtle mouth movements when speaking, " +
+          "no wide eyes, no open mouth surprise, no raised eyebrows, no theatrical reaction. " +
+          "The person looks like a real tradesperson filming themselves on a job site, " +
+          "not an actor performing for camera. " +
+          "Micro-expressions only — the same natural energy from frame 0 to last frame.",
+      );
+    } else {
+      blocks.push(
+        "Camera: locked-off static framing for the full shot; no camera " +
+          "movement — no pan, tilt, dolly, zoom, orbit, crane, or handheld drift.",
+      );
+    }
   }
 
   const formatParamsFromCatalog = getVideoFormatConfigForCatalogId(spec.campaign.video_format_id);
