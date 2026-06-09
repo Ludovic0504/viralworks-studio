@@ -1,4 +1,5 @@
 import type { GlobalIntentProfile } from "./vwsPromptEngine";
+import { getFormatById } from "./vwsVideoFormatsCatalog";
 import { parseLegacyProductStyleDetails, stripLegacyProductStyleDetailsPrefix } from "./vwsProductStaging";
 
 export const CAMPAIGN_GENERATION_SPEC_VERSION = "1.0.0";
@@ -581,7 +582,14 @@ export function normalizeCampaignGenerationSpec(raw: unknown): CampaignGeneratio
         fixed: asBoolean(camera.fixed ?? campaign.cameraFixed, true),
         reveal_mode: asBoolean(camera.reveal_mode ?? campaign.revealMode, false),
         cinematic_movement: asBoolean(camera.cinematic_movement ?? campaign.cinematicMovement, false),
-        selfie_mode: asBoolean(camera.selfie_mode ?? campaign.selfieMode, false),
+        selfie_mode: asBoolean(
+          camera.selfie_mode ??
+            campaign.selfieMode ??
+            (getFormatById(
+              asNullableString(campaignRec.video_format_id ?? campaignRec.videoFormatId)
+            )?.rendering?.selfieMode === true),
+          false
+        ),
         aerial_angle: asOneOf(
           camera.aerial_angle ?? clarification.camera_aerial_angle ?? campaign.cameraAerialAngle,
           ["top_down", "angled", null] as const,

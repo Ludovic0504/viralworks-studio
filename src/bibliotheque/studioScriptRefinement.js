@@ -167,6 +167,7 @@ export async function runStudioScriptRefinement({
         canonicalSpec.campaign.clarification.causal_agent ?? campaignData?.causalAgentSelection ?? null,
       formatFamilyInstruction,
       dialogueEnabled,
+      selfieMode: canonicalSpec.rendering.camera.selfie_mode === true,
     });
   } catch (err) {
     return {

@@ -1897,6 +1897,9 @@ The Camera section of the final prompt MUST describe:
 - Close wide-angle framing, subject filling 70-80% of frame height, characteristic selfie lens distortion maintained from first to last frame
 - No camera retreat, no zoom out, no reframing — the framing distance established at frame 0 is maintained until the last frame
 - No device body visible in frame at any time
+- Camera is held at arm's length from chest to waist level, angled slightly upward toward the person's face — selfie perspective maintained from first to last frame.
+- The camera-holding arm and wrist position is locked throughout — no repositioning, no perspective shift mid-video. No device body visible in frame.
+- Close-up on hands or product is achieved by the person extending their arm toward the lens — never by a camera angle change.
 The Tone section MUST include: never theatrical, never posed — the person looks like a real tradesperson casually filming themselves, not performing for a camera crew.
 Facial expression throughout: calm natural delivery, subtle mouth movements when speaking — no wide eyes, no open mouth surprise, no raised eyebrows, no exaggerated reaction at any moment of the shot.`
       : "";

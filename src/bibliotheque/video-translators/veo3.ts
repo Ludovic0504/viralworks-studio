@@ -105,6 +105,11 @@ export function buildVeo3Prompt(spec: CampaignGenerationSpec, sceneIndex: number
     blocks.push("Show visible people or machines actively causing the transformation.");
   }
 
+  const intentProfile = spec.campaign.intent_profile;
+  const isSelfieIntent =
+    spec.rendering.camera.selfie_mode === true ||
+    intentProfile?.humanPresence === "selfie";
+
   const productName = String(spec.campaign.profession ?? "")
     .trim()
     .replace(/\s+/g, " ");
@@ -118,7 +123,9 @@ export function buildVeo3Prompt(spec: CampaignGenerationSpec, sceneIndex: number
       );
     } else {
       blocks.push(
-        `Following the scene and actions described in the idea above. Throughout the video, the person is visibly holding or interacting with ${productName}. The product ${productName} is clearly visible on screen at all times, held naturally in the person's hand or placed prominently in the foreground.`,
+        isSelfieIntent
+          ? `Following the scene and actions described in the idea above. Throughout the video, the person is visibly holding ${productName} naturally in one hand, presenting it toward the camera. The product ${productName} is clearly visible on screen at all times, held naturally in the person's hand or placed prominently in the foreground.`
+          : `Following the scene and actions described in the idea above. Throughout the video, the person is visibly holding or interacting with ${productName}. The product ${productName} is clearly visible on screen at all times, held naturally in the person's hand or placed prominently in the foreground.`,
       );
     }
   }
@@ -141,11 +148,6 @@ export function buildVeo3Prompt(spec: CampaignGenerationSpec, sceneIndex: number
     }
   }
 
-  const intentProfile = spec.campaign.intent_profile;
-  const isSelfieIntent =
-    spec.rendering.camera.selfie_mode === true ||
-    intentProfile?.humanPresence === "selfie";
-
   if (spec.rendering.camera.fixed === true) {
     if (isSelfieIntent) {
       blocks.push(
@@ -166,6 +168,15 @@ export function buildVeo3Prompt(spec: CampaignGenerationSpec, sceneIndex: number
           "not an actor performing for camera. " +
           "Micro-expressions only — the same natural energy from frame 0 to last frame.",
       );
+      blocks.push(
+        "Camera is held at arm's length from chest to waist level, angled slightly upward toward the person's face — selfie perspective maintained from first to last frame.",
+      );
+      blocks.push(
+        "The camera-holding arm and wrist position is locked throughout — no repositioning, no perspective shift mid-video. No device body visible in frame.",
+      );
+      blocks.push(
+        "Close-up on hands or product is achieved by the person extending their arm toward the lens — never by a camera angle change.",
+      );
     } else {
       blocks.push(
         "Camera: locked-off static framing for the full shot; no camera " +
@@ -175,8 +186,15 @@ export function buildVeo3Prompt(spec: CampaignGenerationSpec, sceneIndex: number
   }
 
   const formatParamsFromCatalog = getVideoFormatConfigForCatalogId(spec.campaign.video_format_id);
-  if (formatParamsFromCatalog) {
-    blocks.push(formatVideoFormatParamsPromptAppendix(formatParamsFromCatalog));
+  const formatParamsForAppendix =
+    formatParamsFromCatalog && isSelfieIntent
+      ? {
+          ...formatParamsFromCatalog,
+          camera: formatParamsFromCatalog.camera.filter((angle) => angle !== "gros_plan_mains"),
+        }
+      : formatParamsFromCatalog;
+  if (formatParamsForAppendix) {
+    blocks.push(formatVideoFormatParamsPromptAppendix(formatParamsForAppendix));
   }
 
   blocks.push(
