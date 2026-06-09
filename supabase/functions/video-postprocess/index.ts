@@ -123,67 +123,102 @@ serve(async (req) => {
       }
     }
 
-    // TTS ElevenLabs
+    // TTS ElevenLabs (+ fallback OpenAI)
     if (enableTts && resolvedVoiceText) {
       const elevenlabsKey = Deno.env.get("ELEVENLABS_API_KEY") || "";
       const elevenlabsVoiceId =
         Deno.env.get("ELEVENLABS_VOICE_ID") || "OOiDJrD1goukqfTpiySr";
       const elevenlabsModel =
         Deno.env.get("ELEVENLABS_MODEL") || "eleven_multilingual_v2";
+      const openaiKey = Deno.env.get("OPENAI_API_KEY") || "";
 
+      let audioBytes: Uint8Array | null = null;
+
+      // Tentative ElevenLabs
       if (elevenlabsKey) {
-        const ttsRes = await fetch(
-          `https://api.elevenlabs.io/v1/text-to-speech/${elevenlabsVoiceId}`,
-          {
+        try {
+          const ttsRes = await fetch(
+            `https://api.elevenlabs.io/v1/text-to-speech/${elevenlabsVoiceId}`,
+            {
+              method: "POST",
+              headers: {
+                "xi-api-key": elevenlabsKey,
+                "Content-Type": "application/json",
+                Accept: "audio/mpeg",
+              },
+              body: JSON.stringify({
+                text: resolvedVoiceText,
+                model_id: elevenlabsModel,
+                voice_settings: {
+                  stability: 0.5,
+                  similarity_boost: 0.75,
+                  style: 0.3,
+                  use_speaker_boost: true,
+                },
+              }),
+            }
+          );
+          if (ttsRes.ok) {
+            audioBytes = new Uint8Array(await ttsRes.arrayBuffer());
+            console.log("[TTS] ElevenLabs OK");
+          } else {
+            const err = await ttsRes.text();
+            console.error("[TTS] ElevenLabs erreur:", ttsRes.status, err);
+          }
+        } catch (err) {
+          console.error("[TTS] ElevenLabs exception:", err);
+        }
+      }
+
+      // Fallback OpenAI TTS
+      if (!audioBytes && openaiKey) {
+        try {
+          const ttsRes = await fetch("https://api.openai.com/v1/audio/speech", {
             method: "POST",
             headers: {
-              "xi-api-key": elevenlabsKey,
               "Content-Type": "application/json",
-              Accept: "audio/mpeg",
+              Authorization: `Bearer ${openaiKey}`,
             },
             body: JSON.stringify({
-              text: resolvedVoiceText,
-              model_id: elevenlabsModel,
-              voice_settings: {
-                stability: 0.5,
-                similarity_boost: 0.75,
-                style: 0.3,
-                use_speaker_boost: true,
-              },
+              model: "tts-1",
+              voice: "onyx",
+              input: resolvedVoiceText,
+              response_format: "mp3",
             }),
-          }
-        );
-
-        if (ttsRes.ok) {
-          const audioBuffer = await ttsRes.arrayBuffer();
-          const audioBytes = new Uint8Array(audioBuffer);
-
-          // Upload dans Supabase Storage avec service role
-          const adminClient = createClient(supabaseUrl, supabaseServiceKey, {
-            auth: { persistSession: false },
           });
-
-          const audioPath = `${user.id}/${Date.now()}-voice.mp3`;
-
-          const { error: uploadErr } = await adminClient.storage
-            .from("audio-temp")
-            .upload(audioPath, audioBytes, {
-              contentType: "audio/mpeg",
-              upsert: false,
-              cacheControl: "3600",
-            });
-
-          if (!uploadErr) {
-            const { data: pubData } = adminClient.storage
-              .from("audio-temp")
-              .getPublicUrl(audioPath);
-            voiceUrl = pubData.publicUrl;
+          if (ttsRes.ok) {
+            audioBytes = new Uint8Array(await ttsRes.arrayBuffer());
+            console.log("[TTS] OpenAI fallback OK");
           } else {
-            console.error("audio upload error:", uploadErr.message);
+            const err = await ttsRes.text();
+            console.error("[TTS] OpenAI TTS erreur:", ttsRes.status, err);
           }
+        } catch (err) {
+          console.error("[TTS] OpenAI exception:", err);
+        }
+      }
+
+      // Upload si audio généré
+      if (audioBytes) {
+        const adminClient = createClient(supabaseUrl, supabaseServiceKey, {
+          auth: { persistSession: false },
+        });
+        const audioPath = `${user.id}/${Date.now()}-voice.mp3`;
+        const { error: uploadErr } = await adminClient.storage
+          .from("audio-temp")
+          .upload(audioPath, audioBytes, {
+            contentType: "audio/mpeg",
+            upsert: false,
+            cacheControl: "3600",
+          });
+        if (!uploadErr) {
+          const { data: pubData } = adminClient.storage
+            .from("audio-temp")
+            .getPublicUrl(audioPath);
+          voiceUrl = pubData.publicUrl;
+          console.log("[TTS] audio uploadé:", voiceUrl);
         } else {
-          const errText = await ttsRes.text();
-          console.error("ElevenLabs TTS error:", ttsRes.status, errText);
+          console.error("[TTS] upload erreur:", uploadErr.message);
         }
       }
     }
