@@ -134,6 +134,11 @@ export function buildVeo3Prompt(spec: CampaignGenerationSpec, sceneIndex: number
     blocks.push("No background music, no soundtrack.");
   } else {
     blocks.push(`audio_mode: ${dialogueOn ? "dialogue" : "silent"}`);
+    if (dialogueOn) {
+      blocks.push(
+        "Dialogue in French without regional accent: spoken French from France only, neutral Parisian accent, no Canadian, Belgian or Swiss French.",
+      );
+    }
   }
 
   if (spec.rendering.camera.fixed === true) {
@@ -147,6 +152,9 @@ export function buildVeo3Prompt(spec: CampaignGenerationSpec, sceneIndex: number
     blocks.push(formatVideoFormatParamsPromptAppendix(formatParamsFromCatalog));
   }
 
+  if (dialogueOn) {
+    blocks.push("- Dialogue in French, without a regional accent, French from France only");
+  }
   blocks.push(
     "Build progression must unfold continuously from frame 0 to final frame with no temporal jump.",
   );
