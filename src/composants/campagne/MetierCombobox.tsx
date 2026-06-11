@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import { METIERS_CATEGORIES } from "@/bibliotheque/metiersCategories";
+import { getIntentFromSecteur } from "@/bibliotheque/sectorDefaults";
+import { capturePostHog } from "@/bibliotheque/posthog/client";
+import { updateUserProfile } from "@/bibliotheque/supabase/profil";
+import { useProfilStudio } from "@/contexte/FournisseurProfilStudio";
 
 export interface MetierComboboxProps {
   value: string;
@@ -31,6 +35,7 @@ export default function MetierCombobox({
   className = "",
   "aria-describedby": ariaDescribedBy,
 }: MetierComboboxProps) {
+  const { profile, refreshProfile } = useProfilStudio();
   const autoId = useId();
   const inputId = idProp ?? autoId;
   const listboxId = `${inputId}-listbox`;
@@ -63,10 +68,20 @@ export default function MetierCombobox({
   const selectLabel = useCallback(
     (label: string) => {
       onChange(label);
+      if (profile?.user_intent == null) {
+        const intent = getIntentFromSecteur(label);
+        void updateUserProfile({ user_intent: intent }).then((res) => {
+          if (res.success) void refreshProfile();
+        });
+        capturePostHog("intent_selected", {
+          intent,
+          source: "first_metier",
+        });
+      }
       close();
       inputRef.current?.blur();
     },
-    [onChange, close]
+    [onChange, close, profile?.user_intent, refreshProfile]
   );
 
   useEffect(() => {

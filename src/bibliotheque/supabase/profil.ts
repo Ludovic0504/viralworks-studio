@@ -1,3 +1,4 @@
+import type { UserIntent } from "@/bibliotheque/sectorDefaults";
 import { getBrowserSupabase } from "./client-navigateur";
 
 export interface UserProfile {
@@ -11,6 +12,7 @@ export interface UserProfile {
   avatar_url?: string;
   /** Secteur d'activité (id catalogue ou texte « autre »). */
   secteur?: string | null;
+  user_intent?: UserIntent | null;
   created_at: string;
   updated_at: string;
   role: string;
@@ -54,6 +56,7 @@ export async function updateUserProfile(updates: {
   birth_date?: string;
   avatar_url?: string;
   secteur?: string | null;
+  user_intent?: UserIntent | null;
 }): Promise<{ success: boolean; error?: string }> {
   const supabase = getBrowserSupabase();
 

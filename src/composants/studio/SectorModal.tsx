@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useId, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronRight } from "lucide-react";
-import { SECTORS, getSectorLabelForDisplay } from "@/bibliotheque/sectorDefaults";
+import { capturePostHog } from "@/bibliotheque/posthog/client";
+import { SECTORS, getIntentFromSecteur, getSectorLabelForDisplay } from "@/bibliotheque/sectorDefaults";
 
 type SectorModalProps = {
   open: boolean;
@@ -36,6 +37,12 @@ export default function SectorModal({ open, onComplete }: SectorModalProps) {
     setSubmitting(true);
     try {
       const label = autreTrim ? autreTrim : selectedId ? getSectorLabelForDisplay(selectedId) : effectiveValue;
+      const intent = getIntentFromSecteur(effectiveValue);
+      capturePostHog("intent_selected", {
+        intent,
+        secteur: effectiveValue,
+        source: "onboarding_modal",
+      });
       setSuccess({ label });
       await new Promise((r) => setTimeout(r, 720));
       await onComplete(effectiveValue);

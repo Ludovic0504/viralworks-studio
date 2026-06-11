@@ -242,3 +242,43 @@ export function getDecorPriorityIdsForSecteur(secteur: string | null | undefined
   if (!secteur || !isKnownSectorId(secteur)) return [];
   return [...SECTOR_DECOR_PRIORITY_IDS[secteur]];
 }
+
+export type UserIntent = "ecommerce" | "artisan" | "ugc";
+
+const ECOMMERCE_SECTOR_IDS = new Set(["commerce", "retail"]);
+const ARTISAN_SECTOR_IDS = new Set([
+  "artisan_btp", "batiment", "restauration",
+  "sante_beaute", "immobilier", "sport", "services",
+]);
+const UGC_SECTOR_IDS = new Set(["media", "communication", "digital", "education"]);
+
+function normalizeSecteurKey(secteur: string): string {
+  return secteur
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+export function getIntentFromSecteur(secteur: string): UserIntent {
+  const raw = (secteur || "").trim();
+  if (!raw) return "artisan";
+  const key = normalizeSecteurKey(raw);
+  if (ECOMMERCE_SECTOR_IDS.has(key)) return "ecommerce";
+  if (UGC_SECTOR_IDS.has(key)) return "ugc";
+  if (ARTISAN_SECTOR_IDS.has(key)) return "artisan";
+  if (/e\s*commerce|retail|dropship|shopify|amazon|marketplace|vente en ligne|tiktok shop|\becom\b|produit/.test(key))
+    return "ecommerce";
+  if (/ugc|influenceur|createur de contenu|contenu digital|youtube|tiktok|podcast|streaming|\bmedia\b|communication/.test(key))
+    return "ugc";
+  if (/artisan|btp|batiment|chantier|macon|plombier|electricien|menuisier|mecanique/.test(key))
+    return "artisan";
+  return "artisan";
+}
+
+export function getIntentFromFormatCategory(categoryId: string | null): UserIntent | null {
+  if (categoryId === "produit") return "ecommerce";
+  if (categoryId === "social") return "ugc";
+  if (["process", "humain", "storytelling"].includes(categoryId ?? "")) return "artisan";
+  return null;
+}

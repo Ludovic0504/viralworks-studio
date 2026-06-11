@@ -14,6 +14,7 @@ import {
 } from "@/bibliotheque/supabase/profil";
 import {
   getDecorPriorityIdsForSecteur,
+  getIntentFromSecteur,
   getProductPromessePlaceholderForSecteur,
 } from "@/bibliotheque/sectorDefaults";
 
@@ -81,11 +82,13 @@ export const FournisseurProfilStudio: React.FC<{ children: React.ReactNode }> = 
     const v = String(value ?? "").trim();
     if (!v) return { ok: false, error: "Secteur vide" };
 
-    setProfile((prev) => (prev ? { ...prev, secteur: v } : prev));
+    const userIntent = getIntentFromSecteur(v);
 
-    void updateUserProfile({ secteur: v }).then((res) => {
+    setProfile((prev) => (prev ? { ...prev, secteur: v, user_intent: userIntent } : prev));
+
+    void updateUserProfile({ secteur: v, user_intent: userIntent }).then((res) => {
       if (res.success) return;
-      setProfile((prev) => (prev ? { ...prev, secteur: null } : prev));
+      setProfile((prev) => (prev ? { ...prev, secteur: null, user_intent: null } : prev));
       console.error("[ProfilStudio] secteur:", res.error);
       alert(res.error || "Impossible d’enregistrer le secteur. Réessaie depuis ton profil.");
     });

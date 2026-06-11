@@ -24,6 +24,8 @@ import { SS_BRAIN_V2_LAST_KEY } from "@/bibliotheque/viralWorksStudioStorage";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { capturePostHog, trackPostHogError } from "@/bibliotheque/posthog/client";
 import { useProfilStudio } from "@/contexte/FournisseurProfilStudio";
+import { getIntentFromFormatCategory } from "@/bibliotheque/sectorDefaults";
+import { updateUserProfile } from "@/bibliotheque/supabase/profil";
 import { Sparkles, BookOpen, X, Clapperboard, MapPin, ChevronRight, Zap } from "lucide-react";
 import ModaleChoixFormatVideo from "../composants/campagne/ModaleChoixFormatVideo.jsx";
 import ModaleChoixDecorProduit from "../composants/campagne/ModaleChoixDecorProduit.jsx";
@@ -496,7 +498,12 @@ export default function CampagneVWS({
     adjustIdeaTextareaHeightMobile();
   }, [idea, isProductMode]);
 
-  const { productPromessePlaceholder: promessePlaceholderProduct, decorPriorityIds } = useProfilStudio();
+  const {
+    profile,
+    productPromessePlaceholder: promessePlaceholderProduct,
+    decorPriorityIds,
+    refreshProfile,
+  } = useProfilStudio();
   const ideaPlaceholder =
     selectedFormatDef?.placeholderIdea ??
     "Ex : un architecte explique son nouveau projet à la caméra dans son studio, tout en dessinant les plans sur une tablette…";
@@ -708,6 +715,21 @@ export default function CampagneVWS({
     const fmt = getFormatById(formatId);
     if (!fmt) return;
     if (formatId === videoFormatId) return;
+
+    if (profile?.user_intent == null) {
+      const intent = getIntentFromFormatCategory(fmt.categoryId);
+      if (intent) {
+        void updateUserProfile({ user_intent: intent }).then((res) => {
+          if (res.success) void refreshProfile();
+        });
+        capturePostHog("intent_selected", {
+          intent,
+          source: "first_format",
+          format_id: formatId,
+        });
+      }
+    }
+
     const prevFmt = getFormatById(videoFormatId);
     const wasProduct = prevFmt?.categoryId === "produit";
     const willBeProduct = fmt.categoryId === "produit";

@@ -4,28 +4,14 @@ import SidebarShell from "@/composants/disposition/Navbar";
 import Footer from "@/composants/disposition/PiedDePage";
 import { Outlet, useLocation } from "react-router-dom";
 import { StudioLayoutOptionsProvider } from "@/contexte/StudioLayoutOptionsContext";
-import { FournisseurProfilStudio, useProfilStudio } from "@/contexte/FournisseurProfilStudio";
-import { useAuth } from "@/contexte/FournisseurAuth";
-import SectorModal from "@/composants/studio/SectorModal";
+import { FournisseurProfilStudio } from "@/contexte/FournisseurProfilStudio";
 
-/**
- * Contenu du shell dashboard + modale secteur (bloque toute l’UI tant que le profil n’a pas de secteur).
- * Doit rester à l’intérieur de `FournisseurProfilStudio` pour `useProfilStudio`.
- */
-function DashboardShellWithSectorGate() {
+function DashboardShell() {
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
-  const { session } = useAuth();
-  const { secteur, loading: profilStudioLoading, updateSecteur, isAdmin } = useProfilStudio();
 
   const isAvatarStudioPage =
     location.pathname === "/studio" || location.pathname.startsWith("/studio/");
-
-  const needsSectorModal =
-    Boolean(session?.user?.id) &&
-    !profilStudioLoading &&
-    !isAdmin &&
-    secteur == null;
 
   const main = (
     <div
@@ -41,13 +27,6 @@ function DashboardShellWithSectorGate() {
 
   return (
     <>
-      <SectorModal
-        open={needsSectorModal}
-        onComplete={async (value) => {
-          const r = await updateSecteur(value);
-          if (!r.ok) throw new Error(r.error || "Impossible d'enregistrer le secteur.");
-        }}
-      />
       <div
         className={`flex flex-col bg-gradient-to-br from-[#050810] via-[#0C1116] to-[#080b10] text-white relative ${
           isAvatarStudioPage
@@ -87,7 +66,7 @@ export default function DashboardLayout() {
   return (
     <FournisseurProfilStudio>
       <StudioLayoutOptionsProvider>
-        <DashboardShellWithSectorGate />
+        <DashboardShell />
       </StudioLayoutOptionsProvider>
     </FournisseurProfilStudio>
   );
