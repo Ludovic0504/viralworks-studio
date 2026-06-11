@@ -1523,6 +1523,9 @@ const HOOK_FIRST_INSTANT_DIRECTIVE_FR = [
   "Ne fusionne pas deux moments contradictoires dans une seule image (pas avant+après simultanés sur la même pose). Une seule physique cohérente, figée à T=0.",
 ].join(" ");
 
+const PRODUCT_PRESENTATION_OPENING_DIRECTIVE =
+  "Product presentation opening frame: product intact, sealed, not yet opened or used, held or placed naturally. Beginning of the unboxing or presentation, before any action.";
+
 function freezeVideoScriptForHookStill(scene0: string): string {
   const t = clean(scene0);
   if (!t) return "";
@@ -1622,9 +1625,14 @@ export function buildHookImageApiPrompt(
     hasProgressiveTransformationSignal;
   const suppressInitialForFinishedResult =
     options.globalIntent?.hookGoal === "show_finished_result" && !openingHookStill;
-  const forceInitialStateView = suppressInitialForFinishedResult
+  const stagingIsPresentation =
+    options.stagingIds?.[0] === "facecam" ||
+    options.stagingIds?.[0] === "mains_produit";
+  const forceInitialStateView = stagingIsPresentation
     ? false
-    : forceInitialStateViewByRules;
+    : suppressInitialForFinishedResult
+      ? false
+      : forceInitialStateViewByRules;
 
   let narrativeBody = idea;
   if (openingHookStill) {
@@ -1657,6 +1665,9 @@ export function buildHookImageApiPrompt(
   let assembled: string;
   if (!forceInitialStateView) {
     assembled = baseIdea;
+    if (stagingIsPresentation) {
+      assembled = `${assembled}\n\n${PRODUCT_PRESENTATION_OPENING_DIRECTIVE}`;
+    }
   } else {
     const beforeOnly = [
       "Contrainte visuelle (image d'accroche de départ) :",
@@ -1737,6 +1748,8 @@ export function buildHookImageApiPrompt(
       : "";
   const prompt = `${frame0Block}${withViewpoint}${firstInstantBlock}\n\n${antiDistortionBlock}`;
   console.log("🔍 PROMPT FINAL:", prompt.substring(0, 500));
+  const lines = String(userIdea ?? "").split("\n");
+  console.log("[buildHookImageApiPrompt] lines containing box:", lines.filter((l) => l.includes("box")));
   return prompt;
 }
 

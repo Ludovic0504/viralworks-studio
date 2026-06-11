@@ -1389,6 +1389,35 @@ export default function ViralWorks() {
             video_format_id: snapshot?.videoFormatId ?? null,
           });
           setScriptPromptForImage(result.payload);
+          const refinedPackaging = result.payload.campaignGenerationSpec?.campaign;
+          if (
+            refinedPackaging?.packaging_box_appearance ||
+            refinedPackaging?.packaging_opening_gesture ||
+            refinedPackaging?.packaging_opening_sound
+          ) {
+            setCampaignGenerationSpec((prev) => {
+              const next = normalizeCampaignGenerationSpec({
+                ...prev,
+                campaign: {
+                  ...prev?.campaign,
+                  packaging_box_appearance:
+                    refinedPackaging.packaging_box_appearance ??
+                    prev?.campaign?.packaging_box_appearance ??
+                    null,
+                  packaging_opening_gesture:
+                    refinedPackaging.packaging_opening_gesture ??
+                    prev?.campaign?.packaging_opening_gesture ??
+                    null,
+                  packaging_opening_sound:
+                    refinedPackaging.packaging_opening_sound ??
+                    prev?.campaign?.packaging_opening_sound ??
+                    null,
+                },
+              });
+              console.log("[Merge] packaging_box_appearance:", next.campaign.packaging_box_appearance);
+              return next;
+            });
+          }
           setScriptGenStatus("idle");
         } catch (e) {
           setScriptGenStatus("error");
@@ -1528,6 +1557,9 @@ export default function ViralWorks() {
 
   const imagePageProps = {
     campaignIdea: campaignData?.idea ?? "",
+    campaignStagingChips: Array.isArray(campaignData?.stagingChips)
+      ? [...campaignData.stagingChips]
+      : [],
     campaignJobType: campaignData?.profession ?? "",
     campaignModifiers: campaignData?.styleDetails ?? "",
     campaignClarifyMode: campaignData?.clarifyMode ?? campaignData?.gateResult?.mode ?? null,

@@ -1,4 +1,10 @@
+import {
+  formatVideoFormatParamsPromptAppendix,
+  getVideoFormatConfigForCatalogId,
+} from "@/config/videoFormats";
 import { getRefinePromptFormatFamilyInstruction } from "@/bibliotheque/refinePromptFormatFamilies";
+import { generateResponse } from "@/bibliotheque/openai/chatgpt-client";
+import { getFormatById } from "@/bibliotheque/vwsVideoFormatsCatalog";
 import { refinePrompt } from "@/bibliotheque/vwsPromptEngine";
 import { clampGeneratedPrompt, validateIdeaLength } from "@/bibliotheque/promptGenerationLimits";
 import { hasEnoughCredits } from "@/bibliotheque/supabase/credits";
@@ -13,6 +19,79 @@ import {
   normalizeCampaignGenerationSpec,
 } from "@/bibliotheque/campaignGenerationSpec";
 import { splitCampaignPromptIntoThreeVideoSegments } from "@/bibliotheque/splitVideoPromptThreeSegments";
+
+const PACKAGING_BOX_APPEARANCE_FALLBACK =
+  "white rigid square box, clean minimalist design, brand logo centered";
+const PACKAGING_OPENING_GESTURE_FALLBACK =
+  "one hand holds the base, other hand lifts the lid straight upward slowly";
+
+function parsePackagingDirectivesJson(raw) {
+  const text = String(raw ?? "").trim();
+  if (!text) return null;
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  const candidate = fenced?.[1]?.trim() || text;
+  const start = candidate.indexOf("{");
+  const end = candidate.lastIndexOf("}");
+  if (start < 0 || end <= start) return null;
+  try {
+    return JSON.parse(candidate.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Infère apparence boîte + geste d'ouverture (un seul appel GPT-4o-mini).
+ * @param {string} productName
+ * @returns {Promise<{ box_appearance: string, opening_gesture: string }>}
+ */
+export async function inferPackagingDirectives(productName) {
+  const safeName = String(productName ?? "").trim();
+  const fallback = {
+    box_appearance: PACKAGING_BOX_APPEARANCE_FALLBACK,
+    opening_gesture: PACKAGING_OPENING_GESTURE_FALLBACK,
+    opening_sound: "continuous soft cardboard-on-cardboard friction sound throughout the entire lid lift, no silence gaps, no isolated clicks",
+  };
+  if (!safeName) {
+    console.log("[Packaging] box:", fallback.box_appearance);
+    console.log("[Packaging] gesture:", fallback.opening_gesture);
+    return fallback;
+  }
+
+  const prompt = `You are helping generate a realistic unboxing video prompt for an AI video model.
+For this product: "${safeName.slice(0, 200)}"
+
+Return ONLY a JSON object with THREE fields, nothing else:
+{
+  "box_appearance": "one sentence describing the retail box shape, dimensions, dominant colors, brand logo placement (max 20 words)",
+  "opening_gesture": "precise physical description of the opening motion WITH timing anchors. Format: which hand holds the base (stays still), which hand lifts the lid, direction of motion, then: 'at 1 second lid is 25% raised; at 2 seconds lid is 50% raised with constant upward velocity; at 3 seconds lid is fully separated and moved aside; no pauses, no hesitation, no acceleration bursts.' Adapt gesture and timing to the actual packaging type. Max 60 words.",
+  "opening_sound": "description of the continuous ambient sound produced during the opening. MUST be continuous, not discrete events. Format: 'continuous [material] friction sound starting at first hand movement and lasting throughout the entire lid lift; sound [pitch/texture detail]; ends with [end sound]; no silence gaps, no isolated clicks.' Adapt to actual packaging material. Max 40 words."
+}
+
+Base your answer on the real packaging of this product if known.
+If unknown, use a generic premium rigid box with lift-off lid.`;
+
+  try {
+    const raw = await generateResponse(prompt, undefined, {
+      model: "gpt-4o-mini",
+      temperature: 0,
+      max_tokens: 250,
+    });
+    const parsed = parsePackagingDirectivesJson(raw);
+    const box_appearance = String(parsed?.box_appearance ?? "").trim() || fallback.box_appearance;
+    const opening_gesture = String(parsed?.opening_gesture ?? "").trim() || fallback.opening_gesture;
+    const opening_sound = String(parsed?.opening_sound ?? "").trim() || fallback.opening_sound;
+    console.log("[Packaging] box:", box_appearance);
+    console.log("[Packaging] gesture:", opening_gesture);
+    console.log("[Packaging] sound:", opening_sound);
+    return { box_appearance, opening_gesture, opening_sound };
+  } catch (err) {
+    console.warn("[Packaging] inférence directives échouée, fallback:", err);
+    console.log("[Packaging] box:", fallback.box_appearance);
+    console.log("[Packaging] gesture:", fallback.opening_gesture);
+    return fallback;
+  }
+}
 
 export const STUDIO_SCRIPT_GENERATION_COST = 1;
 
@@ -40,20 +119,81 @@ function addLocalHistoryEntry(entry) {
   saveLocalHistory([{ ...entry, pinned: false }, ...items]);
 }
 
+/** Extrait l'angle utilisateur brut depuis un brief produit assemblé (décor / hook / mise en scène). */
+function extractProductUserAngleFromIdea(raw) {
+  const text = String(raw ?? "").trim();
+  if (!text || !/Décor de la scène\s*:/i.test(text)) return text;
+  return text
+    .replace(/Décor de la scène\s*:[^\n]+/gi, "")
+    .replace(/Hook d'accroche[^\n]*/gi, "")
+    .replace(/Mise en scène souhaitée\s*:[^\n]+/gi, "")
+    .replace(/Environnement \/ décor :[^\n]+/gi, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/**
+ * Génère une réplique parlée naturelle pour Veo3 (mode produit).
+ * @param {string} angle — promesse / angle utilisateur (pas le script visuel EN)
+ * @param {string} profession — nom du produit ou métier
+ * @param {string|null} [_openaiKey] — réservé compat API ; le client utilise generateResponse (Edge)
+ */
+export async function generateVeo3DialogueLine(angle, profession, _openaiKey = null) {
+  const safeAngle = String(angle ?? "").trim().slice(0, 200);
+  const safeProfession = String(profession ?? "").trim() || "créateur";
+  if (!safeAngle) return "";
+
+  const prompt = `Tu es un expert en contenus UGC produit pour les réseaux sociaux.
+Génère UNE seule phrase courte en français naturel (10 à 14 mots maximum)
+qu'une personne dirait face caméra pour exprimer cette promesse produit :
+"${safeAngle}"
+
+Produit : ${safeProfession}
+
+Règles strictes :
+- Français de France, ton authentique UGC (créateur spontané, pas publicitaire)
+- La phrase doit EXPRIMER le bénéfice ou l'angle, pas répéter mot pour mot le libellé ci-dessus
+- Déclaratif uniquement (pas de question, pas d'exclamation)
+- Maximum 14 mots
+- Pas de guillemets dans ta réponse
+- Réponds uniquement avec la phrase, rien d'autre`;
+
+  const raw = await generateResponse(prompt, undefined, {
+    model: "gpt-4o-mini",
+    temperature: 0.7,
+    max_tokens: 60,
+  });
+  return String(raw ?? "").replace(/^["'«»]+|["'«»]+$/g, "").trim();
+}
+
 /**
  * Spec créatif + trace alignés sur le script (scenes[], script_bundle, prompt_refinement).
  * @param {import("@/bibliotheque/campaignGenerationSpec").CampaignGenerationSpec} canonicalSpec
  * @param {string} ideaSnapshot — texte idée au moment de la génération (trace)
  */
-export function buildCanonicalScriptSpec(canonicalSpec, ideaSnapshot, { scenes, combined, mode, refineResult }) {
+export function buildCanonicalScriptSpec(
+  canonicalSpec,
+  ideaSnapshot,
+  { scenes, combined, mode, refineResult, dialogueLines, packagingBoxAppearance, packagingOpeningGesture, packagingOpeningSound }
+) {
   const normalizedBase = normalizeCampaignGenerationSpec(canonicalSpec);
   const safeScenes = getSafeScenes(normalizedBase);
   const nextScenes = [0, 1, 2].map((idx) => ({
     ...safeScenes[idx],
     script_text: String(scenes?.[idx] ?? ""),
+    dialogue_text:
+      dialogueLines && typeof dialogueLines[idx] === "string"
+        ? dialogueLines[idx]
+        : String(safeScenes[idx]?.dialogue_text ?? ""),
   }));
-  return normalizeCampaignGenerationSpec({
+  const spec = normalizeCampaignGenerationSpec({
     ...normalizedBase,
+    campaign: {
+      ...normalizedBase.campaign,
+      packaging_box_appearance: packagingBoxAppearance || null,
+      packaging_opening_gesture: packagingOpeningGesture || null,
+      packaging_opening_sound: packagingOpeningSound || null,
+    },
     creative: {
       ...normalizedBase.creative,
       sequence_type: mode === "multi" ? "three_x_8s" : "single_8s",
@@ -77,6 +217,8 @@ export function buildCanonicalScriptSpec(canonicalSpec, ideaSnapshot, { scenes, 
       },
     },
   });
+  console.log("[Spec] packaging_box_appearance:", spec.campaign.packaging_box_appearance);
+  return spec;
 }
 
 export function normalizeCanonicalSpecFromCampaignData(campaignData) {
@@ -145,11 +287,43 @@ export async function runStudioScriptRefinement({
   const videoFormatId =
     canonicalSpec?.campaign?.video_format_id ?? campaignData?.videoFormatId ?? null;
   const formatFamilyInstruction = getRefinePromptFormatFamilyInstruction(videoFormatId);
+  let enrichedFormatFamilyInstruction = formatFamilyInstruction;
+  let packagingBoxAppearance = null;
+  let packagingOpeningGesture = null;
+  let packagingOpeningSound = null;
+  if (videoFormatId === "produit_unboxing") {
+    const productName =
+      canonicalSpec.campaign.profession ?? campaignData?.profession ?? "";
+    const { box_appearance, opening_gesture, opening_sound } = await inferPackagingDirectives(productName);
+    packagingBoxAppearance = box_appearance || null;
+    packagingOpeningGesture = opening_gesture || null;
+    packagingOpeningSound = opening_sound || null;
+    const packagingBlock = [
+      `Product box appearance: ${box_appearance}`,
+      `Box opening gesture: ${opening_gesture}`,
+    ].join("\n");
+    if (packagingBlock) {
+      enrichedFormatFamilyInstruction = formatFamilyInstruction
+        ? `${formatFamilyInstruction}\n\n${packagingBlock}`
+        : packagingBlock;
+    }
+  }
+  if (videoFormatId === "produit_unboxing") {
+    const formatParamsConfig = getVideoFormatConfigForCatalogId(videoFormatId);
+    const formatParamsLine = formatParamsConfig
+      ? formatVideoFormatParamsPromptAppendix(formatParamsConfig)
+      : "";
+    if (formatParamsLine) {
+      enrichedFormatFamilyInstruction = enrichedFormatFamilyInstruction
+        ? `${enrichedFormatFamilyInstruction}\n\n${formatParamsLine}`
+        : formatParamsLine;
+    }
+  }
   const dialogueEnabled = canonicalSpec?.rendering?.audio?.dialogue_enabled !== false;
 
   let refineResult;
   try {
-    console.log("[FORMAT FAMILLE]", videoFormatId, "→", formatFamilyInstruction?.slice(0, 80));
+    console.log("[FORMAT FAMILLE]", videoFormatId, "→", enrichedFormatFamilyInstruction?.slice(0, 80));
     refineResult = await refinePrompt({
       jobType: canonicalSpec.campaign.profession ?? campaignData?.profession ?? "",
       mainIdea: idea,
@@ -165,7 +339,7 @@ export async function runStudioScriptRefinement({
         canonicalSpec.campaign.clarification.proceed_anyway === true || campaignData?.proceedAnyway === true,
       causalAgentSelection:
         canonicalSpec.campaign.clarification.causal_agent ?? campaignData?.causalAgentSelection ?? null,
-      formatFamilyInstruction,
+      formatFamilyInstruction: enrichedFormatFamilyInstruction,
       dialogueEnabled,
       selfieMode: canonicalSpec.rendering.camera.selfie_mode === true,
     });
@@ -191,6 +365,31 @@ export async function runStudioScriptRefinement({
     clarificationHistory: canonicalSpec.campaign.clarification.history ?? null,
   };
 
+  const formatDef = getFormatById(videoFormatId);
+  const isProductMode = formatDef?.categoryId === "produit";
+  const dialogueLines = ["", "", ""];
+  const staging = String(canonicalSpec.campaign.staging_chips?.[0] ?? "").trim();
+  const stagingWantsUgcDialogue =
+    staging === "facecam" || staging === "mains_produit";
+  if (isProductMode && dialogueEnabled && stagingWantsUgcDialogue) {
+    const productProfession =
+      String(canonicalSpec.campaign.profession ?? campaignData?.profession ?? "").trim();
+    const productAngle =
+      extractProductUserAngleFromIdea(idea) ||
+      String(campaignData?.idea ?? idea ?? "").trim();
+    if (productAngle && productProfession) {
+      try {
+        const spokenLine = await generateVeo3DialogueLine(productAngle, productProfession);
+        if (spokenLine) {
+          dialogueLines[0] = spokenLine;
+          console.log("[studioScriptRefinement] dialogue Veo3 produit:", spokenLine);
+        }
+      } catch (err) {
+        console.warn("[studioScriptRefinement] génération dialogue Veo3 échouée:", err);
+      }
+    }
+  }
+
   /** @type {StudioScriptSuccessPayload} */
   let payload;
   let trimmedForHistory = "";
@@ -211,6 +410,10 @@ export async function runStudioScriptRefinement({
       combined,
       scenes: nextScenes,
       refineResult,
+      dialogueLines,
+      packagingBoxAppearance,
+      packagingOpeningGesture,
+      packagingOpeningSound,
     });
     payload = {
       mode: "multi",
@@ -227,6 +430,10 @@ export async function runStudioScriptRefinement({
       combined: trimmedRefined,
       scenes: [trimmedRefined, "", ""],
       refineResult,
+      dialogueLines,
+      packagingBoxAppearance,
+      packagingOpeningGesture,
+      packagingOpeningSound,
     });
     payload = {
       mode: "single",

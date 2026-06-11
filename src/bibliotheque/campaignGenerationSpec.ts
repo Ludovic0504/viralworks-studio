@@ -57,6 +57,12 @@ export interface CampaignSection {
   product_scene_decor_id: string | null;
   /** Hook d’accroche (3 s) — formats produit ; `null` = pas de hook. */
   product_opening_hook_id: string | null;
+  /** Description boîte retail (inférée unboxing) — visuel + script ; `null` si absent. */
+  packaging_box_appearance: string | null;
+  /** Geste d'ouverture mains (inféré unboxing) — Veo3 ; `null` si absent. */
+  packaging_opening_gesture: string | null;
+  /** Contrainte audio ouverture (inférée unboxing) — Veo3 audio natif ; `null` si absent. */
+  packaging_opening_sound: string | null;
   intent_profile: GlobalIntentProfile | null;
   clarification: CampaignClarification;
 }
@@ -218,6 +224,9 @@ export function createDefaultCampaignGenerationSpec(): CampaignGenerationSpec {
       staging_chips: [],
       product_scene_decor_id: null,
       product_opening_hook_id: null,
+      packaging_box_appearance: null,
+      packaging_opening_gesture: null,
+      packaging_opening_sound: null,
       intent_profile: null,
       clarification: {
         mode: null,
@@ -494,6 +503,18 @@ export function normalizeCampaignGenerationSpec(raw: unknown): CampaignGeneratio
       product_opening_hook_id: asNullableString(
         campaignRec.product_opening_hook_id ?? campaignRec.productOpeningHookId
       ),
+      packaging_box_appearance:
+        String(
+          campaignRec.packaging_box_appearance ?? campaignRec.packagingBoxAppearance ?? ""
+        ).trim() || null,
+      packaging_opening_gesture:
+        String(
+          campaignRec.packaging_opening_gesture ?? campaignRec.packagingOpeningGesture ?? ""
+        ).trim() || null,
+      packaging_opening_sound:
+        String(
+          campaignRec.packaging_opening_sound ?? campaignRec.packagingOpeningSound ?? ""
+        ).trim() || null,
       intent_profile: normalizeIntentProfile(campaign.intent_profile ?? campaign.globalIntentProfile),
       clarification: {
         mode: asOneOf(clarification.mode ?? campaign.clarifyMode, ["MODE_A", "MODE_B", null] as const, null),

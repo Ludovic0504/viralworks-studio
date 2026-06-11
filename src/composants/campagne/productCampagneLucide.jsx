@@ -10,6 +10,7 @@ import {
   Flame,
   Frown,
   GitBranch,
+  Hand,
   Home,
   LayoutGrid,
   MapPin,
@@ -52,6 +53,7 @@ const BY_NAME = {
   Aperture,
   User,
   GitBranch,
+  Hand,
   PanelBottom,
 };
 

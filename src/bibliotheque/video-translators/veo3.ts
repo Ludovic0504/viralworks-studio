@@ -84,6 +84,18 @@ export function buildVeo3Prompt(spec: CampaignGenerationSpec, sceneIndex: number
       "Audio mode: SILENT. No dialogue, no speech, no lip movement, no voice over, no character addressing camera verbally. Visual-only sequence.",
     );
   }
+  const packagingOpeningGesture = String(spec.campaign.packaging_opening_gesture ?? "").trim();
+  if (spec.campaign.video_format_id === "produit_unboxing" && packagingOpeningGesture) {
+    blocks.push(
+      `CRITICAL HAND CONSTRAINT: ${packagingOpeningGesture} The stabilizing hand must remain completely still during the entire opening sequence. This constraint overrides any other camera or movement instruction.`,
+    );
+  }
+  const packagingOpeningSound = String(spec.campaign.packaging_opening_sound ?? "").trim();
+  if (spec.campaign.video_format_id === "produit_unboxing" && packagingOpeningSound) {
+    blocks.push(
+      `CRITICAL AUDIO CONSTRAINT: ${packagingOpeningSound} This is a continuous sound, not isolated clicks or discrete events. Audio must match the visual motion frame by frame with no silence gaps during the opening gesture.`,
+    );
+  }
   blocks.push(`Idea: ${ideaBody}`);
   if (dialogueLine && dialogueOn && notSilentMusic) {
     blocks.push(`Character says naturally: ${dialogueLine}`);
@@ -207,5 +219,7 @@ export function buildVeo3Prompt(spec: CampaignGenerationSpec, sceneIndex: number
       "Physics — materials behave consistently, no impossible deformations, no sudden texture changes on surfaces.",
   );
 
-  return { prompt: blocks.filter(Boolean).join("\n"), dialogueText };
+  const fullPrompt = blocks.filter(Boolean).join("\n");
+  console.log("[Veo3 fullPrompt]", fullPrompt);
+  return { prompt: fullPrompt, dialogueText };
 }

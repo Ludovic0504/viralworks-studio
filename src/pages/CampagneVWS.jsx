@@ -66,6 +66,25 @@ Pas de ponctuation superflue. Pas d'explication. Juste la promesse, rien d'autre
 
 const VALID_TEMPOS = new Set(["real_time", "timelapse", "slow_motion"]);
 
+const MISE_PROMPT_PLACEHOLDER_BY_ID = {
+  facecam: "Ex. : Peau visiblement plus jeune en 7 jours",
+  mains_produit: "Ex. : Comment j'applique ma routine du soir",
+  cinematique: "Ex. : La routine anti-âge qui change tout",
+};
+
+/** Retire décor / hook / mise en scène injectés à la préparation — garde l'angle saisi. */
+function extractProductUserAngleFromCoreIdea(raw) {
+  const text = String(raw ?? "").trim();
+  if (!text || !/Décor de la scène\s*:/i.test(text)) return text;
+  return text
+    .replace(/Décor de la scène\s*:[^\n]+/gi, "")
+    .replace(/Hook d'accroche[^\n]*/gi, "")
+    .replace(/Mise en scène souhaitée\s*:[^\n]+/gi, "")
+    .replace(/Environnement \/ décor :[^\n]+/gi, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function getMissingInspireProductNomDecor({ nomDuProduit, productSceneDecorId }) {
   const missing = [];
   if (!nomDuProduit) missing.push("nom");
@@ -304,7 +323,9 @@ export default function CampagneVWS({
       ? campaignData.lieuTournage
       : "neutre"
   );
-  const [idea, setIdeaState] = useState(campaignData?.idea ?? "");
+  const [idea, setIdeaState] = useState(() =>
+    extractProductUserAngleFromCoreIdea(campaignData?.idea ?? "")
+  );
   const [styleDetails, setStyleDetails] = useState(() =>
     stripLegacyProductStyleDetailsPrefix(String(campaignData?.styleDetails ?? ""))
   );
@@ -476,10 +497,9 @@ export default function CampagneVWS({
     () => (isProductMode && videoFormatId ? getProductMiseOptionsForFormat(videoFormatId) : []),
     [isProductMode, videoFormatId]
   );
-  const productMiseNotice = useMemo(
-    () => (isProductMode ? getProductMiseDef(stagingChips[0])?.notice ?? "" : ""),
-    [isProductMode, stagingChips]
-  );
+  const misePromptPlaceholder =
+    MISE_PROMPT_PLACEHOLDER_BY_ID[stagingChips[0]] ??
+    "Ex. : L'angle de ta vidéo en une phrase";
   const selectedProductDecor = useMemo(
     () => (productSceneDecorId ? getProductDecorById(productSceneDecorId) : null),
     [productSceneDecorId]
@@ -500,14 +520,12 @@ export default function CampagneVWS({
 
   const {
     profile,
-    productPromessePlaceholder: promessePlaceholderProduct,
     decorPriorityIds,
     refreshProfile,
   } = useProfilStudio();
   const ideaPlaceholder =
     selectedFormatDef?.placeholderIdea ??
     "Ex : un architecte explique son nouveau projet à la caméra dans son studio, tout en dessinant les plans sur une tablette…";
-  const productPromessePlaceholder = promessePlaceholderProduct;
   const stylePlaceholder =
     metierProfile?.stylePlaceholder ??
     "Ex. : ambiance, lumière, style visuel, matériaux…";
@@ -1583,7 +1601,7 @@ Réponds uniquement en JSON :
       const finalPayload = {
         profession: safeProfession,
         lieuTournage: lieuForSpec.value,
-        idea: ideaWithSceneContext,
+        idea: safeIdea,
         styleDetails: precisionsForModifiers || "",
         stagingChips: [...stagingChips],
         productSceneDecorId: isProductModeRun ? productSceneDecorId : null,
@@ -1617,7 +1635,7 @@ Réponds uniquement en JSON :
       };
 
       onCampaignChange?.(buildCampaignSnapshot(finalPayload));
-      onBrainReady?.(finalPayload);
+      onBrainReady?.({ ...finalPayload, idea: ideaWithSceneContext });
     } catch (e) {
       const msg = e?.message || "Une erreur s’est produite pendant la préparation.";
       setError(msg);
@@ -2159,8 +2177,8 @@ Réponds uniquement en JSON :
               >
                 {isProductMode ? (
                   <>
-                    <span className="md:hidden">Promesse</span>
-                    <span className="hidden md:inline">Promesse du produit</span>
+                    <span className="md:hidden">Angle vidéo</span>
+                    <span className="hidden md:inline">Angle de la vidéo</span>
                   </>
                 ) : (
                   <>
@@ -2204,7 +2222,7 @@ Réponds uniquement en JSON :
                   value={idea}
                   onChange={(e) => setIdea(e.target.value)}
                   className="vws-campagne-field vws-campagne-field--touch mt-1.5 w-full"
-                  placeholder={productPromessePlaceholder}
+                  placeholder={misePromptPlaceholder}
                   autoComplete="off"
                 />
                 {inspirePromesseHint ? (
@@ -2322,34 +2340,33 @@ Réponds uniquement en JSON :
                 <hr className="my-6 border-0 border-t border-white/10 max-[640px]:my-4" />
                 <div className="mt-0 mb-8 max-[640px]:mb-6 md:mb-10">
                   <span className="vws-campagne-label mb-2 block">Mise en scène</span>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex gap-3 max-[640px]:flex-col">
                     {productMiseOptions.map((opt) => {
                       const selected = stagingChips[0] === opt.id;
                       return (
                         <button
                           key={opt.id}
                           type="button"
+                          aria-pressed={selected}
                           onClick={() => selectProductMiseEnScene(opt.id)}
-                          className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition-all duration-150 ${
+                          className={`flex flex-1 flex-col items-start gap-2 rounded-xl border p-3 text-left transition-all duration-150 ${
                             selected
-                              ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-200"
-                              : "border-[#1e2845] bg-[#161d2e] text-gray-300 hover:border-[#2a3555]"
+                              ? "border-[#f59e0b] bg-[#f59e0b]/10"
+                              : "border-white/10 bg-[#0d0d0d] hover:border-white/20"
                           }`}
                         >
-                          <ProductCampagneLucideIcon name={opt.iconId} className="h-3.5 w-3.5 shrink-0 opacity-90" />
-                          {opt.label}
+                          <ProductCampagneLucideIcon
+                            name={opt.iconId}
+                            className={`h-4 w-4 shrink-0 ${selected ? "text-[#f59e0b]" : "text-white/70"}`}
+                          />
+                          <span className="text-sm font-semibold text-white">{opt.label}</span>
+                          {opt.notice ? (
+                            <span className="text-xs leading-snug text-white/50">{opt.notice}</span>
+                          ) : null}
                         </button>
                       );
                     })}
                   </div>
-                  {productMiseNotice ? (
-                    <p className="mt-2 flex gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.07] px-2.5 py-2 text-[11px] leading-snug text-emerald-100/90">
-                      <span className="shrink-0 text-emerald-400" aria-hidden>
-                        ℹ
-                      </span>
-                      <span>{productMiseNotice}</span>
-                    </p>
-                  ) : null}
                 </div>
               </>
             ) : (

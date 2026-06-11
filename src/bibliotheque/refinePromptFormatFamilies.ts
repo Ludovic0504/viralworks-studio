@@ -8,7 +8,10 @@ progressif selon l'idée. Sections Camera et Lighting : éclairage contrôlé (s
 dramatique) ou neutre didactique. Section Tone : sensoriel/luxe pour esthétique et reveal ;
 clair et pédagogique pour démo, test, comparatif. Section Important : le produit reste visible
 et identifiable du début à la fin ; pas de dérive vers un discours métier générique. Si l'idée
-mentionne un hook ou décor produit, les intégrer sans les contredire.`,
+mentionne un hook ou décor produit, les intégrer sans les contredire. For unboxing sequences: one hand must remain stationary holding
+the product base at all times while the other hand performs the
+opening gesture. The two hands must never perform the same motion
+simultaneously. The stabilizing hand does not move during the opening.`,
 
   storytelling: `Format famille STORYTELLING. Construire un arc narratif court : situation initiale, tension ou
 besoin, résolution ou vision positive. Sections Idea et Tone : émotion, identification,

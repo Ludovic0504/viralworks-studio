@@ -31,7 +31,12 @@ export interface ProductOpeningHookDef {
   camera_energy: "stable" | "bump" | "chaotic" | "slow";
 }
 
-export type ProductMiseEnSceneId = "cinematique" | "facecam" | "situation" | "fondneutre";
+export type ProductMiseEnSceneId =
+  | "cinematique"
+  | "facecam"
+  | "situation"
+  | "fondneutre"
+  | "mains_produit";
 
 export interface ProductMiseEnSceneDef {
   id: ProductMiseEnSceneId;
@@ -306,7 +311,14 @@ export const PRODUCT_MISE_EN_SCENE: ProductMiseEnSceneDef[] = [
     label: "Cinématique",
     notice: "Plan composé, lumière travaillée, ton sobre. Comme une pub de marque.",
     iconId: "Aperture",
-    frame0_directives: ["composed cinematic shot", "carefully worked lighting", "brand advertisement tone"],
+    frame0_directives: [
+      "composed cinematic shot",
+      "carefully worked lighting",
+      "brand advertisement tone",
+      "luxury commercial photography",
+      "studio lighting setup",
+      "professional ad production quality",
+    ],
     character_prominence: "secondary",
     background_style: "cinematic",
   },
@@ -315,7 +327,16 @@ export const PRODUCT_MISE_EN_SCENE: ProductMiseEnSceneDef[] = [
     label: "Face caméra",
     notice: "Quelqu'un parle directement à l'objectif, lumière naturelle, énergie spontanée.",
     iconId: "User",
-    frame0_directives: ["character directly facing lens", "eye contact with camera", "natural light", "spontaneous energy"],
+    frame0_directives: [
+      "character directly facing lens",
+      "eye contact with camera",
+      "natural light",
+      "spontaneous energy",
+      "casual UGC smartphone style",
+      "no studio lighting whatsoever",
+      "authentic creator content",
+      "ordinary everyday lighting",
+    ],
     character_prominence: "primary",
     background_style: "real_context",
   },
@@ -341,6 +362,23 @@ export const PRODUCT_MISE_EN_SCENE: ProductMiseEnSceneDef[] = [
     character_prominence: "none",
     background_style: "neutral",
   },
+  {
+    id: "mains_produit",
+    label: "Produit en mains",
+    notice: "Gros plan mains et produit, sans visage. Lumière naturelle, feel lifestyle authentique.",
+    iconId: "Hand",
+    frame0_directives: [
+      "product held in hands",
+      "hands and wrists only visible in frame",
+      "no face visible",
+      "extreme close-up on product and hands",
+      "natural ambient lighting",
+      "authentic lifestyle product feel",
+      "no studio setup",
+    ],
+    character_prominence: "secondary",
+    background_style: "real_context",
+  },
 ];
 
 /** Ids catalogue réels `vwsVideoFormatsCatalog` → options + défaut mise en scène */
@@ -354,8 +392,8 @@ const PRODUCT_MISE_MATRIX: Record<string, { options: ProductMiseEnSceneId[]; def
     defaultId: "facecam",
   },
   produit_unboxing: {
-    options: ["situation", "facecam"],
-    defaultId: "situation",
+    options: ["facecam", "mains_produit", "cinematique"],
+    defaultId: "mains_produit",
   },
   produit_test_review: {
     options: ["facecam", "situation"],

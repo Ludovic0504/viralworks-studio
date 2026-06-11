@@ -9,6 +9,10 @@ const corsHeaders = {
 };
 
 type Provider = "gpt-image-2" | "hailuo";
+const OPENAI_EDITS_URL = "https://api.openai.com/v1/images/edits";
+const MAX_REF_IMAGE_BYTES = 10 * 1024 * 1024;
+const PRODUCT_REF_PROMPT_LINE =
+  "Reproduce exactly the same product as shown in the reference image — identical packaging, same colors, same label, same shape.";
 
 type RequestBody = {
   prompt: string;
@@ -16,6 +20,7 @@ type RequestBody = {
   stagingIds: string[];
   aspectRatio: string; // "16:9" | "9:16" | "1:1" — vient du champ "ratio" côté UI
   subjectReferences?: unknown[];
+  productReference?: string;
   /** Legacy client field — fusionné dans subjectReferences si absent */
   refCharacter?: string;
 };
@@ -53,6 +58,64 @@ function base64ToUint8Array(b64: string): Uint8Array {
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return bytes;
+}
+
+function parsePhotoDataUrl(dataUrl: string): {
+  bytes: Uint8Array;
+  mime: string;
+  fileName: string;
+} | null {
+  const trimmed = dataUrl.trim();
+  const match = trimmed.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+  if (!match) return null;
+
+  const mime = match[1].toLowerCase();
+  if (!["image/png", "image/jpeg", "image/jpg", "image/webp"].includes(mime)) {
+    return null;
+  }
+
+  try {
+    const bytes = base64ToUint8Array(match[2]);
+    if (bytes.length === 0 || bytes.length > MAX_REF_IMAGE_BYTES) return null;
+    const ext =
+      mime.includes("jpeg") || mime.includes("jpg")
+        ? "jpg"
+        : mime.includes("webp")
+          ? "webp"
+          : "png";
+    return { bytes, mime, fileName: `product-reference.${ext}` };
+  } catch {
+    return null;
+  }
+}
+
+async function loadReferencePhotoBytes(
+  refInput: string
+): Promise<{ bytes: Uint8Array; mime: string; fileName: string } | null> {
+  const trimmed = String(refInput || "").trim();
+  if (!trimmed) return null;
+
+  if (trimmed.startsWith("data:")) {
+    return parsePhotoDataUrl(trimmed);
+  }
+
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    const url = trimmed.startsWith("http://") ? trimmed.replace("http://", "https://") : trimmed;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const mime = (res.headers.get("content-type") || "image/png").split(";")[0].trim().toLowerCase();
+    const buf = new Uint8Array(await res.arrayBuffer());
+    if (buf.length === 0 || buf.length > MAX_REF_IMAGE_BYTES) return null;
+    const ext =
+      mime.includes("jpeg") || mime.includes("jpg")
+        ? "jpg"
+        : mime.includes("webp")
+          ? "webp"
+          : "png";
+    return { bytes: buf, mime, fileName: `product-reference.${ext}` };
+  }
+
+  return null;
 }
 
 /**
@@ -158,6 +221,7 @@ async function generateWithHailuo(params: {
   minimaxApiKey: string;
   prompt: string;
   aspectRatio: string;
+  productReference?: string | null;
   subjectReferences: string[];
   userId: string;
   supabaseAdmin: ReturnType<typeof createClient> | null;
@@ -188,8 +252,11 @@ async function generateWithHailuo(params: {
     ? params.subjectReferences.filter((s) => typeof s === "string" && s.trim().length > 0)
     : [];
 
-  if (subjectRefInputs.length > 0) {
-    const primaryRefInput = subjectRefInputs[0];
+  const productRefInput =
+    typeof params.productReference === "string" ? params.productReference.trim() : "";
+  const primaryRefInput = productRefInput || subjectRefInputs[0] || "";
+
+  if (primaryRefInput) {
     const referenceImageUrl = await resolveReferenceImageUrl(primaryRefInput, params.userId, params.supabaseAdmin);
     if (referenceImageUrl) {
       requestBody.subject_reference = [
@@ -249,11 +316,71 @@ async function generateWithHailuo(params: {
   return first;
 }
 
+async function callOpenAiEdits(
+  prompt: string,
+  photo: { bytes: Uint8Array; mime: string; fileName: string },
+  openaiKey: string,
+  size: string
+): Promise<{ b64: string }> {
+  const form = new FormData();
+  form.append("model", "gpt-image-2");
+  form.append("prompt", prompt);
+  form.append("n", "1");
+  form.append("size", size);
+  form.append(
+    "image[]",
+    new Blob([photo.bytes], { type: photo.mime }),
+    photo.fileName
+  );
+
+  const res = await fetch(OPENAI_EDITS_URL, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${openaiKey}` },
+    body: form,
+  });
+
+  const text = await res.text();
+  let data: { data?: Array<{ b64_json?: string }>; error?: { message?: string } } | null;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    data = null;
+  }
+
+  if (!res.ok) {
+    const msg =
+      data?.error?.message || (typeof text === "string" ? text.slice(0, 400) : "") || `Erreur OpenAI (${res.status})`;
+    const err = new Error(msg);
+    (err as { status?: number }).status = res.status;
+    throw err;
+  }
+
+  const b64 = data?.data?.[0]?.b64_json;
+  if (!b64 || typeof b64 !== "string") {
+    throw new Error("Réponse OpenAI invalide (b64_json manquant).");
+  }
+  return { b64 };
+}
+
 async function generateWithGptImage2(params: {
   openaiKey: string;
   prompt: string;
   aspectRatio: string;
+  productReference?: string | null;
 }): Promise<{ b64: string }> {
+  const size = resolveGptImageSize(params.aspectRatio);
+
+  if (params.productReference) {
+    const photo = await loadReferencePhotoBytes(params.productReference);
+    if (!photo) {
+      throw new Error("Image de référence produit invalide ou trop volumineuse (max 10 Mo).");
+    }
+    const editsPrompt = params.prompt.includes(PRODUCT_REF_PROMPT_LINE)
+      ? params.prompt
+      : `${PRODUCT_REF_PROMPT_LINE}\n\n${params.prompt}`;
+    return callOpenAiEdits(editsPrompt, photo, params.openaiKey, size);
+  }
+
   const res = await fetch("https://api.openai.com/v1/images/generations", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${params.openaiKey}` },
@@ -261,7 +388,7 @@ async function generateWithGptImage2(params: {
       model: "gpt-image-2",
       prompt: params.prompt,
       n: 1,
-      size: resolveGptImageSize(params.aspectRatio),
+      size,
       quality: "low",
     }),
   });
@@ -339,10 +466,20 @@ serve(async (req) => {
       if (legacyRef) subjectReferences = [legacyRef];
     }
 
+    const productReferenceRaw =
+      typeof body.productReference === "string" ? body.productReference.trim() : "";
+    const productReference = productReferenceRaw || null;
+
     if (!prompt) return jsonResponse({ error: "Le prompt est requis et doit être une chaîne non vide." }, 400);
 
     const provider: Provider =
-      subjectReferences.length > 0 ? "hailuo" : hookId ? "gpt-image-2" : "hailuo";
+      productReference && hookId
+        ? "gpt-image-2"
+        : productReference || subjectReferences.length > 0
+          ? "hailuo"
+          : hookId
+            ? "gpt-image-2"
+            : "hailuo";
 
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },
@@ -356,7 +493,12 @@ serve(async (req) => {
         return jsonResponse({ error: "OPENAI_API_KEY manquante dans les secrets Supabase." }, 500);
       }
 
-      const { b64 } = await generateWithGptImage2({ openaiKey, prompt, aspectRatio });
+      const { b64 } = await generateWithGptImage2({
+        openaiKey,
+        prompt,
+        aspectRatio,
+        productReference: productReference && hookId ? productReference : null,
+      });
       const pngBytes = base64ToUint8Array(b64);
       imageUrl = await uploadPngToGeneratedImages({ supabaseUrl, serviceRoleKey, userId: user.id, pngBytes });
     } else {
@@ -369,6 +511,7 @@ serve(async (req) => {
         minimaxApiKey,
         prompt,
         aspectRatio,
+        productReference,
         subjectReferences,
         userId: user.id,
         supabaseAdmin,

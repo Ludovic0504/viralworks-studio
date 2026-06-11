@@ -49,8 +49,15 @@ import {
   User,
 } from "lucide-react";
 
-function clarificationModeToImagePromptLine(mode) {
+function clarificationModeToImagePromptLine(mode, stagingId) {
   if (mode === "MODE_A") {
+    if (
+      stagingId === "facecam" ||
+      stagingId === "situation" ||
+      stagingId === "mains_produit"
+    ) {
+      return "";
+    }
     return "Frame 0: no human presence visible, scene elements begin autonomous transformation, subject absent at opening frame.";
   }
   if (mode === "MODE_B") {
@@ -59,6 +66,9 @@ function clarificationModeToImagePromptLine(mode) {
   return "";
 }
 
+const PRODUCT_REF_PROMPT_LINE =
+  "Reproduce exactly the same product as shown in the reference image — identical packaging, same colors, same label, same shape.";
+
 function buildHookSubjectReferences({
   isProductMode,
   avatarRefDataUrl,
@@ -66,11 +76,12 @@ function buildHookSubjectReferences({
   refCharDataUrl,
 }) {
   const refs = [];
+  let productReference = null;
   if (isProductMode) {
     const av = typeof avatarRefDataUrl === "string" ? avatarRefDataUrl.trim() : "";
     const pr = typeof productRefDataUrl === "string" ? productRefDataUrl.trim() : "";
     if (av) refs.push(av);
-    if (pr) refs.push(pr);
+    if (pr) productReference = pr;
   } else {
     const ref = typeof refCharDataUrl === "string" ? refCharDataUrl.trim() : "";
     if (ref) refs.push(ref);
@@ -79,8 +90,10 @@ function buildHookSubjectReferences({
     const legacy = typeof refCharDataUrl === "string" ? refCharDataUrl.trim() : "";
     if (legacy) refs.push(legacy);
   }
-  if (refs.length === 0) return {};
-  return { subjectReferences: refs };
+  const out = {};
+  if (refs.length > 0) out.subjectReferences = refs;
+  if (productReference) out.productReference = productReference;
+  return out;
 }
 
 function buildProductRefPromptPrefix({ isProductMode, avatarRefDataUrl, productRefDataUrl }) {
@@ -94,9 +107,7 @@ function buildProductRefPromptPrefix({ isProductMode, avatarRefDataUrl, productR
     );
   }
   if (pr) {
-    lines.push(
-      "Feature the product from the second reference image prominently in the scene."
-    );
+    lines.push(PRODUCT_REF_PROMPT_LINE);
   }
   return lines.join("\n\n");
 }
@@ -286,6 +297,7 @@ function formatVisualSnapshotLabel(t) {
 
 export default function ImagePage({
   campaignIdea = "",
+  campaignStagingChips = [],
   campaignJobType = "",
   campaignModifiers = "",
   campaignClarifyMode = null,
@@ -335,7 +347,7 @@ export default function ImagePage({
   const canonicalSpec = useMemo(() => {
     const fallback = createDefaultCampaignGenerationSpec();
     const fromIncoming = normalizeCampaignGenerationSpec(campaignGenerationSpec ?? imageStep?.campaignGenerationSpec ?? fallback);
-    return normalizeCampaignGenerationSpec({
+    const spec = normalizeCampaignGenerationSpec({
       ...fromIncoming,
       campaign: {
         ...fromIncoming.campaign,
@@ -396,6 +408,8 @@ export default function ImagePage({
         },
       },
     });
+    console.log("[Image useMemo] packaging_box_appearance:", spec.campaign.packaging_box_appearance);
+    return spec;
   }, [
     campaignGenerationSpec,
     imageStep?.campaignGenerationSpec,
@@ -1255,6 +1269,15 @@ export default function ImagePage({
       setProgressMessage("Envoi de la requête...");
       console.log("📡 Appel de la fonction Edge Function:", functionUrl);
 
+      const hookStagingId =
+        canonicalSpec.campaign.staging_chips?.[0] ?? campaignStagingChips?.[0];
+      console.log("[Visuel] staging debug", {
+        staging_chips_spec: canonicalSpec.campaign.staging_chips,
+        stagingChips_prop: campaignStagingChips,
+        hookStagingId,
+        clarifyMode: canonicalSpec.campaign.clarification.mode,
+      });
+
       const baseImage1Prompt = buildHookImageApiPrompt(
         [
           String(canonicalSpec.creative.hook_visual.prompt_text || "").trim() ||
@@ -1265,7 +1288,14 @@ export default function ImagePage({
           canonicalSpec.campaign.style_details
             ? `Style: ${canonicalSpec.campaign.style_details}`
             : "",
-          clarificationModeToImagePromptLine(canonicalSpec.campaign.clarification.mode),
+          canonicalSpec.campaign.video_format_id === "produit_unboxing" &&
+          canonicalSpec.campaign.packaging_box_appearance
+            ? `Product box appearance: ${canonicalSpec.campaign.packaging_box_appearance}`
+            : "",
+          clarificationModeToImagePromptLine(
+            canonicalSpec.campaign.clarification.mode,
+            hookStagingId
+          ),
           canonicalSpec.campaign.clarification.last_user_freeform_answer
             ? `Précision utilisateur: ${canonicalSpec.campaign.clarification.last_user_freeform_answer}`
             : "",
@@ -1292,7 +1322,7 @@ export default function ImagePage({
           cameraFixed: canonicalSpec.rendering.camera.fixed === true,
           openingHookStill: true,
           hookId: canonicalSpec.campaign.product_opening_hook_id,
-          stagingIds: canonicalSpec.campaign.staging_chips,
+          stagingIds: hookStagingId ? [hookStagingId] : canonicalSpec.campaign.staging_chips,
         }
       );
       const refPromptPrefix = buildProductRefPromptPrefix({
@@ -1313,16 +1343,18 @@ export default function ImagePage({
         refCharDataUrl,
       });
       const subjectReferences = hookSubjectRefs.subjectReferences;
+      const productReference = hookSubjectRefs.productReference ?? null;
 
       const image1RequestBody = {
         prompt: image1Prompt,
         hookId: canonicalSpec.campaign.product_opening_hook_id,
-        stagingIds: canonicalSpec.campaign.staging_chips,
+        stagingIds: hookStagingId ? [hookStagingId] : canonicalSpec.campaign.staging_chips,
         aspectRatio: ratio,
         subjectReferences:
           Array.isArray(subjectReferences) && subjectReferences.length > 0
             ? subjectReferences
             : undefined,
+        productReference: productReference ?? undefined,
       };
 
       console.log("[Visuel] debug avatar", {
@@ -1330,6 +1362,8 @@ export default function ImagePage({
         productAvatarRefUrl: productAvatarRefUrl?.slice(0, 80) ?? null,
         refCharDataUrl: refCharDataUrl?.slice(0, 80) ?? null,
         subjectReferencesCount: image1RequestBody.subjectReferences?.length ?? 0,
+        hasProductReference: Boolean(productReference),
+        productReferencePreview: productReference ? summarizeDataUrl(productReference) : null,
         subjectReferences: image1RequestBody.subjectReferences,
         hookId: image1RequestBody.hookId,
       });
@@ -1342,6 +1376,9 @@ export default function ImagePage({
                 summarizeDataUrl(u)
               ),
             }
+          : {}),
+        ...(image1RequestBody.productReference
+          ? { productReference: summarizeDataUrl(image1RequestBody.productReference) }
           : {}),
       };
 
@@ -1881,13 +1918,18 @@ export default function ImagePage({
   const reconstructedImage1Debug = useMemo(() => {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const functionUrl = supabaseUrl ? `${supabaseUrl}/functions/v1/hailuo-image` : "";
+    const hookStagingId =
+      canonicalSpec.campaign.staging_chips?.[0] ?? campaignStagingChips?.[0];
     const image1Prompt = buildHookImageApiPrompt(
       [
         String(canonicalSpec.creative.hook_visual.prompt_text || "").trim() ||
           String(canonicalSpec.campaign.core_idea || "").trim(),
         canonicalSpec.campaign.profession ? `Métier: ${canonicalSpec.campaign.profession}` : "",
         canonicalSpec.campaign.style_details ? `Style: ${canonicalSpec.campaign.style_details}` : "",
-        clarificationModeToImagePromptLine(canonicalSpec.campaign.clarification.mode),
+        clarificationModeToImagePromptLine(
+          canonicalSpec.campaign.clarification.mode,
+          hookStagingId
+        ),
         canonicalSpec.campaign.clarification.last_user_freeform_answer
           ? `Précision utilisateur: ${canonicalSpec.campaign.clarification.last_user_freeform_answer}`
           : "",
@@ -1910,6 +1952,8 @@ export default function ImagePage({
         selfieMode: canonicalSpec.rendering.camera.selfie_mode === true,
         cameraFixed: canonicalSpec.rendering.camera.fixed === true,
         openingHookStill: true,
+        hookId: canonicalSpec.campaign.product_opening_hook_id,
+        stagingIds: hookStagingId ? [hookStagingId] : canonicalSpec.campaign.staging_chips,
       }
     );
 
@@ -1930,7 +1974,7 @@ export default function ImagePage({
       referenceSummary: "Reconstitué: body JSON envoyé à Hailuo (Image 1).",
       createdAt: "",
     };
-  }, [canonicalSpec, ratio, quantity, model, refCharDataUrl]);
+  }, [canonicalSpec, campaignStagingChips, ratio, quantity, model, refCharDataUrl]);
 
   const reconstructedHookDebug = useMemo(() => {
     if (!is24s) return { image2: null, image3: null };
