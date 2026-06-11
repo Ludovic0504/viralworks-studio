@@ -50,7 +50,7 @@ export async function inferPackagingDirectives(productName) {
   const fallback = {
     box_appearance: PACKAGING_BOX_APPEARANCE_FALLBACK,
     opening_gesture: PACKAGING_OPENING_GESTURE_FALLBACK,
-    opening_sound: "continuous soft cardboard-on-cardboard friction sound throughout the entire lid lift, no silence gaps, no isolated clicks",
+    opening_sound: "extremely quiet continuous whisper of cardboard-on-cardboard friction; barely audible soft hiss as air slowly escapes through the widening gap; intimate ASMR register throughout; no silence gaps, no isolated clicks",
   };
   if (!safeName) {
     console.log("[Packaging] box:", fallback.box_appearance);
@@ -64,12 +64,12 @@ For this product: "${safeName.slice(0, 200)}"
 Return ONLY a JSON object with THREE fields, nothing else:
 {
   "box_appearance": "one sentence describing the retail box shape, dimensions, dominant colors, brand logo placement (max 20 words)",
-  "opening_gesture": "precise physical description of the opening motion WITH timing anchors. Format: which hand holds the base (stays still), which hand lifts the lid, direction of motion, then: 'at 1 second lid is 25% raised; at 2 seconds lid is 50% raised with constant upward velocity; at 3 seconds lid is fully separated and moved aside; no pauses, no hesitation, no acceleration bursts.' Adapt gesture and timing to the actual packaging type. Max 60 words.",
-  "opening_sound": "description of the continuous ambient sound produced during the opening. MUST be continuous, not discrete events. Format: 'continuous [material] friction sound starting at first hand movement and lasting throughout the entire lid lift; sound [pitch/texture detail]; ends with [end sound]; no silence gaps, no isolated clicks.' Adapt to actual packaging material. Max 40 words."
+  "opening_gesture": "precise physical description of the opening motion with luxury slow-slide timing. Identify the packaging mechanism (sleeve-slide, lift-off lid, flip-top, etc.). For sleeve-slide packaging (Apple, premium tech): left hand holds base completely still; right hand grips outer sleeve and pulls it off extremely slowly due to air pressure resistance inside — at 1 second sleeve has moved only 10%; at 2 seconds 25%; at 3 seconds 50%, movement feels like pulling against a gentle vacuum; at 4 seconds 80%; at 5 seconds sleeve fully separated. Constant ultra-slow velocity, no acceleration. For lift-off lid: same ultra-slow upward pull with timing: at 1s 20% raised; at 2s 45%; at 3s lid fully off. Adapt mechanism and timing to actual packaging type. Max 70 words.",
+  "opening_sound": "description of the continuous ambient sound during the opening. MUST be continuous. For sleeve-slide: extremely quiet continuous whisper of cardboard-on-cardboard friction; barely audible soft hiss as air slowly escapes through the widening gap between sleeve and base; intimate ASMR register throughout; ends with a faint soft thud as sleeve is set down. For lift-off: continuous low cardboard friction rising slightly in pitch as lid separates. No silence gaps, no isolated clicks, no discrete events. Max 50 words."
 }
 
 Base your answer on the real packaging of this product if known.
-If unknown, use a generic premium rigid box with lift-off lid.`;
+If unknown, use a premium sleeve-slide box (outer sleeve over inner tray).`;
 
   try {
     const raw = await generateResponse(prompt, undefined, {
