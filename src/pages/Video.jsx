@@ -8,7 +8,7 @@ import {
   useImperativeHandle,
   useCallback,
 } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import {
   saveHistory as saveHistorySupabase,
@@ -17,6 +17,7 @@ import {
 } from "@/bibliotheque/supabase/historique";
 import { hasEnoughCredits, debitCredits, getUserCredits, isAdmin } from "@/bibliotheque/supabase/credits";
 import { usePremiumAccess } from "@/hooks/usePremiumAccess";
+import { useBoutiqueModal } from "@/contexte/ContexteModalBoutique";
 import {
   capturePostHog,
   classifyErrorType,
@@ -1105,7 +1106,7 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
   ref
 ) {
   const { session } = useAuth();
-  const navigate = useNavigate();
+  const { openBoutiqueModal } = useBoutiqueModal();
   const sceneCount = useMemo(
     () => sceneCountFromSequence(resolveSequenceType(studioSequenceType)),
     [studioSequenceType]
@@ -1963,9 +1964,7 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
   }, [activeTab, sceneCount]);
 
   const goToVideoPacks = () => {
-    navigate(
-      hasAccess ? "/boutique?section=packs-videos" : "/boutique?section=subscription"
-    );
+    openBoutiqueModal(hasAccess ? "packs-videos" : "subscription");
   };
 
   const recapInputForHistory = () =>
@@ -3930,7 +3929,7 @@ function HailuoVideoForm({
   initialWorkflowVideoState,
 }) {
   const { session } = useAuth();
-  const navigate = useNavigate();
+  const { openBoutiqueModal } = useBoutiqueModal();
   const [scripts, setScripts] = useState(initialVeo3Scripts);
   const [activeTab, setActiveTab] = useState(0);
   const [hookVisual, setHookVisual] = useState(initialVeo3HookVisual);
@@ -4308,9 +4307,7 @@ function HailuoVideoForm({
   };
 
   const goToVideoPacks = () => {
-    navigate(
-      hasAccess ? "/boutique?section=packs-videos" : "/boutique?section=subscription"
-    );
+    openBoutiqueModal(hasAccess ? "packs-videos" : "subscription");
   };
 
   const reset = () => {

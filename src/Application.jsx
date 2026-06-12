@@ -23,6 +23,7 @@ import ProtectedRoute from "./composants/auth/RouteProtegee.jsx";
 import { AuthProvider, useAuth } from "./contexte/FournisseurAuth";
 import { isAdmin } from "@/bibliotheque/supabase/credits";
 import { AuthActionProvider } from "./contexte/ActionAuthModalContext";
+import { BoutiqueModalProvider } from "./contexte/ContexteModalBoutique";
 import { FournisseurCommunauteVWSNotif } from "./contexte/FournisseurCommunauteVWSNotif.jsx";
 import { initMetaPixel, trackPageView } from "./bibliotheque/meta/pixel";
 import { initPostHog, trackPostHogPageView } from "./bibliotheque/posthog/client";
@@ -91,11 +92,13 @@ function AnalyticsRouteListener() {
 function RootRouteLayout() {
   return (
     <AuthActionProvider>
-      <FournisseurCommunauteVWSNotif>
-        <AnalyticsRouteListener />
-        <BannerInstallPWA />
-        <Outlet />
-      </FournisseurCommunauteVWSNotif>
+      <BoutiqueModalProvider>
+        <FournisseurCommunauteVWSNotif>
+          <AnalyticsRouteListener />
+          <BannerInstallPWA />
+          <Outlet />
+        </FournisseurCommunauteVWSNotif>
+      </BoutiqueModalProvider>
     </AuthActionProvider>
   );
 }

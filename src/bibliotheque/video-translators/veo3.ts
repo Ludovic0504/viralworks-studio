@@ -87,9 +87,10 @@ export function buildVeo3Prompt(spec: CampaignGenerationSpec, sceneIndex: number
   const styleDetails = String(spec.campaign.style_details ?? "").toLowerCase();
   const hasShrinkWrap = /emball[eé]|sous plastique|scell[eé]|film plastique|emballage/.test(styleDetails);
   const packagingOpeningGesture = String(spec.campaign.packaging_opening_gesture ?? "").trim();
+  const packagingBoxAppearance = String(spec.campaign.packaging_box_appearance ?? "").trim();
   if (spec.campaign.video_format_id === "produit_unboxing" && packagingOpeningGesture) {
     blocks.push(
-      `CRITICAL HAND CONSTRAINT: ${hasShrinkWrap ? "The box has intact factory shrink wrap — right hand peels it off cleanly in the first 1.5 seconds before proceeding with the sleeve grip. " : "The box is already unwrapped — no plastic film, no shrink wrap, no cellophane anywhere on the box. The sleeve grip begins at frame 0 with no preliminary unwrapping step of any kind. "}${packagingOpeningGesture} The stabilizing hand must remain completely still during the entire opening sequence. This constraint overrides any other camera or movement instruction.`,
+      `CRITICAL HAND CONSTRAINT: ${hasShrinkWrap ? "The box has intact factory shrink wrap — right hand peels it off cleanly in the first 1.5 seconds before proceeding with the sleeve grip. " : "The box is already unwrapped — no plastic film, no shrink wrap, no cellophane anywhere on the box. The sleeve grip begins at frame 0 with no preliminary unwrapping step of any kind. "}${packagingOpeningGesture} The stabilizing hand must remain completely still during the entire opening sequence. BOX MATERIAL INTEGRITY: ${packagingBoxAppearance ? `the box is exactly as described — ${packagingBoxAppearance}.` : "the box is rigid cardboard."} This exact material, color, texture and shape must remain strictly identical from frame 0 to the last frame — the box surface never stretches, wrinkles, becomes transparent, develops plastic or film texture, or deforms under finger pressure at any point. Any gripping or pulling gesture must show the box moving as a completely rigid solid object. This constraint overrides any other camera or movement instruction.`,
     );
   }
   const packagingOpeningSound = String(spec.campaign.packaging_opening_sound ?? "").trim();
@@ -133,7 +134,7 @@ export function buildVeo3Prompt(spec: CampaignGenerationSpec, sceneIndex: number
   if (productName && formatDef?.categoryId === "produit") {
     if (spec.campaign.video_format_id === "produit_unboxing") {
       blocks.push(
-        `The ${productName} is hidden inside the closed box at frame 0 and must not be visible until the opening gesture reveals it. As the lid separates, the ${productName} becomes progressively visible. By the final frame, the ${productName} is fully revealed and clearly visible inside the open box, face up, centered in the tray.`,
+        `The ${productName} is hidden inside the closed box at frame 0 and must not be visible until the opening gesture reveals it. As the lid separates, the ${productName} becomes progressively visible. By the final frame, the ${productName} is fully revealed and clearly visible inside the open box, resting in its original factory position in the tray, screen off.`,
       );
     } else if (causal === "automatic") {
       blocks.push(

@@ -1,10 +1,10 @@
 import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { X } from "lucide-react";
 import Button from "@/composants/interface/Bouton";
+import { useBoutiqueModal } from "@/contexte/ContexteModalBoutique";
 
 export default function ModalAbonnementRequis({ open, onClose }) {
-  const navigate = useNavigate();
+  const { openBoutiqueModal } = useBoutiqueModal();
 
   useEffect(() => {
     if (!open) return undefined;
@@ -19,7 +19,7 @@ export default function ModalAbonnementRequis({ open, onClose }) {
 
   const goToShop = () => {
     dismiss();
-    navigate("/boutique?section=subscription");
+    openBoutiqueModal("subscription");
   };
 
   if (!open) return null;

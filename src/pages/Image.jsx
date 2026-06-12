@@ -6,6 +6,7 @@ import { saveHistory as saveHistorySupabase } from "@/bibliotheque/supabase/hist
 import { hasEnoughCredits, getUserCredits } from "@/bibliotheque/supabase/credits";
 import { uploadImagesFromUrls } from "@/bibliotheque/supabase/storage";
 import { usePremiumAccess } from "@/hooks/usePremiumAccess";
+import { useBoutiqueModal } from "@/contexte/ContexteModalBoutique";
 import {
   canUseImageGeneration,
   canUseImageModification,
@@ -1084,6 +1085,7 @@ export default function ImagePage({
   const [showQuotaModal, setShowQuotaModal] = useState(false);
   const [quotaModalMessage, setQuotaModalMessage] = useState(VIDEO_QUOTA_EXHAUSTED_MESSAGE);
   const { hasAccess } = usePremiumAccess();
+  const { openBoutiqueModal } = useBoutiqueModal();
   const historyPanelRef = useRef(null);
   /** Valeur réelle du champ au clic (évite instruction vide si le state parent n’est pas encore recalé). */
   const bottomFieldInputRef = useRef(null);
@@ -2248,9 +2250,7 @@ export default function ImagePage({
         onClose={() => setShowQuotaModal(false)}
         onGoToShop={() => {
           setShowQuotaModal(false);
-          window.location.href = hasAccess
-            ? "/boutique?section=packs-videos"
-            : "/boutique?section=subscription";
+          openBoutiqueModal(hasAccess ? "packs-videos" : "subscription");
         }}
       />
       <div

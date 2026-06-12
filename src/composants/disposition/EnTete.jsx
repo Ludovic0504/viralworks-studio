@@ -13,9 +13,8 @@ import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
 const navLinks = [
   { path: "/", label: "Accueil" },
   { path: "/lab", label: "Nouveautés" },
-  { path: "/communaute-vws", label: "Communauté VWS" },
+  { path: "/communaute-vws", label: "Communauté" },
   { path: "/playbook", label: "Playbook" },
-  { path: "/boutique", label: "Boutique" },
 ];
 
 function MessageBubbleIcon({ className }) {

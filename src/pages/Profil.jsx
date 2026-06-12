@@ -19,6 +19,7 @@ import {
 } from "@/bibliotheque/workflowQuota";
 import { getUserPayments, getUserSubscription, cancelSubscription } from "@/bibliotheque/supabase/stripe";
 import { getUserProfile, updateUserProfile, uploadAvatar, deleteAvatar } from "@/bibliotheque/supabase/profil";
+import { useBoutiqueModal } from "@/contexte/ContexteModalBoutique";
 import { SECTORS, getSectorLabelForDisplay } from "@/bibliotheque/sectorDefaults";
 import { 
   User, Mail, Calendar, Settings, LogOut, Edit2, Save, X, 
@@ -56,6 +57,7 @@ function normalizeHistory(items = []) {
 
 export default function Profil() {
   const { session, signOut } = useAuth();
+  const { openBoutiqueModal } = useBoutiqueModal();
   const [isEditing, setIsEditing] = useState(false);
   const [stats, setStats] = useState({ prompts: 0, images: 0, videos: 0, total: 0 });
   const [recentHistory, setRecentHistory] = useState([]);
@@ -867,13 +869,14 @@ export default function Profil() {
           <p className="mt-0.5 text-[9px] leading-tight text-gray-400 sm:mt-1 sm:text-xs">
             Vidéos disponibles
           </p>
-          <Link
-            to="/boutique"
+          <button
+            type="button"
+            onClick={() => openBoutiqueModal("packs-videos")}
             className="mt-1.5 flex w-full items-center justify-center gap-0.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-1 py-1 text-center text-[9px] font-medium leading-tight text-emerald-300 transition-all hover:bg-emerald-500/20 sm:mt-3 sm:gap-2 sm:rounded-lg sm:px-3 sm:py-1.5 sm:text-sm"
           >
             <ShoppingBag className="h-3 w-3 shrink-0 sm:h-4 sm:w-4" />
             <span className="line-clamp-2 sm:line-clamp-none">Acheter des vidéos</span>
-          </Link>
+          </button>
         </div>
 
         <div className="glass-strong col-span-3 min-w-0 rounded-lg border border-white/10 p-2 sm:col-span-1 sm:rounded-xl sm:p-4 lg:p-6">
@@ -1384,13 +1387,14 @@ export default function Profil() {
               <div className="text-center py-8">
                 <Crown className="w-12 h-12 text-gray-600 mx-auto mb-3" />
                 <p className="text-gray-400 mb-4">Vous n'avez pas d'abonnement actif</p>
-                <Link
-                  to="/boutique"
+                <button
+                  type="button"
+                  onClick={() => openBoutiqueModal("subscription")}
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-500/20 hover:bg-violet-500/30 border border-violet-500/30 text-violet-300 font-medium transition-all"
                 >
                   <Crown className="w-4 h-4" />
                   Voir les abonnements
-                </Link>
+                </button>
               </div>
             )}
           </div>

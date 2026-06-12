@@ -10,6 +10,7 @@ import {
   toggleNouveaute,
 } from "@/bibliotheque/supabase/nouveautes";
 import BlocFormulaireNouveaute from "@/composants/nouveautes/BlocFormulaireNouveaute";
+import Select from "@/composants/interface/Select";
 import {
   Search,
   X,
@@ -25,7 +26,6 @@ import {
   BookOpen,
   History,
   Calendar,
-  Filter,
   Sparkles,
   Shield,
   Plus,
@@ -217,7 +217,7 @@ export default function Lab() {
           subtitle="Découvrez l'évolution et les nouveautés de la plateforme"
         />
 
-        <div className="mt-6 mb-8 glass-strong rounded-xl border border-white/10 p-5 flex items-start gap-3">
+        <div className="hidden mt-6 mb-8 glass-strong rounded-xl border border-white/10 p-5 flex items-start gap-3">
           <div className="mt-0.5 h-9 w-9 shrink-0 rounded-lg bg-emerald-500/15 border border-emerald-500/25 flex items-center justify-center">
             <Sparkles className="w-5 h-5 text-emerald-200" />
           </div>
@@ -229,7 +229,7 @@ export default function Lab() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mt-8 mb-8">
+        <div className="hidden grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mt-8 mb-8">
           <div className="glass-strong rounded-xl border border-white/10 p-4 text-center">
             <div className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 to-violet-300">
               {stats.total}
@@ -254,58 +254,45 @@ export default function Lab() {
           </div>
         </div>
 
-        <div className="mb-8 space-y-4">
-          <div className="relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Rechercher un événement..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-12 pr-12 py-3 glass-strong border border-white/10 rounded-xl text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery("")}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-200 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            )}
+        <div className="mt-8 mb-8 space-y-4">
+          <div className="flex flex-col gap-4 md:flex-row md:items-end md:gap-4">
+            <div className="relative w-full min-w-0 md:flex-[3]">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Rechercher un événement..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-12 pr-12 py-3 glass-strong border border-white/10 rounded-xl text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-200 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              )}
+            </div>
+
+            <div className="w-full min-w-0 md:flex-[1]">
+              <Select
+                label="Type d'événement"
+                value={selectedType}
+                onChange={(e) => setSelectedType(e.target.value)}
+                options={[
+                  { value: "all", label: "Tout" },
+                  ...Object.entries(EVENT_TYPES).map(([key, type]) => ({
+                    value: key,
+                    label: type.label,
+                  })),
+                ]}
+                className="glass-strong rounded-xl py-3"
+              />
+            </div>
           </div>
 
-          <div className="flex flex-wrap gap-3">
-            <button
-              onClick={() => setSelectedType("all")}
-              className={`px-4 py-2 rounded-lg border transition-all ${
-                selectedType === "all"
-                  ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-300"
-                  : "glass-strong border-white/10 text-gray-300 hover:border-white/20"
-              }`}
-            >
-              <Filter className="w-4 h-4 inline mr-2" />
-              Tout
-            </button>
-            {Object.entries(EVENT_TYPES).map(([key, type]) => {
-              const Icon = type.icon;
-              return (
-                <button
-                  key={key}
-                  onClick={() => setSelectedType(key)}
-                  className={`px-4 py-2 rounded-lg border transition-all flex items-center gap-2 ${
-                    selectedType === key
-                      ? `${type.bg} ${type.border} ${type.text}`
-                      : "glass-strong border-white/10 text-gray-300 hover:border-white/20"
-                  }`}
-                >
-                  <Icon className="w-4 h-4" />
-                  {type.label}
-                </button>
-              );
-            })}
-      </div>
-
-          <div className="flex flex-wrap gap-2">
+          <div className="hidden flex flex-wrap gap-2">
             <button
               onClick={() => setSelectedCategory("all")}
               className={`px-3 py-1.5 text-sm rounded-lg border transition-all ${

@@ -7,6 +7,7 @@ import { getUserWorkflowVideoWallet, USER_CREDITS_UPDATED_EVENT } from "@/biblio
 import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
 import { getUserProfile } from "@/bibliotheque/supabase/profil";
 import { getUserSubscription } from "@/bibliotheque/supabase/stripe";
+import { useBoutiqueModal } from "@/contexte/ContexteModalBoutique";
 
 const RING_R = 17;
 const RING_C = 2 * Math.PI * RING_R;
@@ -44,6 +45,7 @@ function resolveDisplayName(profile, session) {
 
 export default function MenuProfilConnecte({ onLogout, signingOut }) {
   const { session } = useAuth();
+  const { openBoutiqueModal } = useBoutiqueModal();
   const rootRef = useRef(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [coachingOpen, setCoachingOpen] = useState(false);
@@ -317,13 +319,16 @@ export default function MenuProfilConnecte({ onLogout, signingOut }) {
               </span>
               <span>Go Premium</span>
             </div>
-            <LienNavSync
-              to="/boutique?section=subscription"
+            <button
+              type="button"
               className="rounded-md bg-[#f5d84e] px-2.5 py-1 text-[11px] font-semibold text-[#0d0f17] transition-opacity hover:opacity-90"
-              onClick={closeMenu}
+              onClick={() => {
+                closeMenu();
+                openBoutiqueModal("subscription");
+              }}
             >
               Upgrade
-            </LienNavSync>
+            </button>
           </div>
 
           <div className="my-[5px] h-px bg-white/[0.07]" />
@@ -346,18 +351,21 @@ export default function MenuProfilConnecte({ onLogout, signingOut }) {
             <span>Voir mon profil</span>
           </LienNavSync>
 
-          <LienNavSync
-            to="/boutique?section=packs-videos"
+          <button
+            type="button"
             role="menuitem"
-            className="flex cursor-pointer items-center gap-[9px] rounded-lg px-2.5 py-[9px] text-[13px] text-white/70 transition-colors hover:bg-white/[0.06]"
-            onClick={closeMenu}
+            className="flex w-full cursor-pointer items-center gap-[9px] rounded-lg px-2.5 py-[9px] text-left text-[13px] text-white/70 transition-colors hover:bg-white/[0.06]"
+            onClick={() => {
+              closeMenu();
+              openBoutiqueModal("packs-videos");
+            }}
           >
             <svg className="h-4 w-4 shrink-0 opacity-50" viewBox="0 0 16 16" fill="none" aria-hidden>
               <circle cx="8" cy="8" r="5.5" stroke="rgba(255,255,255,0.7)" strokeWidth="1.2" />
               <circle cx="8" cy="8" r="2" stroke="rgba(255,255,255,0.7)" strokeWidth="1.2" />
             </svg>
             <span>Acheter des vidéos</span>
-          </LienNavSync>
+          </button>
 
           <button
             type="button"

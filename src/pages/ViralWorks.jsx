@@ -37,6 +37,7 @@ import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { useProfilStudio } from "@/contexte/FournisseurProfilStudio";
 import { useStudioLayoutOptions } from "@/contexte/StudioLayoutOptionsContext";
 import { usePremiumAccess } from "@/hooks/usePremiumAccess";
+import { useBoutiqueModal } from "@/contexte/ContexteModalBoutique";
 import { capturePostHog, trackPostHogError } from "@/bibliotheque/posthog/client";
 import {
   createDefaultCampaignGenerationSpec,
@@ -859,6 +860,7 @@ export default function ViralWorks() {
   const [showScriptQuotaModal, setShowScriptQuotaModal] = useState(false);
   const [scriptQuotaModalMessage, setScriptQuotaModalMessage] = useState(SCRIPT_STEP_VIDEO_QUOTA_MSG);
   const { hasAccess } = usePremiumAccess();
+  const { openBoutiqueModal } = useBoutiqueModal();
   /** idle | running | error — après succès on repasse à idle (navigation auto vers le Visuel). */
   const [scriptGenStatus, setScriptGenStatus] = useState("idle");
   const scriptGenInFlightRef = useRef(false);
@@ -1600,9 +1602,7 @@ export default function ViralWorks() {
         onClose={() => setShowScriptQuotaModal(false)}
         onGoToShop={() => {
           setShowScriptQuotaModal(false);
-          window.location.href = hasAccess
-            ? "/boutique?section=packs-videos"
-            : "/boutique?section=subscription";
+          openBoutiqueModal(hasAccess ? "packs-videos" : "subscription");
         }}
       />
       <div className="max-[640px]:shrink-0">

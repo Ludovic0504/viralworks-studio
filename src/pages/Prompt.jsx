@@ -19,6 +19,7 @@ import {
   USER_CREDITS_UPDATED_EVENT,
 } from "@/bibliotheque/supabase/credits";
 import { usePremiumAccess } from "@/hooks/usePremiumAccess";
+import { useBoutiqueModal } from "@/contexte/ContexteModalBoutique";
 import {
   canProceedWithScriptGeneration,
   consumeScriptAttempt,
@@ -1079,6 +1080,7 @@ function ScriptPromptGenerator({
   const [showQuotaModal, setShowQuotaModal] = useState(false);
   const [quotaModalMessage, setQuotaModalMessage] = useState(VIDEO_QUOTA_EXHAUSTED_MESSAGE);
   const { hasAccess } = usePremiumAccess();
+  const { openBoutiqueModal } = useBoutiqueModal();
   const [items, setItems] = useState([]);
   const [selectedItem, setSelectedItem] = useState(null);
   const prevInitialIdeaRef = useRef(initialIdea);
@@ -1333,9 +1335,7 @@ function ScriptPromptGenerator({
         onClose={() => setShowQuotaModal(false)}
         onGoToShop={() => {
           setShowQuotaModal(false);
-          window.location.href = hasAccess
-            ? "/boutique?section=packs-videos"
-            : "/boutique?section=subscription";
+          openBoutiqueModal(hasAccess ? "packs-videos" : "subscription");
         }}
       />
       <div className="lg:col-span-2 space-y-6">
