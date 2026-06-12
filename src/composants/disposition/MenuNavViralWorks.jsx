@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Bolt } from "lucide-react";
 import LienNavSync from "@/composants/disposition/LienNavSync";
 import { FEATURE_DECORS } from "@/bibliotheque/featureFlags";
 
@@ -192,7 +192,14 @@ export function MenuNavViralWorksMobile({ onNavigate, showEditVideo = false }) {
         }`}
         onClick={() => setExpanded((v) => !v)}
       >
-        <span>ViralWorks</span>
+        <span className="flex min-w-0 items-center gap-3">
+          <Bolt
+            className={`h-5 w-5 shrink-0 transition-transform ${
+              isTriggerActive ? "scale-110" : "group-hover:scale-110"
+            }`}
+          />
+          <span>ViralWorks</span>
+        </span>
         <ChevronDown
           className={`h-4 w-4 shrink-0 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
           strokeWidth={2.25}
