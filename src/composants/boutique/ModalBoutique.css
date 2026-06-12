@@ -1,0 +1,40 @@
+/* Modal boutique — correctifs iOS Safari (iPhone) */
+
+.boutique-modal-overlay {
+  touch-action: none;
+}
+
+@media (max-width: 767px) {
+  .boutique-modal-panel {
+    height: 100dvh;
+    height: -webkit-fill-available;
+    max-height: 100dvh;
+    max-height: -webkit-fill-available;
+  }
+
+  @supports (height: 100dvh) {
+    .boutique-modal-panel {
+      height: 100dvh;
+      max-height: 100dvh;
+    }
+  }
+
+  @supports (height: 100svh) {
+    .boutique-modal-panel {
+      height: 100svh;
+      max-height: 100svh;
+    }
+  }
+}
+
+.boutique-modal-body {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boutique-modal-panel {
+    animation: none !important;
+  }
+}

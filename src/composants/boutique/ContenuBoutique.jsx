@@ -278,7 +278,7 @@ export default function ContenuBoutique({ variant = "page", initialSection = nul
   /** Classes compactes mobile — modal uniquement (page /boutique inchangée). */
   const m = {
     headerWrap: isModal ? "mb-6 max-md:mb-3" : "mb-8",
-    headerRow: isModal ? "flex items-center gap-3 mb-4 max-md:gap-2 max-md:mb-2" : "flex items-center gap-3 mb-4",
+    headerRow: isModal ? "flex items-center gap-3 mb-4 max-md:gap-2 max-md:mb-2 max-md:pr-11" : "flex items-center gap-3 mb-4",
     headerIcon: isModal ? "w-12 h-12 rounded-xl max-md:w-9 max-md:h-9 max-md:rounded-lg" : "w-12 h-12 rounded-xl",
     headerIconSvg: isModal ? "w-6 h-6 max-md:w-4 max-md:h-4" : "w-6 h-6",
     headerTitle: isModal ? "font-bold text-gray-200 text-2xl max-md:text-xl" : "font-bold text-gray-200 text-3xl",
@@ -293,8 +293,8 @@ export default function ContenuBoutique({ variant = "page", initialSection = nul
     alertBody: isModal ? "text-emerald-400 text-sm mt-1 max-md:text-xs max-md:mt-0.5" : "text-emerald-400 text-sm mt-1",
     tabs: isModal ? "mb-8 flex gap-4 border-b border-white/10 max-md:mb-4 max-md:gap-2" : "mb-8 flex gap-4 border-b border-white/10",
     tabBtn: isModal ? "px-4 py-2 font-medium relative transition-colors max-md:px-3 max-md:py-1.5 max-md:text-sm" : "px-4 py-2 font-medium relative transition-colors",
-    gridCredits: isModal ? "grid grid-cols-1 md:grid-cols-3 gap-6 max-md:gap-3" : "grid grid-cols-1 md:grid-cols-3 gap-6",
-    gridSubs: isModal ? "grid grid-cols-1 md:grid-cols-2 gap-6 max-md:gap-3" : "grid grid-cols-1 md:grid-cols-2 gap-6",
+    gridCredits: isModal ? "grid grid-cols-1 md:grid-cols-3 gap-6 max-md:gap-3 max-md:pt-1" : "grid grid-cols-1 md:grid-cols-3 gap-6",
+    gridSubs: isModal ? "grid grid-cols-1 md:grid-cols-2 gap-6 max-md:gap-3 max-md:pt-1" : "grid grid-cols-1 md:grid-cols-2 gap-6",
     creditCard: isModal
       ? "glass-strong rounded-2xl border p-6 relative transition-all hover:scale-105 max-md:rounded-xl max-md:p-3.5 max-md:hover:scale-100"
       : "glass-strong rounded-2xl border p-6 relative transition-all hover:scale-105",
