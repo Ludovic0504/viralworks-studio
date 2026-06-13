@@ -26,8 +26,17 @@ function resolveRenewalCreditsFromInvoiceAmount(amountPaidCents: number): number
 }
 
 function resolveSubscriptionCreditsFromPlan(plan: string | null | undefined): number {
+  if ((plan ?? "").trim() === "image_9") return 0;
   if ((plan ?? "").trim() === "yearly") return 30;
   return 30;
+}
+
+function normalizeStoredPlanKey(plan: string | null | undefined): string {
+  const p = (plan ?? "").trim();
+  if (p === "image_9") return "image_9";
+  if (p === "yearly") return "yearly";
+  if (p === "premium_129" || p === "monthly") return "premium_129";
+  return "premium_129";
 }
 
 type SubscriptionNotificationPayload = {
@@ -183,7 +192,11 @@ serve(async (req) => {
         return new Response("User ID manquant", { status: 400 });
       }
 
-      if (credits <= 0) {
+      const planKey = (session.metadata?.subscription_plan || "").trim();
+      const isImageOnlySubscription =
+        type === "subscription" && planKey === "image_9";
+
+      if (credits <= 0 && !isImageOnlySubscription) {
         console.error("❌ Nombre de crédits invalide:", credits);
         return new Response("Nombre de crédits invalide", { status: 400 });
       }
@@ -233,72 +246,72 @@ serve(async (req) => {
             cancel_at_period_end: subscription.cancel_at_period_end,
           });
 
-        const planKey = (session.metadata?.subscription_plan || "").trim();
         const monthlyCredits = resolveSubscriptionCreditsFromPlan(planKey);
-        
-        // Récupérer les crédits actuels
-        const { data: creditsData } = await supabaseClient
-          .from("user_credits")
-          .select("credits, video_display_cap")
-          .eq("user_id", userId)
-          .single();
+        const storedPlanKey = normalizeStoredPlanKey(planKey);
 
-        const currentCredits = creditsData?.credits || 0;
-        const newCredits = currentCredits + monthlyCredits;
-        const nextCap = nextVideoDisplayCap({
-          balanceBefore: currentCredits,
-          oldCap: creditsData?.video_display_cap,
-          purchaseQty: monthlyCredits,
-          balanceAfter: newCredits,
-        });
-
-        // Mettre à jour les crédits
-        // Utiliser UPDATE puis INSERT si nécessaire pour éviter les erreurs de contrainte unique
-        if (creditsData) {
-          // L'entrée existe, faire un UPDATE
-          await supabaseClient
+        if (monthlyCredits > 0) {
+          const { data: creditsData } = await supabaseClient
             .from("user_credits")
-            .update({ credits: newCredits, video_display_cap: nextCap })
-            .eq("user_id", userId);
-        } else {
-          // L'entrée n'existe pas, faire un INSERT
-          await supabaseClient
-            .from("user_credits")
-            .insert({
-              user_id: userId,
-              credits: newCredits,
-              video_display_cap: nextCap,
-            });
-        }
+            .select("credits, video_display_cap")
+            .eq("user_id", userId)
+            .single();
 
-        // Créer la transaction
-        const { error: transactionError } = await supabaseClient
-          .from("credit_transactions")
-          .insert({
-            user_id: userId,
-            amount: monthlyCredits,
-            type: "credit",
-            reason: "subscription_payment",
-            metadata: {
-              subscription_id: subscriptionId,
-              payment_intent: session.payment_intent,
-            },
+          const currentCredits = creditsData?.credits || 0;
+          const newCredits = currentCredits + monthlyCredits;
+          const nextCap = nextVideoDisplayCap({
+            balanceBefore: currentCredits,
+            oldCap: creditsData?.video_display_cap,
+            purchaseQty: monthlyCredits,
+            balanceAfter: newCredits,
           });
 
-        if (transactionError) {
-          console.error("❌ Erreur création transaction abonnement:", transactionError);
-        } else {
-          console.log("✅ Transaction abonnement créée");
-        }
+          if (creditsData) {
+            await supabaseClient
+              .from("user_credits")
+              .update({ credits: newCredits, video_display_cap: nextCap })
+              .eq("user_id", userId);
+          } else {
+            await supabaseClient
+              .from("user_credits")
+              .insert({
+                user_id: userId,
+                credits: newCredits,
+                video_display_cap: nextCap,
+              });
+          }
 
-        console.log(`✅ Abonnement créé et ${monthlyCredits} crédits ajoutés pour l'utilisateur ${userId}`);
+          const { error: transactionError } = await supabaseClient
+            .from("credit_transactions")
+            .insert({
+              user_id: userId,
+              amount: monthlyCredits,
+              type: "credit",
+              reason: "subscription_payment",
+              metadata: {
+                subscription_id: subscriptionId,
+                payment_intent: session.payment_intent,
+              },
+            });
+
+          if (transactionError) {
+            console.error("❌ Erreur création transaction abonnement:", transactionError);
+          } else {
+            console.log("✅ Transaction abonnement créée");
+          }
+
+          console.log(
+            `✅ Abonnement créé et ${monthlyCredits} crédits ajoutés pour l'utilisateur ${userId}`,
+          );
+        } else {
+          console.log(`✅ Abonnement image_9 créé pour l'utilisateur ${userId} (sans crédits vidéo)`);
+        }
 
         const cyclePayload = {
           user_id: userId,
           stripe_subscription_id: subscriptionId,
-          plan_key: planKey === "yearly" ? "yearly" : "monthly",
-          monthly_credit_amount: 30,
-          granted_months: planKey === "yearly" ? 1 : 0,
+          plan_key: storedPlanKey,
+          monthly_credit_amount: storedPlanKey === "image_9" ? 0 : 30,
+          granted_months: storedPlanKey === "yearly" ? 1 : 0,
           updated_at: new Date().toISOString(),
         };
 

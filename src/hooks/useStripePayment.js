@@ -3,19 +3,22 @@ import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
 import { capturePostHog, trackPostHogError } from "@/bibliotheque/posthog/client";
 
 export const SUBSCRIPTION_PLANS = {
-  monthly: { amount: 129,       credits: 30, label: "Mensuel" },
-  yearly:  { amount: 107 * 12, credits: 30, label: "Annuel"  },
+  image_9: { amount: 9, credits: 0, label: "ViralWorks Image" },
+  premium_129: { amount: 129, credits: 30, label: "ViralWorks Studio" },
+  /** Alias legacy */
+  monthly: { amount: 129, credits: 30, label: "Mensuel" },
+  yearly: { amount: 107 * 12, credits: 30, label: "Annuel" },
 };
 
 export const VIDEO_PACKS = [
-  { videos: 3,  amount: 14.99  },
-  { videos: 10, amount: 49.99  },
+  { videos: 3, amount: 14.99 },
+  { videos: 10, amount: 49.99 },
   { videos: 30, amount: 149.99 },
 ];
 
 export function useStripePayment() {
   const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState(null);
+  const [error, setError] = useState(null);
 
   const startPayment = async (payload) => {
     setLoading(true);
@@ -67,16 +70,21 @@ export function useStripePayment() {
         typeof payload.billedAmount === "number"
           ? payload.billedAmount
           : payload.amount;
+      const planName =
+        payload.subscriptionPlan === "image_9"
+          ? "ViralWorks Image"
+          : payload.subscriptionPlan === "premium_129" ||
+              payload.subscriptionPlan === "monthly"
+            ? "ViralWorks Studio"
+            : payload.subscriptionPlan === "yearly"
+              ? "Abonnement Annuel"
+              : `${payload.credits} vidéos`;
+
       capturePostHog("checkout_started", {
         type: payload.type,
         price: billedAmount,
         credits: payload.credits,
-        plan_name:
-          payload.subscriptionPlan === "monthly"
-            ? "Abonnement Mensuel"
-            : payload.subscriptionPlan === "yearly"
-              ? "Abonnement Annuel"
-              : `${payload.credits} vidéos`,
+        plan_name: planName,
       });
 
       window.location.href = data.url;
@@ -97,14 +105,25 @@ export function useStripePayment() {
   return { loading, error, startPayment };
 }
 
-export const payMonthly = () => ({
+export const payImage9 = () => ({
   type: "subscription",
-  subscriptionPlan: "monthly",
+  subscriptionPlan: "image_9",
+  amount: 9,
+  credits: 0,
+});
+
+export const payPremium129 = () => ({
+  type: "subscription",
+  subscriptionPlan: "premium_129",
   amount: 129,
   billedAmount: 64.5,
   credits: 30,
 });
 
+/** @deprecated Utiliser payPremium129 */
+export const payMonthly = payPremium129;
+
+/** Conservé pour compatibilité backend — masqué de l'UI */
 export const payYearly = () => ({
   type: "subscription",
   subscriptionPlan: "yearly",
@@ -112,4 +131,9 @@ export const payYearly = () => ({
   billedAmount: 1230.5,
   credits: 30,
 });
-export const payVideoPack  = (pack) => ({ type: "credits", credits: pack.videos, amount: pack.amount });
+
+export const payVideoPack = (pack) => ({
+  type: "credits",
+  credits: pack.videos,
+  amount: pack.amount,
+});

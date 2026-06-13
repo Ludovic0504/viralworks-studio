@@ -27,8 +27,12 @@ export interface StripeSubscription {
   updated_at: string;
 }
 
-/** Identifiant de plan d’abonnement (mensuel / annuel) — utilisé par Stripe et le cadeau Gelato. */
-export type SubscriptionPlanKey = "monthly" | "yearly";
+/** Identifiant de plan d'abonnement — utilisé par Stripe et le cadeau Gelato. */
+export type SubscriptionPlanKey =
+  | "image_9"
+  | "premium_129"
+  | "monthly"
+  | "yearly";
 
 /**
  * Crée une session de checkout Stripe pour acheter des crédits
@@ -188,11 +192,13 @@ export async function redirectToCheckout(
     price: amount,
     credits,
     plan_name:
-      subscriptionPlan === "monthly"
-        ? "Abonnement Mensuel"
-        : subscriptionPlan === "yearly"
-          ? "Abonnement Annuel"
-          : `${credits} vidéos`,
+      subscriptionPlan === "image_9"
+        ? "ViralWorks Image"
+        : subscriptionPlan === "premium_129" || subscriptionPlan === "monthly"
+          ? "ViralWorks Studio"
+          : subscriptionPlan === "yearly"
+            ? "Abonnement Annuel"
+            : `${credits} vidéos`,
   });
 
   // Rediriger vers Stripe Checkout

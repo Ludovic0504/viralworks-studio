@@ -1,8 +1,17 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexte/FournisseurAuth";
-import { fetchPremiumAccess } from "@/bibliotheque/supabase/premiumAccess";
+import {
+  fetchPremiumAccess,
+  type UserPlan,
+} from "@/bibliotheque/supabase/premiumAccess";
 
-const NO_ACCESS = { isSubscribed: false, isTester: false, hasAccess: false, loading: true };
+const NO_ACCESS = {
+  isSubscribed: false,
+  isTester: false,
+  hasAccess: false,
+  plan: "free" as UserPlan,
+  loading: true,
+};
 
 export function usePremiumAccess() {
   const { session } = useAuth();
@@ -12,7 +21,13 @@ export function usePremiumAccess() {
     let active = true;
 
     if (!session?.user?.id) {
-      setState({ isSubscribed: false, isTester: false, hasAccess: false, loading: false });
+      setState({
+        isSubscribed: false,
+        isTester: false,
+        hasAccess: false,
+        plan: "free",
+        loading: false,
+      });
       return () => {
         active = false;
       };
@@ -25,7 +40,13 @@ export function usePremiumAccess() {
       })
       .catch(() => {
         if (active) {
-          setState({ isSubscribed: false, isTester: false, hasAccess: false, loading: false });
+          setState({
+            isSubscribed: false,
+            isTester: false,
+            hasAccess: false,
+            plan: "free",
+            loading: false,
+          });
         }
       });
 

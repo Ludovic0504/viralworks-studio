@@ -36,6 +36,50 @@ function resolveBaseUrl(req: Request, requestedOrigin?: unknown): string {
   return "http://localhost:5173";
 }
 
+function subscriptionProductName(planKey: string): string {
+  if (planKey === "image_9") return "ViralWorks Image";
+  if (planKey === "premium_129" || planKey === "monthly") return "ViralWorks Studio";
+  if (planKey === "yearly") return "Abonnement Annuel";
+  return "Abonnement";
+}
+
+function buildCheckoutLineItems(
+  type: string,
+  planKey: string,
+  amount: number,
+  credits: number,
+  stripePriceImage9: string | null,
+): Stripe.Checkout.SessionCreateParams.LineItem[] {
+  if (type === "subscription" && planKey === "image_9" && stripePriceImage9) {
+    return [{ price: stripePriceImage9, quantity: 1 }];
+  }
+
+  return [
+    {
+      price_data: {
+        currency: "eur",
+        product_data: {
+          name:
+            type === "subscription"
+              ? subscriptionProductName(planKey)
+              : `${credits} crédits`,
+          description:
+            type === "subscription"
+              ? "Abonnement mensuel"
+              : `Achat de ${credits} crédits`,
+        },
+        unit_amount: Math.round(amount * 100),
+        ...(type === "subscription" && {
+          recurring: {
+            interval: planKey === "yearly" ? "year" : "month",
+          },
+        }),
+      },
+      quantity: 1,
+    },
+  ];
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
@@ -120,7 +164,9 @@ serve(async (req) => {
       typeof subscriptionPlan === "string" ? subscriptionPlan.trim() : "";
     const giftEligibleSubscription =
       type === "subscription" &&
-      (planKey === "monthly" || planKey === "yearly");
+      (planKey === "premium_129" ||
+        planKey === "monthly" ||
+        planKey === "yearly");
     const welcomeGiftMeta = giftEligibleSubscription;
     if (giftEligibleSubscription) {
       const normalizedAmount = Number(amount);
@@ -152,7 +198,7 @@ serve(async (req) => {
           : "STRIPE_COUPON_LAUNCH_YEARLY_TEST";
       const monthlyCoupon = Deno.env.get(monthlyEnvName)?.trim() ?? "";
       const yearlyCoupon = Deno.env.get(yearlyEnvName)?.trim() ?? "";
-      if (planKey === "monthly" && monthlyCoupon) {
+      if (planKey === "premium_129" || planKey === "monthly") {
         launchDiscountCoupon = monthlyCoupon;
       } else if (planKey === "yearly" && yearlyCoupon) {
         launchDiscountCoupon = yearlyCoupon;
@@ -183,13 +229,38 @@ serve(async (req) => {
       stripeKeyPrefix: stripeSecretKey ? stripeSecretKey.slice(0, 8) : null,
     });
 
-    if (!amount || !credits) {
+    const normalizedAmount = Number(amount);
+    const normalizedCredits = Number(credits);
+
+    if (
+      !Number.isFinite(normalizedAmount) ||
+      normalizedAmount <= 0 ||
+      !Number.isFinite(normalizedCredits) ||
+      normalizedCredits < 0
+    ) {
       return new Response(
         JSON.stringify({ error: "amount et credits requis" }),
         {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         }
+      );
+    }
+
+    if (type === "subscription" && planKey === "image_9" && normalizedCredits !== 0) {
+      return new Response(
+        JSON.stringify({ error: "Le plan image_9 ne doit pas inclure de crédits vidéo" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    const stripePriceImage9 = Deno.env.get("STRIPE_PRICE_IMAGE_9")?.trim() || null;
+    if (type === "subscription" && planKey === "image_9" && !stripePriceImage9) {
+      console.warn(
+        "STRIPE_PRICE_IMAGE_9 non configuré — repli sur price_data dynamique pour image_9",
       );
     }
 
@@ -258,26 +329,13 @@ serve(async (req) => {
         ...(launchDiscountCoupon
           ? { discounts: [{ coupon: launchDiscountCoupon }] }
           : {}),
-        line_items: [
-          {
-            price_data: {
-              currency: "eur",
-              product_data: {
-                name: type === "subscription" ? "Abonnement" : `${credits} crédits`,
-                description: type === "subscription" 
-                  ? "Abonnement mensuel" 
-                  : `Achat de ${credits} crédits`,
-              },
-              unit_amount: Math.round(amount * 100), // Convertir en centimes
-              ...(type === "subscription" && {
-                recurring: {
-                  interval: planKey === "yearly" ? "year" : "month",
-                },
-              }),
-            },
-            quantity: 1,
-          },
-        ],
+        line_items: buildCheckoutLineItems(
+          type,
+          planKey,
+          normalizedAmount,
+          normalizedCredits,
+          stripePriceImage9,
+        ),
         mode: type === "subscription" ? "subscription" : "payment",
         success_url: `${baseUrl}/boutique?section=subscription&payment=success`,
         cancel_url: `${baseUrl}/boutique?section=subscription&payment=cancelled`,
@@ -289,7 +347,7 @@ serve(async (req) => {
         }),
         metadata: {
           user_id: user.id,
-          credits: credits.toString(),
+          credits: normalizedCredits.toString(),
           type: type || "credits",
           subscription_plan: planKey,
           welcome_gift: welcomeGiftMeta ? "1" : "",
@@ -318,7 +376,7 @@ serve(async (req) => {
               metadata: {
                 ...session.metadata,
                 session_created_at: new Date().toISOString(),
-                credits: credits.toString(),
+                credits: normalizedCredits.toString(),
                 type: type || "credits",
               },
             });

@@ -17,6 +17,7 @@ import AdminStats from "./pages/AdminStats.jsx";
 import MentionsLegales from "./pages/MentionsLegales.jsx";
 import ViralWorks from "./pages/ViralWorks.jsx";
 import Studio from "./pages/Studio.jsx";
+import ImageStudio from "./pages/ImageStudio.jsx";
 import EditVideo from "./pages/EditVideo.jsx";
 import GoRedirect from "./pages/GoRedirect.jsx";
 import ProtectedRoute from "./composants/auth/RouteProtegee.jsx";
@@ -193,6 +194,7 @@ const router = createBrowserRouter([
           { path: "image", element: <Navigate to="/viralworks" replace /> },
           { path: "video", element: <Navigate to="/viralworks" replace /> },
           { path: "studio", element: <Studio /> },
+          { path: "image-studio", element: <ImageStudio /> },
           {
             path: "edit-video",
             element: (

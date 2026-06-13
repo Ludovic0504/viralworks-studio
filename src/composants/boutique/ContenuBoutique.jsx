@@ -9,9 +9,9 @@ import {
   getUserSubscription,
   fetchWelcomeGiftNeedsChoice,
 } from "@/bibliotheque/supabase/stripe";
-import { useStripePayment, payMonthly, payYearly, payVideoPack } from "@/hooks/useStripePayment";
+import { useStripePayment, payImage9, payPremium129, payVideoPack } from "@/hooks/useStripePayment";
 import ModalCadeauBienvenue from "@/composants/ModalCadeauBienvenue";
-import { CreditCard, Check, Crown, Loader2, CheckCircle, XCircle, ShoppingBag } from "lucide-react";
+import { CreditCard, Check, Crown, Loader2, CheckCircle, XCircle, ShoppingBag, ImageIcon } from "lucide-react";
 
 const CREDIT_PACKAGES = [
   {
@@ -48,38 +48,36 @@ const CREDIT_PACKAGES = [
 
 const SUBSCRIPTION_PLANS = [
   {
-    id: "monthly",
-    name: "Abonnement Mensuel",
+    id: "image_9",
+    name: "ViralWorks Image",
+    credits: 0,
+    price: 9,
+    period: "mois",
+    popular: false,
+    features: [
+      "Image Studio — jusqu'à 200 générations / mois",
+      "Génération d'images par prompt",
+      "Accès aux outils image ViralWorks",
+    ],
+    savings: null,
+  },
+  {
+    id: "premium_129",
+    name: "ViralWorks Studio",
     credits: 30,
     price: 129,
     period: "mois",
     popular: true,
     features: [
       "30 vidéos finales exportables",
+      "Avatar IA inclus",
+      "Image Studio inclus",
       "Scripts Gagnant inclus",
       "Visuels d'accroche inclus",
-      "Accès à toutes les fonctionnalités",
-      "Support prioritaire",
-      "Inclus : jusqu'à 200 générations de texte et d'images / mois (largement suffisant pour préparer tes vidéos)",
-    ],
-    savings: null,
-  },
-  {
-    id: "yearly",
-    name: "Abonnement Annuel",
-    credits: 30,
-    price: 107 * 12,
-    period: "an",
-    popular: false,
-    features: [
-      "30 vidéos finales par mois",
-      "Scripts Gagnant inclus",
-      "Visuels d'accroche inclus",
-      "Jusqu'à 200 générations de texte et d'images / mois",
       "Accès à toutes les fonctionnalités",
       "Support prioritaire",
     ],
-    savings: "Économisez environ 17 % par rapport au mensuel",
+    savings: null,
   },
 ];
 
@@ -108,11 +106,18 @@ export default function ContenuBoutique({ variant = "page", initialSection = nul
   const giftPollAttempts = useRef(0);
 
   const paymentStatus = searchParams.get("payment");
+  const highlightPlanId = searchParams.get("highlight") === "image_9" ? "image_9" : null;
   const isModal = variant === "modal";
 
   useEffect(() => {
     capturePostHog("pricing_page_viewed", { page: "boutique", variant });
   }, [variant]);
+
+  useEffect(() => {
+    const section = searchParams.get("section");
+    const tab = resolveSectionTab(section);
+    if (tab) setActiveTab(tab);
+  }, [searchParams]);
 
   useEffect(() => {
     if (error) {
@@ -150,13 +155,16 @@ export default function ContenuBoutique({ variant = "page", initialSection = nul
             type: last?.type,
             credits: last?.credits,
             plan_name:
-              last?.subscriptionPlan === "monthly"
-                ? "Abonnement Mensuel"
-                : last?.subscriptionPlan === "yearly"
-                  ? "Abonnement Annuel"
-                  : last?.credits
-                    ? `${last.credits} vidéos`
-                    : undefined,
+              last?.subscriptionPlan === "image_9"
+                ? "ViralWorks Image"
+                : last?.subscriptionPlan === "premium_129" ||
+                    last?.subscriptionPlan === "monthly"
+                  ? "ViralWorks Studio"
+                  : last?.subscriptionPlan === "yearly"
+                    ? "Abonnement Annuel"
+                    : last?.credits
+                      ? `${last.credits} vidéos`
+                      : undefined,
           });
           sessionStorage.removeItem("onetool_last_checkout");
         } else {
@@ -492,28 +500,47 @@ export default function ContenuBoutique({ variant = "page", initialSection = nul
 
       {activeTab === "subscription" && (
         <div className={m.gridSubs}>
-          {SUBSCRIPTION_PLANS.map((plan) => (
+          {SUBSCRIPTION_PLANS.map((plan) => {
+            const isHighlighted = highlightPlanId === plan.id;
+            const PlanIcon = plan.id === "image_9" ? ImageIcon : Crown;
+            const iconWrapClass =
+              plan.id === "image_9"
+                ? "bg-emerald-500/20 border border-emerald-500/30"
+                : "bg-violet-500/20 border border-violet-500/30";
+            const iconClass =
+              plan.id === "image_9" ? "text-emerald-400" : "text-violet-400";
+            const accentBorder = plan.id === "image_9"
+              ? "border-emerald-500/50 bg-emerald-500/5 shadow-lg shadow-emerald-500/10"
+              : "border-violet-500/50 bg-violet-500/5 shadow-lg shadow-violet-500/10";
+
+            return (
             <div
               key={plan.id}
               className={`${m.subCard} ${
-                plan.popular
-                  ? "border-violet-500/50 bg-violet-500/5 shadow-lg shadow-violet-500/10"
+                isHighlighted
+                  ? `${accentBorder} ring-2 ring-emerald-500/40`
+                  : plan.popular
+                  ? accentBorder
                   : "border-white/10 hover:border-white/20"
               }`}
             >
-              {plan.popular && (
-                <div className={`bg-violet-500 text-white ${m.popularBadge}`}>
-                  Recommandé
+              {(plan.popular || isHighlighted) && (
+                <div className={`${plan.id === "image_9" ? "bg-emerald-500" : "bg-violet-500"} text-white ${m.popularBadge}`}>
+                  {isHighlighted ? "Pour vous" : "Recommandé"}
                 </div>
               )}
               <div className={m.subCardBody}>
-                <div className={`bg-violet-500/20 border border-violet-500/30 flex items-center justify-center ${m.subIconWrap}`}>
-                  <Crown className={`text-violet-400 ${m.subIcon}`} />
+                <div className={`${iconWrapClass} flex items-center justify-center ${m.subIconWrap}`}>
+                  <PlanIcon className={`${iconClass} ${m.subIcon}`} />
                 </div>
                 <h3 className={m.subName}>{plan.name}</h3>
-                <div className={m.subQuota}>Jusqu'à 30 vidéos / mois</div>
+                <div className={m.subQuota}>
+                  {plan.id === "image_9"
+                    ? "Jusqu'à 200 images / mois"
+                    : "Jusqu'à 30 vidéos / mois"}
+                </div>
                 <div className={m.subPrice}>
-                  {plan.id === "monthly" ? (
+                  {plan.id === "premium_129" ? (
                     <>
                       64,50 €
                       <span className={m.subPriceNote}>
@@ -525,10 +552,8 @@ export default function ContenuBoutique({ variant = "page", initialSection = nul
                     </>
                   ) : (
                     <>
-                      107 €/mois
-                      <span className={m.subPriceNote}>
-                        Engagement annuel - 50 % le 1er mois
-                      </span>
+                      9,00 €
+                      <span className={m.subPriceNote}>/ mois</span>
                     </>
                   )}
                 </div>
@@ -552,13 +577,17 @@ export default function ContenuBoutique({ variant = "page", initialSection = nul
                       price: plan.price,
                     });
                     void runWithAuth(() =>
-                      startPayment(plan.id === "monthly" ? payMonthly() : payYearly())
+                      startPayment(
+                        plan.id === "image_9" ? payImage9() : payPremium129(),
+                      ),
                     );
                   }}
                   disabled={loading || subscription !== null}
                   className={`${m.buyBtn} ${
-                    plan.popular
-                      ? "bg-violet-500 hover:bg-violet-600 text-white"
+                    plan.popular || plan.id === "image_9"
+                      ? plan.id === "image_9"
+                        ? "bg-emerald-500 hover:bg-emerald-600 text-white"
+                        : "bg-violet-500 hover:bg-violet-600 text-white"
                       : "bg-white/10 hover:bg-white/20 text-gray-200 border border-white/20"
                   } ${subscription ? "opacity-50 cursor-not-allowed" : ""} disabled:opacity-50 disabled:cursor-not-allowed`}
                 >
@@ -570,17 +599,10 @@ export default function ContenuBoutique({ variant = "page", initialSection = nul
                     "S'abonner"
                   )}
                 </button>
-                {plan.id === "monthly" && (
-                  <button
-                    type="button"
-                    className={m.subLearnMore}
-                  >
-                    En savoir plus
-                  </button>
-                )}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

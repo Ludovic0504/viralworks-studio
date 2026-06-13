@@ -18,6 +18,7 @@ import {
 import { deleteHistory } from "@/bibliotheque/supabase/historique";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { usePremiumAccess } from "@/hooks/usePremiumAccess";
+import { hasAvatarPlan } from "@/bibliotheque/supabase/premiumAccess";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { capturePostHog, trackPostHogError } from "@/bibliotheque/posthog/client";
 
@@ -32,7 +33,7 @@ export default function Studio() {
   const { setStudioLayout } = useStudioLayoutOptions();
   const [config, setConfig] = useState(DEFAULT_AVATAR_CONFIG);
   const [error, setError] = useState(null);
-  const { hasAccess, loading: subscriptionLoading } = usePremiumAccess();
+  const { plan, loading: subscriptionLoading } = usePremiumAccess();
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   const [avatarLibrary, setAvatarLibrary] = useState([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
@@ -80,12 +81,12 @@ export default function Studio() {
 
   const requireSubscription = useCallback(() => {
     if (subscriptionLoading) return false;
-    if (!hasAccess) {
+    if (!hasAvatarPlan(plan)) {
       setShowSubscriptionModal(true);
       return false;
     }
     return true;
-  }, [hasAccess, subscriptionLoading]);
+  }, [plan, subscriptionLoading]);
 
   const canGenerate =
     Boolean(config.metier) &&
@@ -192,7 +193,7 @@ export default function Studio() {
             activeCategory={config.activeCategory}
             onGenerate={requestGenerate}
             onSubscriptionRequired={() => setShowSubscriptionModal(true)}
-            hasAccess={hasAccess}
+            hasAccess={hasAvatarPlan(plan)}
             subscriptionLoading={subscriptionLoading}
             canGenerate={canGenerate}
             generating={config.generating}

@@ -66,7 +66,7 @@ export async function tryScheduleWelcomeGift(
   }
 
   const plan = session.metadata?.subscription_plan?.trim();
-  if (plan !== "monthly" && plan !== "yearly") {
+  if (plan !== "monthly" && plan !== "yearly" && plan !== "premium_129") {
     return;
   }
 

@@ -2,51 +2,51 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { ChevronDown, Bolt } from "lucide-react";
 import LienNavSync from "@/composants/disposition/LienNavSync";
-import { FEATURE_DECORS } from "@/bibliotheque/featureFlags";
 
-const STUDIO_ITEMS = [
-  { to: "/studio", label: "Avatar IA", matchDecors: false, showNew: true },
-  {
-    to: "/edit-video",
-    label: "Éditer ma vidéo",
-    matchDecors: false,
-    matchEditVideo: true,
-    showNew: true,
-  },
-  ...(FEATURE_DECORS
-    ? [{ to: "/studio?mode=decors", label: "Décors & Lieux", matchDecors: true }]
-    : []),
+const VIDEO_ITEMS = [
+  { to: "/viralworks", label: "Créer ma vidéo", matchCreator: true },
+  { to: "/edit-video", label: "Éditer ma vidéo", matchEditVideo: true, adminOnly: true },
 ];
 
-function visibleStudioItems(showEditVideo) {
-  return STUDIO_ITEMS.filter((item) => showEditVideo || !item.matchEditVideo);
+const IMAGE_ITEMS = [
+  { to: "/studio", label: "Avatar IA", matchAvatar: true, showNew: true },
+  { to: "/image-studio", label: "Image Studio", matchImageStudio: true, showNew: true },
+];
+
+function visibleVideoItems(showEditVideo) {
+  return VIDEO_ITEMS.filter((item) => showEditVideo || !item.adminOnly);
 }
 
 function useViralWorksNavState() {
   const location = useLocation();
-  const searchParams = new URLSearchParams(location.search);
-  const isDecorsMode = searchParams.get("mode") === "decors";
 
   const isCreatorActive =
     location.pathname === "/viralworks" || location.pathname.startsWith("/viralworks/");
 
   const isEditVideoActive = location.pathname === "/edit-video";
 
-  const isStudioItemActive = (item) => {
+  const isImageStudioActive = location.pathname === "/image-studio";
+
+  const isNavItemActive = (item) => {
+    if (item.matchCreator) return isCreatorActive;
     if (item.matchEditVideo) return isEditVideoActive;
-    if (location.pathname !== "/studio" && !location.pathname.startsWith("/studio/")) {
-      return false;
+    if (item.matchImageStudio) return isImageStudioActive;
+    if (item.matchAvatar) {
+      return (
+        location.pathname === "/studio" || location.pathname.startsWith("/studio/")
+      );
     }
-    return item.matchDecors ? isDecorsMode : !isDecorsMode;
+    return false;
   };
 
   const isTriggerActive =
     isCreatorActive ||
     location.pathname === "/studio" ||
     location.pathname.startsWith("/studio/") ||
-    isEditVideoActive;
+    isEditVideoActive ||
+    isImageStudioActive;
 
-  return { isCreatorActive, isStudioItemActive, isTriggerActive };
+  return { isNavItemActive, isTriggerActive };
 }
 
 function itemClass(active) {
@@ -60,6 +60,25 @@ function NewBadge() {
     <span className="shrink-0 rounded-[20px] bg-emerald-400 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-[#0d1117]">
       NEW
     </span>
+  );
+}
+
+function NavSection({ title, first = false }) {
+  return (
+    <div className={`${first ? "mt-0" : "my-1.5"} px-2.5`}>
+      {!first ? <div className="h-px bg-white/[0.07]" /> : null}
+      <div className={`${first ? "" : "mt-1.5"} text-[10px] font-semibold uppercase tracking-wider text-white/35`}>
+        {title}
+      </div>
+    </div>
+  );
+}
+
+function NavSectionMobile({ title, first = false }) {
+  return (
+    <div className={`px-3 ${first ? "pt-0 pb-1" : "py-1"} text-[10px] font-semibold uppercase tracking-wider text-white/35`}>
+      {title}
+    </div>
   );
 }
 
@@ -77,33 +96,34 @@ function MenuLink({ to, label, active, onNavigate, showNew = false }) {
   );
 }
 
-function DropdownPanel({ onClose, isCreatorActive, isStudioItemActive, showEditVideo }) {
-  const studioItems = visibleStudioItems(showEditVideo);
+function DropdownPanel({ onClose, isNavItemActive, showEditVideo }) {
+  const videoItems = visibleVideoItems(showEditVideo);
+
   return (
     <div
-      className="absolute left-1/2 top-full z-[60] mt-2 w-[220px] -translate-x-1/2 rounded-xl border border-white/[0.12] bg-[#181b26] p-1.5 shadow-xl"
+      className="absolute left-1/2 top-full z-[60] mt-2 w-[240px] -translate-x-1/2 rounded-xl border border-white/[0.12] bg-[#181b26] p-1.5 shadow-xl"
       role="menu"
     >
-      <MenuLink
-        to="/viralworks"
-        label="Créer ma vidéo"
-        active={isCreatorActive}
-        onNavigate={onClose}
-      />
+      <NavSection title="ViralWorks Vidéo" first />
 
-      <div className="my-1.5 px-2.5">
-        <div className="h-px bg-white/[0.07]" />
-        <div className="mt-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/35">
-          Studio
-        </div>
-      </div>
-
-      {studioItems.map((item) => (
+      {videoItems.map((item) => (
         <MenuLink
           key={item.to}
           to={item.to}
           label={item.label}
-          active={isStudioItemActive(item)}
+          active={isNavItemActive(item)}
+          onNavigate={onClose}
+        />
+      ))}
+
+      <NavSection title="ViralWorks Image" />
+
+      {IMAGE_ITEMS.map((item) => (
+        <MenuLink
+          key={item.to}
+          to={item.to}
+          label={item.label}
+          active={isNavItemActive(item)}
           onNavigate={onClose}
           showNew={Boolean(item.showNew)}
         />
@@ -116,7 +136,7 @@ function DropdownPanel({ onClose, isCreatorActive, isStudioItemActive, showEditV
 export function MenuNavViralWorksDesktop({ showEditVideo = false }) {
   const rootRef = useRef(null);
   const [open, setOpen] = useState(false);
-  const { isCreatorActive, isStudioItemActive, isTriggerActive } = useViralWorksNavState();
+  const { isNavItemActive, isTriggerActive } = useViralWorksNavState();
 
   useEffect(() => {
     if (!open) return;
@@ -160,8 +180,7 @@ export function MenuNavViralWorksDesktop({ showEditVideo = false }) {
       {open ? (
         <DropdownPanel
           onClose={close}
-          isCreatorActive={isCreatorActive}
-          isStudioItemActive={isStudioItemActive}
+          isNavItemActive={isNavItemActive}
           showEditVideo={showEditVideo}
         />
       ) : null}
@@ -172,8 +191,8 @@ export function MenuNavViralWorksDesktop({ showEditVideo = false }) {
 /** Section mobile : accordion ViralWorks dans la sidebar. */
 export function MenuNavViralWorksMobile({ onNavigate, showEditVideo = false }) {
   const [expanded, setExpanded] = useState(false);
-  const { isCreatorActive, isStudioItemActive, isTriggerActive } = useViralWorksNavState();
-  const studioItems = visibleStudioItems(showEditVideo);
+  const { isNavItemActive, isTriggerActive } = useViralWorksNavState();
+  const videoItems = visibleVideoItems(showEditVideo);
 
   const close = () => {
     setExpanded(false);
@@ -208,23 +227,26 @@ export function MenuNavViralWorksMobile({ onNavigate, showEditVideo = false }) {
 
       {expanded ? (
         <div className="ml-2 flex flex-col gap-1 border-l border-white/10 pl-3">
-          <LienNavSync
-            to="/viralworks"
-            className={`rounded-lg px-3 py-2 text-sm transition-colors ${itemClass(isCreatorActive)}`}
-            onClick={close}
-          >
-            Créer ma vidéo
-          </LienNavSync>
+          <NavSectionMobile title="ViralWorks Vidéo" first />
 
-          <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-white/35">
-            Studio
-          </div>
-
-          {studioItems.map((item) => (
+          {videoItems.map((item) => (
             <LienNavSync
               key={item.to}
               to={item.to}
-              className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${itemClass(isStudioItemActive(item))}`}
+              className={`rounded-lg px-3 py-2 text-sm transition-colors ${itemClass(isNavItemActive(item))}`}
+              onClick={close}
+            >
+              {item.label}
+            </LienNavSync>
+          ))}
+
+          <NavSectionMobile title="ViralWorks Image" />
+
+          {IMAGE_ITEMS.map((item) => (
+            <LienNavSync
+              key={item.to}
+              to={item.to}
+              className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${itemClass(isNavItemActive(item))}`}
               onClick={close}
             >
               <span>{item.label}</span>
