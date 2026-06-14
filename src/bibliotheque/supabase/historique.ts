@@ -1,6 +1,6 @@
 import { getBrowserSupabase } from "./client-navigateur";
 
-export type HistoryKind = "prompt" | "image" | "video" | "avatar";
+export type HistoryKind = "prompt" | "image" | "video" | "avatar" | "product";
 
 export async function saveHistory({
   kind,

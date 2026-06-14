@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { ChevronDown, Bolt } from "lucide-react";
 import LienNavSync from "@/composants/disposition/LienNavSync";
+import { useAuth } from "@/contexte/FournisseurAuth";
+import { prefetchPremiumAccess } from "@/hooks/usePremiumAccess";
+import { prefetchAdminAccess } from "@/bibliotheque/supabase/credits";
 
 const VIDEO_ITEMS = [
   { to: "/viralworks", label: "Créer ma vidéo", matchCreator: true },
@@ -39,14 +42,13 @@ function useViralWorksNavState() {
     return false;
   };
 
-  const isTriggerActive =
-    isCreatorActive ||
+  const isVideoTriggerActive = isCreatorActive || isEditVideoActive;
+  const isImageTriggerActive =
     location.pathname === "/studio" ||
     location.pathname.startsWith("/studio/") ||
-    isEditVideoActive ||
     isImageStudioActive;
 
-  return { isNavItemActive, isTriggerActive };
+  return { isNavItemActive, isVideoTriggerActive, isImageTriggerActive };
 }
 
 function itemClass(active) {
@@ -63,32 +65,23 @@ function NewBadge() {
   );
 }
 
-function NavSection({ title, first = false }) {
-  return (
-    <div className={`${first ? "mt-0" : "my-1.5"} px-2.5`}>
-      {!first ? <div className="h-px bg-white/[0.07]" /> : null}
-      <div className={`${first ? "" : "mt-1.5"} text-[10px] font-semibold uppercase tracking-wider text-white/35`}>
-        {title}
-      </div>
-    </div>
-  );
-}
-
-function NavSectionMobile({ title, first = false }) {
-  return (
-    <div className={`px-3 ${first ? "pt-0 pb-1" : "py-1"} text-[10px] font-semibold uppercase tracking-wider text-white/35`}>
-      {title}
-    </div>
-  );
+function prefetchNavTarget(to, userId) {
+  if (to === "/image-studio") prefetchPremiumAccess(userId);
+  if (to === "/edit-video") prefetchAdminAccess(userId);
 }
 
 function MenuLink({ to, label, active, onNavigate, showNew = false }) {
+  const { session } = useAuth();
+  const prefetch = () => prefetchNavTarget(to, session?.user?.id);
+
   return (
     <LienNavSync
       to={to}
       role="menuitem"
       className={`flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-2.5 py-[9px] text-[13px] transition-colors ${itemClass(active)}`}
       onClick={onNavigate}
+      onMouseEnter={prefetch}
+      onFocus={prefetch}
     >
       <span>{label}</span>
       {showNew ? <NewBadge /> : null}
@@ -96,47 +89,9 @@ function MenuLink({ to, label, active, onNavigate, showNew = false }) {
   );
 }
 
-function DropdownPanel({ onClose, isNavItemActive, showEditVideo }) {
-  const videoItems = visibleVideoItems(showEditVideo);
-
-  return (
-    <div
-      className="absolute left-1/2 top-full z-[60] mt-2 w-[240px] -translate-x-1/2 rounded-xl border border-white/[0.12] bg-[#181b26] p-1.5 shadow-xl"
-      role="menu"
-    >
-      <NavSection title="ViralWorks Vidéo" first />
-
-      {videoItems.map((item) => (
-        <MenuLink
-          key={item.to}
-          to={item.to}
-          label={item.label}
-          active={isNavItemActive(item)}
-          onNavigate={onClose}
-        />
-      ))}
-
-      <NavSection title="ViralWorks Image" />
-
-      {IMAGE_ITEMS.map((item) => (
-        <MenuLink
-          key={item.to}
-          to={item.to}
-          label={item.label}
-          active={isNavItemActive(item)}
-          onNavigate={onClose}
-          showNew={Boolean(item.showNew)}
-        />
-      ))}
-    </div>
-  );
-}
-
-/** Dropdown desktop : trigger "ViralWorks" au clic. */
-export function MenuNavViralWorksDesktop({ showEditVideo = false }) {
+function NavDropdownDesktop({ label, items, isTriggerActive, isNavItemActive, onPrefetch }) {
   const rootRef = useRef(null);
   const [open, setOpen] = useState(false);
-  const { isNavItemActive, isTriggerActive } = useViralWorksNavState();
 
   useEffect(() => {
     if (!open) return;
@@ -163,8 +118,10 @@ export function MenuNavViralWorksDesktop({ showEditVideo = false }) {
           e.stopPropagation();
           setOpen((v) => !v);
         }}
+        onMouseEnter={onPrefetch}
+        onFocus={onPrefetch}
       >
-        <span className="relative z-10">ViralWorks</span>
+        <span className="relative z-10">{label}</span>
         <ChevronDown
           className={`h-3.5 w-3.5 shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
           strokeWidth={2.25}
@@ -178,21 +135,60 @@ export function MenuNavViralWorksDesktop({ showEditVideo = false }) {
       </button>
 
       {open ? (
-        <DropdownPanel
-          onClose={close}
-          isNavItemActive={isNavItemActive}
-          showEditVideo={showEditVideo}
-        />
+        <div
+          className="absolute left-1/2 top-full z-[60] mt-2 w-[240px] -translate-x-1/2 rounded-xl border border-white/[0.12] bg-[#181b26] p-1.5 shadow-xl"
+          role="menu"
+        >
+          {items.map((item) => (
+            <MenuLink
+              key={item.to}
+              to={item.to}
+              label={item.label}
+              active={isNavItemActive(item)}
+              onNavigate={close}
+              showNew={Boolean(item.showNew)}
+            />
+          ))}
+        </div>
       ) : null}
     </div>
   );
 }
 
-/** Section mobile : accordion ViralWorks dans la sidebar. */
-export function MenuNavViralWorksMobile({ onNavigate, showEditVideo = false }) {
-  const [expanded, setExpanded] = useState(false);
-  const { isNavItemActive, isTriggerActive } = useViralWorksNavState();
+/** Dropdowns desktop : "ViralWorks Vidéo" puis "ViralWorks Image". */
+export function MenuNavViralWorksDesktop({ showEditVideo = false }) {
+  const { session } = useAuth();
+  const { isNavItemActive, isVideoTriggerActive, isImageTriggerActive } =
+    useViralWorksNavState();
   const videoItems = visibleVideoItems(showEditVideo);
+  const prefetchEditVideo = () => {
+    if (showEditVideo) prefetchAdminAccess(session?.user?.id);
+  };
+  const prefetchImageStudio = () => prefetchPremiumAccess(session?.user?.id);
+
+  return (
+    <>
+      <NavDropdownDesktop
+        label="ViralWorks Vidéo"
+        items={videoItems}
+        isTriggerActive={isVideoTriggerActive}
+        isNavItemActive={isNavItemActive}
+        onPrefetch={prefetchEditVideo}
+      />
+      <NavDropdownDesktop
+        label="ViralWorks Image"
+        items={IMAGE_ITEMS}
+        isTriggerActive={isImageTriggerActive}
+        isNavItemActive={isNavItemActive}
+        onPrefetch={prefetchImageStudio}
+      />
+    </>
+  );
+}
+
+function NavAccordionMobile({ label, items, isTriggerActive, isNavItemActive, onNavigate, onPrefetch }) {
+  const [expanded, setExpanded] = useState(false);
+  const { session } = useAuth();
 
   const close = () => {
     setExpanded(false);
@@ -210,6 +206,8 @@ export function MenuNavViralWorksMobile({ onNavigate, showEditVideo = false }) {
             : "text-slate-300 hover:bg-white/5 hover:text-white border border-transparent"
         }`}
         onClick={() => setExpanded((v) => !v)}
+        onMouseEnter={onPrefetch}
+        onFocus={onPrefetch}
       >
         <span className="flex min-w-0 items-center gap-3">
           <Bolt
@@ -217,7 +215,7 @@ export function MenuNavViralWorksMobile({ onNavigate, showEditVideo = false }) {
               isTriggerActive ? "scale-110" : "group-hover:scale-110"
             }`}
           />
-          <span>ViralWorks</span>
+          <span>{label}</span>
         </span>
         <ChevronDown
           className={`h-4 w-4 shrink-0 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
@@ -227,27 +225,14 @@ export function MenuNavViralWorksMobile({ onNavigate, showEditVideo = false }) {
 
       {expanded ? (
         <div className="ml-2 flex flex-col gap-1 border-l border-white/10 pl-3">
-          <NavSectionMobile title="ViralWorks Vidéo" first />
-
-          {videoItems.map((item) => (
-            <LienNavSync
-              key={item.to}
-              to={item.to}
-              className={`rounded-lg px-3 py-2 text-sm transition-colors ${itemClass(isNavItemActive(item))}`}
-              onClick={close}
-            >
-              {item.label}
-            </LienNavSync>
-          ))}
-
-          <NavSectionMobile title="ViralWorks Image" />
-
-          {IMAGE_ITEMS.map((item) => (
+          {items.map((item) => (
             <LienNavSync
               key={item.to}
               to={item.to}
               className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${itemClass(isNavItemActive(item))}`}
               onClick={close}
+              onMouseEnter={() => prefetchNavTarget(item.to, session?.user?.id)}
+              onFocus={() => prefetchNavTarget(item.to, session?.user?.id)}
             >
               <span>{item.label}</span>
               {item.showNew ? <NewBadge /> : null}
@@ -255,6 +240,39 @@ export function MenuNavViralWorksMobile({ onNavigate, showEditVideo = false }) {
           ))}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/** Sections mobile : accordéons "ViralWorks Vidéo" puis "ViralWorks Image". */
+export function MenuNavViralWorksMobile({ onNavigate, showEditVideo = false }) {
+  const { session } = useAuth();
+  const { isNavItemActive, isVideoTriggerActive, isImageTriggerActive } =
+    useViralWorksNavState();
+  const videoItems = visibleVideoItems(showEditVideo);
+  const prefetchEditVideo = () => {
+    if (showEditVideo) prefetchAdminAccess(session?.user?.id);
+  };
+  const prefetchImageStudio = () => prefetchPremiumAccess(session?.user?.id);
+
+  return (
+    <div className="flex flex-col gap-1">
+      <NavAccordionMobile
+        label="ViralWorks Vidéo"
+        items={videoItems}
+        isTriggerActive={isVideoTriggerActive}
+        isNavItemActive={isNavItemActive}
+        onNavigate={onNavigate}
+        onPrefetch={prefetchEditVideo}
+      />
+      <NavAccordionMobile
+        label="ViralWorks Image"
+        items={IMAGE_ITEMS}
+        isTriggerActive={isImageTriggerActive}
+        isNavItemActive={isNavItemActive}
+        onNavigate={onNavigate}
+        onPrefetch={prefetchImageStudio}
+      />
     </div>
   );
 }

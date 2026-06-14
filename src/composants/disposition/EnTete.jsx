@@ -200,7 +200,7 @@ export default function Header({ onOpenMenu }) {
             {logoTitle}
           </LienNavSync>
 
-          <nav className="hidden min-w-0 flex-1 items-center justify-center gap-6 md:flex lg:gap-8 overflow-hidden">{navItems}</nav>
+          <nav className="hidden min-w-0 flex-1 items-center justify-center gap-6 overflow-visible md:flex lg:gap-8">{navItems}</nav>
 
           <div className="nav-right flex shrink-0 items-center justify-end gap-2 overflow-visible">
             {adminBar.isAdmin ? (

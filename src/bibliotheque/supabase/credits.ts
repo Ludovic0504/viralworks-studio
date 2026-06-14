@@ -337,10 +337,54 @@ export async function getUserRole(): Promise<'user' | 'admin' | null> {
   return (data?.role as 'user' | 'admin') || 'user';
 }
 
+let adminCache: { userId: string; value: boolean } | null = null;
+let adminInflight: { userId: string; promise: Promise<boolean> } | null = null;
+
+export function readCachedAdminStatus(userId: string | undefined): boolean | null {
+  if (!userId || adminCache?.userId !== userId) return null;
+  return adminCache.value;
+}
+
+/** Précharge le statut admin (ex. au survol du lien Éditer ma vidéo). */
+export function prefetchAdminAccess(userId: string | undefined) {
+  if (!userId) return;
+  void resolveAdminStatus(userId);
+}
+
+async function resolveAdminStatus(userId: string): Promise<boolean> {
+  if (adminCache?.userId === userId) return adminCache.value;
+  if (adminInflight?.userId === userId) return adminInflight.promise;
+
+  const promise = getUserRole()
+    .then((role) => {
+      const value = role === "admin";
+      adminCache = { userId, value };
+      return value;
+    })
+    .catch(() => {
+      adminCache = { userId, value: false };
+      return false;
+    })
+    .finally(() => {
+      if (adminInflight?.userId === userId) adminInflight = null;
+    });
+
+  adminInflight = { userId, promise };
+  return promise;
+}
+
+export function resolveAdminStatusForUser(userId: string): Promise<boolean> {
+  return resolveAdminStatus(userId);
+}
+
 /**
  * Vérifie si l'utilisateur est admin
  */
 export async function isAdmin(): Promise<boolean> {
-  const role = await getUserRole();
-  return role === 'admin';
+  const supabase = getBrowserSupabase();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return false;
+  return resolveAdminStatus(user.id);
 }

@@ -1,6 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
-import { ChevronDown, ImageIcon, ImagePlus, Loader2, X } from "lucide-react";
+import {
+  ChevronDown,
+  Crop,
+  ImageIcon,
+  Loader2,
+  Plus,
+  Wand2,
+  X,
+} from "lucide-react";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { useBoutiqueModal } from "@/contexte/ContexteModalBoutique";
@@ -19,6 +28,8 @@ import {
   listImageStudioHistory,
   saveImageStudioHistory,
 } from "@/bibliotheque/imageStudio/imageStudioHistory";
+import ModalBibliothequeAvatars from "@/composants/studio/avatar/ModalBibliothequeAvatars";
+import ModalBibliothequeProduits from "@/composants/studio/product/ModalBibliothequeProduits";
 import { capturePostHog, trackPostHogError } from "@/bibliotheque/posthog/client";
 
 const ASPECT_RATIOS = ["1:1", "9:16", "16:9"];
@@ -46,85 +57,252 @@ function pickDefaultModel(availability) {
   return "nano_banana_pro";
 }
 
-function CompactRatioPills({ value, onChange, disabled }) {
-  return (
-    <div className="flex shrink-0 items-center gap-1">
-      {ASPECT_RATIOS.map((ratio) => (
-        <button
-          key={ratio}
-          type="button"
-          disabled={disabled}
-          onClick={() => onChange(ratio)}
-          className={`image-studio-pill image-studio-pill-compact font-medium ${
-            value === ratio ? "is-active" : ""
-          }`}
-        >
-          {ratio}
-        </button>
-      ))}
+const MOBILE_DROPDOWN_MQ = "(max-width: 639px)";
+const COMMAND_BAR_DROPDOWN_GAP_PX = 8;
+
+function useDropdownDismiss(open, setOpen, rootRef, menuRef) {
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e) => {
+      const inRoot = rootRef.current?.contains(e.target);
+      const inMenu = menuRef?.current?.contains(e.target);
+      if (!inRoot && !inMenu) setOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, [open, rootRef, menuRef]);
+}
+
+function useCommandBarDropdownMenu(open, anchorRef, menuRef) {
+  const [menuStyle, setMenuStyle] = useState(null);
+  const [useFixedMenu, setUseFixedMenu] = useState(false);
+
+  useLayoutEffect(() => {
+    if (!open || !anchorRef.current) {
+      setMenuStyle(null);
+      setUseFixedMenu(false);
+      return;
+    }
+
+    const mq = window.matchMedia(MOBILE_DROPDOWN_MQ);
+
+    const update = () => {
+      const anchor = anchorRef.current;
+      const menu = menuRef.current;
+      if (!anchor) return;
+
+      const fixed = mq.matches;
+      setUseFixedMenu(fixed);
+
+      if (!fixed) {
+        setMenuStyle(null);
+        return;
+      }
+
+      const rect = anchor.getBoundingClientRect();
+      const viewportPadding = 12;
+      const menuWidth = menu?.offsetWidth ?? 0;
+
+      let left = rect.left;
+      if (menuWidth > 0) {
+        const maxLeft = window.innerWidth - menuWidth - viewportPadding;
+        left = Math.min(Math.max(viewportPadding, left), Math.max(viewportPadding, maxLeft));
+      }
+
+      setMenuStyle({
+        position: "fixed",
+        left: `${left}px`,
+        bottom: `${window.innerHeight - rect.top + COMMAND_BAR_DROPDOWN_GAP_PX}px`,
+        zIndex: 200,
+      });
+    };
+
+    update();
+    const raf = requestAnimationFrame(update);
+
+    const ro = menuRef.current ? new ResizeObserver(update) : null;
+    if (menuRef.current) ro?.observe(menuRef.current);
+
+    mq.addEventListener("change", update);
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      cancelAnimationFrame(raf);
+      ro?.disconnect();
+      mq.removeEventListener("change", update);
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [open, anchorRef, menuRef]);
+
+  return { menuStyle, useFixedMenu };
+}
+
+function CommandBarDropdownMenu({ open, anchorRef, menuRef, children, role = "listbox" }) {
+  const { menuStyle, useFixedMenu } = useCommandBarDropdownMenu(open, anchorRef, menuRef);
+
+  if (!open) return null;
+
+  const menu = (
+    <div
+      ref={menuRef}
+      className={`image-studio-dropdown-menu${useFixedMenu ? " is-fixed" : ""}`}
+      style={menuStyle ?? undefined}
+      role={role}
+    >
+      {children}
     </div>
   );
+
+  return useFixedMenu ? createPortal(menu, document.body) : menu;
 }
 
 function ModelDropdown({ value, onChange, availability, disabled, loading }) {
   const rootRef = useRef(null);
+  const menuRef = useRef(null);
   const [open, setOpen] = useState(false);
   const selected = MODEL_OPTIONS.find((o) => o.id === value);
 
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e) => {
-      if (rootRef.current && !rootRef.current.contains(e.target)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("pointerdown", onDown, true);
-    return () => document.removeEventListener("pointerdown", onDown, true);
-  }, [open]);
+  useDropdownDismiss(open, setOpen, rootRef, menuRef);
 
   return (
-    <div ref={rootRef} className="image-studio-model-dropdown shrink-0">
+    <div ref={rootRef} className={`image-studio-dropdown shrink-0${open ? " is-open" : ""}`}>
       <button
         type="button"
         disabled={disabled || loading}
         aria-expanded={open}
         aria-haspopup="listbox"
-        className="image-studio-model-trigger"
+        className="image-studio-setting-pill"
         onClick={() => setOpen((v) => !v)}
+        title={loading ? "Modèle" : selected?.label ?? "Modèle"}
+        aria-label={`Modèle : ${loading ? "chargement" : selected?.label ?? "Modèle"}`}
       >
-        <span className="max-w-[7.5rem] truncate sm:max-w-[9rem]">
+        <Wand2 className="image-studio-setting-pill-icon" strokeWidth={2} aria-hidden />
+        <span className="image-studio-setting-pill-label max-w-[6.5rem] truncate sm:max-w-[8rem]">
           {loading ? "…" : selected?.label ?? "Modèle"}
         </span>
         <ChevronDown
-          className={`h-3.5 w-3.5 shrink-0 opacity-60 transition-transform ${open ? "rotate-180" : ""}`}
+          className={`image-studio-setting-pill-chevron h-3.5 w-3.5 shrink-0 opacity-50 transition-transform ${open ? "rotate-180" : ""}`}
           strokeWidth={2.25}
         />
       </button>
 
-      {open ? (
-        <div className="image-studio-model-menu" role="listbox">
-          {MODEL_OPTIONS.map((opt) => {
-            const available = availability[opt.id];
-            return (
-              <button
-                key={opt.id}
-                type="button"
-                role="option"
-                aria-selected={value === opt.id}
-                disabled={!available}
-                className={`image-studio-model-option ${value === opt.id ? "is-selected" : ""}`}
-                onClick={() => {
-                  if (!available) return;
-                  onChange(opt.id);
-                  setOpen(false);
-                }}
-              >
-                <span>{opt.label}</span>
-                {!available ? <span className="image-studio-model-soon">Bientôt</span> : null}
-              </button>
-            );
-          })}
-        </div>
+      <CommandBarDropdownMenu open={open} anchorRef={rootRef} menuRef={menuRef}>
+        {MODEL_OPTIONS.map((opt) => {
+          const available = availability[opt.id];
+          return (
+            <button
+              key={opt.id}
+              type="button"
+              role="option"
+              aria-selected={value === opt.id}
+              disabled={!available}
+              className={`image-studio-dropdown-option ${value === opt.id ? "is-selected" : ""}`}
+              onClick={() => {
+                if (!available) return;
+                onChange(opt.id);
+                setOpen(false);
+              }}
+            >
+              <span>{opt.label}</span>
+              {!available ? <span className="image-studio-dropdown-soon">Bientôt</span> : null}
+            </button>
+          );
+        })}
+      </CommandBarDropdownMenu>
+    </div>
+  );
+}
+
+function AspectRatioDropdown({ value, onChange, disabled }) {
+  const rootRef = useRef(null);
+  const menuRef = useRef(null);
+  const [open, setOpen] = useState(false);
+
+  useDropdownDismiss(open, setOpen, rootRef, menuRef);
+
+  return (
+    <div ref={rootRef} className={`image-studio-dropdown shrink-0${open ? " is-open" : ""}`}>
+      <button
+        type="button"
+        disabled={disabled}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        className="image-studio-setting-pill"
+        onClick={() => setOpen((v) => !v)}
+        title={`Format : ${value}`}
+        aria-label={`Format : ${value}`}
+      >
+        <Crop className="image-studio-setting-pill-icon" strokeWidth={2} aria-hidden />
+        <span className="image-studio-setting-pill-label">{value}</span>
+        <ChevronDown
+          className={`image-studio-setting-pill-chevron h-3.5 w-3.5 shrink-0 opacity-50 transition-transform ${open ? "rotate-180" : ""}`}
+          strokeWidth={2.25}
+        />
+      </button>
+
+      <CommandBarDropdownMenu open={open} anchorRef={rootRef} menuRef={menuRef}>
+        {ASPECT_RATIOS.map((ratio) => (
+          <button
+            key={ratio}
+            type="button"
+            role="option"
+            aria-selected={value === ratio}
+            className={`image-studio-dropdown-option ${value === ratio ? "is-selected" : ""}`}
+            onClick={() => {
+              onChange(ratio);
+              setOpen(false);
+            }}
+          >
+            <span>{ratio}</span>
+          </button>
+        ))}
+      </CommandBarDropdownMenu>
+    </div>
+  );
+}
+
+function ReferenceSlot({ label, preview, disabled, onPick, onClear, imageClassName = "" }) {
+  return (
+    <div className="image-studio-ref-slot">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onPick}
+        className={`image-studio-ref-slot-btn ${preview ? "has-ref" : ""}`}
+        title={label}
+        aria-label={label}
+      >
+        {preview ? (
+          <>
+            <img
+              src={preview}
+              alt=""
+              className={`image-studio-ref-slot-img ${imageClassName}`.trim()}
+            />
+            <span className="image-studio-ref-slot-label">{label.toUpperCase()}</span>
+          </>
+        ) : (
+          <>
+            <span className="image-studio-ref-slot-plus" aria-hidden>
+              <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
+            </span>
+            <span className="image-studio-ref-slot-label">{label.toUpperCase()}</span>
+          </>
+        )}
+      </button>
+      {preview ? (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onClear();
+          }}
+          className="image-studio-ref-slot-clear"
+          aria-label={`Retirer ${label}`}
+        >
+          <X className="h-2.5 w-2.5" />
+        </button>
       ) : null}
     </div>
   );
@@ -133,7 +311,6 @@ function ModelDropdown({ value, onChange, availability, disabled, loading }) {
 export default function ImageStudio() {
   const navigate = useNavigate();
   const { openBoutiqueModal } = useBoutiqueModal();
-  const fileInputRef = useRef(null);
   const promptInputRef = useRef(null);
   const { session } = useAuth();
   const { runWithAuth } = useRequireAuthAction();
@@ -142,6 +319,10 @@ export default function ImageStudio() {
   const [previewUrl, setPreviewUrl] = useState(null);
   const [referenceImage, setReferenceImage] = useState(null);
   const [referencePreview, setReferencePreview] = useState(null);
+  const [productImage, setProductImage] = useState(null);
+  const [productPreview, setProductPreview] = useState(null);
+  const [avatarLibraryOpen, setAvatarLibraryOpen] = useState(false);
+  const [productLibraryOpen, setProductLibraryOpen] = useState(false);
   const [activeHistoryId, setActiveHistoryId] = useState(null);
   const [aspectRatio, setAspectRatio] = useState("1:1");
   const [model, setModel] = useState("nano_banana_pro");
@@ -241,30 +422,48 @@ export default function ImageStudio() {
   const quotaReached = quotaCount >= IMAGE_STUDIO_MONTHLY_LIMIT;
   const modelAvailable = modelsAvailability[model];
   const canGenerate =
-    Boolean(prompt.trim()) && !generating && !quotaReached && modelAvailable;
+    Boolean(prompt.trim()) &&
+    !generating &&
+    !quotaReached &&
+    modelAvailable &&
+    !accessLoading &&
+    hasImageStudioPlan(plan);
 
-  const handleReferenceFile = (file) => {
-    if (!file || !file.type.startsWith("image/")) return;
-    if (file.size > 10 * 1024 * 1024) {
-      setError("L'image de référence ne doit pas dépasser 10 Mo.");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = typeof reader.result === "string" ? reader.result : null;
-      if (!dataUrl) return;
-      setReferenceImage(dataUrl);
-      setReferencePreview(dataUrl);
-      setError(null);
-    };
-    reader.readAsDataURL(file);
-  };
+  const openAvatarLibrary = useCallback(() => {
+    void runWithAuth(() => {
+      setAvatarLibraryOpen(true);
+      return true;
+    });
+  }, [runWithAuth]);
 
-  const clearReference = () => {
+  const handleAvatarLibrarySelect = useCallback((url) => {
+    setReferenceImage(url);
+    setReferencePreview(url);
+    setError(null);
+  }, []);
+
+  const clearReference = useCallback(() => {
     setReferenceImage(null);
     setReferencePreview(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  };
+  }, []);
+
+  const openProductLibrary = useCallback(() => {
+    void runWithAuth(() => {
+      setProductLibraryOpen(true);
+      return true;
+    });
+  }, [runWithAuth]);
+
+  const handleProductLibrarySelect = useCallback((url) => {
+    setProductImage(url);
+    setProductPreview(url);
+    setError(null);
+  }, []);
+
+  const clearProduct = useCallback(() => {
+    setProductImage(null);
+    setProductPreview(null);
+  }, []);
 
   const selectHistoryItem = (item) => {
     const url = getImageUrlFromHistory(item);
@@ -324,7 +523,7 @@ export default function ImageStudio() {
     }
   };
 
-  if (accessLoading || !hasImageStudioPlan(plan)) {
+  if (!accessLoading && !hasImageStudioPlan(plan)) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-[#2af598]" aria-hidden />
@@ -430,94 +629,102 @@ export default function ImageStudio() {
         </aside>
       </div>
 
-      {/* Barre du bas — style Hailuo */}
+      {/* Barre de commande — layout type prompt studio */}
       <div className="image-studio-command-bar sticky bottom-0 z-30 shrink-0 px-3 sm:px-6 lg:px-8">
-        <div className="image-studio-command-bar-inner mx-auto flex max-w-[1400px] items-center gap-2 sm:gap-3">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/png,image/jpeg,image/jpg,image/webp"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) handleReferenceFile(file);
-            }}
-          />
-
-          <div className="relative shrink-0">
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={generating}
-              className={`image-studio-ref-btn inline-flex items-center disabled:opacity-40 ${
-                referencePreview ? "has-ref" : ""
-              }`}
-              title="Image de référence"
-              aria-label="Image de référence"
-            >
-              {referencePreview ? (
-                <img src={referencePreview} alt="" />
-              ) : (
-                <ImagePlus className="h-5 w-5 shrink-0" strokeWidth={1.75} />
-              )}
-            </button>
-            {referencePreview ? (
+        <div className="image-studio-command-bar-inner mx-auto max-w-[1400px]">
+          <div className="image-studio-command-layout">
+            <div className="image-studio-prompt-row">
               <button
                 type="button"
-                onClick={clearReference}
-                className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-white/15 text-white/70 hover:bg-white/25"
-                aria-label="Retirer l'image de référence"
+                onClick={openAvatarLibrary}
+                disabled={generating}
+                className="image-studio-add-btn shrink-0"
+                title="Choisir un avatar"
+                aria-label="Choisir un avatar"
               >
-                <X className="h-2.5 w-2.5" />
+                <Plus className="h-4 w-4" strokeWidth={2.25} />
               </button>
-            ) : null}
-          </div>
 
-          <textarea
-            ref={promptInputRef}
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            onKeyDown={onPromptKeyDown}
-            disabled={generating || quotaReached}
-            placeholder="Décrivez l'image à générer…"
-            aria-label="Prompt de génération"
-            rows={1}
-            className="image-studio-prompt-input min-h-[2.75rem] min-w-0 flex-1 resize-none px-1 py-2.5 text-sm leading-normal disabled:opacity-50 sm:min-h-[3rem] sm:py-3 sm:text-[15px]"
-          />
+              <textarea
+                ref={promptInputRef}
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                onKeyDown={onPromptKeyDown}
+                disabled={generating || quotaReached}
+                placeholder="Décrivez l'image à générer…"
+                aria-label="Prompt de génération"
+                rows={1}
+                className="image-studio-prompt-input min-w-0 flex-1 resize-none py-1 text-sm leading-relaxed disabled:opacity-50 sm:text-[15px]"
+              />
+            </div>
 
-          <div className="image-studio-bar-scroll flex shrink-0 items-center gap-2 overflow-x-auto sm:gap-2.5">
-            <ModelDropdown
-              value={model}
-              onChange={setModel}
-              availability={modelsAvailability}
-              disabled={generating}
-              loading={modelsLoading}
-            />
+            <div className="image-studio-settings-row">
+              <ModelDropdown
+                value={model}
+                onChange={setModel}
+                availability={modelsAvailability}
+                disabled={generating}
+                loading={modelsLoading}
+              />
 
-            <CompactRatioPills
-              value={aspectRatio}
-              onChange={setAspectRatio}
-              disabled={generating}
-            />
+              <AspectRatioDropdown
+                value={aspectRatio}
+                onChange={setAspectRatio}
+                disabled={generating}
+              />
+            </div>
 
-            <span className="image-studio-quota hidden sm:inline" aria-live="polite">
-              {quotaLoading ? "…" : `${quotaCount}/${IMAGE_STUDIO_MONTHLY_LIMIT}`}
-            </span>
+            <div className="image-studio-command-aside shrink-0">
+              <div className="image-studio-ref-slots">
+                <ReferenceSlot
+                  label="Avatar"
+                  preview={referencePreview}
+                  disabled={generating}
+                  onPick={openAvatarLibrary}
+                  onClear={clearReference}
+                  imageClassName="[object-position:16%_center]"
+                />
 
-            <button
-              type="button"
-              onClick={requestGenerate}
-              disabled={!canGenerate}
-              className="image-studio-generate-btn inline-flex h-11 shrink-0 items-center justify-center gap-1.5 text-sm font-semibold text-[#0d1117] transition-opacity disabled:cursor-not-allowed disabled:opacity-40 sm:h-12"
-            >
-              {generating ? (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-              ) : null}
-              Générer
-            </button>
+                <ReferenceSlot
+                  label="Produit"
+                  preview={productPreview}
+                  disabled={generating}
+                  onPick={openProductLibrary}
+                  onClear={clearProduct}
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={requestGenerate}
+                disabled={!canGenerate}
+                className="image-studio-generate-btn btn-vws-primary"
+              >
+                {generating ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                ) : (
+                  "Générer"
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </div>
+
+      <ModalBibliothequeAvatars
+        open={avatarLibraryOpen}
+        onClose={() => setAvatarLibraryOpen(false)}
+        onSelect={handleAvatarLibrarySelect}
+      />
+
+      <ModalBibliothequeProduits
+        open={productLibraryOpen}
+        onClose={() => setProductLibraryOpen(false)}
+        onSelect={handleProductLibrarySelect}
+        onDeleted={(url) => {
+          if (productImage === url || productPreview === url) clearProduct();
+        }}
+      />
     </div>
   );
 }

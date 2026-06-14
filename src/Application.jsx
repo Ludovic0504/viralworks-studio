@@ -21,7 +21,7 @@ import EditVideo from "./pages/EditVideo.jsx";
 import GoRedirect from "./pages/GoRedirect.jsx";
 import ProtectedRoute from "./composants/auth/RouteProtegee.jsx";
 import { AuthProvider, useAuth } from "./contexte/FournisseurAuth";
-import { isAdmin } from "@/bibliotheque/supabase/credits";
+import { useAdminAccess } from "@/hooks/useAdminAccess";
 import { AuthActionProvider } from "./contexte/ActionAuthModalContext";
 import { BoutiqueModalProvider, useBoutiqueModal } from "./contexte/ContexteModalBoutique";
 import { FournisseurCommunauteVWSNotif } from "./contexte/FournisseurCommunauteVWSNotif.jsx";
@@ -143,41 +143,9 @@ function LoginRedirect() {
 /** Même logique que AdminStats : isAdmin() sur profiles.role, sinon redirect accueil. */
 function AdminOnlyRoute({ children }) {
   const { session, loading: authLoading } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [isAdminUser, setIsAdminUser] = useState(false);
+  const { isAdmin: isAdminUser, loading } = useAdminAccess();
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function checkAdminAccess() {
-      if (authLoading) return;
-
-      if (!session) {
-        if (!cancelled) {
-          setIsAdminUser(false);
-          setLoading(false);
-        }
-        return;
-      }
-
-      try {
-        const admin = await isAdmin();
-        if (!cancelled) setIsAdminUser(admin);
-      } catch (err) {
-        console.error("Erreur vérification admin:", err);
-        if (!cancelled) setIsAdminUser(false);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    checkAdminAccess();
-    return () => {
-      cancelled = true;
-    };
-  }, [session, authLoading]);
-
-  if (authLoading || loading) {
+  if (authLoading) {
     return (
       <div className="max-w-7xl mx-auto w-full min-w-0 px-4 sm:px-6 lg:px-8 py-4 lg:py-8">
         <div className="text-center py-12 text-gray-400">Chargement...</div>
@@ -185,8 +153,20 @@ function AdminOnlyRoute({ children }) {
     );
   }
 
-  if (!isAdminUser) {
+  if (!session) {
     return <Navigate to="/" replace />;
+  }
+
+  if (!loading && !isAdminUser) {
+    return <Navigate to="/" replace />;
+  }
+
+  if (loading && !isAdminUser) {
+    return (
+      <div className="max-w-7xl mx-auto w-full min-w-0 px-4 sm:px-6 lg:px-8 py-4 lg:py-8">
+        <div className="text-center py-12 text-gray-400">Chargement...</div>
+      </div>
+    );
   }
 
   return children;

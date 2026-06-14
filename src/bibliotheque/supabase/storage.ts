@@ -106,11 +106,14 @@ export async function uploadImageFromUrl(
 
     const timestamp = Date.now();
     const random = Math.random().toString(36).substring(7);
-    const useAvatarsPath = options?.subfolder === "avatars";
-    const filePath = useAvatarsPath
-      ? `${user.id}/avatars/${timestamp}.png`
-      : `${user.id}/${timestamp}-${random}.${ext}`;
-    const uploadContentType = useAvatarsPath ? "image/png" : contentType;
+    const subfolder = options?.subfolder;
+    const filePath =
+      subfolder === "avatars"
+        ? `${user.id}/avatars/${timestamp}.png`
+        : subfolder === "products"
+          ? `${user.id}/products/${timestamp}-${random}.${ext}`
+          : `${user.id}/${timestamp}-${random}.${ext}`;
+    const uploadContentType = subfolder === "avatars" ? "image/png" : contentType;
 
     console.log("📤 Upload vers Supabase Storage:", filePath);
     const { error: uploadError, data } = await supabase.storage
