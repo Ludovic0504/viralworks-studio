@@ -38,6 +38,7 @@ function resolveBaseUrl(req: Request, requestedOrigin?: unknown): string {
 
 function subscriptionProductName(planKey: string): string {
   if (planKey === "image_9") return "ViralWorks Image";
+  if (planKey === "pro_59") return "ViralWorks Pro";
   if (planKey === "premium_129" || planKey === "monthly") return "ViralWorks Studio";
   if (planKey === "yearly") return "Abonnement Annuel";
   return "Abonnement";
@@ -49,9 +50,14 @@ function buildCheckoutLineItems(
   amount: number,
   credits: number,
   stripePriceImage9: string | null,
+  stripePricePro59: string | null,
 ): Stripe.Checkout.SessionCreateParams.LineItem[] {
   if (type === "subscription" && planKey === "image_9" && stripePriceImage9) {
     return [{ price: stripePriceImage9, quantity: 1 }];
+  }
+
+  if (type === "subscription" && planKey === "pro_59" && stripePricePro59) {
+    return [{ price: stripePricePro59, quantity: 1 }];
   }
 
   return [
@@ -247,9 +253,9 @@ serve(async (req) => {
       );
     }
 
-    if (type === "subscription" && planKey === "image_9" && normalizedCredits !== 0) {
+    if (type === "subscription" && (planKey === "image_9" || planKey === "pro_59") && normalizedCredits !== 0) {
       return new Response(
-        JSON.stringify({ error: "Le plan image_9 ne doit pas inclure de crédits vidéo" }),
+        JSON.stringify({ error: `Le plan ${planKey} ne doit pas inclure de crédits vidéo` }),
         {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -258,9 +264,15 @@ serve(async (req) => {
     }
 
     const stripePriceImage9 = Deno.env.get("STRIPE_PRICE_IMAGE_9")?.trim() || null;
+    const stripePricePro59 = Deno.env.get("STRIPE_PRICE_PRO_59")?.trim() || null;
     if (type === "subscription" && planKey === "image_9" && !stripePriceImage9) {
       console.warn(
         "STRIPE_PRICE_IMAGE_9 non configuré — repli sur price_data dynamique pour image_9",
+      );
+    }
+    if (type === "subscription" && planKey === "pro_59" && !stripePricePro59) {
+      console.warn(
+        "STRIPE_PRICE_PRO_59 non configuré — repli sur price_data dynamique pour pro_59",
       );
     }
 
@@ -335,10 +347,11 @@ serve(async (req) => {
           normalizedAmount,
           normalizedCredits,
           stripePriceImage9,
+          stripePricePro59,
         ),
         mode: type === "subscription" ? "subscription" : "payment",
-        success_url: `${baseUrl}/boutique?section=subscription&payment=success`,
-        cancel_url: `${baseUrl}/boutique?section=subscription&payment=cancelled`,
+        success_url: `${baseUrl}/?payment=success`,
+        cancel_url: `${baseUrl}/?payment=cancelled`,
         ...(welcomeGiftMeta && {
           shipping_address_collection: {
             allowed_countries: boutiqueShippingCountries,

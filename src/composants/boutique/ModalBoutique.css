@@ -13,6 +13,18 @@
   box-sizing: border-box;
 }
 
+@media (min-width: 768px) {
+  .boutique-modal-panel {
+    height: min(90dvh, 920px);
+  }
+
+  .boutique-modal-body {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+}
+
 .boutique-modal-body {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;

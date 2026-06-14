@@ -32,7 +32,7 @@ export async function fetchImageStudioModels(): Promise<ImageStudioModelsAvailab
   const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
   const fallback: ImageStudioModelsAvailability = {
-    nano_banana_pro: true,
+    nano_banana_pro: false,
     hailuo: false,
     gpt_image_2: false,
   };

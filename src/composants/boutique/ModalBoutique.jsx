@@ -4,7 +4,12 @@ import { X } from "lucide-react";
 import ContenuBoutique from "@/composants/boutique/ContenuBoutique";
 import "./ModalBoutique.css";
 
-export default function ModalBoutique({ open, section = "subscription", onClose }) {
+export default function ModalBoutique({
+  open,
+  section = "subscription",
+  paymentReturn = null,
+  onClose,
+}) {
   useEffect(() => {
     if (!open) return undefined;
 
@@ -63,7 +68,7 @@ export default function ModalBoutique({ open, section = "subscription", onClose 
       role="presentation"
     >
       <div
-        className="boutique-modal-panel relative flex w-full min-w-0 max-w-5xl flex-col overflow-hidden border border-white/10 bg-[#0C1116] shadow-2xl max-md:rounded-none max-md:border-0 md:max-h-[min(90dvh,920px)] md:rounded-2xl"
+        className="boutique-modal-panel relative flex w-full min-w-0 max-w-5xl flex-col overflow-hidden border border-white/10 bg-[#0C1116] shadow-2xl max-md:rounded-none max-md:border-0 md:rounded-2xl"
         onClick={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -78,8 +83,12 @@ export default function ModalBoutique({ open, section = "subscription", onClose 
           <X className="h-5 w-5" />
         </button>
 
-        <div className="boutique-modal-body min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 pb-3 pt-12 md:px-6 md:pb-8 md:pt-14">
-          <ContenuBoutique variant="modal" initialSection={section} />
+        <div className="boutique-modal-body flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto px-3 pb-3 pt-12 md:overflow-hidden md:px-6 md:pb-8 md:pt-14">
+          <ContenuBoutique
+            variant="modal"
+            initialSection={section}
+            initialPaymentReturn={paymentReturn}
+          />
         </div>
       </div>
     </div>,

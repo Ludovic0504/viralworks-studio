@@ -7,14 +7,19 @@ export function BoutiqueModalProvider({ children }) {
   const [modalState, setModalState] = useState({
     open: false,
     section: "subscription",
+    paymentReturn: null,
   });
 
-  const openBoutiqueModal = useCallback((section = "subscription") => {
-    setModalState({ open: true, section });
+  const openBoutiqueModal = useCallback((section = "subscription", opts = {}) => {
+    setModalState({
+      open: true,
+      section,
+      paymentReturn: opts.paymentReturn ?? null,
+    });
   }, []);
 
   const closeBoutiqueModal = useCallback(() => {
-    setModalState((prev) => ({ ...prev, open: false }));
+    setModalState((prev) => ({ ...prev, open: false, paymentReturn: null }));
   }, []);
 
   const value = useMemo(
@@ -32,6 +37,7 @@ export function BoutiqueModalProvider({ children }) {
       <ModalBoutique
         open={modalState.open}
         section={modalState.section}
+        paymentReturn={modalState.paymentReturn}
         onClose={closeBoutiqueModal}
       />
     </BoutiqueModalContext.Provider>

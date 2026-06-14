@@ -4,7 +4,11 @@
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { userHasPremiumAccess } from "../_shared/premium-access.ts";
+import {
+  planAllowsSeedance,
+  resolveUserPlan,
+  SEEDANCE_MONTHLY_LIMIT,
+} from "../_shared/plan-access.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -205,9 +209,41 @@ serve(async (req) => {
       return jsonError(400, "NO_INPUT", "Aucune modification demandée");
     }
 
-    const hasAccess = await userHasPremiumAccess(supabase, user.id);
-    if (!hasAccess) {
-      return jsonError(403, "SUBSCRIPTION_REQUIRED", "Abonnement requis");
+    const hasAccessPlan = await resolveUserPlan(supabase, user.id);
+    if (!planAllowsSeedance(hasAccessPlan)) {
+      return jsonError(
+        403,
+        "SUBSCRIPTION_REQUIRED",
+        "Abonnement Pro ou Studio requis",
+      );
+    }
+
+    const serviceRoleKey =
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim() ||
+      Deno.env.get("SERVICE_ROLE_KEY")?.trim();
+    if (!serviceRoleKey) {
+      return jsonError(503, "NO_SERVICE_ROLE", MSG_EDIT_BUSY);
+    }
+
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    const { data: currentSeedanceCount, error: seedanceQuotaError } =
+      await supabaseAdmin.rpc("refresh_seedance_quota", {
+        p_user_id: user.id,
+      });
+    if (seedanceQuotaError) {
+      return jsonError(503, "QUOTA_READ_FAILED", MSG_EDIT_BUSY);
+    }
+    const seedanceCount =
+      typeof currentSeedanceCount === "number" ? currentSeedanceCount : 0;
+    if (seedanceCount >= SEEDANCE_MONTHLY_LIMIT) {
+      return jsonError(
+        429,
+        "SEEDANCE_QUOTA_EXCEEDED",
+        `Quota mensuel Seedance atteint (${SEEDANCE_MONTHLY_LIMIT} éditions). Réessayez le mois prochain.`,
+      );
     }
 
     const kieApiKey =
@@ -257,6 +293,18 @@ serve(async (req) => {
     try {
       console.log("[prompt-debug]", prompt.slice(0, 300));
       const taskId = await kieCreateTask(kieApiKey, kieModel, kieInput);
+
+      const { error: incrementError } = await supabaseAdmin.rpc(
+        "increment_seedance_count",
+        { p_user_id: user.id },
+      );
+      if (incrementError?.message?.includes("SEEDANCE_QUOTA_EXCEEDED")) {
+        return jsonError(
+          429,
+          "SEEDANCE_QUOTA_EXCEEDED",
+          `Quota mensuel Seedance atteint (${SEEDANCE_MONTHLY_LIMIT} éditions). Réessayez le mois prochain.`,
+        );
+      }
 
       return new Response(
         JSON.stringify({

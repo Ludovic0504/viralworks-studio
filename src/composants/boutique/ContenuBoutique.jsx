@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { getUserCredits } from "@/bibliotheque/supabase/credits";
@@ -9,9 +9,9 @@ import {
   getUserSubscription,
   fetchWelcomeGiftNeedsChoice,
 } from "@/bibliotheque/supabase/stripe";
-import { useStripePayment, payImage9, payPremium129, payVideoPack } from "@/hooks/useStripePayment";
+import { useStripePayment, payImage9, payPro59, payPremium129, payVideoPack } from "@/hooks/useStripePayment";
 import ModalCadeauBienvenue from "@/composants/ModalCadeauBienvenue";
-import { CreditCard, Check, Crown, Loader2, CheckCircle, XCircle, ShoppingBag, ImageIcon } from "lucide-react";
+import { CreditCard, Check, Crown, Loader2, CheckCircle, ShoppingBag, ImageIcon, Zap } from "lucide-react";
 
 const CREDIT_PACKAGES = [
   {
@@ -62,6 +62,22 @@ const SUBSCRIPTION_PLANS = [
     savings: null,
   },
   {
+    id: "pro_59",
+    name: "ViralWorks Pro",
+    credits: 0,
+    price: 59,
+    period: "mois",
+    popular: false,
+    features: [
+      "Image Studio — 200 générations NanaBanana Pro / mois",
+      "Éditions vidéo Seedance — 15 / mois",
+      "Avatars IA — 5 / mois",
+      "Scripts Gagnant inclus",
+      "Visuels d'accroche inclus",
+    ],
+    savings: null,
+  },
+  {
     id: "premium_129",
     name: "ViralWorks Studio",
     credits: 30,
@@ -69,12 +85,12 @@ const SUBSCRIPTION_PLANS = [
     period: "mois",
     popular: true,
     features: [
-      "30 vidéos finales exportables",
-      "Avatar IA inclus",
-      "Image Studio inclus",
+      "Génération vidéo IA complète — 30 / mois",
+      "Image Studio — 200 générations NanaBanana Pro / mois",
+      "Éditions vidéo Seedance — 15 / mois",
+      "Avatars IA — 5 / mois",
       "Scripts Gagnant inclus",
       "Visuels d'accroche inclus",
-      "Accès à toutes les fonctionnalités",
       "Support prioritaire",
     ],
     savings: null,
@@ -87,10 +103,13 @@ function resolveSectionTab(section) {
   return null;
 }
 
-export default function ContenuBoutique({ variant = "page", initialSection = null }) {
+export default function ContenuBoutique({
+  variant = "page",
+  initialSection = null,
+  initialPaymentReturn = null,
+}) {
   const { session } = useAuth();
   const { runWithAuth, openAuthModal } = useRequireAuthAction();
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [subscription, setSubscription] = useState(null);
   const { loading, error, startPayment } = useStripePayment();
@@ -105,7 +124,7 @@ export default function ContenuBoutique({ variant = "page", initialSection = nul
   const [giftModalDismissed, setGiftModalDismissed] = useState(false);
   const giftPollAttempts = useRef(0);
 
-  const paymentStatus = searchParams.get("payment");
+  const paymentStatus = searchParams.get("payment") ?? initialPaymentReturn;
   const highlightPlanId = searchParams.get("highlight") === "image_9" ? "image_9" : null;
   const isModal = variant === "modal";
 
@@ -157,6 +176,8 @@ export default function ContenuBoutique({ variant = "page", initialSection = nul
             plan_name:
               last?.subscriptionPlan === "image_9"
                 ? "ViralWorks Image"
+                : last?.subscriptionPlan === "pro_59"
+                  ? "ViralWorks Pro"
                 : last?.subscriptionPlan === "premium_129" ||
                     last?.subscriptionPlan === "monthly"
                   ? "ViralWorks Studio"
@@ -270,9 +291,6 @@ export default function ContenuBoutique({ variant = "page", initialSection = nul
     setGiftModalDismissed(false);
     setShowGiftModal(false);
     giftPollAttempts.current = 0;
-    if (!isModal) {
-      navigate("/boutique", { replace: true });
-    }
     refreshCredits();
   };
 
@@ -281,7 +299,9 @@ export default function ContenuBoutique({ variant = "page", initialSection = nul
     setGiftModalDismissed(true);
   };
 
-  const wrapperClass = isModal ? "" : "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8";
+  const wrapperClass = isModal
+    ? "flex min-h-0 flex-1 flex-col"
+    : "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8";
 
   /** Classes compactes mobile — modal uniquement (page /boutique inchangée). */
   const m = {
@@ -295,20 +315,23 @@ export default function ContenuBoutique({ variant = "page", initialSection = nul
     statusBadge: isModal ? "flex items-center gap-2 px-4 py-2 rounded-lg max-md:px-2.5 max-md:py-1 max-md:gap-1.5" : "flex items-center gap-2 px-4 py-2 rounded-lg",
     statusBadgeIcon: isModal ? "w-5 h-5 max-md:w-4 max-md:h-4" : "w-5 h-5",
     statusBadgeText: isModal ? "text-sm text-violet-300 max-md:text-xs" : "text-sm text-violet-300",
-    refreshBtn: isModal ? "px-3 py-1.5 rounded-lg text-sm max-md:px-2 max-md:py-1 max-md:text-xs" : "px-3 py-1.5 rounded-lg text-sm",
     alertBox: isModal ? "mb-6 p-4 rounded-lg flex items-center gap-3 max-md:mb-3 max-md:p-2.5 max-md:gap-2" : "mb-6 p-4 rounded-lg flex items-center gap-3",
     alertIcon: isModal ? "w-5 h-5 flex-shrink-0 max-md:w-4 max-md:h-4" : "w-5 h-5 flex-shrink-0",
     alertBody: isModal ? "text-emerald-400 text-sm mt-1 max-md:text-xs max-md:mt-0.5" : "text-emerald-400 text-sm mt-1",
     tabs: isModal ? "mb-8 flex gap-4 border-b border-white/10 max-md:mb-4 max-md:gap-2" : "mb-8 flex gap-4 border-b border-white/10",
     tabBtn: isModal ? "px-4 py-2 font-medium relative transition-colors max-md:px-3 max-md:py-1.5 max-md:text-sm" : "px-4 py-2 font-medium relative transition-colors",
-    gridCredits: isModal ? "grid grid-cols-1 md:grid-cols-3 gap-6 max-md:gap-3 max-md:pt-1" : "grid grid-cols-1 md:grid-cols-3 gap-6",
-    gridSubs: isModal ? "grid grid-cols-1 md:grid-cols-2 gap-6 max-md:gap-3 max-md:pt-1" : "grid grid-cols-1 md:grid-cols-2 gap-6",
+    gridCredits: isModal
+      ? "grid grid-cols-1 items-stretch gap-6 max-md:gap-3 max-md:pt-1 md:grid-cols-3"
+      : "grid grid-cols-1 md:grid-cols-3 gap-6",
+    gridSubs: isModal
+      ? "grid flex-1 grid-cols-1 items-stretch gap-6 max-md:gap-3 max-md:pt-1 md:grid-cols-3"
+      : "grid grid-cols-1 md:grid-cols-3 gap-6",
     creditCard: isModal
-      ? "glass-strong rounded-2xl border p-6 relative transition-all hover:scale-105 max-md:rounded-xl max-md:p-3.5 max-md:hover:scale-100"
-      : "glass-strong rounded-2xl border p-6 relative transition-all hover:scale-105",
+      ? "glass-strong flex flex-col rounded-2xl border p-6 relative transition-all max-md:rounded-xl max-md:p-3.5"
+      : "glass-strong rounded-2xl border p-6 relative transition-all",
     subCard: isModal
-      ? "glass-strong rounded-2xl border p-6 relative transition-all hover:scale-105 max-md:rounded-xl max-md:p-3.5 max-md:hover:scale-100"
-      : "glass-strong rounded-2xl border p-6 relative transition-all hover:scale-105",
+      ? "glass-strong flex h-full flex-col rounded-2xl border p-6 relative transition-all max-md:rounded-xl max-md:p-3.5"
+      : "glass-strong rounded-2xl border p-6 relative transition-all",
     creditCardBody: isModal ? "text-center mb-6 max-md:mb-3" : "text-center mb-6",
     creditEmoji: isModal ? "text-4xl mb-3 max-md:text-3xl max-md:mb-1.5" : "text-4xl mb-3",
     creditName: isModal ? "text-xl font-bold text-gray-200 mb-1 max-md:text-lg max-md:mb-0.5" : "text-xl font-bold text-gray-200 mb-1",
@@ -325,18 +348,20 @@ export default function ContenuBoutique({ variant = "page", initialSection = nul
     subPriceNote: isModal ? "block text-sm font-normal text-gray-400 mt-1 max-md:text-xs max-md:mt-0.5" : "block text-sm font-normal text-gray-400 mt-1",
     subPriceThen: isModal ? "block text-base font-semibold text-gray-200 mt-2 max-md:text-sm max-md:mt-1" : "block text-base font-semibold text-gray-200 mt-2",
     subSavings: isModal ? "text-sm text-emerald-400 font-medium mt-2 max-md:text-xs max-md:mt-1" : "text-sm text-emerald-400 font-medium mt-2",
-    subFeatures: isModal ? "space-y-2 mb-6 max-md:space-y-1 max-md:mb-3" : "space-y-2 mb-6",
+    subFeatures: isModal
+      ? "mb-6 flex-1 space-y-2 max-md:mb-3 max-md:space-y-1"
+      : "space-y-2 mb-6",
     subFeatureItem: isModal ? "flex items-center gap-2 text-sm text-gray-300 max-md:gap-1.5 max-md:text-xs" : "flex items-center gap-2 text-sm text-gray-300",
     subFeatureCheck: isModal ? "w-4 h-4 text-emerald-400 flex-shrink-0 max-md:w-3.5 max-md:h-3.5" : "w-4 h-4 text-emerald-400 flex-shrink-0",
-    subActions: isModal ? "space-y-3 max-md:space-y-2" : "space-y-3",
+    subActions: isModal ? "mt-auto shrink-0 space-y-3 max-md:space-y-2" : "space-y-3",
     subLearnMore: isModal
       ? "w-full py-2 rounded-lg border border-white/15 text-sm text-gray-200 hover:bg-white/5 transition-colors max-md:py-1.5 max-md:text-xs"
       : "w-full py-2 rounded-lg border border-white/15 text-sm text-gray-200 hover:bg-white/5 transition-colors",
-    secureBlock: isModal ? "mt-8 p-4 rounded-lg max-md:mt-4 max-md:p-2.5 max-md:rounded-md" : "mt-8 p-4 rounded-lg",
-    secureInner: isModal ? "flex items-start gap-3 max-md:gap-2" : "flex items-start gap-3",
-    secureIcon: isModal ? "w-5 h-5 text-gray-400 mt-0.5 flex-shrink-0 max-md:w-4 max-md:h-4 max-md:mt-0" : "w-5 h-5 text-gray-400 mt-0.5 flex-shrink-0",
-    secureTitle: isModal ? "text-sm text-gray-300 mb-1 max-md:text-xs max-md:mb-0.5" : "text-sm text-gray-300 mb-1",
-    secureNote: isModal ? "text-xs text-gray-400 max-md:leading-snug" : "text-xs text-gray-400",
+    secureBlock: "mt-8 p-4 rounded-lg",
+    secureInner: "flex items-start gap-3",
+    secureIcon: "w-5 h-5 text-gray-400 mt-0.5 flex-shrink-0",
+    secureTitle: "text-sm text-gray-300 mb-1",
+    secureNote: "text-xs text-gray-400",
     popularBadge: isModal ? "absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-xs font-semibold max-md:-top-2.5 max-md:px-2 max-md:py-0.5 max-md:text-[10px]" : "absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-xs font-semibold",
   };
 
@@ -382,17 +407,6 @@ export default function ContenuBoutique({ variant = "page", initialSection = nul
               <span className={m.statusBadgeText}>Abonnement actif</span>
             </div>
           )}
-          <button
-            onClick={() => void runWithAuth(refreshCredits)}
-            disabled={refreshing}
-            className={`bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 transition-all disabled:opacity-50 ${m.refreshBtn}`}
-          >
-            {refreshing ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              "Actualiser l'état de l'abonnement"
-            )}
-          </button>
         </div>
       </div>
 
@@ -402,17 +416,9 @@ export default function ContenuBoutique({ variant = "page", initialSection = nul
           <div className="flex-1">
             <p className={`text-emerald-300 font-medium${isModal ? " max-md:text-sm" : ""}`}>Paiement réussi !</p>
             <p className={m.alertBody}>
-              Ton achat est en cours de prise en compte. Si rien ne change, clique sur
-              &quot;Actualiser l&apos;état de l&apos;abonnement&quot;.
+              Ton achat est en cours de prise en compte.
             </p>
           </div>
-        </div>
-      )}
-
-      {paymentStatus === "cancelled" && (
-        <div className={`bg-red-500/10 border border-red-500/30 ${m.alertBox}`}>
-          <XCircle className={`text-red-400 ${m.alertIcon}`} />
-          <p className={`text-red-300${isModal ? " max-md:text-sm" : ""}`}>Paiement annulé.</p>
         </div>
       )}
 
@@ -445,6 +451,7 @@ export default function ContenuBoutique({ variant = "page", initialSection = nul
         </button>
       </div>
 
+      <div className={isModal ? "flex min-h-0 flex-1 flex-col" : undefined}>
       {activeTab === "credits" && (
         <div className={m.gridCredits}>
           {CREDIT_PACKAGES.map((pkg) => (
@@ -481,7 +488,7 @@ export default function ContenuBoutique({ variant = "page", initialSection = nul
                   );
                 }}
                 disabled={loading}
-                className={`${m.buyBtn} ${
+                className={`${m.buyBtn} mt-auto ${
                   pkg.popular
                     ? "bg-emerald-500 hover:bg-emerald-600 text-white"
                     : "bg-white/10 hover:bg-white/20 text-gray-200 border border-white/20"
@@ -502,16 +509,38 @@ export default function ContenuBoutique({ variant = "page", initialSection = nul
         <div className={m.gridSubs}>
           {SUBSCRIPTION_PLANS.map((plan) => {
             const isHighlighted = highlightPlanId === plan.id;
-            const PlanIcon = plan.id === "image_9" ? ImageIcon : Crown;
+            const PlanIcon =
+              plan.id === "image_9" ? ImageIcon : plan.id === "pro_59" ? Zap : Crown;
             const iconWrapClass =
               plan.id === "image_9"
                 ? "bg-emerald-500/20 border border-emerald-500/30"
-                : "bg-violet-500/20 border border-violet-500/30";
+                : plan.id === "pro_59"
+                  ? "bg-sky-500/20 border border-sky-500/30"
+                  : "bg-violet-500/20 border border-violet-500/30";
             const iconClass =
-              plan.id === "image_9" ? "text-emerald-400" : "text-violet-400";
-            const accentBorder = plan.id === "image_9"
-              ? "border-emerald-500/50 bg-emerald-500/5 shadow-lg shadow-emerald-500/10"
-              : "border-violet-500/50 bg-violet-500/5 shadow-lg shadow-violet-500/10";
+              plan.id === "image_9"
+                ? "text-emerald-400"
+                : plan.id === "pro_59"
+                  ? "text-sky-400"
+                  : "text-violet-400";
+            const accentBorder =
+              plan.id === "image_9"
+                ? "border-emerald-500/50 bg-emerald-500/5 shadow-lg shadow-emerald-500/10"
+                : plan.id === "pro_59"
+                  ? "border-sky-500/50 bg-sky-500/5 shadow-lg shadow-sky-500/10"
+                  : "border-violet-500/50 bg-violet-500/5 shadow-lg shadow-violet-500/10";
+            const badgeClass =
+              plan.id === "image_9"
+                ? "bg-emerald-500"
+                : plan.id === "pro_59"
+                  ? "bg-sky-500"
+                  : "bg-violet-500";
+            const quotaLabel =
+              plan.id === "image_9"
+                ? "Jusqu'à 200 images / mois"
+                : plan.id === "pro_59"
+                  ? "200 images · 15 Seedance · 5 avatars / mois"
+                  : "30 vidéos · 200 images · 15 Seedance · 5 avatars / mois";
 
             return (
             <div
@@ -525,7 +554,7 @@ export default function ContenuBoutique({ variant = "page", initialSection = nul
               }`}
             >
               {(plan.popular || isHighlighted) && (
-                <div className={`${plan.id === "image_9" ? "bg-emerald-500" : "bg-violet-500"} text-white ${m.popularBadge}`}>
+                <div className={`${badgeClass} text-white ${m.popularBadge}`}>
                   {isHighlighted ? "Pour vous" : "Recommandé"}
                 </div>
               )}
@@ -534,11 +563,7 @@ export default function ContenuBoutique({ variant = "page", initialSection = nul
                   <PlanIcon className={`${iconClass} ${m.subIcon}`} />
                 </div>
                 <h3 className={m.subName}>{plan.name}</h3>
-                <div className={m.subQuota}>
-                  {plan.id === "image_9"
-                    ? "Jusqu'à 200 images / mois"
-                    : "Jusqu'à 30 vidéos / mois"}
-                </div>
+                <div className={m.subQuota}>{quotaLabel}</div>
                 <div className={m.subPrice}>
                   {plan.id === "premium_129" ? (
                     <>
@@ -549,6 +574,11 @@ export default function ContenuBoutique({ variant = "page", initialSection = nul
                       <span className={m.subPriceThen}>
                         puis 129 €/mois
                       </span>
+                    </>
+                  ) : plan.id === "pro_59" ? (
+                    <>
+                      59,00 €
+                      <span className={m.subPriceNote}>/ mois</span>
                     </>
                   ) : (
                     <>
@@ -578,17 +608,23 @@ export default function ContenuBoutique({ variant = "page", initialSection = nul
                     });
                     void runWithAuth(() =>
                       startPayment(
-                        plan.id === "image_9" ? payImage9() : payPremium129(),
+                        plan.id === "image_9"
+                          ? payImage9()
+                          : plan.id === "pro_59"
+                            ? payPro59()
+                            : payPremium129(),
                       ),
                     );
                   }}
                   disabled={loading || subscription !== null}
-                  className={`${m.buyBtn} ${
-                    plan.popular || plan.id === "image_9"
-                      ? plan.id === "image_9"
+                  className={`${m.buyBtn} mt-auto ${
+                    plan.popular
+                      ? "bg-violet-500 hover:bg-violet-600 text-white"
+                      : plan.id === "image_9"
                         ? "bg-emerald-500 hover:bg-emerald-600 text-white"
-                        : "bg-violet-500 hover:bg-violet-600 text-white"
-                      : "bg-white/10 hover:bg-white/20 text-gray-200 border border-white/20"
+                        : plan.id === "pro_59"
+                          ? "bg-sky-500 hover:bg-sky-600 text-white"
+                          : "bg-white/10 hover:bg-white/20 text-gray-200 border border-white/20"
                   } ${subscription ? "opacity-50 cursor-not-allowed" : ""} disabled:opacity-50 disabled:cursor-not-allowed`}
                 >
                   {loading ? (
@@ -605,6 +641,7 @@ export default function ContenuBoutique({ variant = "page", initialSection = nul
           })}
         </div>
       )}
+      </div>
 
       <ModalCadeauBienvenue
         open={showGiftModal}
@@ -612,20 +649,22 @@ export default function ContenuBoutique({ variant = "page", initialSection = nul
         onClose={handleGiftModalClose}
       />
 
-      <div className={`bg-white/5 border border-white/10 ${m.secureBlock}`}>
-        <div className={m.secureInner}>
-          <CreditCard className={m.secureIcon} />
-          <div>
-            <p className={m.secureTitle}>
-              <strong className="text-gray-200">Paiement sécurisé</strong> - Tous les paiements sont
-              traités de manière sécurisée via Stripe.
-            </p>
-            <p className={m.secureNote}>
-              Vos informations de paiement ne sont jamais stockées sur nos serveurs.
-            </p>
+      {!isModal && (
+        <div className={`bg-white/5 border border-white/10 ${m.secureBlock}`}>
+          <div className={m.secureInner}>
+            <CreditCard className={m.secureIcon} />
+            <div>
+              <p className={m.secureTitle}>
+                <strong className="text-gray-200">Paiement sécurisé</strong> - Tous les paiements sont
+                traités de manière sécurisée via Stripe.
+              </p>
+              <p className={m.secureNote}>
+                Vos informations de paiement ne sont jamais stockées sur nos serveurs.
+              </p>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { capturePostHog, trackPostHogError } from "@/bibliotheque/posthog/client
 
 export const SUBSCRIPTION_PLANS = {
   image_9: { amount: 9, credits: 0, label: "ViralWorks Image" },
+  pro_59: { amount: 59, credits: 0, label: "ViralWorks Pro" },
   premium_129: { amount: 129, credits: 30, label: "ViralWorks Studio" },
   /** Alias legacy */
   monthly: { amount: 129, credits: 30, label: "Mensuel" },
@@ -73,6 +74,8 @@ export function useStripePayment() {
       const planName =
         payload.subscriptionPlan === "image_9"
           ? "ViralWorks Image"
+          : payload.subscriptionPlan === "pro_59"
+            ? "ViralWorks Pro"
           : payload.subscriptionPlan === "premium_129" ||
               payload.subscriptionPlan === "monthly"
             ? "ViralWorks Studio"
@@ -109,6 +112,13 @@ export const payImage9 = () => ({
   type: "subscription",
   subscriptionPlan: "image_9",
   amount: 9,
+  credits: 0,
+});
+
+export const payPro59 = () => ({
+  type: "subscription",
+  subscriptionPlan: "pro_59",
+  amount: 59,
   credits: 0,
 });
 

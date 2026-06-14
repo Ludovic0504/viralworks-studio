@@ -2,13 +2,14 @@ import { getBrowserSupabase } from "./client-navigateur";
 import { getUserProfile } from "./profil";
 import { getUserSubscription } from "./stripe";
 
-export type UserPlan = "free" | "image_9" | "premium_129";
+export type UserPlan = "free" | "image_9" | "pro_59" | "premium_129";
 
 export function normalizeSubscriptionPlan(
   planKey: string | null | undefined,
 ): UserPlan {
   if (!planKey) return "free";
   if (planKey === "image_9") return "image_9";
+  if (planKey === "pro_59") return "pro_59";
   if (
     planKey === "premium_129" ||
     planKey === "monthly" ||
@@ -20,10 +21,18 @@ export function normalizeSubscriptionPlan(
 }
 
 export function hasImageStudioPlan(plan: UserPlan): boolean {
-  return plan === "image_9" || plan === "premium_129";
+  return plan === "image_9" || plan === "pro_59" || plan === "premium_129";
+}
+
+export function hasSeedancePlan(plan: UserPlan): boolean {
+  return plan === "pro_59" || plan === "premium_129";
 }
 
 export function hasAvatarPlan(plan: UserPlan): boolean {
+  return plan === "pro_59" || plan === "premium_129";
+}
+
+export function hasFullVideoPlan(plan: UserPlan): boolean {
   return plan === "premium_129";
 }
 

@@ -30,6 +30,7 @@ export interface StripeSubscription {
 /** Identifiant de plan d'abonnement — utilisé par Stripe et le cadeau Gelato. */
 export type SubscriptionPlanKey =
   | "image_9"
+  | "pro_59"
   | "premium_129"
   | "monthly"
   | "yearly";
@@ -194,6 +195,8 @@ export async function redirectToCheckout(
     plan_name:
       subscriptionPlan === "image_9"
         ? "ViralWorks Image"
+        : subscriptionPlan === "pro_59"
+          ? "ViralWorks Pro"
         : subscriptionPlan === "premium_129" || subscriptionPlan === "monthly"
           ? "ViralWorks Studio"
           : subscriptionPlan === "yearly"

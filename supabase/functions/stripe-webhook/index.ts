@@ -16,7 +16,13 @@ function makeStripe(apiKey: string): Stripe {
   });
 }
 
-function resolveRenewalCreditsFromInvoiceAmount(amountPaidCents: number): number {
+function resolveRenewalCreditsFromInvoiceAmount(
+  amountPaidCents: number,
+  planKey?: string | null,
+): number {
+  const p = (planKey ?? "").trim();
+  if (p === "image_9" || p === "pro_59") return 0;
+
   // Plans actuels:
   // - Mensuel 129€ -> 30 crédits
   // - Annuel 107*12€ -> 360 crédits
@@ -26,14 +32,16 @@ function resolveRenewalCreditsFromInvoiceAmount(amountPaidCents: number): number
 }
 
 function resolveSubscriptionCreditsFromPlan(plan: string | null | undefined): number {
-  if ((plan ?? "").trim() === "image_9") return 0;
-  if ((plan ?? "").trim() === "yearly") return 30;
+  const p = (plan ?? "").trim();
+  if (p === "image_9" || p === "pro_59") return 0;
+  if (p === "yearly") return 30;
   return 30;
 }
 
 function normalizeStoredPlanKey(plan: string | null | undefined): string {
   const p = (plan ?? "").trim();
   if (p === "image_9") return "image_9";
+  if (p === "pro_59") return "pro_59";
   if (p === "yearly") return "yearly";
   if (p === "premium_129" || p === "monthly") return "premium_129";
   return "premium_129";
@@ -193,10 +201,11 @@ serve(async (req) => {
       }
 
       const planKey = (session.metadata?.subscription_plan || "").trim();
-      const isImageOnlySubscription =
-        type === "subscription" && planKey === "image_9";
+      const isZeroCreditSubscription =
+        type === "subscription" &&
+        (planKey === "image_9" || planKey === "pro_59");
 
-      if (credits <= 0 && !isImageOnlySubscription) {
+      if (credits <= 0 && !isZeroCreditSubscription) {
         console.error("❌ Nombre de crédits invalide:", credits);
         return new Response("Nombre de crédits invalide", { status: 400 });
       }
@@ -303,14 +312,17 @@ serve(async (req) => {
             `✅ Abonnement créé et ${monthlyCredits} crédits ajoutés pour l'utilisateur ${userId}`,
           );
         } else {
-          console.log(`✅ Abonnement image_9 créé pour l'utilisateur ${userId} (sans crédits vidéo)`);
+          console.log(
+            `✅ Abonnement ${storedPlanKey} créé pour l'utilisateur ${userId} (sans crédits vidéo)`,
+          );
         }
 
         const cyclePayload = {
           user_id: userId,
           stripe_subscription_id: subscriptionId,
           plan_key: storedPlanKey,
-          monthly_credit_amount: storedPlanKey === "image_9" ? 0 : 30,
+          monthly_credit_amount:
+            storedPlanKey === "image_9" || storedPlanKey === "pro_59" ? 0 : 30,
           granted_months: storedPlanKey === "yearly" ? 1 : 0,
           updated_at: new Date().toISOString(),
         };
@@ -506,7 +518,10 @@ serve(async (req) => {
       const isYearlyPlan = cycleData?.plan_key === "yearly";
       const monthlyCredits = isYearlyPlan
         ? Number(cycleData?.monthly_credit_amount || 30)
-        : resolveRenewalCreditsFromInvoiceAmount(invoice.amount_paid || 0);
+        : resolveRenewalCreditsFromInvoiceAmount(
+            invoice.amount_paid || 0,
+            cycleData?.plan_key,
+          );
 
       console.log(`💰 Ajout de ${monthlyCredits} crédits pour le renouvellement (user: ${userId})`, {
         isYearlyPlan,

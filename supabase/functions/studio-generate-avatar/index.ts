@@ -4,7 +4,11 @@
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { userHasPremiumAccess } from "../_shared/premium-access.ts";
+import {
+  AVATAR_STUDIO_MONTHLY_LIMIT,
+  planAllowsAvatar,
+  resolveUserPlan,
+} from "../_shared/plan-access.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -389,16 +393,61 @@ serve(async (req) => {
       );
     }
 
-    const hasAccess = await userHasPremiumAccess(supabase, user.id);
-    if (!hasAccess) {
+    const plan = await resolveUserPlan(supabase, user.id);
+    if (!planAllowsAvatar(plan)) {
       return jsonResponse({ error: "Abonnement requis" }, 403);
     }
 
-    if (action === "create-from-photo") {
-      return await handleCreateFromPhoto(body, user.id);
+    const serviceRoleKey = getServiceRoleKey();
+    if (!serviceRoleKey) {
+      return jsonResponse({ error: "Configuration serveur incomplète." }, 500);
     }
 
-    return await handleCreate(body, user.id);
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    const { data: currentAvatarCount, error: avatarQuotaError } =
+      await supabaseAdmin.rpc("refresh_avatar_studio_quota", {
+        p_user_id: user.id,
+      });
+    if (avatarQuotaError) {
+      return jsonResponse({ error: "Erreur serveur" }, 503);
+    }
+    const avatarCount =
+      typeof currentAvatarCount === "number" ? currentAvatarCount : 0;
+    if (avatarCount >= AVATAR_STUDIO_MONTHLY_LIMIT) {
+      return jsonResponse(
+        {
+          error: `Quota mensuel atteint (${AVATAR_STUDIO_MONTHLY_LIMIT} avatars). Réessayez le mois prochain.`,
+        },
+        429,
+      );
+    }
+
+    let response: Response;
+    if (action === "create-from-photo") {
+      response = await handleCreateFromPhoto(body, user.id);
+    } else {
+      response = await handleCreate(body, user.id);
+    }
+
+    if (response.ok) {
+      const { error: incrementError } = await supabaseAdmin.rpc(
+        "increment_avatar_studio_count",
+        { p_user_id: user.id },
+      );
+      if (incrementError?.message?.includes("AVATAR_STUDIO_QUOTA_EXCEEDED")) {
+        return jsonResponse(
+          {
+            error: `Quota mensuel atteint (${AVATAR_STUDIO_MONTHLY_LIMIT} avatars). Réessayez le mois prochain.`,
+          },
+          429,
+        );
+      }
+    }
+
+    return response;
   } catch (error) {
     console.error("studio-generate-avatar:", error);
     return jsonResponse(

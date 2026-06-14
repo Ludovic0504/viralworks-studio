@@ -10,7 +10,6 @@ import RouteDeconnexion from "./pages/RouteDeconnexion.jsx";
 import ReinitialiserMotDePasse from "./pages/ReinitialiserMotDePasse.jsx";
 import Profil from "./pages/Profil.jsx";
 import Galerie from "./pages/Galerie.jsx";
-import Boutique from "./pages/Boutique.jsx";
 import CommunauteVWS from "./pages/CommunauteVWS.jsx";
 import Admin from "./pages/Admin.jsx";
 import AdminStats from "./pages/AdminStats.jsx";
@@ -24,7 +23,7 @@ import ProtectedRoute from "./composants/auth/RouteProtegee.jsx";
 import { AuthProvider, useAuth } from "./contexte/FournisseurAuth";
 import { isAdmin } from "@/bibliotheque/supabase/credits";
 import { AuthActionProvider } from "./contexte/ActionAuthModalContext";
-import { BoutiqueModalProvider } from "./contexte/ContexteModalBoutique";
+import { BoutiqueModalProvider, useBoutiqueModal } from "./contexte/ContexteModalBoutique";
 import { FournisseurCommunauteVWSNotif } from "./contexte/FournisseurCommunauteVWSNotif.jsx";
 import { initMetaPixel, trackPageView } from "./bibliotheque/meta/pixel";
 import { initPostHog, trackPostHogPageView } from "./bibliotheque/posthog/client";
@@ -90,6 +89,34 @@ function AnalyticsRouteListener() {
   return null;
 }
 
+function BoutiqueStripeReturnHandler() {
+  const location = useLocation();
+  const { openBoutiqueModal } = useBoutiqueModal();
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const payment = params.get("payment");
+    if (payment !== "success" && payment !== "cancelled") return;
+
+    const sectionParam = params.get("section");
+    const section =
+      sectionParam === "packs-videos" ? "packs-videos" : "subscription";
+
+    openBoutiqueModal(section, { paymentReturn: payment });
+
+    params.delete("payment");
+    params.delete("section");
+    const query = params.toString();
+    window.history.replaceState(
+      {},
+      "",
+      `${location.pathname}${query ? `?${query}` : ""}`,
+    );
+  }, [location.pathname, location.search, openBoutiqueModal]);
+
+  return null;
+}
+
 function RootRouteLayout() {
   return (
     <AuthActionProvider>
@@ -97,6 +124,7 @@ function RootRouteLayout() {
         <FournisseurCommunauteVWSNotif>
           <AnalyticsRouteListener />
           <BannerInstallPWA />
+          <BoutiqueStripeReturnHandler />
           <Outlet />
         </FournisseurCommunauteVWSNotif>
       </BoutiqueModalProvider>
@@ -222,7 +250,6 @@ const router = createBrowserRouter([
             ),
           },
           { path: "communaute-vws", element: <CommunauteVWS /> },
-          { path: "boutique", element: <Boutique /> },
           {
             path: "admin",
             element: (

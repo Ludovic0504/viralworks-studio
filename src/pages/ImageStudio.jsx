@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { ChevronDown, ImageIcon, ImagePlus, Loader2, X } from "lucide-react";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
+import { useBoutiqueModal } from "@/contexte/ContexteModalBoutique";
 import { usePremiumAccess } from "@/hooks/usePremiumAccess";
 import { hasImageStudioPlan } from "@/bibliotheque/supabase/premiumAccess";
 import {
@@ -29,10 +30,14 @@ const MODEL_OPTIONS = [
 ];
 
 const DEFAULT_MODELS = {
-  nano_banana_pro: true,
+  nano_banana_pro: false,
   hailuo: false,
   gpt_image_2: false,
 };
+
+const PROMPT_MAX_ROWS = 10;
+const NBPRO_THROTTLE_THRESHOLD = 150;
+const NBPRO_MIN_LOADER_MS = 30_000;
 
 function pickDefaultModel(availability) {
   for (const opt of MODEL_OPTIONS) {
@@ -127,7 +132,9 @@ function ModelDropdown({ value, onChange, availability, disabled, loading }) {
 
 export default function ImageStudio() {
   const navigate = useNavigate();
+  const { openBoutiqueModal } = useBoutiqueModal();
   const fileInputRef = useRef(null);
+  const promptInputRef = useRef(null);
   const { session } = useAuth();
   const { runWithAuth } = useRequireAuthAction();
   const { plan, loading: accessLoading } = usePremiumAccess();
@@ -154,9 +161,10 @@ export default function ImageStudio() {
   useEffect(() => {
     if (accessLoading) return;
     if (!hasImageStudioPlan(plan)) {
-      navigate("/boutique?section=subscription&highlight=image_9", { replace: true });
+      openBoutiqueModal("subscription");
+      navigate("/", { replace: true });
     }
-  }, [accessLoading, plan, navigate]);
+  }, [accessLoading, plan, navigate, openBoutiqueModal]);
 
   useEffect(() => {
     let active = true;
@@ -213,6 +221,23 @@ export default function ImageStudio() {
     void loadHistory();
   }, [loadQuota, loadHistory]);
 
+  const resizePromptTextarea = useCallback(() => {
+    const el = promptInputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const style = window.getComputedStyle(el);
+    const lineHeight = parseFloat(style.lineHeight) || 20;
+    const paddingTop = parseFloat(style.paddingTop) || 0;
+    const paddingBottom = parseFloat(style.paddingBottom) || 0;
+    const maxHeight = lineHeight * PROMPT_MAX_ROWS + paddingTop + paddingBottom;
+    el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`;
+    el.style.overflowY = el.scrollHeight > maxHeight ? "auto" : "hidden";
+  }, []);
+
+  useEffect(() => {
+    resizePromptTextarea();
+  }, [prompt, resizePromptTextarea]);
+
   const quotaReached = quotaCount >= IMAGE_STUDIO_MONTHLY_LIMIT;
   const modelAvailable = modelsAvailability[model];
   const canGenerate =
@@ -261,13 +286,15 @@ export default function ImageStudio() {
     if (!canGenerate) return;
     setError(null);
     setGenerating(true);
+    const shouldThrottleNbPro =
+      model === "nano_banana_pro" && quotaCount >= NBPRO_THROTTLE_THRESHOLD;
     try {
-      const result = await generateImageStudio(
-        prompt,
-        aspectRatio,
-        model,
-        referenceImage,
-      );
+      const [result] = await Promise.all([
+        generateImageStudio(prompt, aspectRatio, model, referenceImage),
+        shouldThrottleNbPro
+          ? new Promise((resolve) => setTimeout(resolve, NBPRO_MIN_LOADER_MS))
+          : Promise.resolve(),
+      ]);
       setPreviewUrl(result.url);
       setActiveHistoryId(null);
       setQuotaCount(result.count);
@@ -446,15 +473,16 @@ export default function ImageStudio() {
             ) : null}
           </div>
 
-          <input
-            type="text"
+          <textarea
+            ref={promptInputRef}
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             onKeyDown={onPromptKeyDown}
             disabled={generating || quotaReached}
             placeholder="Décrivez l'image à générer…"
             aria-label="Prompt de génération"
-            className="image-studio-prompt-input h-11 min-w-0 flex-1 px-1 text-sm disabled:opacity-50 sm:h-12 sm:text-[15px]"
+            rows={1}
+            className="image-studio-prompt-input min-h-[2.75rem] min-w-0 flex-1 resize-none px-1 py-2.5 text-sm leading-normal disabled:opacity-50 sm:min-h-[3rem] sm:py-3 sm:text-[15px]"
           />
 
           <div className="image-studio-bar-scroll flex shrink-0 items-center gap-2 overflow-x-auto sm:gap-2.5">
