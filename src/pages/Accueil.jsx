@@ -35,9 +35,9 @@ export default function Accueil() {
 
   const demoVideos = useMemo(
     () => [
-      { src: demoVideoChantierUrl || "/videos/chantier.mp4", label: "Chantier · Architecte" },
-      { src: demoVideoMoteurUrl || "/videos/moteur.mp4", label: "Assemblage · Moteur" },
-      { src: demoVideoYachtUrl || "/videos/yacht.mp4", label: "Yacht · Pub" },
+      { src: demoVideoChantierUrl || "/videos/chantier.mp4", label: "Artisan" },
+      { src: demoVideoMoteurUrl || "/videos/moteur.mp4", label: "E-commerçant" },
+      { src: demoVideoYachtUrl || "/videos/yacht.mp4", label: "UGC" },
     ],
     [demoVideoChantierUrl, demoVideoMoteurUrl, demoVideoYachtUrl]
   );
