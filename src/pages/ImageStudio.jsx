@@ -262,6 +262,42 @@ function AspectRatioDropdown({ value, onChange, disabled }) {
   );
 }
 
+function PromptImportSlot({ preview, disabled, onPick, onClear }) {
+  return (
+    <div className="image-studio-prompt-import shrink-0">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onPick}
+        className={`image-studio-add-btn ${preview ? "has-ref" : ""}`}
+        title={preview ? "Image importée — cliquer pour remplacer" : "Importer une image depuis l'appareil"}
+        aria-label={
+          preview ? "Image importée — cliquer pour remplacer" : "Importer une image depuis l'appareil"
+        }
+      >
+        {preview ? (
+          <img src={preview} alt="" className="image-studio-add-btn-img" />
+        ) : (
+          <Plus className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+        )}
+      </button>
+      {preview ? (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onClear();
+          }}
+          className="image-studio-add-btn-clear"
+          aria-label="Retirer l'image importée"
+        >
+          <X className="h-2.5 w-2.5" />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 function ReferenceSlot({ label, preview, disabled, onPick, onClear, imageClassName = "" }) {
   return (
     <div className="image-studio-ref-slot">
@@ -312,6 +348,7 @@ export default function ImageStudio() {
   const navigate = useNavigate();
   const { openBoutiqueModal } = useBoutiqueModal();
   const promptInputRef = useRef(null);
+  const promptImportInputRef = useRef(null);
   const { session } = useAuth();
   const { runWithAuth } = useRequireAuthAction();
   const { plan, loading: accessLoading } = usePremiumAccess();
@@ -319,6 +356,8 @@ export default function ImageStudio() {
   const [previewUrl, setPreviewUrl] = useState(null);
   const [referenceImage, setReferenceImage] = useState(null);
   const [referencePreview, setReferencePreview] = useState(null);
+  const [importedRefImage, setImportedRefImage] = useState(null);
+  const [importedRefPreview, setImportedRefPreview] = useState(null);
   const [productImage, setProductImage] = useState(null);
   const [productPreview, setProductPreview] = useState(null);
   const [avatarLibraryOpen, setAvatarLibraryOpen] = useState(false);
@@ -447,6 +486,34 @@ export default function ImageStudio() {
     setReferencePreview(null);
   }, []);
 
+  const openPromptImport = useCallback(() => {
+    void runWithAuth(() => {
+      promptImportInputRef.current?.click();
+      return true;
+    });
+  }, [runWithAuth]);
+
+  const handlePromptImportChange = useCallback((e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !file.type.startsWith("image/")) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result || "");
+      if (!dataUrl) return;
+      setImportedRefImage(dataUrl);
+      setImportedRefPreview(dataUrl);
+      setError(null);
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
+  const clearImportedRef = useCallback(() => {
+    setImportedRefImage(null);
+    setImportedRefPreview(null);
+  }, []);
+
   const openProductLibrary = useCallback(() => {
     void runWithAuth(() => {
       setProductLibraryOpen(true);
@@ -489,7 +556,12 @@ export default function ImageStudio() {
       model === "nano_banana_pro" && quotaCount >= NBPRO_THROTTLE_THRESHOLD;
     try {
       const [result] = await Promise.all([
-        generateImageStudio(prompt, aspectRatio, model, referenceImage),
+        generateImageStudio(
+          prompt,
+          aspectRatio,
+          model,
+          importedRefImage || referenceImage,
+        ),
         shouldThrottleNbPro
           ? new Promise((resolve) => setTimeout(resolve, NBPRO_MIN_LOADER_MS))
           : Promise.resolve(),
@@ -634,16 +706,22 @@ export default function ImageStudio() {
         <div className="image-studio-command-bar-inner mx-auto max-w-[1400px]">
           <div className="image-studio-command-layout">
             <div className="image-studio-prompt-row">
-              <button
-                type="button"
-                onClick={openAvatarLibrary}
+              <PromptImportSlot
+                preview={importedRefPreview}
                 disabled={generating}
-                className="image-studio-add-btn shrink-0"
-                title="Choisir un avatar"
-                aria-label="Choisir un avatar"
-              >
-                <Plus className="h-4 w-4" strokeWidth={2.25} />
-              </button>
+                onPick={openPromptImport}
+                onClear={clearImportedRef}
+              />
+
+              <input
+                ref={promptImportInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handlePromptImportChange}
+                className="hidden"
+                aria-hidden
+                tabIndex={-1}
+              />
 
               <textarea
                 ref={promptInputRef}

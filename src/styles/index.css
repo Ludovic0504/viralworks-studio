@@ -643,10 +643,6 @@
       gap: 0.375rem;
     }
 
-    .image-studio-add-btn {
-      display: none;
-    }
-
     .image-studio-settings-row {
       grid-column: 1;
       grid-row: 2;
@@ -760,6 +756,11 @@
     }
   }
 
+  .image-studio-prompt-import {
+    position: relative;
+    flex-shrink: 0;
+  }
+
   .image-studio-add-btn {
     display: inline-flex;
     align-items: center;
@@ -771,7 +772,52 @@
     border: 1px solid rgba(255, 255, 255, 0.1);
     background: rgba(255, 255, 255, 0.04);
     color: rgba(255, 255, 255, 0.55);
+    overflow: hidden;
     transition: border-color 0.15s, background 0.15s, color 0.15s;
+  }
+
+  @media (max-width: 639px) {
+    .image-studio-add-btn {
+      width: 2rem;
+      height: 2rem;
+      margin-top: 0;
+      border-radius: 0.625rem;
+    }
+  }
+
+  .image-studio-add-btn.has-ref {
+    padding: 0;
+    border-color: rgba(42, 245, 152, 0.4);
+    background: rgba(0, 0, 0, 0.28);
+  }
+
+  .image-studio-add-btn-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .image-studio-add-btn-clear {
+    position: absolute;
+    top: -0.3125rem;
+    right: -0.3125rem;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1rem;
+    height: 1rem;
+    border-radius: 9999px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(12, 10, 16, 0.92);
+    color: rgba(255, 255, 255, 0.85);
+    transition: background 0.12s, color 0.12s;
+  }
+
+  .image-studio-add-btn-clear:hover {
+    background: rgba(239, 68, 68, 0.85);
+    color: #fff;
   }
 
   .image-studio-add-btn:hover:not(:disabled) {
