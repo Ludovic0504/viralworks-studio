@@ -43,7 +43,9 @@ export function FournisseurCommunauteVWSNotif({ children }) {
     try {
       const raw =
         typeof localStorage !== "undefined" ? localStorage.getItem(VWS_PUBLIC_LAST_SEEN_KEY) : null;
+      console.log("[debug] refreshPublicIndicator - last_seen:", raw);
       const hasNew = await hasNewPublicMessageSince(raw);
+      console.log("[debug] refreshPublicIndicator - hasNew:", hasNew);
       setHasNewPublicSinceLastVisit(hasNew);
     } catch {
       setHasNewPublicSinceLastVisit(false);
@@ -51,6 +53,7 @@ export function FournisseurCommunauteVWSNotif({ children }) {
   }, [uid]);
 
   const markPublicTabVisited = useCallback(() => {
+    console.trace("[debug] markPublicTabVisited appelée depuis");
     try {
       localStorage.setItem(VWS_PUBLIC_LAST_SEEN_KEY, new Date().toISOString());
       setHasNewPublicSinceLastVisit(false);

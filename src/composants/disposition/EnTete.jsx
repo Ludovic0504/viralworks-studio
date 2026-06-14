@@ -13,21 +13,23 @@ import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
 const navLinks = [
   { path: "/", label: "Accueil" },
   { path: "/lab", label: "Nouveautés" },
-  { path: "/communaute-vws", label: "Communauté" },
   { path: "/playbook", label: "Playbook" },
 ];
 
 function MessageBubbleIcon({ className }) {
   return (
     <svg
-      viewBox="0 0 24 24"
-      width={22}
-      height={22}
+      viewBox="0 0 20 20"
+      width={26}
+      height={26}
       className={className}
       fill="currentColor"
       aria-hidden
     >
-      <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17L4 17.17V4h16v12z" />
+      {/* Bulle secondaire — bas-gauche, derrière */}
+      <path d="M2.5 9.5a2.25 2.25 0 0 1 2.25-2.25h3a2.25 2.25 0 0 1 2.25 2.25v1.25a1.25 1.25 0 0 1-1.25 1.25H6.6L4.5 14.5V12.25H4.75A2.25 2.25 0 0 1 2.5 10V9.5Z" />
+      {/* Bulle principale — haut-droite, devant */}
+      <path d="M8.25 3.25a2.75 2.75 0 0 1 2.75-2.75h4.75a2.75 2.75 0 0 1 2.75 2.75v3.25a1.75 1.75 0 0 1-1.75 1.75h-2.95L12.75 12.75V10H11A2.75 2.75 0 0 1 8.25 7.25V3.25Z" />
     </svg>
   );
 }
@@ -36,7 +38,7 @@ export default function Header({ onOpenMenu }) {
   const { session, signOut, loading } = useAuth();
   const { openAuthModal } = useRequireAuthAction();
   const hasSession = Boolean(session?.user?.id);
-  const { unreadPrivateCount } = useCommunauteVWSNotif();
+  const { unreadPrivateCount, hasNewPublicSinceLastVisit } = useCommunauteVWSNotif();
   const location = useLocation();
 
   const [adminBar, setAdminBar] = useState({
@@ -250,6 +252,9 @@ export default function Header({ onOpenMenu }) {
                   <span className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-semibold leading-none text-white">
                     {unreadPrivateCount > 99 ? "99+" : unreadPrivateCount}
                   </span>
+                ) : null}
+                {hasNewPublicSinceLastVisit ? (
+                  <span className="absolute -left-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-yellow-400" aria-hidden />
                 ) : null}
               </LienNavSync>
             ) : null}

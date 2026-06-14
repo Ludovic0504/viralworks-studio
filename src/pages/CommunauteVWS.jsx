@@ -241,7 +241,9 @@ export default function CommunauteVWS() {
     markPublicTabVisited,
   } = useCommunauteVWSNotif();
   const myUserId = session?.user?.id || "";
-  const [tab, setTab] = useState("public");
+  const [tab, setTab] = useState(() =>
+    new URLSearchParams(window.location.search).get("tab") === "private" ? "private" : "public"
+  );
   const tabQueryHandledRef = useRef(false);
   const [publicMessages, setPublicMessages] = useState([]);
   const [privateConversations, setPrivateConversations] = useState([]);
@@ -262,6 +264,11 @@ export default function CommunauteVWS() {
   const privateEndRef = useRef(null);
   const publicFileRef = useRef(null);
   const privateFileRef = useRef(null);
+  const activeConversationIdRef = useRef(activeConversationId);
+
+  useEffect(() => {
+    activeConversationIdRef.current = activeConversationId;
+  }, [activeConversationId]);
 
   const activeConversation = useMemo(
     () => privateConversations.find((c) => c.id === activeConversationId) || null,
@@ -276,10 +283,11 @@ export default function CommunauteVWS() {
     }
   };
 
-  const refreshConversations = async (forceActiveId) => {
+  const refreshConversations = async (forceActiveId, forceOtherUserId) => {
     try {
       const list = await listPrivateConversations();
       setPrivateConversations(list);
+      let resolvedId = "";
       setActiveConversationId((prev) => {
         if (
           forceActiveId !== undefined &&
@@ -287,15 +295,28 @@ export default function CommunauteVWS() {
           forceActiveId !== "" &&
           list.some((c) => c.id === forceActiveId)
         ) {
+          resolvedId = forceActiveId;
           return forceActiveId;
         }
+        if (forceOtherUserId) {
+          const match = list.find((c) => c.otherUserId === forceOtherUserId);
+          if (match) {
+            resolvedId = match.id;
+            return match.id;
+          }
+        }
         if (prev && list.some((c) => c.id === prev)) {
+          resolvedId = prev;
           return prev;
         }
-        return list[0]?.id || "";
+        resolvedId = list[0]?.id || "";
+        return resolvedId;
       });
+      console.log("[debug] refreshConversations resolvedId:", resolvedId, "list ids:", list.map(c => c.id));
+      return resolvedId;
     } catch (e) {
       setError(e?.message || "Erreur chargement conversations.");
+      return "";
     }
   };
 
@@ -311,13 +332,17 @@ export default function CommunauteVWS() {
   };
 
   const refreshPrivateMessages = async (conversationId) => {
+    console.log("[debug] refreshPrivateMessages appelé, conversationId:", conversationId, "ref actuel:", activeConversationIdRef.current);
     if (!conversationId) {
       setPrivateMessages([]);
       return;
     }
     try {
-      setPrivateMessages(await listPrivateMessages(conversationId));
+      const messages = await listPrivateMessages(conversationId);
+      if (activeConversationIdRef.current !== conversationId) return;
+      setPrivateMessages(messages);
     } catch (e) {
+      if (activeConversationIdRef.current !== conversationId) return;
       setError(e?.message || "Erreur chargement messages privés.");
     }
   };
@@ -401,7 +426,10 @@ export default function CommunauteVWS() {
 
   useEffect(() => {
     if (tab !== "public" || !session?.user?.id) return;
-    markPublicTabVisited();
+    const timer = setTimeout(() => {
+      markPublicTabVisited();
+    }, 2000);
+    return () => clearTimeout(timer);
   }, [tab, session?.user?.id, markPublicTabVisited]);
 
   useEffect(() => {
@@ -476,12 +504,24 @@ export default function CommunauteVWS() {
   };
 
   const createConversation = async (otherUserId) => {
+    console.log("[debug] createConversation appelé, otherUserId:", otherUserId);
     try {
       setBusy(true);
       setError("");
       const id = await startPrivateConversation(otherUserId);
-      await refreshConversations(id);
-      await refreshPrivateMessages(id);
+      console.log("[debug] startPrivateConversation retourne id:", id);
+      await refreshConversations(id, otherUserId);
+      const freshList = await listPrivateConversations();
+      console.log("[debug] freshList complet:", JSON.stringify(freshList.map(c => ({ id: c.id, otherUserId: c.otherUserId, otherUsername: c.otherUsername }))));
+      console.log("[debug] otherUserId cherché:", otherUserId);
+      setPrivateConversations(freshList);
+      const match = freshList.find((c) => c.otherUserId === otherUserId);
+      const visibleId = match?.id || id;
+      console.log("[debug] visibleId résolu:", visibleId);
+      setActiveConversationId(visibleId);
+      activeConversationIdRef.current = visibleId;
+      await refreshPrivateMessages(visibleId);
+      console.log("[debug] messages chargés pour visibleId:", visibleId);
       setConvMenuId(null);
     } catch (e) {
       setError(e?.message || "Impossible de créer la conversation.");
@@ -586,6 +626,7 @@ export default function CommunauteVWS() {
                     onSelect={() => {
                       setActiveConversationId(c.id);
                       setConvMenuId(null);
+                      void refreshPrivateMessages(c.id);
                     }}
                     onToggleMenu={() => setConvMenuId((prev) => (prev === c.id ? null : c.id))}
                     onRemoveForMe={removePrivateConversationForMe}
@@ -637,6 +678,12 @@ export default function CommunauteVWS() {
                   <input
                     value={publicInput}
                     onChange={(e) => setPublicInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        void runWithAuth(sendToPublic);
+                      }
+                    }}
                     onFocus={() => {
                       if (!session) openAuthModal();
                     }}
@@ -708,6 +755,12 @@ export default function CommunauteVWS() {
                   <input
                     value={privateInput}
                     onChange={(e) => setPrivateInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        void runWithAuth(sendToPrivate);
+                      }
+                    }}
                     onFocus={() => {
                       if (!session) openAuthModal();
                     }}

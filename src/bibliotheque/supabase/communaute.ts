@@ -403,9 +403,7 @@ export async function listPrivateConversations(): Promise<CommunityConversation[
       isSupport: other?.isSupport === true,
     };
   });
-  const rowsVisibleForViewer = isSupportViewer
-    ? rows.filter((row) => hasIncomingByConv.get(String(row.id)) === true)
-    : rows;
+  const rowsVisibleForViewer = rows;
   // Garder une seule conversation visible par interlocuteur (évite les doublons "Support").
   const dedupByOther = new Map<string, CommunityConversation>();
   for (const row of rowsVisibleForViewer) {
@@ -527,20 +525,21 @@ export async function markAllPrivateConversationsRead(): Promise<void> {
 /** Indique s’il existe au moins un message public postérieur au timestamp (ISO). Si sinceIso est null, tout message existant compte comme « nouveau ». */
 export async function hasNewPublicMessageSince(sinceIso: string | null): Promise<boolean> {
   const { supabase } = await ensureAuthUser();
+  console.log("[debug] hasNewPublicMessageSince - sinceIso:", sinceIso);
   if (!sinceIso?.trim()) {
     const { count, error } = await supabase
       .from("community_public_messages")
       .select("id", { count: "exact", head: true });
-    if (error) throw new Error(error.message);
+    console.log("[debug] hasNewPublicMessageSince - count (no sinceIso):", count);
     return (count ?? 0) > 0;
   }
   const { data, error } = await supabase
     .from("community_public_messages")
-    .select("id")
+    .select("id, created_at")
     .gt("created_at", sinceIso.trim())
     .limit(1)
     .maybeSingle();
-  if (error) throw new Error(error.message);
+  console.log("[debug] hasNewPublicMessageSince - data:", data, "error:", error);
   return Boolean(data?.id);
 }
 

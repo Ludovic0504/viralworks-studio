@@ -1,7 +1,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { Home, Sparkles, X, Users, FileText, Info } from "lucide-react";
+import { Home, Sparkles, X, FileText, Info } from "lucide-react";
 import LienNavSync from "@/composants/disposition/LienNavSync";
 import { MenuNavViralWorksMobile } from "@/composants/disposition/MenuNavViralWorks";
 import { useAuth } from "@/contexte/FournisseurAuth";
@@ -10,7 +10,6 @@ import { isAdmin } from "@/bibliotheque/supabase/credits";
 const links = [
   { path: "/", label: "Accueil", icon: Home },
   { path: "/lab", label: "Nouveautés", icon: Sparkles },
-  { path: "/communaute-vws", label: "Communauté", icon: Users },
   { path: "/playbook", label: "Playbook", icon: Info },
 ];
 

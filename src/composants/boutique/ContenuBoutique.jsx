@@ -535,12 +535,6 @@ export default function ContenuBoutique({
                 : plan.id === "pro_59"
                   ? "bg-sky-500"
                   : "bg-violet-500";
-            const quotaLabel =
-              plan.id === "image_9"
-                ? "Jusqu'à 200 images / mois"
-                : plan.id === "pro_59"
-                  ? "200 images · 15 Seedance · 5 avatars / mois"
-                  : "30 vidéos · 200 images · 15 Seedance · 5 avatars / mois";
 
             return (
             <div
@@ -563,7 +557,6 @@ export default function ContenuBoutique({
                   <PlanIcon className={`${iconClass} ${m.subIcon}`} />
                 </div>
                 <h3 className={m.subName}>{plan.name}</h3>
-                <div className={m.subQuota}>{quotaLabel}</div>
                 <div className={m.subPrice}>
                   {plan.id === "premium_129" ? (
                     <>
