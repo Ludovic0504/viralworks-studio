@@ -7,6 +7,7 @@ export type ImageStudioHistoryItem = {
   metadata?: {
     source?: string;
     aspectRatio?: string;
+    imageStudioModel?: string;
     urls?: string[];
   } | null;
   created_at?: string;
@@ -14,7 +15,8 @@ export type ImageStudioHistoryItem = {
 
 export type ImageStudioAspectRatio = "1:1" | "9:16" | "16:9";
 
-const HISTORY_LIMIT = 12;
+/** Plafond de sécurité pour l'affichage (toutes les générations Image Studio de l'utilisateur). */
+const HISTORY_LIST_LIMIT = 1000;
 
 export function getImageUrlFromHistory(item: ImageStudioHistoryItem): string | null {
   const fromOutput = typeof item?.output === "string" ? item.output.trim() : "";
@@ -27,12 +29,14 @@ export function getImageUrlFromHistory(item: ImageStudioHistoryItem): string | n
 }
 
 export async function listImageStudioHistory(
-  limit = HISTORY_LIMIT,
+  limit = HISTORY_LIST_LIMIT,
 ): Promise<ImageStudioHistoryItem[]> {
-  const rows = await listHistory({ kind: "image", limit: limit * 4 });
-  return rows
-    .filter((item) => item.metadata?.source === "image_studio")
-    .slice(0, limit) as ImageStudioHistoryItem[];
+  const rows = await listHistory({
+    kind: "image",
+    limit,
+    metadataSource: "image_studio",
+  });
+  return rows as ImageStudioHistoryItem[];
 }
 
 export async function saveImageStudioHistory(
@@ -45,7 +49,7 @@ export async function saveImageStudioHistory(
     kind: "image",
     input: prompt,
     output: url,
-    model: model ?? "nano-banana-pro",
+    model: model ?? "nano_banana_pro",
     metadata: {
       source: "image_studio",
       aspectRatio,

@@ -1,6 +1,8 @@
 import { getBrowserSupabase } from "./client-navigateur";
 
 export const IMAGE_STUDIO_MONTHLY_LIMIT = 200;
+/** À partir de ce nombre de générations consommées, throttle serveur (30 s). */
+export const IMAGE_STUDIO_THROTTLE_AFTER = 100;
 
 export type ImageStudioQuota = {
   count: number;

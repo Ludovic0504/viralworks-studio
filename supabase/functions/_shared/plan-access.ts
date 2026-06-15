@@ -71,3 +71,7 @@ export function planAllowsSeedance(plan: UserPlan): boolean {
 export function planAllowsAvatar(plan: UserPlan): boolean {
   return plan === "pro_59" || plan === "premium_129";
 }
+
+export function planAllowsImageStudio(plan: UserPlan): boolean {
+  return plan === "image_9" || plan === "pro_59" || plan === "premium_129";
+}

@@ -67,9 +67,11 @@ export async function saveHistory({
 export async function listHistory({
   kind,
   limit = 20,
+  metadataSource,
 }: {
   kind?: HistoryKind;
   limit?: number;
+  metadataSource?: string;
 }) {
   const supabase = getBrowserSupabase();
 
@@ -84,6 +86,9 @@ export async function listHistory({
     .limit(limit);
 
   if (kind) query = query.eq("kind", kind);
+  if (metadataSource) {
+    query = query.filter("metadata->>source", "eq", metadataSource);
+  }
 
   const { data, error } = await query;
   if (error) {

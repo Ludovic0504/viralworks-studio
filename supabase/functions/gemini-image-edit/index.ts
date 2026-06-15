@@ -254,7 +254,7 @@ async function kieCreateTask(
       prompt: editPrompt,
       image_input: [publicImageUrl],
       aspect_ratio: "auto",
-      resolution: "1K",
+      resolution: "2K",
       output_format: "png",
     };
   }

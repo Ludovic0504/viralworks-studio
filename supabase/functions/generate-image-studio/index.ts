@@ -5,6 +5,10 @@
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  planAllowsImageStudio,
+  resolveUserPlan,
+} from "../_shared/plan-access.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -19,6 +23,10 @@ const OPENAI_GENERATIONS_URL = "https://api.openai.com/v1/images/generations";
 const OPENAI_EDITS_URL = "https://api.openai.com/v1/images/edits";
 const HAILUO_API_URL = "https://api.minimax.io/v1/image_generation";
 const IMAGE_STUDIO_LIMIT = 200;
+/** Générations 1–100 : pleine vitesse ; à partir de la 101e : pause serveur avant Kie. */
+const IMAGE_STUDIO_THROTTLE_AFTER = 100;
+const IMAGE_STUDIO_THROTTLE_MS = 30_000;
+const KIE_IMAGE_RESOLUTION = "2K";
 const MAX_REF_IMAGE_BYTES = 10 * 1024 * 1024;
 const MSG_BUSY =
   "Les serveurs sont saturés, réessaye dans quelques instants.";
@@ -183,6 +191,119 @@ async function uploadReferenceToStorage(
   return data.publicUrl || null;
 }
 
+const GENERATED_IMAGES_BUCKET = "generated-images";
+
+async function uploadBytesToGeneratedImages(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  objectPath: string,
+  bytes: Uint8Array,
+  contentType: string,
+): Promise<string> {
+  const baseUrl = supabaseUrl.replace(/\/$/, "");
+  const uploadUrl =
+    `${baseUrl}/storage/v1/object/${GENERATED_IMAGES_BUCKET}/${objectPath}`;
+
+  const uploadRes = await fetch(uploadUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${serviceRoleKey}`,
+      apikey: serviceRoleKey,
+      "Content-Type": contentType,
+      "Cache-Control": "3600",
+      "x-upsert": "false",
+    },
+    body: bytes,
+  });
+
+  if (!uploadRes.ok) {
+    const errText = await uploadRes.text();
+    throw new Error(
+      `Échec upload Storage (${uploadRes.status}): ${errText.slice(0, 400)}`,
+    );
+  }
+
+  return `${baseUrl}/storage/v1/object/public/${GENERATED_IMAGES_BUCKET}/${objectPath}`;
+}
+
+async function persistGeneratedImageUrl(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  userId: string,
+  sourceUrl: string,
+): Promise<string> {
+  const trimmed = sourceUrl.trim();
+  let bytes: Uint8Array;
+  let contentType = "image/png";
+  let ext = "png";
+
+  if (trimmed.startsWith("data:")) {
+    const parsed = parsePhotoDataUrl(trimmed);
+    if (!parsed) throw new Error("Image générée invalide (data URL).");
+    bytes = parsed.bytes;
+    contentType = parsed.mime;
+    ext = parsed.fileName.split(".").pop() || "png";
+  } else if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    const fetchUrl = trimmed.startsWith("http://")
+      ? trimmed.replace("http://", "https://")
+      : trimmed;
+    const res = await fetch(fetchUrl);
+    if (!res.ok) {
+      throw new Error(`Impossible de télécharger l'image générée (${res.status}).`);
+    }
+    bytes = new Uint8Array(await res.arrayBuffer());
+    contentType = res.headers.get("content-type") || "image/png";
+    if (contentType.includes("jpeg") || contentType.includes("jpg")) ext = "jpg";
+    else if (contentType.includes("webp")) ext = "webp";
+  } else {
+    throw new Error("Format d'URL image non supporté.");
+  }
+
+  const objectPath =
+    `${userId}/image-studio/${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${ext}`;
+  return uploadBytesToGeneratedImages(
+    supabaseUrl,
+    serviceRoleKey,
+    objectPath,
+    bytes,
+    contentType,
+  );
+}
+
+async function saveImageStudioHistoryEntry(
+  supabaseAdmin: SupabaseClient,
+  userId: string,
+  prompt: string,
+  imageUrl: string,
+  aspectRatio: string,
+  model: string,
+): Promise<string | null> {
+  const { data, error } = await supabaseAdmin
+    .from("history")
+    .insert({
+      user_id: userId,
+      kind: "image",
+      input: prompt,
+      output: imageUrl,
+      model,
+      metadata: {
+        source: "image_studio",
+        aspectRatio,
+        imageStudioModel: model,
+        urls: [imageUrl],
+      },
+    })
+    .select("id")
+    .single();
+
+  if (error) {
+    console.error("save image studio history:", error);
+    return null;
+  }
+
+  return typeof data?.id === "string" ? data.id : null;
+}
+
 async function kieCreateTask(
   kieApiKey: string,
   model: string,
@@ -195,13 +316,13 @@ async function kieCreateTask(
         prompt,
         image_input: [referenceUrl],
         aspect_ratio: aspectRatio,
-        resolution: "1K",
+        resolution: KIE_IMAGE_RESOLUTION,
         output_format: "png",
       }
     : {
         prompt,
         aspect_ratio: aspectRatio,
-        resolution: "1K",
+        resolution: KIE_IMAGE_RESOLUTION,
         output_format: "png",
       };
 
@@ -460,6 +581,10 @@ async function assertQuotaAndGenerate(
     throw new Error(`QUOTA:${IMAGE_STUDIO_LIMIT}`);
   }
 
+  if (count >= IMAGE_STUDIO_THROTTLE_AFTER) {
+    await sleep(IMAGE_STUDIO_THROTTLE_MS);
+  }
+
   let referenceUrl: string | null = null;
   if (referenceImage) {
     referenceUrl = await uploadReferenceToStorage(
@@ -531,6 +656,19 @@ serve(async (req) => {
       return jsonError(401, "UNAUTHORIZED", "Non autorisé. Veuillez vous connecter.");
     }
 
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    const userPlan = await resolveUserPlan(supabaseAdmin, user.id);
+    if (!planAllowsImageStudio(userPlan)) {
+      return jsonError(
+        403,
+        "IMAGE_STUDIO_SUBSCRIPTION_REQUIRED",
+        "Un abonnement ViralWorks Image est requis pour générer des images.",
+      );
+    }
+
     let body: RequestBody;
     try {
       body = await req.json();
@@ -551,10 +689,6 @@ serve(async (req) => {
         ? body.referenceImage.trim()
         : null;
 
-    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
-
     try {
       const { url, provider } = await assertQuotaAndGenerate(
         supabaseAdmin,
@@ -565,13 +699,35 @@ serve(async (req) => {
         referenceImage,
       );
 
+      let persistedUrl = url;
+      try {
+        persistedUrl = await persistGeneratedImageUrl(
+          supabaseUrl,
+          serviceRoleKey,
+          user.id,
+          url,
+        );
+      } catch (persistErr) {
+        console.error("persist generated image:", persistErr);
+      }
+
+      const historyId = await saveImageStudioHistoryEntry(
+        supabaseAdmin,
+        user.id,
+        prompt,
+        persistedUrl,
+        aspectRatio,
+        model,
+      );
+
       const { data: newCount } = await supabaseAdmin.rpc(
         "refresh_image_studio_quota",
         { p_user_id: user.id },
       );
 
       return jsonResponse({
-        url,
+        url: persistedUrl,
+        historyId,
         provider,
         model,
         count: typeof newCount === "number" ? newCount : undefined,

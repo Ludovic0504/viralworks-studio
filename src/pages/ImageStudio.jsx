@@ -1,24 +1,36 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useNavigate } from "react-router-dom";
 import {
+  BookOpen,
   ChevronDown,
+  Clock,
   Crop,
   ImageIcon,
   Loader2,
   Plus,
+  SlidersHorizontal,
+  Sparkles,
   Wand2,
   X,
 } from "lucide-react";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
-import { useBoutiqueModal } from "@/contexte/ContexteModalBoutique";
 import { usePremiumAccess } from "@/hooks/usePremiumAccess";
 import { hasImageStudioPlan } from "@/bibliotheque/supabase/premiumAccess";
 import {
   fetchImageStudioQuota,
   IMAGE_STUDIO_MONTHLY_LIMIT,
 } from "@/bibliotheque/supabase/imageStudioQuota";
+import {
+  dismissImageStudioAlert,
+  IMAGE_STUDIO_WARNING_USED,
+  wasImageStudioAlertDismissed,
+} from "@/bibliotheque/imageStudio/quotaAlerts";
+import IndicateurCreditsImageStudio from "@/composants/image/IndicateurCreditsImageStudio";
+import ModalAbonnementImageStudio from "@/composants/image/ModalAbonnementImageStudio";
+import ModalPromptsImageStudio from "@/composants/image/ModalPromptsImageStudio";
+import SheetReglagesImageStudio from "@/composants/image/SheetReglagesImageStudio";
+import ModalQuotaImageStudio from "@/composants/image/ModalQuotaImageStudio";
 import {
   fetchImageStudioModels,
   generateImageStudio,
@@ -47,8 +59,22 @@ const DEFAULT_MODELS = {
 };
 
 const PROMPT_MAX_ROWS = 10;
-const NBPRO_THROTTLE_THRESHOLD = 150;
-const NBPRO_MIN_LOADER_MS = 30_000;
+
+function formatHistoryTime(createdAt) {
+  if (!createdAt) return "";
+  try {
+    return new Intl.DateTimeFormat("fr-FR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(createdAt));
+  } catch {
+    return "";
+  }
+}
+
+function getModelLabel(modelId) {
+  return MODEL_OPTIONS.find((opt) => opt.id === modelId)?.label ?? "Image";
+}
 
 function pickDefaultModel(availability) {
   for (const opt of MODEL_OPTIONS) {
@@ -345,8 +371,6 @@ function ReferenceSlot({ label, preview, disabled, onPick, onClear, imageClassNa
 }
 
 export default function ImageStudio() {
-  const navigate = useNavigate();
-  const { openBoutiqueModal } = useBoutiqueModal();
   const promptInputRef = useRef(null);
   const promptImportInputRef = useRef(null);
   const { session } = useAuth();
@@ -370,7 +394,13 @@ export default function ImageStudio() {
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState(null);
   const [quotaCount, setQuotaCount] = useState(0);
+  const [quotaLimit, setQuotaLimit] = useState(IMAGE_STUDIO_MONTHLY_LIMIT);
+  const [quotaResetAt, setQuotaResetAt] = useState(null);
   const [quotaLoading, setQuotaLoading] = useState(true);
+  const [quotaAlert, setQuotaAlert] = useState(null);
+  const [subscribeModalOpen, setSubscribeModalOpen] = useState(false);
+  const [promptsModalOpen, setPromptsModalOpen] = useState(false);
+  const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
   const [history, setHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
@@ -378,13 +408,7 @@ export default function ImageStudio() {
     capturePostHog("image_studio_opened");
   }, []);
 
-  useEffect(() => {
-    if (accessLoading) return;
-    if (!hasImageStudioPlan(plan)) {
-      openBoutiqueModal("subscription");
-      navigate("/", { replace: true });
-    }
-  }, [accessLoading, plan, navigate, openBoutiqueModal]);
+  const hasImagePlan = !accessLoading && hasImageStudioPlan(plan);
 
   useEffect(() => {
     let active = true;
@@ -404,7 +428,7 @@ export default function ImageStudio() {
   }, []);
 
   const loadQuota = useCallback(async () => {
-    if (!session?.user?.id) {
+    if (!session?.user?.id || !hasImagePlan) {
       setQuotaCount(0);
       setQuotaLoading(false);
       return;
@@ -413,12 +437,14 @@ export default function ImageStudio() {
     try {
       const quota = await fetchImageStudioQuota();
       setQuotaCount(quota.count);
+      setQuotaLimit(quota.limit);
+      setQuotaResetAt(quota.resetAt);
     } catch {
       setQuotaCount(0);
     } finally {
       setQuotaLoading(false);
     }
-  }, [session?.user?.id]);
+  }, [session?.user?.id, hasImagePlan]);
 
   const loadHistory = useCallback(async () => {
     if (!session?.user?.id) {
@@ -441,6 +467,30 @@ export default function ImageStudio() {
     void loadHistory();
   }, [loadQuota, loadHistory]);
 
+  useEffect(() => {
+    if (!hasImagePlan || quotaLoading) return;
+
+    if (quotaCount >= quotaLimit) {
+      if (!wasImageStudioAlertDismissed("exhausted", quotaResetAt)) {
+        setQuotaAlert("exhausted");
+      }
+      return;
+    }
+
+    if (quotaCount >= IMAGE_STUDIO_WARNING_USED) {
+      if (!wasImageStudioAlertDismissed("warning", quotaResetAt)) {
+        setQuotaAlert("warning");
+      }
+    }
+  }, [hasImagePlan, quotaCount, quotaLimit, quotaLoading, quotaResetAt]);
+
+  const closeQuotaAlert = useCallback(() => {
+    if (quotaAlert) {
+      dismissImageStudioAlert(quotaAlert, quotaResetAt);
+    }
+    setQuotaAlert(null);
+  }, [quotaAlert, quotaResetAt]);
+
   const resizePromptTextarea = useCallback(() => {
     const el = promptInputRef.current;
     if (!el) return;
@@ -458,15 +508,14 @@ export default function ImageStudio() {
     resizePromptTextarea();
   }, [prompt, resizePromptTextarea]);
 
-  const quotaReached = quotaCount >= IMAGE_STUDIO_MONTHLY_LIMIT;
+  const quotaReached = hasImagePlan && quotaCount >= quotaLimit;
   const modelAvailable = modelsAvailability[model];
   const canGenerate =
     Boolean(prompt.trim()) &&
     !generating &&
     !quotaReached &&
     modelAvailable &&
-    !accessLoading &&
-    hasImageStudioPlan(plan);
+    !accessLoading;
 
   const openAvatarLibrary = useCallback(() => {
     void runWithAuth(() => {
@@ -549,35 +598,33 @@ export default function ImageStudio() {
   };
 
   const handleGenerate = async () => {
-    if (!canGenerate) return;
+    if (!hasImagePlan || !canGenerate) return;
     setError(null);
     setGenerating(true);
-    const shouldThrottleNbPro =
-      model === "nano_banana_pro" && quotaCount >= NBPRO_THROTTLE_THRESHOLD;
     try {
-      const [result] = await Promise.all([
-        generateImageStudio(
-          prompt,
-          aspectRatio,
-          model,
-          importedRefImage || referenceImage,
-        ),
-        shouldThrottleNbPro
-          ? new Promise((resolve) => setTimeout(resolve, NBPRO_MIN_LOADER_MS))
-          : Promise.resolve(),
-      ]);
+      const result = await generateImageStudio(
+        prompt,
+        aspectRatio,
+        model,
+        importedRefImage || referenceImage,
+      );
       setPreviewUrl(result.url);
-      setActiveHistoryId(null);
+      setActiveHistoryId(result.historyId ?? null);
       setQuotaCount(result.count);
-      await saveImageStudioHistory(prompt, result.url, aspectRatio, model);
+      if (!result.historyId) {
+        await saveImageStudioHistory(prompt, result.url, aspectRatio, model);
+      }
       void loadHistory();
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Erreur lors de la génération.";
       setError(message);
       trackPostHogError(message, "/image-studio", "generation");
+      if (message.includes("ViralWorks Image")) {
+        setSubscribeModalOpen(true);
+      }
       if (message.includes("Quota mensuel")) {
-        setQuotaCount(IMAGE_STUDIO_MONTHLY_LIMIT);
+        setQuotaCount(quotaLimit);
       }
     } finally {
       setGenerating(false);
@@ -585,7 +632,15 @@ export default function ImageStudio() {
   };
 
   const requestGenerate = () => {
-    void runWithAuth(handleGenerate);
+    void runWithAuth(async () => {
+      if (accessLoading) return false;
+      if (!hasImageStudioPlan(plan)) {
+        setSubscribeModalOpen(true);
+        return false;
+      }
+      await handleGenerate();
+      return true;
+    });
   };
 
   const onPromptKeyDown = (e) => {
@@ -594,14 +649,6 @@ export default function ImageStudio() {
       requestGenerate();
     }
   };
-
-  if (!accessLoading && !hasImageStudioPlan(plan)) {
-    return (
-      <div className="flex min-h-[40vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-[#2af598]" aria-hidden />
-      </div>
-    );
-  }
 
   return (
     <div className="image-studio-shell flex min-h-0 flex-1 flex-col">
@@ -614,10 +661,12 @@ export default function ImageStudio() {
             Décrivez votre scène — l&apos;IA génère l&apos;image
           </p>
         </div>
-        {quotaReached ? (
-          <span className="hidden rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs text-amber-200 sm:inline">
-            Quota mensuel atteint
-          </span>
+        {hasImagePlan ? (
+          <IndicateurCreditsImageStudio
+            count={quotaCount}
+            limit={quotaLimit}
+            loading={quotaLoading}
+          />
         ) : null}
       </div>
 
@@ -626,28 +675,59 @@ export default function ImageStudio() {
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 lg:w-[72%] lg:flex-none">
           <div className="image-studio-canvas relative flex min-h-[min(55vh,480px)] flex-1 items-center justify-center overflow-hidden rounded-2xl lg:min-h-[min(72vh,720px)]">
             {generating && !previewUrl ? (
-              <div className="flex flex-col items-center gap-3 text-center">
-                <div className="h-11 w-11 animate-spin rounded-full border-2 border-[#2af598]/20 border-t-[#2af598]" />
-                <p className="text-sm text-white/45">Génération en cours…</p>
+              <div className="image-studio-canvas-loading">
+                <div className="image-studio-loading-ring" aria-hidden />
+                <p className="image-studio-loading-label">Génération en cours…</p>
+                <p className="image-studio-loading-hint">L&apos;IA compose votre image en 2K</p>
               </div>
             ) : previewUrl ? (
-              <img
-                src={previewUrl}
-                alt="Image générée"
-                className="max-h-full max-w-full object-contain"
-              />
+              <div className="image-studio-preview-stage">
+                <div className="image-studio-preview-meta">
+                  <span className="image-studio-preview-type">
+                    <ImageIcon className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+                    Image
+                  </span>
+                  <span className="image-studio-preview-badge">2K</span>
+                  {prompt.trim() ? (
+                    <p className="image-studio-preview-prompt-snippet" title={prompt}>
+                      {prompt}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="image-studio-preview-frame">
+                  <img
+                    src={previewUrl}
+                    alt="Image générée"
+                    className="image-studio-preview-image"
+                  />
+                  {generating ? (
+                    <div className="image-studio-preview-overlay">
+                      <div className="image-studio-loading-ring image-studio-loading-ring--sm" aria-hidden />
+                    </div>
+                  ) : null}
+                </div>
+              </div>
             ) : (
-              <div className="flex flex-col items-center gap-2 text-center opacity-50">
-                <ImageIcon className="h-10 w-10 text-white/15" strokeWidth={1} />
-                <p className="text-sm text-white/30">Votre image apparaîtra ici</p>
+              <div className="image-studio-canvas-empty">
+                <div className="image-studio-empty-showcase" aria-hidden>
+                  <div className="image-studio-empty-glow" />
+                  <div className="image-studio-empty-card image-studio-empty-card--1" />
+                  <div className="image-studio-empty-card image-studio-empty-card--2" />
+                  <div className="image-studio-empty-card image-studio-empty-card--3" />
+                  <div className="image-studio-empty-card image-studio-empty-card--4" />
+                </div>
+                <p className="image-studio-empty-kicker">
+                  <Sparkles className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+                  Commencez à créer avec
+                </p>
+                <h2 className="image-studio-empty-title">
+                  Image <span>Studio</span>
+                </h2>
+                <p className="image-studio-empty-sub">
+                  Décrivez une scène, une ambiance ou un style — l&apos;IA s&apos;occupe du reste.
+                </p>
               </div>
             )}
-
-            {generating && previewUrl ? (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-[2px]">
-                <div className="h-10 w-10 animate-spin rounded-full border-2 border-[#2af598]/20 border-t-[#2af598]" />
-              </div>
-            ) : null}
           </div>
 
           {error ? (
@@ -659,39 +739,81 @@ export default function ImageStudio() {
 
         {/* Historique — colonne droite ~28% */}
         <aside className="image-studio-history-panel flex min-h-0 flex-col lg:w-[28%] lg:shrink-0 lg:self-stretch">
-          <p className="shrink-0 px-3 pt-3 text-[11px] font-medium tracking-wide text-white/35">
-            Historique
-          </p>
-          <div className="studio-subtle-scrollbar min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-2">
+          <div className="image-studio-history-header">
+            <div className="image-studio-history-header-title">
+              <Clock className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+              <span>Historique</span>
+            </div>
+            {history.length > 0 ? (
+              <span className="image-studio-history-count">{history.length}</span>
+            ) : null}
+          </div>
+          <div className="studio-subtle-scrollbar image-studio-history-scroll min-h-0 flex-1 overflow-y-auto">
             {historyLoading && history.length === 0 ? (
-              <div className="flex h-24 items-center justify-center text-xs text-white/30">
-                Chargement…
+              <div className="image-studio-history-skeletons" aria-hidden>
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="image-studio-history-skeleton" />
+                ))}
               </div>
             ) : history.length === 0 ? (
-              <div className="flex h-24 items-center justify-center rounded-lg border border-dashed border-white/10 px-3 text-center text-xs text-white/30">
-                Aucune génération pour l&apos;instant
+              <div className="image-studio-history-empty">
+                <div className="image-studio-history-empty-icon" aria-hidden>
+                  <ImageIcon className="h-5 w-5" strokeWidth={1.5} />
+                </div>
+                <p className="image-studio-history-empty-title">Aucune génération</p>
+                <p className="image-studio-history-empty-sub">
+                  Vos créations apparaîtront ici au fil des générations.
+                </p>
               </div>
             ) : (
-              <div className="flex flex-col gap-2">
+              <div className="image-studio-history-list">
                 {history.map((item) => {
                   const thumbUrl = getImageUrlFromHistory(item);
                   if (!thumbUrl) return null;
+                  const histModel = item.metadata?.imageStudioModel;
+                  const histRatio = item.metadata?.aspectRatio;
                   return (
                     <button
                       key={item.id}
                       type="button"
                       onClick={() => selectHistoryItem(item)}
-                      className={`image-studio-history-thumb aspect-[4/3] w-full ${
+                      className={`image-studio-history-item ${
                         activeHistoryId === item.id ? "is-active" : ""
                       }`}
                       title={item.input || "Image générée"}
                     >
-                      <img
-                        src={thumbUrl}
-                        alt=""
-                        className="h-full w-full object-cover"
-                        loading="lazy"
-                      />
+                      <div className="image-studio-history-item-body">
+                        <p className="image-studio-history-item-prompt">
+                          {item.input?.trim() || "Sans description"}
+                        </p>
+                        <div className="image-studio-history-item-tags">
+                          <div className="image-studio-history-item-pills">
+                            {histModel ? (
+                              <span className="image-studio-history-tag">
+                                {getModelLabel(histModel)}
+                              </span>
+                            ) : null}
+                            {histRatio ? (
+                              <span className="image-studio-history-tag">{histRatio}</span>
+                            ) : (
+                              <span className="image-studio-history-tag">2K</span>
+                            )}
+                          </div>
+                          {item.created_at ? (
+                            <span className="image-studio-history-time">
+                              {formatHistoryTime(item.created_at)}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                      <div className="image-studio-history-item-thumb">
+                        <img
+                          src={thumbUrl}
+                          alt=""
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                        />
+                      </div>
                     </button>
                   );
                 })}
@@ -737,19 +859,44 @@ export default function ImageStudio() {
             </div>
 
             <div className="image-studio-settings-row">
-              <ModelDropdown
-                value={model}
-                onChange={setModel}
-                availability={modelsAvailability}
-                disabled={generating}
-                loading={modelsLoading}
-              />
+              <div className="image-studio-settings-desktop">
+                <ModelDropdown
+                  value={model}
+                  onChange={setModel}
+                  availability={modelsAvailability}
+                  disabled={generating}
+                  loading={modelsLoading}
+                />
 
-              <AspectRatioDropdown
-                value={aspectRatio}
-                onChange={setAspectRatio}
+                <AspectRatioDropdown
+                  value={aspectRatio}
+                  onChange={setAspectRatio}
+                  disabled={generating}
+                />
+
+                <button
+                  type="button"
+                  className="image-studio-setting-pill image-studio-prompts-btn shrink-0"
+                  onClick={() => setPromptsModalOpen(true)}
+                  disabled={generating}
+                  aria-label="Voir des idées de prompts pour ChatGPT, Claude ou Gemini"
+                  title="Idées de prompts (ChatGPT, Claude, Gemini…)"
+                >
+                  <BookOpen className="image-studio-setting-pill-icon" strokeWidth={2} aria-hidden />
+                  <span className="image-studio-setting-pill-label">Prompts</span>
+                </button>
+              </div>
+
+              <button
+                type="button"
+                className="image-studio-settings-mobile-btn"
+                onClick={() => setMobileSettingsOpen(true)}
                 disabled={generating}
-              />
+                aria-label="Ouvrir les réglages : modèle, format et prompts"
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
+                <span>Réglages</span>
+              </button>
             </div>
 
             <div className="image-studio-command-aside shrink-0">
@@ -802,6 +949,39 @@ export default function ImageStudio() {
         onDeleted={(url) => {
           if (productImage === url || productPreview === url) clearProduct();
         }}
+      />
+
+      <ModalQuotaImageStudio
+        open={hasImagePlan && quotaAlert !== null}
+        kind={quotaAlert ?? "warning"}
+        count={quotaCount}
+        limit={quotaLimit}
+        onClose={closeQuotaAlert}
+      />
+
+      <ModalAbonnementImageStudio
+        open={subscribeModalOpen}
+        onClose={() => setSubscribeModalOpen(false)}
+      />
+
+      <ModalPromptsImageStudio
+        open={promptsModalOpen}
+        onClose={() => setPromptsModalOpen(false)}
+      />
+
+      <SheetReglagesImageStudio
+        open={mobileSettingsOpen}
+        onClose={() => setMobileSettingsOpen(false)}
+        model={model}
+        onModelChange={setModel}
+        modelOptions={MODEL_OPTIONS}
+        modelsAvailability={modelsAvailability}
+        modelsLoading={modelsLoading}
+        aspectRatio={aspectRatio}
+        onAspectRatioChange={setAspectRatio}
+        aspectRatios={ASPECT_RATIOS}
+        onOpenPrompts={() => setPromptsModalOpen(true)}
+        disabled={generating}
       />
     </div>
   );

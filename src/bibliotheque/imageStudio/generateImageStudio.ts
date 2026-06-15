@@ -9,6 +9,7 @@ export type GenerateImageStudioResult = {
   url: string;
   count: number;
   limit: number;
+  historyId?: string;
   model?: ImageStudioModelId;
   provider?: string;
 };
@@ -91,6 +92,12 @@ export async function generateImageStudio(
         if (parsed.code === "IMAGE_STUDIO_QUOTA_EXCEEDED") {
           throw new Error(QUOTA_MESSAGE);
         }
+        if (parsed.code === "IMAGE_STUDIO_SUBSCRIPTION_REQUIRED") {
+          throw new Error(
+            parsed.userMessage ||
+              "Un abonnement ViralWorks Image est requis pour générer des images.",
+          );
+        }
         message = parsed.userMessage || parsed.error || message;
       } catch (inner) {
         if (inner instanceof Error && inner.message === QUOTA_MESSAGE) throw inner;
@@ -103,6 +110,7 @@ export async function generateImageStudio(
     url?: string;
     count?: number;
     limit?: number;
+    historyId?: string;
     code?: string;
     userMessage?: string;
     error?: string;
@@ -114,6 +122,13 @@ export async function generateImageStudio(
     throw new Error(QUOTA_MESSAGE);
   }
 
+  if (body?.code === "IMAGE_STUDIO_SUBSCRIPTION_REQUIRED") {
+    throw new Error(
+      body.userMessage ||
+        "Un abonnement ViralWorks Image est requis pour générer des images.",
+    );
+  }
+
   if (!body?.url) {
     throw new Error(body?.userMessage || body?.error || "URL d'image manquante.");
   }
@@ -122,6 +137,7 @@ export async function generateImageStudio(
     url: body.url,
     count: typeof body.count === "number" ? body.count : 0,
     limit: typeof body.limit === "number" ? body.limit : 200,
+    historyId: typeof body.historyId === "string" ? body.historyId : undefined,
     model: body.model,
     provider: body.provider,
   };
