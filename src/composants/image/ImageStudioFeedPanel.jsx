@@ -34,6 +34,7 @@ function FeedRow({ row, activeHistoryId, onImageOpen }) {
             className={`image-studio-feed-image-card${
               activeHistoryId && image.historyId === activeHistoryId ? " is-active" : ""
             }`}
+            data-history-id={image.historyId || undefined}
             onClick={() =>
               onImageOpen?.({
                 url: image.url,
@@ -214,7 +215,6 @@ export default function ImageStudioFeedPanel({
                 className={`image-studio-thumb-strip-item${isActive ? " is-active" : ""}`}
                 onClick={() => {
                   onSelectHistoryItem(item);
-                  onImageOpen?.({ url: thumbUrl, historyId: item.id });
                 }}
                 title={item.input?.trim() || "Image générée"}
               >

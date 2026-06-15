@@ -31,6 +31,7 @@ import ModalAbonnementImageStudio from "@/composants/image/ModalAbonnementImageS
 import ModalPromptsImageStudio from "@/composants/image/ModalPromptsImageStudio";
 import SheetReglagesImageStudio from "@/composants/image/SheetReglagesImageStudio";
 import ImageStudioFeedPanel from "@/composants/image/ImageStudioFeedPanel";
+import ImageStudioHistoryPanel from "@/composants/image/ImageStudioHistoryPanel";
 import ModalImageStudioPreview from "@/composants/image/ModalImageStudioPreview";
 import ModalQuotaImageStudio from "@/composants/image/ModalQuotaImageStudio";
 import {
@@ -820,17 +821,34 @@ export default function ImageStudio() {
     [scheduleScrollPersist],
   );
 
-  const selectHistoryItem = (item) => {
+  const focusHistoryImageInCanvas = useCallback((item) => {
     const url = getImageUrlFromHistory(item);
     if (!url) return;
     setActiveHistoryId(item.id);
-    const batchId = item.metadata?.batchId;
-    if (batchId) {
-      document
-        .querySelector(`[data-batch-id="${batchId}"]`)
-        ?.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
-  };
+
+    document.querySelector(".image-studio-workspace")?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+
+    window.requestAnimationFrame(() => {
+      const historyId = item.id;
+      const imageEl = historyId
+        ? document.querySelector(`[data-history-id="${historyId}"]`)
+        : null;
+      if (imageEl) {
+        imageEl.scrollIntoView({ behavior: "smooth", block: "center" });
+        return;
+      }
+
+      const batchId = item.metadata?.batchId;
+      if (batchId) {
+        document
+          .querySelector(`[data-batch-id="${batchId}"]`)
+          ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    });
+  }, []);
 
   const openImagePreview = useCallback(
     ({ url, historyId, prompt: rowPrompt, model: rowModel, aspectRatio: rowRatio }) => {
@@ -1063,149 +1081,159 @@ export default function ImageStudio() {
         ) : null}
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-2 px-4 pb-3 sm:px-6 lg:px-8">
-        <div className="image-studio-canvas image-studio-canvas--feed relative flex min-h-[min(55vh,480px)] min-w-0 flex-1 flex-col overflow-hidden rounded-2xl lg:min-h-[min(72vh,720px)]">
-          <ImageStudioFeedPanel
-            feedRows={feedRows}
-            history={history}
-            historyLoading={historyLoading}
-            generating={generating}
-            activeHistoryId={activeHistoryId}
-            onSelectHistoryItem={selectHistoryItem}
-            onImageOpen={openImagePreview}
-            restoreFeedScrollTop={restoreFeedScrollTop}
-            restoreThumbScrollTop={restoreThumbScrollTop}
-            scrollToEndToken={scrollToEndToken}
-            onFeedScroll={handleFeedScroll}
-            onThumbScroll={handleThumbScroll}
-          />
+      <div className="image-studio-main flex min-h-0 flex-1 flex-col">
+        <div className="image-studio-workspace flex min-h-0 flex-col gap-2 px-4 sm:flex-1 sm:px-6 lg:px-8">
+          <div className="image-studio-canvas image-studio-canvas--feed relative flex min-h-[min(36vh,300px)] min-w-0 flex-col overflow-hidden rounded-2xl sm:min-h-[min(55vh,480px)] sm:flex-1 lg:min-h-[min(72vh,720px)]">
+            <ImageStudioFeedPanel
+              feedRows={feedRows}
+              history={history}
+              historyLoading={historyLoading}
+              generating={generating}
+              activeHistoryId={activeHistoryId}
+              onSelectHistoryItem={focusHistoryImageInCanvas}
+              onImageOpen={openImagePreview}
+              restoreFeedScrollTop={restoreFeedScrollTop}
+              restoreThumbScrollTop={restoreThumbScrollTop}
+              scrollToEndToken={scrollToEndToken}
+              onFeedScroll={handleFeedScroll}
+              onThumbScroll={handleThumbScroll}
+            />
+          </div>
+
+          {error ? (
+            <p className="shrink-0 text-sm text-red-400 sm:pb-0" role="alert">
+              {error}
+            </p>
+          ) : null}
         </div>
 
-        {error ? (
-          <p className="shrink-0 text-sm text-red-400" role="alert">
-            {error}
-          </p>
-        ) : null}
-      </div>
-
-      {/* Barre de commande — layout type prompt studio */}
-      <div className="image-studio-command-bar sticky bottom-0 z-30 shrink-0 px-3 sm:px-6 lg:px-8">
-        <div className="image-studio-command-bar-inner mx-auto max-w-[1400px]">
-          <div className="image-studio-command-layout">
-            <div className="image-studio-prompt-row">
-              <PromptImportSlot
-                preview={importedRefPreview}
-                disabled={generating}
-                onPick={openPromptImport}
-                onClear={clearImportedRef}
-              />
-
-              <input
-                ref={promptImportInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handlePromptImportChange}
-                className="hidden"
-                aria-hidden
-                tabIndex={-1}
-              />
-
-              <textarea
-                ref={promptInputRef}
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                onKeyDown={onPromptKeyDown}
-                disabled={generating || quotaReached}
-                placeholder="Décrivez l'image à générer…"
-                aria-label="Prompt de génération"
-                rows={1}
-                className="image-studio-prompt-input min-w-0 flex-1 resize-none py-1 text-sm leading-relaxed disabled:opacity-50 sm:text-[15px]"
-              />
-            </div>
-
-            <div className="image-studio-settings-row">
-              <div className="image-studio-settings-desktop">
-                <ModelDropdown
-                  value={model}
-                  onChange={setModel}
-                  availability={modelsAvailability}
+        {/* Mobile : canvas → commande → historique · Desktop : feed puis barre en bas */}
+        <div className="image-studio-command-bar z-30 shrink-0 px-3 sm:sticky sm:bottom-0 sm:px-6 lg:px-8">
+          <div className="image-studio-command-bar-inner mx-auto max-w-[1400px]">
+            <div className="image-studio-command-layout">
+              <div className="image-studio-prompt-row">
+                <PromptImportSlot
+                  preview={importedRefPreview}
                   disabled={generating}
-                  loading={modelsLoading}
+                  onPick={openPromptImport}
+                  onClear={clearImportedRef}
                 />
 
-                <AspectRatioDropdown
-                  value={aspectRatio}
-                  onChange={setAspectRatio}
-                  disabled={generating}
+                <input
+                  ref={promptImportInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePromptImportChange}
+                  className="hidden"
+                  aria-hidden
+                  tabIndex={-1}
                 />
 
-                <GenerationCountDropdown
-                  value={generationCount}
-                  onChange={setGenerationCount}
-                  disabled={generating}
-                  maxCount={maxGenerationCount}
+                <textarea
+                  ref={promptInputRef}
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  onKeyDown={onPromptKeyDown}
+                  disabled={generating || quotaReached}
+                  placeholder="Décrivez l'image à générer…"
+                  aria-label="Prompt de génération"
+                  rows={1}
+                  className="image-studio-prompt-input min-w-0 flex-1 resize-none py-1 text-sm leading-relaxed disabled:opacity-50 sm:text-[15px]"
                 />
+              </div>
+
+              <div className="image-studio-settings-row">
+                <div className="image-studio-settings-desktop">
+                  <ModelDropdown
+                    value={model}
+                    onChange={setModel}
+                    availability={modelsAvailability}
+                    disabled={generating}
+                    loading={modelsLoading}
+                  />
+
+                  <AspectRatioDropdown
+                    value={aspectRatio}
+                    onChange={setAspectRatio}
+                    disabled={generating}
+                  />
+
+                  <GenerationCountDropdown
+                    value={generationCount}
+                    onChange={setGenerationCount}
+                    disabled={generating}
+                    maxCount={maxGenerationCount}
+                  />
+
+                  <button
+                    type="button"
+                    className="image-studio-setting-pill image-studio-prompts-btn shrink-0"
+                    onClick={() => setPromptsModalOpen(true)}
+                    disabled={generating}
+                    aria-label="Voir des idées de prompts pour ChatGPT, Claude ou Gemini"
+                    title="Idées de prompts (ChatGPT, Claude, Gemini…)"
+                  >
+                    <BookOpen className="image-studio-setting-pill-icon" strokeWidth={2} aria-hidden />
+                    <span className="image-studio-setting-pill-label">Prompts</span>
+                  </button>
+                </div>
 
                 <button
                   type="button"
-                  className="image-studio-setting-pill image-studio-prompts-btn shrink-0"
-                  onClick={() => setPromptsModalOpen(true)}
+                  className="image-studio-settings-mobile-btn"
+                  onClick={() => setMobileSettingsOpen(true)}
                   disabled={generating}
-                  aria-label="Voir des idées de prompts pour ChatGPT, Claude ou Gemini"
-                  title="Idées de prompts (ChatGPT, Claude, Gemini…)"
+                  aria-label="Ouvrir les réglages : modèle, format, générations et prompts"
                 >
-                  <BookOpen className="image-studio-setting-pill-icon" strokeWidth={2} aria-hidden />
-                  <span className="image-studio-setting-pill-label">Prompts</span>
+                  <SlidersHorizontal className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
+                  <span>Réglages</span>
                 </button>
               </div>
 
-              <button
-                type="button"
-                className="image-studio-settings-mobile-btn"
-                onClick={() => setMobileSettingsOpen(true)}
-                disabled={generating}
-                aria-label="Ouvrir les réglages : modèle, format, générations et prompts"
-              >
-                <SlidersHorizontal className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
-                <span>Réglages</span>
-              </button>
-            </div>
+              <div className="image-studio-command-aside shrink-0">
+                <div className="image-studio-ref-slots">
+                  <ReferenceSlot
+                    label="Avatar"
+                    preview={referencePreview}
+                    disabled={generating}
+                    onPick={openAvatarLibrary}
+                    onClear={clearReference}
+                    imageClassName="[object-position:16%_center]"
+                  />
 
-            <div className="image-studio-command-aside shrink-0">
-              <div className="image-studio-ref-slots">
-                <ReferenceSlot
-                  label="Avatar"
-                  preview={referencePreview}
-                  disabled={generating}
-                  onPick={openAvatarLibrary}
-                  onClear={clearReference}
-                  imageClassName="[object-position:16%_center]"
-                />
+                  <ReferenceSlot
+                    label="Produit"
+                    preview={productPreview}
+                    disabled={generating}
+                    onPick={openProductLibrary}
+                    onClear={clearProduct}
+                  />
+                </div>
 
-                <ReferenceSlot
-                  label="Produit"
-                  preview={productPreview}
-                  disabled={generating}
-                  onPick={openProductLibrary}
-                  onClear={clearProduct}
-                />
+                <button
+                  type="button"
+                  onClick={requestGenerate}
+                  disabled={!canGenerate}
+                  className="image-studio-generate-btn btn-vws-primary"
+                >
+                  {generating ? (
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  ) : (
+                    "Générer"
+                  )}
+                </button>
               </div>
-
-              <button
-                type="button"
-                onClick={requestGenerate}
-                disabled={!canGenerate}
-                className="image-studio-generate-btn btn-vws-primary"
-              >
-                {generating ? (
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                ) : (
-                  "Générer"
-                )}
-              </button>
             </div>
           </div>
         </div>
+
+        <ImageStudioHistoryPanel
+          history={history}
+          historyLoading={historyLoading}
+          activeHistoryId={activeHistoryId}
+          onSelectItem={focusHistoryImageInCanvas}
+          scrollToStartToken={scrollToEndToken}
+        />
       </div>
 
       <ModalBibliothequeAvatars
