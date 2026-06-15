@@ -48,7 +48,7 @@ import {
   listImageStudioHistory,
   saveImageStudioHistory,
 } from "@/bibliotheque/imageStudio/imageStudioHistory";
-import { groupHistoryIntoFeedRows } from "@/bibliotheque/imageStudio/imageStudioFeed";
+import { groupHistoryIntoFeedRows, mergeFeedRowsFromHistory } from "@/bibliotheque/imageStudio/imageStudioFeed";
 import {
   loadImageStudioUiState,
   saveImageStudioUiState,
@@ -465,7 +465,7 @@ function ReferenceSlot({ label, preview, disabled, onPick, onClear, imageClassNa
 export default function ImageStudio() {
   const promptInputRef = useRef(null);
   const promptImportInputRef = useRef(null);
-  const { session } = useAuth();
+  const { session, loading: authLoading } = useAuth();
   const { runWithAuth } = useRequireAuthAction();
   const { plan, loading: accessLoading } = usePremiumAccess();
   const [prompt, setPrompt] = useState("");
@@ -613,6 +613,7 @@ export default function ImageStudio() {
   const loadHistory = useCallback(async (options = {}) => {
     const { syncFeed = false } = options;
     if (!session?.user?.id) {
+      if (authLoading) return [];
       setHistory([]);
       if (syncFeed) setFeedRows([]);
       return [];
@@ -622,7 +623,7 @@ export default function ImageStudio() {
       const rows = await listImageStudioHistory();
       setHistory(rows);
       if (syncFeed) {
-        setFeedRows(groupHistoryIntoFeedRows(rows));
+        setFeedRows((prev) => mergeFeedRowsFromHistory(rows, prev));
         if (session?.user?.id) {
           const saved = loadImageStudioUiState(session.user.id);
           const savedActive = saved?.activeHistoryId;
@@ -639,7 +640,12 @@ export default function ImageStudio() {
     } finally {
       setHistoryLoading(false);
     }
-  }, [session?.user?.id]);
+  }, [session?.user?.id, authLoading]);
+
+  useEffect(() => {
+    if (generating || authLoading || !session?.user?.id) return;
+    setFeedRows((prev) => mergeFeedRowsFromHistory(history, prev));
+  }, [history, generating, authLoading, session?.user?.id]);
 
   useEffect(() => {
     let active = true;
@@ -678,9 +684,25 @@ export default function ImageStudio() {
   }, [session?.user?.id, hasImagePlan]);
 
   useEffect(() => {
+    if (authLoading) return;
     void loadQuota();
     void loadHistory({ syncFeed: true });
-  }, [loadQuota, loadHistory]);
+  }, [authLoading, loadQuota, loadHistory]);
+
+  useEffect(() => {
+    const refreshHistory = () => {
+      if (document.visibilityState !== "visible" || authLoading || !session?.user?.id) {
+        return;
+      }
+      void loadHistory({ syncFeed: true });
+    };
+    document.addEventListener("visibilitychange", refreshHistory);
+    window.addEventListener("focus", refreshHistory);
+    return () => {
+      document.removeEventListener("visibilitychange", refreshHistory);
+      window.removeEventListener("focus", refreshHistory);
+    };
+  }, [authLoading, session?.user?.id, loadHistory]);
 
   useEffect(() => {
     if (!hasImagePlan || quotaLoading) return;

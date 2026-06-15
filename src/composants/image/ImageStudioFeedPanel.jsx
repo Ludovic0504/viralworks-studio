@@ -98,6 +98,11 @@ export default function ImageStudioFeedPanel({
   const restoredScrollRef = useRef(false);
   const prevScrollTokenRef = useRef(scrollToEndToken);
   const thumbHistory = useMemo(() => sortHistoryOldestFirst(history), [history]);
+  const historyImageCount = useMemo(
+    () => history.filter((item) => getImageUrlFromHistory(item)).length,
+    [history],
+  );
+  const showEmptyFeed = feedRows.length === 0 && !generating && historyImageCount === 0;
 
   const applyFeedScroll = useCallback((top) => {
     const el = feedScrollRef.current;
@@ -152,7 +157,7 @@ export default function ImageStudioFeedPanel({
         className="studio-subtle-scrollbar image-studio-feed min-h-0 flex-1 overflow-y-auto"
         onScroll={(e) => onFeedScroll?.(e.currentTarget.scrollTop)}
       >
-        {feedRows.length === 0 && !generating ? (
+        {showEmptyFeed ? (
           <div className="image-studio-feed-empty">
             <div className="image-studio-empty-showcase" aria-hidden>
               <div className="image-studio-empty-glow" />

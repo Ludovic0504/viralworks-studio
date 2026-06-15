@@ -65,6 +65,22 @@ export function groupHistoryIntoFeedRows(
   });
 }
 
+/** Reconstruit le feed depuis Supabase en conservant les lignes en cours de génération. */
+export function mergeFeedRowsFromHistory(
+  items: ImageStudioHistoryItem[],
+  pendingRows: ImageStudioFeedRow[] = [],
+): ImageStudioFeedRow[] {
+  const fromHistory = groupHistoryIntoFeedRows(items);
+  const pending = pendingRows.filter((row) => row.generating);
+  if (pending.length === 0) return fromHistory;
+
+  const historyBatchIds = new Set(fromHistory.map((row) => row.id));
+  const extraPending = pending.filter((row) => !historyBatchIds.has(row.id));
+  if (extraPending.length === 0) return fromHistory;
+
+  return [...fromHistory, ...extraPending];
+}
+
 export function feedRowAspectClass(ratio?: string): string {
   if (ratio === "9:16") return "is-portrait";
   if (ratio === "16:9") return "is-landscape";
