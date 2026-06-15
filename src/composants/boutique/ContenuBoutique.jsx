@@ -108,11 +108,11 @@ export default function ContenuBoutique({
   initialSection = null,
   initialPaymentReturn = null,
 }) {
-  const { session } = useAuth();
+  const { session, loading: authLoading } = useAuth();
   const { runWithAuth, openAuthModal } = useRequireAuthAction();
   const [searchParams] = useSearchParams();
   const [subscription, setSubscription] = useState(null);
-  const { loading, error, startPayment } = useStripePayment();
+  const { loading: paymentLoading, error, startPayment } = useStripePayment();
   const [activeTab, setActiveTab] = useState(() => {
     const fromProps = resolveSectionTab(initialSection);
     if (fromProps) return fromProps;
@@ -152,6 +152,8 @@ export default function ContenuBoutique({
 
   useEffect(() => {
     if (paymentStatus === "success") {
+      if (authLoading) return;
+
       console.log("✅ Paiement réussi !");
       if (!session) {
         openAuthModal();
@@ -207,7 +209,7 @@ export default function ContenuBoutique({
         error_message: "Paiement annulé par l'utilisateur",
       });
     }
-  }, [paymentStatus, session, openAuthModal]);
+  }, [paymentStatus, session, authLoading, openAuthModal]);
 
   useEffect(() => {
     if (!session || paymentStatus !== "success") {
@@ -367,7 +369,7 @@ export default function ContenuBoutique({
 
   return (
     <div className={wrapperClass}>
-      {loading && (
+      {paymentLoading && (
         <div className="fixed inset-0 bg-black/60 z-[140] flex items-center justify-center">
           <div
             className="rounded-xl p-8 text-center border border-white/10"
@@ -487,14 +489,14 @@ export default function ContenuBoutique({
                     startPayment(payVideoPack({ videos: pkg.credits, amount: pkg.price }))
                   );
                 }}
-                disabled={loading}
+                disabled={paymentLoading}
                 className={`${m.buyBtn} mt-auto ${
                   pkg.popular
                     ? "bg-emerald-500 hover:bg-emerald-600 text-white"
                     : "bg-white/10 hover:bg-white/20 text-gray-200 border border-white/20"
                 } disabled:opacity-50 disabled:cursor-not-allowed`}
               >
-                {loading ? (
+                {paymentLoading ? (
                   <Loader2 className="w-5 h-5 mx-auto animate-spin" />
                 ) : (
                   "Acheter"
@@ -609,7 +611,7 @@ export default function ContenuBoutique({
                       ),
                     );
                   }}
-                  disabled={loading || subscription !== null}
+                  disabled={paymentLoading || subscription !== null}
                   className={`${m.buyBtn} mt-auto ${
                     plan.popular
                       ? "bg-violet-500 hover:bg-violet-600 text-white"
@@ -620,7 +622,7 @@ export default function ContenuBoutique({
                           : "bg-white/10 hover:bg-white/20 text-gray-200 border border-white/20"
                   } ${subscription ? "opacity-50 cursor-not-allowed" : ""} disabled:opacity-50 disabled:cursor-not-allowed`}
                 >
-                  {loading ? (
+                  {paymentLoading ? (
                     <Loader2 className="w-5 h-5 mx-auto animate-spin" />
                   ) : subscription ? (
                     "Déjà abonné"

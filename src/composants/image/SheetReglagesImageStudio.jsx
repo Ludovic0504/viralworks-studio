@@ -1,5 +1,6 @@
 import { createPortal } from "react-dom";
-import { BookOpen, Crop, SlidersHorizontal, Wand2, X } from "lucide-react";
+import { BookOpen, Check, Crop, Layers2, SlidersHorizontal, Wand2, X } from "lucide-react";
+import ImageStudioModelIcon from "@/composants/image/ImageStudioModelIcon";
 
 export default function SheetReglagesImageStudio({
   open,
@@ -12,6 +13,10 @@ export default function SheetReglagesImageStudio({
   aspectRatio,
   onAspectRatioChange,
   aspectRatios,
+  generationCount,
+  onGenerationCountChange,
+  generationCounts,
+  maxGenerationCount = 4,
   onOpenPrompts,
   disabled,
 }) {
@@ -57,7 +62,7 @@ export default function SheetReglagesImageStudio({
               <Wand2 className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
               Modèle
             </p>
-            <div className="image-studio-settings-sheet-options" role="listbox" aria-label="Modèle">
+            <div className="image-studio-settings-sheet-models" role="listbox" aria-label="Modèle">
               {modelOptions.map((opt) => {
                 const available = modelsAvailability[opt.id];
                 const selected = model === opt.id;
@@ -68,16 +73,28 @@ export default function SheetReglagesImageStudio({
                     role="option"
                     aria-selected={selected}
                     disabled={disabled || modelsLoading || !available}
-                    className={`image-studio-settings-sheet-option${selected ? " is-selected" : ""}`}
+                    className={`image-studio-settings-sheet-model${selected ? " is-selected" : ""}`}
                     onClick={() => {
                       if (!available) return;
                       onModelChange(opt.id);
                     }}
                   >
-                    <span>{modelsLoading && selected ? "…" : opt.label}</span>
+                    <ImageStudioModelIcon modelId={opt.id} size="md" />
+                    <span className="image-studio-settings-sheet-model-copy">
+                      <span className="image-studio-settings-sheet-model-name">
+                        {modelsLoading && selected ? "…" : opt.label}
+                      </span>
+                      <span className="image-studio-settings-sheet-model-desc">{opt.description}</span>
+                    </span>
                     {!available ? (
                       <span className="image-studio-settings-sheet-soon">Bientôt</span>
-                    ) : null}
+                    ) : (
+                      <Check
+                        className={`image-studio-settings-sheet-model-check${selected ? " is-visible" : ""}`}
+                        strokeWidth={2.5}
+                        aria-hidden
+                      />
+                    )}
                   </button>
                 );
               })}
@@ -105,6 +122,46 @@ export default function SheetReglagesImageStudio({
                   {ratio}
                 </button>
               ))}
+            </div>
+          </section>
+
+          <section className="image-studio-settings-sheet-section">
+            <p className="image-studio-settings-sheet-label">
+              <Layers2 className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+              Générations
+            </p>
+            <div
+              className="image-studio-settings-sheet-options"
+              role="listbox"
+              aria-label="Nombre de générations"
+            >
+              {generationCounts.map((count) => {
+                const available = count <= maxGenerationCount;
+                const selected = generationCount === count;
+                const optionLabel = count === 1 ? "1 image" : `${count} images`;
+                return (
+                  <button
+                    key={count}
+                    type="button"
+                    role="option"
+                    aria-selected={selected}
+                    aria-label={optionLabel}
+                    disabled={disabled || !available}
+                    className={`image-studio-settings-sheet-option${selected ? " is-selected" : ""}`}
+                    onClick={() => {
+                      if (!available) return;
+                      onGenerationCountChange(count);
+                    }}
+                  >
+                    <span>{count}</span>
+                    {!available ? (
+                      <span className="image-studio-settings-sheet-soon">Quota</span>
+                    ) : selected ? (
+                      <Check className="h-3.5 w-3.5 shrink-0" strokeWidth={2.5} aria-hidden />
+                    ) : null}
+                  </button>
+                );
+              })}
             </div>
           </section>
 

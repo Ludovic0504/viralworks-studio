@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { getAppOrigin } from "@/bibliotheque/appOrigin";
 import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
 import { capturePostHog, trackPostHogError } from "@/bibliotheque/posthog/client";
 
@@ -33,8 +34,13 @@ export function useStripePayment() {
         : undefined;
 
       const { billedAmount: _billedForClientOnly, ...checkoutBody } = payload;
+      try {
+        localStorage.setItem("vw_stripe_checkout_at", String(Date.now()));
+      } catch {
+        // no-op
+      }
       const { data, error: fnError } = await supabase.functions.invoke("stripe-payment", {
-        body: { ...checkoutBody, origin: window.location.origin },
+        body: { ...checkoutBody, origin: getAppOrigin() },
         ...(headers ? { headers } : {}),
       });
       if (fnError) throw new Error(fnError.message || "Erreur lors du paiement");

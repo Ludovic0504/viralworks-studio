@@ -1,4 +1,5 @@
 import { getBrowserSupabase } from "./client-navigateur";
+import { getAppOrigin } from "@/bibliotheque/appOrigin";
 import { track } from "@/bibliotheque/meta/pixel";
 import { capturePostHog } from "@/bibliotheque/posthog/client";
 
@@ -64,7 +65,7 @@ export async function createCheckoutSession(
         amount,
         credits,
         type,
-        origin: window.location.origin,
+        origin: getAppOrigin(),
         ...(type === "subscription" && subscriptionPlan
           ? { subscriptionPlan }
           : {}),

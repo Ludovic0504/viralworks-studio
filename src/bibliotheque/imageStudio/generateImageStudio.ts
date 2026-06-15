@@ -1,5 +1,5 @@
 import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
-import type { ImageStudioAspectRatio } from "./imageStudioHistory";
+import type { ImageStudioAspectRatio, ImageStudioGenerationRefs } from "./imageStudioHistory";
 
 export type ImageStudioModelId = "nano_banana_pro" | "hailuo" | "gpt_image_2";
 
@@ -65,6 +65,8 @@ export async function generateImageStudio(
   aspectRatio: ImageStudioAspectRatio = "1:1",
   model: ImageStudioModelId = "nano_banana_pro",
   referenceImage?: string | null,
+  batchId?: string,
+  generationRefs?: ImageStudioGenerationRefs | null,
 ): Promise<GenerateImageStudioResult> {
   const supabase = getBrowserSupabase();
   const session = await supabase.auth.getSession();
@@ -80,6 +82,8 @@ export async function generateImageStudio(
       aspectRatio,
       model,
       ...(referenceImage ? { referenceImage } : {}),
+      ...(batchId ? { batchId } : {}),
+      ...(generationRefs ? { generationRefs } : {}),
     },
     headers: { Authorization: `Bearer ${accessToken}` },
   });

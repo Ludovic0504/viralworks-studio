@@ -36,12 +36,85 @@ function resolveBaseUrl(req: Request, requestedOrigin?: unknown): string {
   return "http://localhost:5173";
 }
 
+function isLocalOrigin(origin: string): boolean {
+  try {
+    const host = new URL(origin).hostname;
+    return host === "localhost" || host === "127.0.0.1";
+  } catch {
+    return false;
+  }
+}
+
+/** URL de retour Stripe — toujours l'origine canonique en prod (évite perte de session www/apex). */
+function resolveCheckoutReturnOrigin(req: Request, requestedOrigin?: unknown): string {
+  const fromClient = resolveBaseUrl(req, requestedOrigin);
+  if (isLocalOrigin(fromClient)) return fromClient;
+
+  const siteUrl = Deno.env.get("SITE_URL")?.trim();
+  if (siteUrl) {
+    try {
+      return new URL(siteUrl).origin;
+    } catch {
+      // ignore
+    }
+  }
+
+  return fromClient;
+}
+
 function subscriptionProductName(planKey: string): string {
   if (planKey === "image_9") return "ViralWorks Image";
   if (planKey === "pro_59") return "ViralWorks Pro";
   if (planKey === "premium_129" || planKey === "monthly") return "ViralWorks Studio";
   if (planKey === "yearly") return "Abonnement Annuel";
   return "Abonnement";
+}
+
+/** Montants catalogue (EUR) — source de vérité côté serveur pour les abonnements. */
+const SUBSCRIPTION_AMOUNT_EUR: Record<string, number> = {
+  image_9: 9,
+  pro_59: 59,
+  premium_129: 129,
+  monthly: 129,
+};
+
+function expectedSubscriptionAmountEur(planKey: string): number | null {
+  return SUBSCRIPTION_AMOUNT_EUR[planKey] ?? null;
+}
+
+async function resolveStripePriceIdForPlan(
+  stripe: Stripe,
+  planKey: string,
+  envPriceId: string | null,
+  siblingPriceId: string | null,
+): Promise<string | null> {
+  if (!envPriceId) return null;
+
+  if (siblingPriceId && envPriceId === siblingPriceId) {
+    console.error(
+      `Price ID Stripe dupliqué pour ${planKey} (même ID qu'un autre plan). Repli price_data.`,
+    );
+    return null;
+  }
+
+  const expectedEur = expectedSubscriptionAmountEur(planKey);
+  if (expectedEur == null) return envPriceId;
+
+  try {
+    const price = await stripe.prices.retrieve(envPriceId);
+    const unitEur = (price.unit_amount ?? 0) / 100;
+    if (Math.abs(unitEur - expectedEur) > 0.01) {
+      console.error(
+        `STRIPE_PRICE pour ${planKey}: ${envPriceId} = ${unitEur}€, attendu ${expectedEur}€. Repli price_data.`,
+      );
+      return null;
+    }
+    return envPriceId;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`Lecture price Stripe ${envPriceId} impossible: ${msg}`);
+    return null;
+  }
 }
 
 function buildCheckoutLineItems(
@@ -52,6 +125,11 @@ function buildCheckoutLineItems(
   stripePriceImage9: string | null,
   stripePricePro59: string | null,
 ): Stripe.Checkout.SessionCreateParams.LineItem[] {
+  const checkoutAmount =
+    type === "subscription"
+      ? (expectedSubscriptionAmountEur(planKey) ?? amount)
+      : amount;
+
   if (type === "subscription" && planKey === "image_9" && stripePriceImage9) {
     return [{ price: stripePriceImage9, quantity: 1 }];
   }
@@ -74,7 +152,7 @@ function buildCheckoutLineItems(
               ? "Abonnement mensuel"
               : `Achat de ${credits} crédits`,
         },
-        unit_amount: Math.round(amount * 100),
+        unit_amount: Math.round(checkoutAmount * 100),
         ...(type === "subscription" && {
           recurring: {
             interval: planKey === "yearly" ? "year" : "month",
@@ -263,17 +341,52 @@ serve(async (req) => {
       );
     }
 
-    const stripePriceImage9 = Deno.env.get("STRIPE_PRICE_IMAGE_9")?.trim() || null;
-    const stripePricePro59 = Deno.env.get("STRIPE_PRICE_PRO_59")?.trim() || null;
-    if (type === "subscription" && planKey === "image_9" && !stripePriceImage9) {
+    const stripePriceImage9Raw = Deno.env.get("STRIPE_PRICE_IMAGE_9")?.trim() || null;
+    const stripePricePro59Raw = Deno.env.get("STRIPE_PRICE_PRO_59")?.trim() || null;
+
+    const stripePriceImage9 = await resolveStripePriceIdForPlan(
+      stripe,
+      "image_9",
+      stripePriceImage9Raw,
+      stripePricePro59Raw,
+    );
+    const stripePricePro59 = await resolveStripePriceIdForPlan(
+      stripe,
+      "pro_59",
+      stripePricePro59Raw,
+      stripePriceImage9Raw,
+    );
+
+    if (type === "subscription" && planKey === "image_9" && stripePriceImage9Raw && !stripePriceImage9) {
+      console.warn(
+        "STRIPE_PRICE_IMAGE_9 invalide ou incorrect (vérifiez qu'il pointe vers le produit 9€, pas Pro 59€). Repli price_data 9€.",
+      );
+    }
+    if (type === "subscription" && planKey === "pro_59" && stripePricePro59Raw && !stripePricePro59) {
+      console.warn(
+        "STRIPE_PRICE_PRO_59 invalide ou incorrect. Repli price_data 59€.",
+      );
+    }
+    if (type === "subscription" && planKey === "image_9" && !stripePriceImage9Raw) {
       console.warn(
         "STRIPE_PRICE_IMAGE_9 non configuré — repli sur price_data dynamique pour image_9",
       );
     }
-    if (type === "subscription" && planKey === "pro_59" && !stripePricePro59) {
+    if (type === "subscription" && planKey === "pro_59" && !stripePricePro59Raw) {
       console.warn(
         "STRIPE_PRICE_PRO_59 non configuré — repli sur price_data dynamique pour pro_59",
       );
+    }
+
+    if (type === "subscription" && planKey && expectedSubscriptionAmountEur(planKey) != null) {
+      const catalogAmount = expectedSubscriptionAmountEur(planKey)!;
+      if (normalizedAmount !== catalogAmount) {
+        console.warn("Montant client corrigé côté serveur", {
+          planKey,
+          clientAmount: normalizedAmount,
+          catalogAmount,
+        });
+      }
     }
 
       // Créer ou récupérer le customer Stripe
@@ -323,7 +436,7 @@ serve(async (req) => {
         await createAndPersistCustomer();
       }
 
-      const baseUrl = resolveBaseUrl(req, origin);
+      const baseUrl = resolveCheckoutReturnOrigin(req, origin);
       console.log("🌍 URL de retour Checkout résolue", { baseUrl, userId: user.id });
 
       // Créer la session de checkout

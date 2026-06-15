@@ -1,5 +1,6 @@
 import { createBrowserRouter, RouterProvider, Outlet, Navigate, useLocation } from "react-router-dom";
-import { useEffect, useState, Component } from "react";
+import { useEffect, useState, useRef, Component } from "react";
+import { redirectToCanonicalOriginIfNeeded } from "@/bibliotheque/appOrigin";
 import DashboardLayout from "./dispositions/DispositionTableauDeBord.jsx";
 import RappelAuth from "./pages/RappelAuth.jsx";
 import ConfirmerEmail from "./pages/ConfirmerEmail.jsx";
@@ -92,32 +93,62 @@ function AnalyticsRouteListener() {
 function BoutiqueStripeReturnHandler() {
   const location = useLocation();
   const { openBoutiqueModal } = useBoutiqueModal();
+  const { session, loading, supabase } = useAuth();
+  const handledRef = useRef(false);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const payment = params.get("payment");
     if (payment !== "success" && payment !== "cancelled") return;
+    if (loading || handledRef.current) return;
 
-    const sectionParam = params.get("section");
-    const section =
-      sectionParam === "packs-videos" ? "packs-videos" : "subscription";
+    handledRef.current = true;
 
-    openBoutiqueModal(section, { paymentReturn: payment });
+    const finish = async () => {
+      if (!session) {
+        const { data: current } = await supabase.auth.getSession();
+        if (!current.session) {
+          try {
+            await supabase.auth.refreshSession();
+          } catch {
+            // no-op
+          }
+        }
+      }
 
-    params.delete("payment");
-    params.delete("section");
-    const query = params.toString();
-    window.history.replaceState(
-      {},
-      "",
-      `${location.pathname}${query ? `?${query}` : ""}`,
-    );
-  }, [location.pathname, location.search, openBoutiqueModal]);
+      const sectionParam = params.get("section");
+      const section =
+        sectionParam === "packs-videos" ? "packs-videos" : "subscription";
+
+      openBoutiqueModal(section, { paymentReturn: payment });
+
+      params.delete("payment");
+      params.delete("section");
+      const query = params.toString();
+      window.history.replaceState(
+        {},
+        "",
+        `${location.pathname}${query ? `?${query}` : ""}`,
+      );
+
+      try {
+        localStorage.removeItem("vw_stripe_checkout_at");
+      } catch {
+        // no-op
+      }
+    };
+
+    void finish();
+  }, [location.pathname, location.search, openBoutiqueModal, session, loading, supabase]);
 
   return null;
 }
 
 function RootRouteLayout() {
+  useEffect(() => {
+    redirectToCanonicalOriginIfNeeded();
+  }, []);
+
   return (
     <AuthActionProvider>
       <BoutiqueModalProvider>

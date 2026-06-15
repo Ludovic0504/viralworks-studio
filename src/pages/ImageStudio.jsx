@@ -2,14 +2,13 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { createPortal } from "react-dom";
 import {
   BookOpen,
+  Check,
   ChevronDown,
-  Clock,
   Crop,
-  ImageIcon,
+  Layers2,
   Loader2,
   Plus,
   SlidersHorizontal,
-  Sparkles,
   Wand2,
   X,
 } from "lucide-react";
@@ -27,30 +26,38 @@ import {
   wasImageStudioAlertDismissed,
 } from "@/bibliotheque/imageStudio/quotaAlerts";
 import IndicateurCreditsImageStudio from "@/composants/image/IndicateurCreditsImageStudio";
+import ImageStudioModelIcon from "@/composants/image/ImageStudioModelIcon";
 import ModalAbonnementImageStudio from "@/composants/image/ModalAbonnementImageStudio";
 import ModalPromptsImageStudio from "@/composants/image/ModalPromptsImageStudio";
 import SheetReglagesImageStudio from "@/composants/image/SheetReglagesImageStudio";
+import ImageStudioFeedPanel from "@/composants/image/ImageStudioFeedPanel";
+import ModalImageStudioPreview from "@/composants/image/ModalImageStudioPreview";
 import ModalQuotaImageStudio from "@/composants/image/ModalQuotaImageStudio";
 import {
   fetchImageStudioModels,
   generateImageStudio,
 } from "@/bibliotheque/imageStudio/generateImageStudio";
 import {
+  IMAGE_STUDIO_MODEL_OPTIONS,
+} from "@/bibliotheque/imageStudio/imageStudioModels";
+import {
+  findHistoryItemForImage,
+  getGenerationRefsFromHistory,
   getImageUrlFromHistory,
   listImageStudioHistory,
   saveImageStudioHistory,
 } from "@/bibliotheque/imageStudio/imageStudioHistory";
+import { groupHistoryIntoFeedRows } from "@/bibliotheque/imageStudio/imageStudioFeed";
+import {
+  loadImageStudioUiState,
+  saveImageStudioUiState,
+} from "@/bibliotheque/imageStudio/imageStudioUiState";
 import ModalBibliothequeAvatars from "@/composants/studio/avatar/ModalBibliothequeAvatars";
 import ModalBibliothequeProduits from "@/composants/studio/product/ModalBibliothequeProduits";
 import { capturePostHog, trackPostHogError } from "@/bibliotheque/posthog/client";
 
 const ASPECT_RATIOS = ["1:1", "9:16", "16:9"];
-
-const MODEL_OPTIONS = [
-  { id: "nano_banana_pro", label: "NanaBanana Pro" },
-  { id: "hailuo", label: "Hailuo Image" },
-  { id: "gpt_image_2", label: "GPT Image 2.0" },
-];
+const GENERATION_COUNTS = [1, 2, 3, 4];
 
 const DEFAULT_MODELS = {
   nano_banana_pro: false,
@@ -60,24 +67,8 @@ const DEFAULT_MODELS = {
 
 const PROMPT_MAX_ROWS = 10;
 
-function formatHistoryTime(createdAt) {
-  if (!createdAt) return "";
-  try {
-    return new Intl.DateTimeFormat("fr-FR", {
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(new Date(createdAt));
-  } catch {
-    return "";
-  }
-}
-
-function getModelLabel(modelId) {
-  return MODEL_OPTIONS.find((opt) => opt.id === modelId)?.label ?? "Image";
-}
-
 function pickDefaultModel(availability) {
-  for (const opt of MODEL_OPTIONS) {
+  for (const opt of IMAGE_STUDIO_MODEL_OPTIONS) {
     if (availability[opt.id]) return opt.id;
   }
   return "nano_banana_pro";
@@ -164,7 +155,14 @@ function useCommandBarDropdownMenu(open, anchorRef, menuRef) {
   return { menuStyle, useFixedMenu };
 }
 
-function CommandBarDropdownMenu({ open, anchorRef, menuRef, children, role = "listbox" }) {
+function CommandBarDropdownMenu({
+  open,
+  anchorRef,
+  menuRef,
+  children,
+  role = "listbox",
+  menuClassName = "",
+}) {
   const { menuStyle, useFixedMenu } = useCommandBarDropdownMenu(open, anchorRef, menuRef);
 
   if (!open) return null;
@@ -172,7 +170,7 @@ function CommandBarDropdownMenu({ open, anchorRef, menuRef, children, role = "li
   const menu = (
     <div
       ref={menuRef}
-      className={`image-studio-dropdown-menu${useFixedMenu ? " is-fixed" : ""}`}
+      className={`image-studio-dropdown-menu${useFixedMenu ? " is-fixed" : ""}${menuClassName ? ` ${menuClassName}` : ""}`}
       style={menuStyle ?? undefined}
       role={role}
     >
@@ -187,7 +185,7 @@ function ModelDropdown({ value, onChange, availability, disabled, loading }) {
   const rootRef = useRef(null);
   const menuRef = useRef(null);
   const [open, setOpen] = useState(false);
-  const selected = MODEL_OPTIONS.find((o) => o.id === value);
+  const selected = IMAGE_STUDIO_MODEL_OPTIONS.find((o) => o.id === value);
 
   useDropdownDismiss(open, setOpen, rootRef, menuRef);
 
@@ -203,7 +201,11 @@ function ModelDropdown({ value, onChange, availability, disabled, loading }) {
         title={loading ? "Modèle" : selected?.label ?? "Modèle"}
         aria-label={`Modèle : ${loading ? "chargement" : selected?.label ?? "Modèle"}`}
       >
-        <Wand2 className="image-studio-setting-pill-icon" strokeWidth={2} aria-hidden />
+        {loading ? (
+          <Wand2 className="image-studio-setting-pill-icon" strokeWidth={2} aria-hidden />
+        ) : (
+          <ImageStudioModelIcon modelId={value} size="sm" className="image-studio-setting-pill-model-icon" />
+        )}
         <span className="image-studio-setting-pill-label max-w-[6.5rem] truncate sm:max-w-[8rem]">
           {loading ? "…" : selected?.label ?? "Modèle"}
         </span>
@@ -213,25 +215,43 @@ function ModelDropdown({ value, onChange, availability, disabled, loading }) {
         />
       </button>
 
-      <CommandBarDropdownMenu open={open} anchorRef={rootRef} menuRef={menuRef}>
-        {MODEL_OPTIONS.map((opt) => {
+      <CommandBarDropdownMenu
+        open={open}
+        anchorRef={rootRef}
+        menuRef={menuRef}
+        menuClassName="image-studio-dropdown-menu--models"
+      >
+        {IMAGE_STUDIO_MODEL_OPTIONS.map((opt) => {
           const available = availability[opt.id];
+          const isSelected = value === opt.id;
           return (
             <button
               key={opt.id}
               type="button"
               role="option"
-              aria-selected={value === opt.id}
+              aria-selected={isSelected}
               disabled={!available}
-              className={`image-studio-dropdown-option ${value === opt.id ? "is-selected" : ""}`}
+              className={`image-studio-model-option ${isSelected ? "is-selected" : ""}`}
               onClick={() => {
                 if (!available) return;
                 onChange(opt.id);
                 setOpen(false);
               }}
             >
-              <span>{opt.label}</span>
-              {!available ? <span className="image-studio-dropdown-soon">Bientôt</span> : null}
+              <ImageStudioModelIcon modelId={opt.id} size="md" />
+              <span className="image-studio-model-option-copy">
+                <span className="image-studio-model-option-name">{opt.label}</span>
+                <span className="image-studio-model-option-desc">{opt.description}</span>
+              </span>
+              {!available ? (
+                <span className="image-studio-dropdown-soon">Bientôt</span>
+              ) : (
+                <Check
+                  className={`image-studio-model-option-check${isSelected ? " is-visible" : ""}`}
+                  strokeWidth={2.5}
+                  aria-hidden
+                />
+              )}
             </button>
           );
         })}
@@ -283,6 +303,77 @@ function AspectRatioDropdown({ value, onChange, disabled }) {
             <span>{ratio}</span>
           </button>
         ))}
+      </CommandBarDropdownMenu>
+    </div>
+  );
+}
+
+function GenerationCountDropdown({ value, onChange, disabled, maxCount = 4 }) {
+  const rootRef = useRef(null);
+  const menuRef = useRef(null);
+  const [open, setOpen] = useState(false);
+  const label = value === 1 ? "1 image" : `${value} images`;
+
+  useDropdownDismiss(open, setOpen, rootRef, menuRef);
+
+  return (
+    <div ref={rootRef} className={`image-studio-dropdown shrink-0${open ? " is-open" : ""}`}>
+      <button
+        type="button"
+        disabled={disabled}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        className="image-studio-setting-pill"
+        onClick={() => setOpen((v) => !v)}
+        title={`Générations : ${label}`}
+        aria-label={`Générations : ${label}`}
+      >
+        <Layers2 className="image-studio-setting-pill-icon" strokeWidth={2} aria-hidden />
+        <span className="image-studio-setting-pill-label">{value}</span>
+        <ChevronDown
+          className={`image-studio-setting-pill-chevron h-3.5 w-3.5 shrink-0 opacity-50 transition-transform ${open ? "rotate-180" : ""}`}
+          strokeWidth={2.25}
+        />
+      </button>
+
+      <CommandBarDropdownMenu
+        open={open}
+        anchorRef={rootRef}
+        menuRef={menuRef}
+        menuClassName="image-studio-dropdown-menu--compact"
+      >
+        {GENERATION_COUNTS.map((count) => {
+          const available = count <= maxCount;
+          const selected = value === count;
+          const optionLabel = count === 1 ? "1 image" : `${count} images`;
+          return (
+            <button
+              key={count}
+              type="button"
+              role="option"
+              aria-selected={selected}
+              aria-label={optionLabel}
+              disabled={!available}
+              className={`image-studio-dropdown-option image-studio-dropdown-option--compact ${selected ? "is-selected" : ""}`}
+              onClick={() => {
+                if (!available) return;
+                onChange(count);
+                setOpen(false);
+              }}
+            >
+              <span>{count}</span>
+              {!available ? (
+                <span className="image-studio-dropdown-soon">Quota</span>
+              ) : (
+                <Check
+                  className={`image-studio-dropdown-option-check${selected ? " is-visible" : ""}`}
+                  strokeWidth={2.5}
+                  aria-hidden
+                />
+              )}
+            </button>
+          );
+        })}
       </CommandBarDropdownMenu>
     </div>
   );
@@ -377,7 +468,7 @@ export default function ImageStudio() {
   const { runWithAuth } = useRequireAuthAction();
   const { plan, loading: accessLoading } = usePremiumAccess();
   const [prompt, setPrompt] = useState("");
-  const [previewUrl, setPreviewUrl] = useState(null);
+  const [feedRows, setFeedRows] = useState([]);
   const [referenceImage, setReferenceImage] = useState(null);
   const [referencePreview, setReferencePreview] = useState(null);
   const [importedRefImage, setImportedRefImage] = useState(null);
@@ -388,6 +479,7 @@ export default function ImageStudio() {
   const [productLibraryOpen, setProductLibraryOpen] = useState(false);
   const [activeHistoryId, setActiveHistoryId] = useState(null);
   const [aspectRatio, setAspectRatio] = useState("1:1");
+  const [generationCount, setGenerationCount] = useState(1);
   const [model, setModel] = useState("nano_banana_pro");
   const [modelsAvailability, setModelsAvailability] = useState(DEFAULT_MODELS);
   const [modelsLoading, setModelsLoading] = useState(true);
@@ -400,15 +492,153 @@ export default function ImageStudio() {
   const [quotaAlert, setQuotaAlert] = useState(null);
   const [subscribeModalOpen, setSubscribeModalOpen] = useState(false);
   const [promptsModalOpen, setPromptsModalOpen] = useState(false);
+  const [previewState, setPreviewState] = useState(null);
   const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
   const [history, setHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [scrollToEndToken, setScrollToEndToken] = useState(0);
+  const [restoreFeedScrollTop, setRestoreFeedScrollTop] = useState(undefined);
+  const [restoreThumbScrollTop, setRestoreThumbScrollTop] = useState(undefined);
+  const feedScrollTopRef = useRef(0);
+  const thumbScrollTopRef = useRef(0);
+  const uiStateHydratedRef = useRef(false);
+  const scrollPersistTimerRef = useRef(null);
+  const [uiPersistReady, setUiPersistReady] = useState(false);
+
+  const persistUiState = useCallback(
+    (patch = {}) => {
+      if (!session?.user?.id) return;
+      saveImageStudioUiState(session.user.id, {
+        feedScrollTop: feedScrollTopRef.current,
+        thumbScrollTop: thumbScrollTopRef.current,
+        activeHistoryId,
+        prompt,
+        model,
+        aspectRatio,
+        generationCount,
+        ...patch,
+      });
+    },
+    [
+      session?.user?.id,
+      activeHistoryId,
+      prompt,
+      model,
+      aspectRatio,
+      generationCount,
+    ],
+  );
+
+  const scheduleScrollPersist = useCallback(() => {
+    if (scrollPersistTimerRef.current) {
+      window.clearTimeout(scrollPersistTimerRef.current);
+    }
+    scrollPersistTimerRef.current = window.setTimeout(() => {
+      persistUiState();
+    }, 250);
+  }, [persistUiState]);
+
+  useEffect(() => {
+    return () => {
+      if (scrollPersistTimerRef.current) {
+        window.clearTimeout(scrollPersistTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     capturePostHog("image_studio_opened");
   }, []);
 
   const hasImagePlan = !accessLoading && hasImageStudioPlan(plan);
+
+  useEffect(() => {
+    uiStateHydratedRef.current = false;
+    setUiPersistReady(false);
+
+    if (!session?.user?.id) {
+      setUiPersistReady(true);
+      return;
+    }
+
+    const saved = loadImageStudioUiState(session.user.id);
+    if (saved) {
+      if (typeof saved.prompt === "string") setPrompt(saved.prompt);
+      if (saved.model) setModel(saved.model);
+      if (saved.aspectRatio) setAspectRatio(saved.aspectRatio);
+      if (saved.generationCount) setGenerationCount(saved.generationCount);
+      if (typeof saved.feedScrollTop === "number") {
+        feedScrollTopRef.current = saved.feedScrollTop;
+        setRestoreFeedScrollTop(saved.feedScrollTop);
+      }
+      if (typeof saved.thumbScrollTop === "number") {
+        thumbScrollTopRef.current = saved.thumbScrollTop;
+        setRestoreThumbScrollTop(saved.thumbScrollTop);
+      }
+      if (saved.activeHistoryId) setActiveHistoryId(saved.activeHistoryId);
+    }
+
+    uiStateHydratedRef.current = true;
+    setUiPersistReady(true);
+  }, [session?.user?.id]);
+
+  useEffect(() => {
+    const onPersist = () => persistUiState();
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") onPersist();
+    };
+    window.addEventListener("beforeunload", onPersist);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("beforeunload", onPersist);
+      document.removeEventListener("visibilitychange", onVisibility);
+      onPersist();
+    };
+  }, [persistUiState]);
+
+  useEffect(() => {
+    if (!uiPersistReady) return;
+    persistUiState();
+  }, [
+    uiPersistReady,
+    activeHistoryId,
+    prompt,
+    model,
+    aspectRatio,
+    generationCount,
+    persistUiState,
+  ]);
+
+  const loadHistory = useCallback(async (options = {}) => {
+    const { syncFeed = false } = options;
+    if (!session?.user?.id) {
+      setHistory([]);
+      if (syncFeed) setFeedRows([]);
+      return [];
+    }
+    setHistoryLoading(true);
+    try {
+      const rows = await listImageStudioHistory();
+      setHistory(rows);
+      if (syncFeed) {
+        setFeedRows(groupHistoryIntoFeedRows(rows));
+        if (session?.user?.id) {
+          const saved = loadImageStudioUiState(session.user.id);
+          const savedActive = saved?.activeHistoryId;
+          if (savedActive && rows.some((row) => row.id === savedActive)) {
+            setActiveHistoryId(savedActive);
+          }
+        }
+      }
+      return rows;
+    } catch {
+      setHistory([]);
+      if (syncFeed) setFeedRows([]);
+      return [];
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [session?.user?.id]);
 
   useEffect(() => {
     let active = true;
@@ -446,25 +676,9 @@ export default function ImageStudio() {
     }
   }, [session?.user?.id, hasImagePlan]);
 
-  const loadHistory = useCallback(async () => {
-    if (!session?.user?.id) {
-      setHistory([]);
-      return;
-    }
-    setHistoryLoading(true);
-    try {
-      const rows = await listImageStudioHistory();
-      setHistory(rows);
-    } catch {
-      setHistory([]);
-    } finally {
-      setHistoryLoading(false);
-    }
-  }, [session?.user?.id]);
-
   useEffect(() => {
     void loadQuota();
-    void loadHistory();
+    void loadHistory({ syncFeed: true });
   }, [loadQuota, loadHistory]);
 
   useEffect(() => {
@@ -509,13 +723,22 @@ export default function ImageStudio() {
   }, [prompt, resizePromptTextarea]);
 
   const quotaReached = hasImagePlan && quotaCount >= quotaLimit;
+  const quotaHeadroom = hasImagePlan ? Math.max(0, quotaLimit - quotaCount) : 4;
+  const maxGenerationCount = Math.min(4, Math.max(quotaHeadroom, 1));
   const modelAvailable = modelsAvailability[model];
   const canGenerate =
     Boolean(prompt.trim()) &&
     !generating &&
     !quotaReached &&
+    generationCount <= quotaHeadroom &&
     modelAvailable &&
     !accessLoading;
+
+  useEffect(() => {
+    if (generationCount > maxGenerationCount) {
+      setGenerationCount(maxGenerationCount);
+    }
+  }, [generationCount, maxGenerationCount]);
 
   const openAvatarLibrary = useCallback(() => {
     void runWithAuth(() => {
@@ -581,44 +804,206 @@ export default function ImageStudio() {
     setProductPreview(null);
   }, []);
 
+  const handleFeedScroll = useCallback(
+    (scrollTop) => {
+      feedScrollTopRef.current = scrollTop;
+      scheduleScrollPersist();
+    },
+    [scheduleScrollPersist],
+  );
+
+  const handleThumbScroll = useCallback(
+    (scrollTop) => {
+      thumbScrollTopRef.current = scrollTop;
+      scheduleScrollPersist();
+    },
+    [scheduleScrollPersist],
+  );
+
   const selectHistoryItem = (item) => {
     const url = getImageUrlFromHistory(item);
     if (!url) return;
-    setPreviewUrl(url);
     setActiveHistoryId(item.id);
-    if (item.input) setPrompt(item.input);
-    const ratio = item.metadata?.aspectRatio;
-    if (ratio === "1:1" || ratio === "9:16" || ratio === "16:9") {
-      setAspectRatio(ratio);
-    }
-    const histModel = item.metadata?.imageStudioModel;
-    if (histModel && modelsAvailability[histModel]) {
-      setModel(histModel);
+    const batchId = item.metadata?.batchId;
+    if (batchId) {
+      document
+        .querySelector(`[data-batch-id="${batchId}"]`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
     }
   };
+
+  const openImagePreview = useCallback(
+    ({ url, historyId, prompt: rowPrompt, model: rowModel, aspectRatio: rowRatio }) => {
+      const imageUrl = typeof url === "string" ? url.trim() : "";
+      if (!imageUrl) return;
+
+      const historyItem = findHistoryItemForImage(history, { historyId, url: imageUrl });
+      const previewItem = historyItem ?? {
+        id: historyId || imageUrl,
+        input: rowPrompt || "",
+        output: imageUrl,
+        metadata: {
+          aspectRatio: rowRatio,
+          imageStudioModel: rowModel,
+        },
+      };
+
+      if (historyId) setActiveHistoryId(historyId);
+      setPreviewState({ url: imageUrl, item: previewItem });
+    },
+    [history],
+  );
+
+  const closeImagePreview = useCallback(() => {
+    setPreviewState(null);
+  }, []);
+
+  const applyRefImageToPromptSlot = useCallback((url) => {
+    const imageUrl = typeof url === "string" ? url.trim() : "";
+    if (!imageUrl) return;
+    setImportedRefImage(imageUrl);
+    setImportedRefPreview(imageUrl);
+    setError(null);
+    closeImagePreview();
+  }, [closeImagePreview]);
+
+  const recreateFromPreviewItem = useCallback(
+    (item) => {
+      if (!item) return;
+
+      const promptText = item.input?.trim() || "";
+      if (promptText) setPrompt(promptText);
+
+      const ratio = item.metadata?.aspectRatio;
+      if (ratio === "1:1" || ratio === "9:16" || ratio === "16:9") {
+        setAspectRatio(ratio);
+      }
+
+      const histModel = item.metadata?.imageStudioModel;
+      if (histModel && modelsAvailability[histModel]) {
+        setModel(histModel);
+      }
+
+      const refs = getGenerationRefsFromHistory(item);
+      if (refs.importedRefUrl) {
+        setImportedRefImage(refs.importedRefUrl);
+        setImportedRefPreview(refs.importedRefUrl);
+      } else {
+        clearImportedRef();
+      }
+
+      if (refs.avatarUrl) {
+        setReferenceImage(refs.avatarUrl);
+        setReferencePreview(refs.avatarUrl);
+      } else {
+        clearReference();
+      }
+
+      if (refs.productUrl) {
+        setProductImage(refs.productUrl);
+        setProductPreview(refs.productUrl);
+      } else {
+        clearProduct();
+      }
+
+      if (item.id) setActiveHistoryId(item.id);
+      setError(null);
+      closeImagePreview();
+    },
+    [modelsAvailability, clearImportedRef, clearReference, clearProduct, closeImagePreview],
+  );
 
   const handleGenerate = async () => {
     if (!hasImagePlan || !canGenerate) return;
     setError(null);
     setGenerating(true);
-    try {
-      const result = await generateImageStudio(
-        prompt,
-        aspectRatio,
+    const batchId = crypto.randomUUID();
+    const trimmedPrompt = prompt.trim();
+    const reference = importedRefImage || referenceImage;
+    const generationRefs = {
+      avatarUrl: referenceImage || null,
+      productUrl: productImage || null,
+      importedRefUrl: importedRefImage || null,
+    };
+
+    setFeedRows((prev) => [
+      ...prev,
+      {
+        id: batchId,
+        prompt: trimmedPrompt,
         model,
-        importedRefImage || referenceImage,
-      );
-      setPreviewUrl(result.url);
-      setActiveHistoryId(result.historyId ?? null);
-      setQuotaCount(result.count);
-      if (!result.historyId) {
-        await saveImageStudioHistory(prompt, result.url, aspectRatio, model);
+        aspectRatio,
+        createdAt: new Date().toISOString(),
+        images: [],
+        generating: true,
+        progress: { current: 0, total: generationCount },
+      },
+    ]);
+
+    let lastResult = null;
+
+    try {
+      for (let i = 0; i < generationCount; i += 1) {
+        setFeedRows((prev) =>
+          prev.map((row) =>
+            row.id === batchId
+              ? { ...row, progress: { current: i + 1, total: generationCount } }
+              : row,
+          ),
+        );
+
+        const result = await generateImageStudio(
+          trimmedPrompt,
+          aspectRatio,
+          model,
+          reference,
+          batchId,
+          generationRefs,
+        );
+        lastResult = result;
+        setActiveHistoryId(result.historyId ?? null);
+        setQuotaCount(result.count);
+
+        setFeedRows((prev) =>
+          prev.map((row) =>
+            row.id === batchId
+              ? {
+                  ...row,
+                  images: [
+                    ...row.images,
+                    { url: result.url, historyId: result.historyId },
+                  ],
+                }
+              : row,
+          ),
+        );
+
+        if (!result.historyId) {
+          await saveImageStudioHistory(
+            trimmedPrompt,
+            result.url,
+            aspectRatio,
+            model,
+            batchId,
+            generationRefs,
+          );
+        }
       }
-      void loadHistory();
+      await loadHistory({ syncFeed: true });
+      setScrollToEndToken((token) => token + 1);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Erreur lors de la génération.";
-      setError(message);
+      if (!lastResult) {
+        setFeedRows((prev) => prev.filter((row) => row.id !== batchId));
+        setError(message);
+      } else {
+        setError(
+          generationCount > 1
+            ? `${message} Les images déjà générées restent visibles dans le flux.`
+            : message,
+        );
+      }
       trackPostHogError(message, "/image-studio", "generation");
       if (message.includes("ViralWorks Image")) {
         setSubscribeModalOpen(true);
@@ -626,7 +1011,15 @@ export default function ImageStudio() {
       if (message.includes("Quota mensuel")) {
         setQuotaCount(quotaLimit);
       }
+      if (lastResult) {
+        void loadHistory({ syncFeed: true });
+      }
     } finally {
+      setFeedRows((prev) =>
+        prev.map((row) =>
+          row.id === batchId ? { ...row, generating: false, progress: undefined } : row,
+        ),
+      );
       setGenerating(false);
     }
   };
@@ -670,157 +1063,29 @@ export default function ImageStudio() {
         ) : null}
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 pb-3 sm:px-6 lg:flex-row lg:gap-4 lg:px-8">
-        {/* Canvas — colonne gauche ~72% */}
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 lg:w-[72%] lg:flex-none">
-          <div className="image-studio-canvas relative flex min-h-[min(55vh,480px)] flex-1 items-center justify-center overflow-hidden rounded-2xl lg:min-h-[min(72vh,720px)]">
-            {generating && !previewUrl ? (
-              <div className="image-studio-canvas-loading">
-                <div className="image-studio-loading-ring" aria-hidden />
-                <p className="image-studio-loading-label">Génération en cours…</p>
-                <p className="image-studio-loading-hint">L&apos;IA compose votre image en 2K</p>
-              </div>
-            ) : previewUrl ? (
-              <div className="image-studio-preview-stage">
-                <div className="image-studio-preview-meta">
-                  <span className="image-studio-preview-type">
-                    <ImageIcon className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
-                    Image
-                  </span>
-                  <span className="image-studio-preview-badge">2K</span>
-                  {prompt.trim() ? (
-                    <p className="image-studio-preview-prompt-snippet" title={prompt}>
-                      {prompt}
-                    </p>
-                  ) : null}
-                </div>
-                <div className="image-studio-preview-frame">
-                  <img
-                    src={previewUrl}
-                    alt="Image générée"
-                    className="image-studio-preview-image"
-                  />
-                  {generating ? (
-                    <div className="image-studio-preview-overlay">
-                      <div className="image-studio-loading-ring image-studio-loading-ring--sm" aria-hidden />
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            ) : (
-              <div className="image-studio-canvas-empty">
-                <div className="image-studio-empty-showcase" aria-hidden>
-                  <div className="image-studio-empty-glow" />
-                  <div className="image-studio-empty-card image-studio-empty-card--1" />
-                  <div className="image-studio-empty-card image-studio-empty-card--2" />
-                  <div className="image-studio-empty-card image-studio-empty-card--3" />
-                  <div className="image-studio-empty-card image-studio-empty-card--4" />
-                </div>
-                <p className="image-studio-empty-kicker">
-                  <Sparkles className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
-                  Commencez à créer avec
-                </p>
-                <h2 className="image-studio-empty-title">
-                  Image <span>Studio</span>
-                </h2>
-                <p className="image-studio-empty-sub">
-                  Décrivez une scène, une ambiance ou un style — l&apos;IA s&apos;occupe du reste.
-                </p>
-              </div>
-            )}
-          </div>
-
-          {error ? (
-            <p className="shrink-0 text-sm text-red-400" role="alert">
-              {error}
-            </p>
-          ) : null}
+      <div className="flex min-h-0 flex-1 flex-col gap-2 px-4 pb-3 sm:px-6 lg:px-8">
+        <div className="image-studio-canvas image-studio-canvas--feed relative flex min-h-[min(55vh,480px)] min-w-0 flex-1 flex-col overflow-hidden rounded-2xl lg:min-h-[min(72vh,720px)]">
+          <ImageStudioFeedPanel
+            feedRows={feedRows}
+            history={history}
+            historyLoading={historyLoading}
+            generating={generating}
+            activeHistoryId={activeHistoryId}
+            onSelectHistoryItem={selectHistoryItem}
+            onImageOpen={openImagePreview}
+            restoreFeedScrollTop={restoreFeedScrollTop}
+            restoreThumbScrollTop={restoreThumbScrollTop}
+            scrollToEndToken={scrollToEndToken}
+            onFeedScroll={handleFeedScroll}
+            onThumbScroll={handleThumbScroll}
+          />
         </div>
 
-        {/* Historique — colonne droite ~28% */}
-        <aside className="image-studio-history-panel flex min-h-0 flex-col lg:w-[28%] lg:shrink-0 lg:self-stretch">
-          <div className="image-studio-history-header">
-            <div className="image-studio-history-header-title">
-              <Clock className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
-              <span>Historique</span>
-            </div>
-            {history.length > 0 ? (
-              <span className="image-studio-history-count">{history.length}</span>
-            ) : null}
-          </div>
-          <div className="studio-subtle-scrollbar image-studio-history-scroll min-h-0 flex-1 overflow-y-auto">
-            {historyLoading && history.length === 0 ? (
-              <div className="image-studio-history-skeletons" aria-hidden>
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className="image-studio-history-skeleton" />
-                ))}
-              </div>
-            ) : history.length === 0 ? (
-              <div className="image-studio-history-empty">
-                <div className="image-studio-history-empty-icon" aria-hidden>
-                  <ImageIcon className="h-5 w-5" strokeWidth={1.5} />
-                </div>
-                <p className="image-studio-history-empty-title">Aucune génération</p>
-                <p className="image-studio-history-empty-sub">
-                  Vos créations apparaîtront ici au fil des générations.
-                </p>
-              </div>
-            ) : (
-              <div className="image-studio-history-list">
-                {history.map((item) => {
-                  const thumbUrl = getImageUrlFromHistory(item);
-                  if (!thumbUrl) return null;
-                  const histModel = item.metadata?.imageStudioModel;
-                  const histRatio = item.metadata?.aspectRatio;
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => selectHistoryItem(item)}
-                      className={`image-studio-history-item ${
-                        activeHistoryId === item.id ? "is-active" : ""
-                      }`}
-                      title={item.input || "Image générée"}
-                    >
-                      <div className="image-studio-history-item-body">
-                        <p className="image-studio-history-item-prompt">
-                          {item.input?.trim() || "Sans description"}
-                        </p>
-                        <div className="image-studio-history-item-tags">
-                          <div className="image-studio-history-item-pills">
-                            {histModel ? (
-                              <span className="image-studio-history-tag">
-                                {getModelLabel(histModel)}
-                              </span>
-                            ) : null}
-                            {histRatio ? (
-                              <span className="image-studio-history-tag">{histRatio}</span>
-                            ) : (
-                              <span className="image-studio-history-tag">2K</span>
-                            )}
-                          </div>
-                          {item.created_at ? (
-                            <span className="image-studio-history-time">
-                              {formatHistoryTime(item.created_at)}
-                            </span>
-                          ) : null}
-                        </div>
-                      </div>
-                      <div className="image-studio-history-item-thumb">
-                        <img
-                          src={thumbUrl}
-                          alt=""
-                          className="h-full w-full object-cover"
-                          loading="lazy"
-                        />
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </aside>
+        {error ? (
+          <p className="shrink-0 text-sm text-red-400" role="alert">
+            {error}
+          </p>
+        ) : null}
       </div>
 
       {/* Barre de commande — layout type prompt studio */}
@@ -874,6 +1139,13 @@ export default function ImageStudio() {
                   disabled={generating}
                 />
 
+                <GenerationCountDropdown
+                  value={generationCount}
+                  onChange={setGenerationCount}
+                  disabled={generating}
+                  maxCount={maxGenerationCount}
+                />
+
                 <button
                   type="button"
                   className="image-studio-setting-pill image-studio-prompts-btn shrink-0"
@@ -892,7 +1164,7 @@ export default function ImageStudio() {
                 className="image-studio-settings-mobile-btn"
                 onClick={() => setMobileSettingsOpen(true)}
                 disabled={generating}
-                aria-label="Ouvrir les réglages : modèle, format et prompts"
+                aria-label="Ouvrir les réglages : modèle, format, générations et prompts"
               >
                 <SlidersHorizontal className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
                 <span>Réglages</span>
@@ -969,17 +1241,30 @@ export default function ImageStudio() {
         onClose={() => setPromptsModalOpen(false)}
       />
 
+      <ModalImageStudioPreview
+        open={Boolean(previewState)}
+        item={previewState?.item ?? null}
+        imageUrl={previewState?.url ?? null}
+        onClose={closeImagePreview}
+        onRecreateContext={recreateFromPreviewItem}
+        onUseAsReference={applyRefImageToPromptSlot}
+      />
+
       <SheetReglagesImageStudio
         open={mobileSettingsOpen}
         onClose={() => setMobileSettingsOpen(false)}
         model={model}
         onModelChange={setModel}
-        modelOptions={MODEL_OPTIONS}
+        modelOptions={IMAGE_STUDIO_MODEL_OPTIONS}
         modelsAvailability={modelsAvailability}
         modelsLoading={modelsLoading}
         aspectRatio={aspectRatio}
         onAspectRatioChange={setAspectRatio}
         aspectRatios={ASPECT_RATIOS}
+        generationCount={generationCount}
+        onGenerationCountChange={setGenerationCount}
+        generationCounts={GENERATION_COUNTS}
+        maxGenerationCount={maxGenerationCount}
         onOpenPrompts={() => setPromptsModalOpen(true)}
         disabled={generating}
       />

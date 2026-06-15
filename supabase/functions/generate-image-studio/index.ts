@@ -38,6 +38,12 @@ type RequestBody = {
   aspectRatio?: string;
   model?: string;
   referenceImage?: string;
+  batchId?: string;
+  generationRefs?: {
+    avatarUrl?: string | null;
+    productUrl?: string | null;
+    importedRefUrl?: string | null;
+  };
 };
 
 const ALLOWED_RATIOS = new Set(["1:1", "9:16", "16:9"]);
@@ -277,6 +283,8 @@ async function saveImageStudioHistoryEntry(
   imageUrl: string,
   aspectRatio: string,
   model: string,
+  batchId?: string | null,
+  generationRefs?: RequestBody["generationRefs"] | null,
 ): Promise<string | null> {
   const { data, error } = await supabaseAdmin
     .from("history")
@@ -290,6 +298,8 @@ async function saveImageStudioHistoryEntry(
         source: "image_studio",
         aspectRatio,
         imageStudioModel: model,
+        ...(batchId ? { batchId } : {}),
+        ...(generationRefs ? { generationRefs } : {}),
         urls: [imageUrl],
       },
     })
@@ -688,6 +698,27 @@ serve(async (req) => {
       typeof body.referenceImage === "string" && body.referenceImage.trim()
         ? body.referenceImage.trim()
         : null;
+    const batchId =
+      typeof body.batchId === "string" && body.batchId.trim()
+        ? body.batchId.trim()
+        : null;
+    const generationRefs =
+      body.generationRefs && typeof body.generationRefs === "object"
+        ? {
+            avatarUrl:
+              typeof body.generationRefs.avatarUrl === "string"
+                ? body.generationRefs.avatarUrl.trim() || null
+                : null,
+            productUrl:
+              typeof body.generationRefs.productUrl === "string"
+                ? body.generationRefs.productUrl.trim() || null
+                : null,
+            importedRefUrl:
+              typeof body.generationRefs.importedRefUrl === "string"
+                ? body.generationRefs.importedRefUrl.trim() || null
+                : null,
+          }
+        : null;
 
     try {
       const { url, provider } = await assertQuotaAndGenerate(
@@ -718,6 +749,8 @@ serve(async (req) => {
         persistedUrl,
         aspectRatio,
         model,
+        batchId,
+        generationRefs,
       );
 
       const { data: newCount } = await supabaseAdmin.rpc(
