@@ -11,6 +11,7 @@ import {
 } from "@/bibliotheque/supabase/stripe";
 import { useStripePayment, payImage9, payPro59, payPremium129, payVideoPack } from "@/hooks/useStripePayment";
 import ModalCadeauBienvenue from "@/composants/ModalCadeauBienvenue";
+import "./BoutiqueSubCard.css";
 import { CreditCard, Check, Crown, Loader2, CheckCircle, ShoppingBag, ImageIcon, Zap } from "lucide-react";
 
 const CREDIT_PACKAGES = [
@@ -64,13 +65,13 @@ const SUBSCRIPTION_PLANS = [
   {
     id: "pro_59",
     name: "ViralWorks Pro",
-    credits: 0,
+    credits: 10,
     price: 59,
     period: "mois",
     popular: false,
     features: [
       "Image Studio — 200 générations NanaBanana Pro / mois",
-      "Éditions vidéo Seedance — 15 / mois",
+      "Génération vidéo IA complète — 10 / mois",
       "Avatars IA — 5 / mois",
       "Scripts Gagnant inclus",
       "Visuels d'accroche inclus",
@@ -87,7 +88,6 @@ const SUBSCRIPTION_PLANS = [
     features: [
       "Génération vidéo IA complète — 30 / mois",
       "Image Studio — 200 générations NanaBanana Pro / mois",
-      "Éditions vidéo Seedance — 15 / mois",
       "Avatars IA — 5 / mois",
       "Scripts Gagnant inclus",
       "Visuels d'accroche inclus",
@@ -307,55 +307,55 @@ export default function ContenuBoutique({
 
   /** Classes compactes mobile — modal uniquement (page /boutique inchangée). */
   const m = {
-    headerWrap: isModal ? "mb-6 max-md:mb-3" : "mb-8",
-    headerRow: isModal ? "flex items-center gap-3 mb-4 max-md:gap-2 max-md:mb-2 max-md:pr-11" : "flex items-center gap-3 mb-4",
-    headerIcon: isModal ? "w-12 h-12 rounded-xl max-md:w-9 max-md:h-9 max-md:rounded-lg" : "w-12 h-12 rounded-xl",
-    headerIconSvg: isModal ? "w-6 h-6 max-md:w-4 max-md:h-4" : "w-6 h-6",
-    headerTitle: isModal ? "font-bold text-gray-200 text-2xl max-md:text-xl" : "font-bold text-gray-200 text-3xl",
-    headerSubtitle: isModal ? "text-gray-400 text-sm sm:text-base max-md:text-xs" : "text-gray-400 text-sm sm:text-base",
+    headerWrap: isModal ? "mb-3 max-md:mb-2" : "mb-8",
+    headerRow: isModal ? "flex items-center gap-2.5 mb-2 max-md:gap-2 max-md:mb-1.5 max-md:pr-11" : "flex items-center gap-3 mb-4",
+    headerIcon: isModal ? "w-10 h-10 rounded-xl max-md:w-9 max-md:h-9 max-md:rounded-lg" : "w-12 h-12 rounded-xl",
+    headerIconSvg: isModal ? "w-5 h-5 max-md:w-4 max-md:h-4" : "w-6 h-6",
+    headerTitle: isModal ? "font-bold text-gray-200 text-xl max-md:text-lg" : "font-bold text-gray-200 text-3xl",
+    headerSubtitle: isModal ? "text-gray-400 text-sm max-md:text-xs" : "text-gray-400 text-sm sm:text-base",
     statusRow: isModal ? "flex items-center gap-4 flex-wrap max-md:gap-2" : "flex items-center gap-4 flex-wrap",
-    statusBadge: isModal ? "flex items-center gap-2 px-4 py-2 rounded-lg max-md:px-2.5 max-md:py-1 max-md:gap-1.5" : "flex items-center gap-2 px-4 py-2 rounded-lg",
-    statusBadgeIcon: isModal ? "w-5 h-5 max-md:w-4 max-md:h-4" : "w-5 h-5",
-    statusBadgeText: isModal ? "text-sm text-violet-300 max-md:text-xs" : "text-sm text-violet-300",
-    alertBox: isModal ? "mb-6 p-4 rounded-lg flex items-center gap-3 max-md:mb-3 max-md:p-2.5 max-md:gap-2" : "mb-6 p-4 rounded-lg flex items-center gap-3",
+    statusBadge: isModal ? "flex items-center gap-1.5 px-3 py-1.5 rounded-lg max-md:px-2.5 max-md:py-1 max-md:gap-1.5" : "flex items-center gap-2 px-4 py-2 rounded-lg",
+    statusBadgeIcon: isModal ? "w-4 h-4 max-md:w-4 max-md:h-4" : "w-5 h-5",
+    statusBadgeText: isModal ? "text-xs text-violet-300 max-md:text-xs" : "text-sm text-violet-300",
+    alertBox: isModal ? "mb-3 p-3 rounded-lg flex items-center gap-2.5 max-md:mb-2 max-md:p-2.5 max-md:gap-2" : "mb-6 p-4 rounded-lg flex items-center gap-3",
     alertIcon: isModal ? "w-5 h-5 flex-shrink-0 max-md:w-4 max-md:h-4" : "w-5 h-5 flex-shrink-0",
     alertBody: isModal ? "text-emerald-400 text-sm mt-1 max-md:text-xs max-md:mt-0.5" : "text-emerald-400 text-sm mt-1",
-    tabs: isModal ? "mb-8 flex gap-4 border-b border-white/10 max-md:mb-4 max-md:gap-2" : "mb-8 flex gap-4 border-b border-white/10",
-    tabBtn: isModal ? "px-4 py-2 font-medium relative transition-colors max-md:px-3 max-md:py-1.5 max-md:text-sm" : "px-4 py-2 font-medium relative transition-colors",
+    tabs: isModal ? "mb-4 flex gap-3 border-b border-white/10 max-md:mb-3 max-md:gap-2" : "mb-8 flex gap-4 border-b border-white/10",
+    tabBtn: isModal ? "px-3 py-1.5 text-sm font-medium relative transition-colors max-md:px-3 max-md:py-1.5 max-md:text-sm" : "px-4 py-2 font-medium relative transition-colors",
     gridCredits: isModal
-      ? "grid grid-cols-1 items-stretch gap-6 max-md:gap-3 max-md:pt-1 md:grid-cols-3"
+      ? "grid grid-cols-1 items-stretch gap-4 max-md:gap-3 md:grid-cols-3"
       : "grid grid-cols-1 md:grid-cols-3 gap-6",
     gridSubs: isModal
-      ? "grid flex-1 grid-cols-1 items-stretch gap-6 max-md:gap-3 max-md:pt-1 md:grid-cols-3"
-      : "grid grid-cols-1 md:grid-cols-3 gap-6",
+      ? "grid grid-cols-1 items-stretch gap-4 max-md:gap-3 md:grid-cols-3"
+      : "grid grid-cols-1 items-stretch md:grid-cols-3 gap-6",
     creditCard: isModal
-      ? "glass-strong flex flex-col rounded-2xl border p-6 relative transition-all max-md:rounded-xl max-md:p-3.5"
+      ? "glass-strong flex flex-col rounded-2xl border p-4 relative transition-all max-md:rounded-xl max-md:p-3.5"
       : "glass-strong rounded-2xl border p-6 relative transition-all",
     subCard: isModal
-      ? "glass-strong flex h-full flex-col rounded-2xl border p-6 relative transition-all max-md:rounded-xl max-md:p-3.5"
-      : "glass-strong rounded-2xl border p-6 relative transition-all",
-    creditCardBody: isModal ? "text-center mb-6 max-md:mb-3" : "text-center mb-6",
+      ? "boutique-sub-card glass-strong flex h-full flex-col rounded-2xl border relative transition-all max-md:rounded-xl"
+      : "boutique-sub-card glass-strong flex h-full flex-col rounded-2xl border relative transition-all",
+    creditCardBody: isModal ? "text-center mb-4 max-md:mb-3" : "text-center mb-6",
     creditEmoji: isModal ? "text-4xl mb-3 max-md:text-3xl max-md:mb-1.5" : "text-4xl mb-3",
     creditName: isModal ? "text-xl font-bold text-gray-200 mb-1 max-md:text-lg max-md:mb-0.5" : "text-xl font-bold text-gray-200 mb-1",
     creditSubtitle: isModal ? "text-xs text-gray-400 mb-3 max-md:mb-1.5" : "text-xs text-gray-400 mb-3",
     creditPrice: isModal ? "text-2xl font-bold text-emerald-400 mb-1 max-md:text-xl max-md:mb-0.5" : "text-2xl font-bold text-emerald-400 mb-1",
     creditUnit: isModal ? "text-sm text-gray-400 max-md:text-xs" : "text-sm text-gray-400",
-    buyBtn: isModal ? "w-full py-3 rounded-lg font-semibold transition-all max-md:py-2 max-md:text-sm" : "w-full py-3 rounded-lg font-semibold transition-all",
-    subCardBody: isModal ? "text-center mb-6 max-md:mb-3" : "text-center mb-6",
-    subIconWrap: isModal ? "w-16 h-16 mx-auto mb-4 rounded-full max-md:w-11 max-md:h-11 max-md:mb-2" : "w-16 h-16 mx-auto mb-4 rounded-full",
-    subIcon: isModal ? "w-8 h-8 max-md:w-5 max-md:h-5" : "w-8 h-8",
-    subName: isModal ? "text-xl font-bold text-gray-200 mb-2 max-md:text-lg max-md:mb-1" : "text-xl font-bold text-gray-200 mb-2",
+    buyBtn: isModal ? "w-full py-2.5 rounded-lg font-semibold transition-all max-md:py-2 max-md:text-sm" : "w-full py-3 rounded-lg font-semibold transition-all",
+    subCardBody: isModal ? "boutique-sub-card__header text-center mb-3 max-md:mb-2.5" : "boutique-sub-card__header text-center mb-5",
+    subIconWrap: isModal ? "w-12 h-12 mx-auto mb-2.5 rounded-full max-md:w-11 max-md:h-11 max-md:mb-2" : "w-16 h-16 mx-auto mb-4 rounded-full",
+    subIcon: isModal ? "w-6 h-6 max-md:w-5 max-md:h-5" : "w-8 h-8",
+    subName: isModal ? "text-lg font-bold text-gray-200 mb-1 max-md:text-base max-md:mb-0.5" : "text-xl font-bold text-gray-200 mb-2",
     subQuota: isModal ? "mb-2 text-sm text-gray-300 max-md:mb-1 max-md:text-xs" : "mb-2 text-sm text-gray-300",
-    subPrice: isModal ? "text-2xl font-bold text-violet-400 mb-1 max-md:text-xl max-md:mb-0.5" : "text-2xl font-bold text-violet-400 mb-1",
-    subPriceNote: isModal ? "block text-sm font-normal text-gray-400 mt-1 max-md:text-xs max-md:mt-0.5" : "block text-sm font-normal text-gray-400 mt-1",
-    subPriceThen: isModal ? "block text-base font-semibold text-gray-200 mt-2 max-md:text-sm max-md:mt-1" : "block text-base font-semibold text-gray-200 mt-2",
-    subSavings: isModal ? "text-sm text-emerald-400 font-medium mt-2 max-md:text-xs max-md:mt-1" : "text-sm text-emerald-400 font-medium mt-2",
+    subPrice: isModal ? "text-xl font-bold text-violet-400 mb-0.5 max-md:text-lg max-md:mb-0.5" : "text-2xl font-bold text-violet-400 mb-1",
+    subPriceNote: isModal ? "block text-xs font-normal text-gray-400 mt-0.5 max-md:text-xs" : "block text-sm font-normal text-gray-400 mt-1",
+    subPriceThen: isModal ? "block text-sm font-semibold text-gray-200 mt-1 max-md:text-sm max-md:mt-0.5" : "block text-base font-semibold text-gray-200 mt-2",
+    subSavings: isModal ? "text-xs text-emerald-400 font-medium mt-1 max-md:text-xs" : "text-sm text-emerald-400 font-medium mt-2",
     subFeatures: isModal
-      ? "mb-6 flex-1 space-y-2 max-md:mb-3 max-md:space-y-1"
-      : "space-y-2 mb-6",
-    subFeatureItem: isModal ? "flex items-center gap-2 text-sm text-gray-300 max-md:gap-1.5 max-md:text-xs" : "flex items-center gap-2 text-sm text-gray-300",
-    subFeatureCheck: isModal ? "w-4 h-4 text-emerald-400 flex-shrink-0 max-md:w-3.5 max-md:h-3.5" : "w-4 h-4 text-emerald-400 flex-shrink-0",
-    subActions: isModal ? "mt-auto shrink-0 space-y-3 max-md:space-y-2" : "space-y-3",
+      ? "boutique-sub-card__features mb-3 flex-1 space-y-2 max-md:mb-2.5 max-md:space-y-1.5"
+      : "boutique-sub-card__features mb-5 flex-1 space-y-2.5",
+    subFeatureItem: isModal ? "flex items-center gap-1.5 text-xs text-gray-300 max-md:gap-1 max-md:text-[11px]" : "flex items-center gap-2 text-sm text-gray-300",
+    subFeatureCheck: isModal ? "w-3.5 h-3.5 text-emerald-400 flex-shrink-0 max-md:w-3 max-md:h-3" : "w-4 h-4 text-emerald-400 flex-shrink-0",
+    subActions: isModal ? "boutique-sub-card__actions mt-auto shrink-0 space-y-3 max-md:space-y-2" : "boutique-sub-card__actions mt-auto shrink-0 space-y-3",
     subLearnMore: isModal
       ? "w-full py-2 rounded-lg border border-white/15 text-sm text-gray-200 hover:bg-white/5 transition-colors max-md:py-1.5 max-md:text-xs"
       : "w-full py-2 rounded-lg border border-white/15 text-sm text-gray-200 hover:bg-white/5 transition-colors",

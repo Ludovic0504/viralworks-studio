@@ -64,8 +64,8 @@ export async function resolveUserPlan(
   return plan;
 }
 
-export function planAllowsSeedance(plan: UserPlan): boolean {
-  return plan === "pro_59" || plan === "premium_129";
+export function planAllowsSeedance(_plan: UserPlan): boolean {
+  return false;
 }
 
 export function planAllowsAvatar(plan: UserPlan): boolean {

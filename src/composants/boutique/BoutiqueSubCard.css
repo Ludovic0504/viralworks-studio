@@ -1,0 +1,27 @@
+/* Cartes abonnement — padding / espacement interne (même hauteur via grille) */
+
+.boutique-sub-card {
+  padding: 1rem 1.125rem;
+}
+
+.boutique-sub-card__header {
+  margin-bottom: 0.75rem;
+}
+
+.boutique-sub-card__features {
+  margin-bottom: 0.75rem;
+}
+
+@media (min-width: 768px) {
+  .boutique-sub-card {
+    padding: 1.375rem 1.5rem;
+  }
+
+  .boutique-sub-card__header {
+    margin-bottom: 1rem;
+  }
+
+  .boutique-sub-card__features {
+    margin-bottom: 1rem;
+  }
+}

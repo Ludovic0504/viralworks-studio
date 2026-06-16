@@ -331,9 +331,19 @@ serve(async (req) => {
       );
     }
 
-    if (type === "subscription" && (planKey === "image_9" || planKey === "pro_59") && normalizedCredits !== 0) {
+    if (type === "subscription" && planKey === "image_9" && normalizedCredits !== 0) {
       return new Response(
-        JSON.stringify({ error: `Le plan ${planKey} ne doit pas inclure de crédits vidéo` }),
+        JSON.stringify({ error: "Le plan image_9 ne doit pas inclure de crédits vidéo" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    if (type === "subscription" && planKey === "pro_59" && normalizedCredits !== 10) {
+      return new Response(
+        JSON.stringify({ error: "Le plan pro_59 doit inclure 10 crédits vidéo" }),
         {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },

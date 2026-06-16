@@ -21,19 +21,22 @@ function resolveRenewalCreditsFromInvoiceAmount(
   planKey?: string | null,
 ): number {
   const p = (planKey ?? "").trim();
-  if (p === "image_9" || p === "pro_59") return 0;
+  if (p === "image_9") return 0;
+  if (p === "pro_59") return 10;
 
   // Plans actuels:
   // - Mensuel 129€ -> 30 crédits
   // - Annuel 107*12€ -> 360 crédits
   if (amountPaidCents >= 100000) return 360;
   if (amountPaidCents >= 12000) return 30;
+  if (amountPaidCents >= 5000) return 10;
   return 30;
 }
 
 function resolveSubscriptionCreditsFromPlan(plan: string | null | undefined): number {
   const p = (plan ?? "").trim();
-  if (p === "image_9" || p === "pro_59") return 0;
+  if (p === "image_9") return 0;
+  if (p === "pro_59") return 10;
   if (p === "yearly") return 30;
   return 30;
 }
@@ -203,7 +206,7 @@ serve(async (req) => {
       const planKey = (session.metadata?.subscription_plan || "").trim();
       const isZeroCreditSubscription =
         type === "subscription" &&
-        (planKey === "image_9" || planKey === "pro_59");
+        planKey === "image_9";
 
       if (credits <= 0 && !isZeroCreditSubscription) {
         console.error("❌ Nombre de crédits invalide:", credits);
@@ -322,7 +325,11 @@ serve(async (req) => {
           stripe_subscription_id: subscriptionId,
           plan_key: storedPlanKey,
           monthly_credit_amount:
-            storedPlanKey === "image_9" || storedPlanKey === "pro_59" ? 0 : 30,
+            storedPlanKey === "image_9"
+              ? 0
+              : storedPlanKey === "pro_59"
+                ? 10
+                : 30,
           granted_months: storedPlanKey === "yearly" ? 1 : 0,
           updated_at: new Date().toISOString(),
         };

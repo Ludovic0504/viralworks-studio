@@ -25,7 +25,7 @@ export function hasImageStudioPlan(plan: UserPlan): boolean {
 }
 
 export function hasSeedancePlan(plan: UserPlan): boolean {
-  return plan === "pro_59" || plan === "premium_129";
+  return false;
 }
 
 export function hasAvatarPlan(plan: UserPlan): boolean {
@@ -33,7 +33,7 @@ export function hasAvatarPlan(plan: UserPlan): boolean {
 }
 
 export function hasFullVideoPlan(plan: UserPlan): boolean {
-  return plan === "premium_129";
+  return plan === "pro_59" || plan === "premium_129";
 }
 
 export async function fetchPremiumAccess(): Promise<{

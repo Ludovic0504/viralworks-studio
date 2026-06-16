@@ -16,6 +16,6 @@ export const PLAN_QUOTAS: Record<
 > = {
   free: { nbPro: 0, seedance: 0, avatars: 0, fullVideo: 0 },
   image_9: { nbPro: 200, seedance: 0, avatars: 0, fullVideo: 0 },
-  pro_59: { nbPro: 200, seedance: 15, avatars: 5, fullVideo: 0 },
-  premium_129: { nbPro: 200, seedance: 15, avatars: 5, fullVideo: 30 },
+  pro_59: { nbPro: 200, seedance: 0, avatars: 5, fullVideo: 10 },
+  premium_129: { nbPro: 200, seedance: 0, avatars: 5, fullVideo: 30 },
 };

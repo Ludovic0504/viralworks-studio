@@ -63,7 +63,7 @@ export default function ModalBoutique({
 
   return createPortal(
     <div
-      className="boutique-modal-overlay flex bg-black/80 backdrop-blur-sm max-md:flex-col md:items-center md:justify-center md:p-6"
+      className="boutique-modal-overlay flex bg-black/80 backdrop-blur-sm max-md:flex-col md:items-center md:justify-center md:p-3"
       onClick={() => onClose?.()}
       role="presentation"
     >
@@ -77,13 +77,13 @@ export default function ModalBoutique({
         <button
           type="button"
           onClick={() => onClose?.()}
-          className="absolute right-3 top-3 z-20 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-[#0C1116]/95 text-gray-400 transition-colors hover:bg-white/10 hover:text-gray-200 md:right-4 md:top-4"
+          className="absolute right-3 top-2.5 z-20 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-[#0C1116]/95 text-gray-400 transition-colors hover:bg-white/10 hover:text-gray-200 md:right-3.5 md:top-3"
           aria-label="Fermer la boutique"
         >
           <X className="h-5 w-5" />
         </button>
 
-        <div className="boutique-modal-body flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto px-3 pb-3 pt-12 md:overflow-hidden md:px-6 md:pb-8 md:pt-14">
+        <div className="boutique-modal-body flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto px-3 pb-3 pt-9 md:overflow-hidden md:px-5 md:pb-4 md:pt-9">
           <ContenuBoutique
             variant="modal"
             initialSection={section}
