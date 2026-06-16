@@ -5,6 +5,7 @@ import { useAuth } from "@/contexte/FournisseurAuth";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { useBoutiqueModal } from "@/contexte/ContexteModalBoutique";
 import { usePremiumAccess } from "@/hooks/usePremiumAccess";
+import { PROMO_ACQUISITION_IMAGES } from "@/bibliotheque/promo/imagesPromo";
 
 type Variant = "acquisition" | "conversion";
 
@@ -37,12 +38,14 @@ const CONTENT = {
     subtitle:
       "Accède à Nanobanana Pro inclus dans ViralWorks Images — à partir de 9€/mois",
     cta: "Créer mon compte gratuitement",
+    dismiss: "Continuer sur le site",
   },
   conversion: {
     title: "ViralWorks Images est disponible",
     subtitle:
       "Génère des visuels produits illimités avec Nanobanana Pro — 9€/mois",
     cta: "Découvrir l'offre",
+    dismiss: "Plus tard",
   },
 } as const;
 
@@ -120,7 +123,8 @@ export default function PromoImagesModal() {
   if (isResolving || hasAccess || !visible) return null;
   if (typeof document === "undefined") return null;
 
-  const { title, subtitle, cta } = CONTENT[variant];
+  const { title, subtitle, cta, dismiss: dismissLabel } = CONTENT[variant];
+  const isAcquisition = variant === "acquisition";
 
   const handleCta = () => {
     if (variant === "acquisition") {
@@ -141,7 +145,9 @@ export default function PromoImagesModal() {
       role="presentation"
     >
       <div
-        className="relative w-full max-w-[480px] rounded-2xl border border-white/[0.08] bg-[#0d0d0d] p-6 sm:p-8"
+        className={`relative w-full rounded-2xl border border-white/[0.08] bg-[#0d0d0d] p-6 sm:p-8 ${
+          isAcquisition ? "max-w-[520px]" : "max-w-[480px]"
+        }`}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -151,10 +157,29 @@ export default function PromoImagesModal() {
           type="button"
           onClick={() => dismiss(variant)}
           className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-lg text-white/50 transition-colors hover:bg-white/10 hover:text-white"
-          aria-label="Fermer"
+          aria-label="Fermer et continuer sur le site"
         >
           <X className="h-4 w-4" />
         </button>
+
+        {isAcquisition ? (
+          <div className="mb-5 grid grid-cols-3 gap-2">
+            {PROMO_ACQUISITION_IMAGES.map((image) => (
+              <div
+                key={image.src}
+                className="aspect-[3/4] overflow-hidden rounded-lg border border-white/[0.08] bg-black/40"
+              >
+                <img
+                  src={image.src}
+                  alt={image.alt}
+                  className="h-full w-full object-cover"
+                  loading="eager"
+                  decoding="async"
+                />
+              </div>
+            ))}
+          </div>
+        ) : null}
 
         <span className="mb-4 inline-block rounded bg-[#2af598] px-2 py-0.5 text-xs font-semibold text-black">
           Nouveau
@@ -182,7 +207,7 @@ export default function PromoImagesModal() {
             onClick={() => dismiss(variant)}
             className="text-sm text-white/40 transition-colors hover:text-white/60"
           >
-            Plus tard
+            {dismissLabel}
           </button>
         </div>
       </div>

@@ -30,6 +30,7 @@ import { initMetaPixel, trackPageView } from "./bibliotheque/meta/pixel";
 import { initPostHog, trackPostHogPageView } from "./bibliotheque/posthog/client";
 import BannerInstallPWA from "@/composants/BannerInstallPWA";
 import PromoImagesModal from "@/components/PromoImagesModal";
+import PromoImagesBanner from "@/components/PromoImagesBanner";
 
 class RouteErrorBoundary extends Component {
   constructor(props) {
@@ -157,6 +158,7 @@ function RootRouteLayout() {
           <AnalyticsRouteListener />
           <BannerInstallPWA />
           <BoutiqueStripeReturnHandler />
+          <PromoImagesBanner />
           <PromoImagesModal />
           <Outlet />
         </FournisseurCommunauteVWSNotif>

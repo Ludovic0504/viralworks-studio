@@ -35,7 +35,7 @@ function DashboardShell() {
         }`}
       >
         <Header onOpenMenu={() => setMenuOpen(true)} />
-        <div className="flex min-h-0 flex-1 flex-col pt-16 max-md:pt-[calc(4rem+var(--pwa-install-banner-height,0px))]">
+        <div className="flex min-h-0 flex-1 flex-col pt-[calc(4rem+var(--promo-images-banner-height,0px))] max-md:pt-[calc(4rem+var(--promo-images-banner-height,0px)+var(--pwa-install-banner-height,0px))]">
           <SidebarShell
             open={menuOpen}
             onCloseMenu={() => setMenuOpen(false)}
