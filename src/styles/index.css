@@ -1625,12 +1625,18 @@
     color: rgba(255, 255, 255, 0.38);
   }
 
+  .image-studio-preview-use-as-row {
+    display: flex;
+    gap: 0.5rem;
+  }
+
   .image-studio-preview-use-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 0.45rem;
-    width: 100%;
+    flex: 1;
+    min-width: 0;
     border-radius: 0.7rem;
     border: 1px solid rgba(255, 255, 255, 0.12);
     background: rgba(255, 255, 255, 0.05);
@@ -1641,9 +1647,14 @@
     transition: background 0.15s, border-color 0.15s;
   }
 
-  .image-studio-preview-use-btn:hover {
+  .image-studio-preview-use-btn:hover:not(:disabled) {
     background: rgba(255, 255, 255, 0.09);
     border-color: rgba(255, 255, 255, 0.2);
+  }
+
+  .image-studio-preview-use-btn:disabled {
+    cursor: wait;
+    opacity: 0.6;
   }
 
   .image-studio-preview-actions {

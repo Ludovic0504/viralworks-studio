@@ -4,10 +4,12 @@ import {
   Check,
   ChevronLeft,
   Copy,
+  Download,
   ImagePlus,
   Sparkles,
 } from "lucide-react";
 import ImageStudioModelIcon from "@/composants/image/ImageStudioModelIcon";
+import { downloadImageAsPng } from "@/bibliotheque/imageStudio/downloadImagePng";
 import { getGenerationRefsFromHistory } from "@/bibliotheque/imageStudio/imageStudioHistory";
 import { getImageStudioModelLabel } from "@/bibliotheque/imageStudio/imageStudioModels";
 
@@ -24,6 +26,7 @@ export default function ModalImageStudioPreview({
   onUseAsReference,
 }) {
   const [copied, setCopied] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   const promptText = item?.input?.trim() || "";
   const modelId = item?.metadata?.imageStudioModel;
@@ -56,6 +59,20 @@ export default function ModalImageStudioPreview({
       setCopied(false);
     }
   }, [promptText]);
+
+  const handleDownload = useCallback(async () => {
+    if (!imageUrl || downloading) return;
+    setDownloading(true);
+    try {
+      const stamp = new Date().toISOString().slice(0, 10);
+      await downloadImageAsPng(imageUrl, `viralworks-image-${stamp}.png`);
+    } catch (err) {
+      console.error("Téléchargement image:", err);
+      alert("Impossible de télécharger l'image. Réessaie dans un instant.");
+    } finally {
+      setDownloading(false);
+    }
+  }, [imageUrl, downloading]);
 
   if (!open || !imageUrl) return null;
 
@@ -140,14 +157,25 @@ export default function ModalImageStudioPreview({
 
             <div className="image-studio-preview-use-as">
               <p className="image-studio-preview-use-as-label">Utiliser comme</p>
-              <button
-                type="button"
-                className="image-studio-preview-use-btn"
-                onClick={() => onUseAsReference?.(imageUrl)}
-              >
-                <ImagePlus className="h-4 w-4" strokeWidth={2} aria-hidden />
-                Référence
-              </button>
+              <div className="image-studio-preview-use-as-row">
+                <button
+                  type="button"
+                  className="image-studio-preview-use-btn"
+                  onClick={() => onUseAsReference?.(imageUrl)}
+                >
+                  <ImagePlus className="h-4 w-4" strokeWidth={2} aria-hidden />
+                  Référence
+                </button>
+                <button
+                  type="button"
+                  className="image-studio-preview-use-btn"
+                  onClick={() => void handleDownload()}
+                  disabled={downloading}
+                >
+                  <Download className="h-4 w-4" strokeWidth={2} aria-hidden />
+                  {downloading ? "Téléchargement…" : "Télécharger"}
+                </button>
+              </div>
             </div>
 
             <div className="image-studio-preview-actions">
