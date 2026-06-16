@@ -1,5 +1,9 @@
 import { getVwsEnvironmentHint } from "./vwsMetiersConfig";
 import { generateResponse } from "./openai/chatgpt-client";
+import {
+  clampGeneratedPrompt,
+  PROMPT_GEN_MAX_OUTPUT_CHARS,
+} from "./promptGenerationLimits";
 import { getProductHookById, getProductMiseDef } from "./vwsProductCampagneCatalog";
 
 export type Tempo = "real_time" | "timelapse" | "slow_motion";
@@ -1517,62 +1521,222 @@ function extractLieuLineFromCampaignIdea(full: string): string {
   return m?.[1]?.trim() ?? "";
 }
 
-const HOOK_FIRST_INSTANT_DIRECTIVE_FR = [
-  "Consigne « image unique d'accroche » (découpage temporel) :",
-  "Représente uniquement le tout premier instant / le premier plan décrit : la tension initiale, l'échec visible, le problème, la surprise ou l'accroche — pas la résolution, pas la transformation accomplie, pas l'état « après » ni le pay-off final.",
-  "Ne fusionne pas deux moments contradictoires dans une seule image (pas avant+après simultanés sur la même pose). Une seule physique cohérente, figée à T=0.",
-].join(" ");
+const HOOK_FIRST_INSTANT_DIRECTIVE_FR =
+  "Single opening frame only: show the very first instant of the scene — the initial tension, the visible problem, the hook — not the resolution, not the finished state, not the after. Do not merge two contradictory moments into one image. One coherent physics, frozen at T=0.";
 
 const PRODUCT_PRESENTATION_OPENING_DIRECTIVE =
   "Product presentation opening frame: product intact, sealed, not yet opened or used, held or placed naturally. Beginning of the unboxing or presentation, before any action.";
 
-function freezeVideoScriptForHookStill(scene0: string): string {
-  const t = clean(scene0);
-  if (!t) return "";
-  const lines = t
-    .split(/\n/)
-    .map((l) => l.trim())
-    .filter(Boolean);
-  const kept = lines.filter(
-    (line) =>
-      !/^(camera|lighting|tone|important|dialogue)\s*:/i.test(line) &&
-      !/^[\-\*]\s*(camera|pan|zoom|tilt|dolly)\b/i.test(line) &&
-      !/\b(pan|zoom|tilt|dolly|travelling|traveling|handheld|whip\s*pan|cut\s*to)\b/i.test(line)
-  );
-  const core = kept.length ? kept.slice(0, 24).join("\n") : t.slice(0, 2000);
+export type HookImageArchetype = "METIER_PROCESS" | "METIER_FACECAM" | "UGC_PRODUIT";
+
+const HOOK_IMAGE_LLM_SYSTEM_METIER_PROCESS = `You are a trade photography prompt writer for ViralWorks Studio.
+Your only task: translate a French artisan/trade idea into a single 
+English narrative image prompt for GPT-image-2 or Hailuo, 
+max 1500 characters.
+
+ARCHETYPE — TRADE PROCESS (no face visible):
+Hands and tools only. No face, no full body.
+Style: practical trade documentation photography, NOT artistic, 
+NOT cinematic, NOT atmospheric. Think: insurance photo of a 
+plumber at work, not a Magnum Photos essay.
+
+MATERIAL RULES — CRITICAL:
+- Residential plumbing = white PVC plastic fittings, P-trap, 
+  compression nuts, rubber seals. NOT copper, NOT rusty metal 
+  unless the job explicitly mentions old pipes.
+- Describe only materials that realistically match the specific 
+  job described. Do not default to "rusty metal" for plumbing.
+- Name specific objects: P-trap, channel-lock pliers, 
+  absorbent cloth, shutoff valves — whatever fits the actual job.
+
+OUTPUT RULES — READ ALL BEFORE WRITING:
+1. Write a single dense English paragraph. No lists, no headers.
+2. Open with: "Medium close-up, 50mm lens, subjective 
+   first-person viewpoint, " — ALWAYS 50mm, ALWAYS medium 
+   close-up. Never 85mm, never extreme close-up.
+3. If Camera is "subjective": true first-person POV, viewer crouching and looking straight down at their own hands working. Both hands and forearms enter frame from the bottom-left and bottom-right edges simultaneously, camera axis pointing downward at approximately 45 degrees toward the work surface. The viewer cannot see their own face or body — only their two hands and forearms filling the lower half of the frame. GEOMETRIC DESCRIPTION (add after the scene content, not as the opening): "Both forearms enter the frame from the bottom-left and bottom-right corners, angled inward at approximately 30 to 45 degrees toward the center of the frame, converging toward the work object. The forearms are parallel to each other in depth, neither one closer than the other to the camera. The hands meet near the lower-center of the frame directly above the work surface." SHARPNESS RULE: both forearms and hands must be in sharp focus — no motion blur, no depth-of-field blur on the arms. The arms are the closest elements to the viewer and must be razor sharp. Blur is only acceptable on the far background beyond the work object. Any single-hand framing, side-observer view, or blurred arms is a CRITICAL FAILURE of this rule.
+4. Describe in order: hands + specific tools → specific 
+   materials (name them precisely) → environment details → light.
+5. Light: natural daylight from kitchen/room window, 
+   5000-5600K neutral, soft and functional. 
+   NO warm 3200K, NO overhead-only, NO flashlights, 
+   NO dramatic blue tints, NO colored light sources.
+6. End with: "Vertical 9:16 frame, photorealistic, 
+   single frozen instant."
+7. FORBIDDEN: motion verbs, result/finished state.
+8. FORBIDDEN: atmospheric prose — no "faint smell", no 
+   "testament to years", no "suggesting labor", no poetry.
+9. FORBIDDEN: rusty/copper/metal pipes unless explicitly 
+   in the user's idea. Default to modern residential materials.
+10. FORBIDDEN: 85mm, macro lens, extreme close-up.
+11. FORBIDDEN: invented light sources, CGI water effects, 
+    particle spray, dramatic specular highlights.
+12. FORBIDDEN: French words, labels, bullet points.
+13. Max 1500 characters.
+14. ANATOMY AND COHERENCE — CRITICAL: A human has exactly TWO hands and TWO forearms — never more. If the scene shows two hands working, only two hands must be visible in the entire frame. Any third hand, extra arm, or additional limb is a CRITICAL anatomical failure. Hands must have exactly 5 fingers each, natural proportions, no extra joints, no fused fingers, no floating limbs. Tools must be physically coherent with the grip shown — a wrench held correctly, pliers gripping the actual object. Object sizes must be realistic relative to hands (a P-trap is roughly the size of two fists). No impossible angles on wrists or forearms. If anything in the scene would require physically impossible anatomy or object geometry to render, simplify the description instead.`;
+
+const HOOK_IMAGE_LLM_SYSTEM_METIER_FACECAM = `You are a cinematic image prompt writer for ViralWorks Studio.
+Your only task: translate a French professional/expert idea into a single English
+narrative image prompt for Hailuo (image-01), max 1500 characters.
+
+ARCHETYPE — EXPERT TALKING HEAD (face cam, direct eye contact mandatory):
+This is a talking head shot. The professional faces the camera directly and 
+makes eye contact with the lens, as if explaining something to the viewer.
+Style: YouTube expert, educational content creator, professional tutorial.
+NOT an athlete posing. NOT an inspirational gym shot. NOT looking away from camera.
+Shot type: Medium Close-Up or Medium Shot, person centered or slightly off-center.
+Camera feel: handheld reportage, authentic, no studio polish.
+
+OUTPUT RULES — READ ALL BEFORE WRITING:
+1. Write a single dense English paragraph. No lists, no headers, no labels.
+2. Open with: "Medium close-up, 35mm equivalent, [person description] facing 
+   directly into the lens, …"
+3. Describe in order: direct gaze at camera → expression (calm/engaged/confident) 
+   → attire → environment behind → light.
+4. Direct eye contact with camera is MANDATORY. State it explicitly.
+5. Specify light: source, direction, color temperature (Kelvin). 
+   Light must be natural and functional, not dramatic.
+6. End with: "Vertical 9:16 frame, photorealistic, talking head style, 
+   single frozen instant."
+7. FORBIDDEN: looking away from camera, dramatic poses, holding equipment 
+   while looking elsewhere, inspirational athlete framing.
+8. FORBIDDEN: motion verbs (moving, running, completing, transitioning).
+9. FORBIDDEN: cinematic color grading, dramatic rays, golden hour, 
+   movie-style lighting, god rays.
+10. FORBIDDEN: French words, labels, bullet points, brackets.
+11. Max 1500 characters — count before outputting.`;
+
+const HOOK_IMAGE_LLM_SYSTEM_UGC_PRODUIT = `You are a cinematic image prompt writer for ViralWorks Studio.
+Your only task: translate a French UGC/product idea into a single English narrative image prompt for Hailuo (image-01) or GPT-image-2, max 1500 characters.
+ARCHETYPE — UGC PRODUCT (creator + product, authentic smartphone feel): The creator faces the camera holding or presenting the product at T=0. Shot type: MCU (Medium Close-Up), selfie smartphone POV. Lighting: natural, no studio, morning or indoor window light. Camera feel: organic Instagram UGC — handheld slight tilt, not perfectly centered. Visual references: authentic creator content, not commercial advertising.
+OUTPUT RULES — READ ALL BEFORE WRITING:
+1. Write a single dense English paragraph. No lists, no headers, no labels.
+2. Open with: "Medium close-up smartphone selfie POV, …"
+3. Describe in order: creator presence → product held/shown → outfit/setting → light.
+4. Product at T=0: intact, sealed or as received — NOT opened, NOT applied, NOT used.
+5. Specify light: source (window / bathroom light), color temperature (Kelvin).
+6. End with: "Vertical 9:16 frame, photorealistic, authentic UGC quality, single frozen instant."
+7. FORBIDDEN: motion verbs (applying, opening, showing result, using).
+8. FORBIDDEN: any mention of skin improvement, before/after, results.
+9. FORBIDDEN: studio lighting, commercial ad vocabulary, perfect symmetry.
+10. FORBIDDEN: French words, labels, bullet points, brackets.
+11. Max 1500 characters — count before outputting.`;
+
+const HOOK_IMAGE_LLM_SYSTEM_BY_ARCHETYPE: Record<HookImageArchetype, string> = {
+  METIER_PROCESS: HOOK_IMAGE_LLM_SYSTEM_METIER_PROCESS,
+  METIER_FACECAM: HOOK_IMAGE_LLM_SYSTEM_METIER_FACECAM,
+  UGC_PRODUIT: HOOK_IMAGE_LLM_SYSTEM_UGC_PRODUIT,
+};
+
+export function resolveHookImageArchetype(
+  stagingChip: string | null | undefined,
+  isProductMode: boolean
+): HookImageArchetype {
+  const staging = String(stagingChip || "").trim();
+  if (isProductMode) {
+    if (staging === "facecam" || staging === "mains_produit" || staging === "plan_large") {
+      return "UGC_PRODUIT";
+    }
+    return "UGC_PRODUIT";
+  }
+  if (staging === "facecam") return "METIER_FACECAM";
+  return "METIER_PROCESS";
+}
+
+export function resolveHookImageHookLabel(hookId: string | null | undefined): string {
+  const hook = hookId ? getProductHookById(hookId) : undefined;
+  return hook?.name?.trim() || "none";
+}
+
+export function cleanHookImageCoreIdea(raw: string): string {
+  return stripMetierSceneFormLabels(normalizeProductCampaignIdeaForHook(clean(raw)));
+}
+
+export type HookImageLlmTranslationInput = {
+  archetype: HookImageArchetype;
+  job: string;
+  coreIdea: string;
+  hookLabel: string;
+  staging: string;
+  camera: string;
+  hasAvatarReference: boolean;
+  hasProductReference: boolean;
+};
+
+export function buildHookImageLlmUserPayload(input: HookImageLlmTranslationInput): string {
   return [
-    "LOCKED_VIDEO_SCRIPT_T0 (static still, match opening continuity of this 8s brief; do not contradict materials/environment):",
-    core,
-    "Temporal scissors: single instant T=0 only; no motion verbs, no time progression, no camera moves.",
+    `archetype: ${input.archetype}`,
+    `job: ${input.job || "none"}`,
+    `core_idea: ${input.coreIdea}`,
+    `hook_label: ${input.hookLabel}`,
+    `staging: ${input.staging}`,
+    `camera: ${input.camera}`,
+    `has_avatar_reference: ${input.hasAvatarReference}`,
+    `has_product_reference: ${input.hasProductReference}`,
   ].join("\n");
 }
 
-/**
- * Prompt réellement envoyé au modèle image (visuel d’accroche).
- * Le champ UI reste l’« idée principale » seule ; ces contraintes sont ajoutées en interne.
- */
+export async function translateHookImageNarrativeWithLlm(
+  input: HookImageLlmTranslationInput
+): Promise<string> {
+  const coreIdea = clean(input.coreIdea);
+  if (!coreIdea) return "";
+  const system = HOOK_IMAGE_LLM_SYSTEM_BY_ARCHETYPE[input.archetype];
+  const payload = buildHookImageLlmUserPayload({ ...input, coreIdea });
+  const raw = await generateResponse(payload, system, {
+    model: "gpt-4o",
+    temperature: 0,
+    max_tokens: 600,
+  });
+  return clampGeneratedPrompt(String(raw || "").trim(), PROMPT_GEN_MAX_OUTPUT_CHARS);
+}
+
+export type BuildHookImageApiPromptOptions = {
+  revealMode: boolean;
+  initialStateMode?: "from_nothing" | "partially_built" | null;
+  jobTypeLabel?: string;
+  cameraAerialAngle?: "top_down" | "angled" | null;
+  cameraViewAngle?: "subjective_portree" | "exterieure_filmee" | null;
+  globalIntent?: GlobalIntentProfile | null;
+  selfieMode?: boolean;
+  cameraFixed?: boolean;
+  openingHookStill?: boolean;
+  hookId?: string;
+  stagingIds?: string[];
+  narrativeCoreOverride?: string;
+  translateNarrativeWithLlm?: boolean;
+  isProductMode?: boolean;
+  hasAvatarReference?: boolean;
+  hasProductReference?: boolean;
+  coreIdeaForTranslation?: string;
+};
+
 export function buildHookImageApiPrompt(
   userIdea: string,
-  options: {
-    revealMode: boolean;
-    initialStateMode?: "from_nothing" | "partially_built" | null;
-    jobTypeLabel?: string;
-    lockedVideoScriptScene0?: string;
-    cameraAerialAngle?: "top_down" | "angled" | null;
-    cameraViewAngle?: "subjective_portee" | "exterieure_filmee" | null;
-    globalIntent?: GlobalIntentProfile | null;
-    selfieMode?: boolean;
-    cameraFixed?: boolean;
-    /** Image 1 accroche : premier instant, sans laisser `show_finished_result` désactiver l’état initial. */
-    openingHookStill?: boolean;
-    hookId?: string;
-    stagingIds?: string[];
-  }
+  options: BuildHookImageApiPromptOptions
 ): string {
   const antiDistortionBlock =
-    "Contraintes absolues : aucune distorsion anatomique sur les humains, les membres et le corps doivent respecter des proportions et positions physiquement possibles. Si une personne est sous ou près d'un véhicule/objet, sa posture doit être réaliste et cohérente avec l'espace disponible (allongée sur le dos, accroupie, penchée selon le contexte). Aucun objet ne doit avoir une taille ou une position physiquement impossible par rapport aux autres éléments de la scène. Pas de membres supplémentaires, pas de doigts mal formés, pas de visage déformé.";
+    "Absolute constraints: no anatomical distortion on humans, limbs and body must respect physically possible proportions and positions. If a person is near or under an object, their posture must be realistic and coherent with available space. No extra limbs, no malformed fingers, no distorted face, no object with impossible size or position relative to other scene elements.";
+  const narrativeOverride = options.narrativeCoreOverride?.trim() || "";
+  if (narrativeOverride) {
+    const refLines: string[] = [];
+    if (options.hasAvatarReference === true) {
+      refLines.push(
+        "Use the person from the reference image as the exact character in this scene. Match their face, hair, and appearance precisely."
+      );
+    }
+    if (options.hasProductReference === true) {
+      refLines.push(
+        "Reproduce exactly the same product as shown in the reference image — identical packaging, same colors, same label, same shape."
+      );
+    }
+    const refPrefix = refLines.join("\n\n");
+    const prompt = `${refPrefix ? `${refPrefix}\n\n` : ""}${narrativeOverride}\n\n${HOOK_FIRST_INSTANT_DIRECTIVE_FR}\n\n${antiDistortionBlock}`;
+    return prompt;
+  }
+
   const idea = stripMetierSceneFormLabels(normalizeProductCampaignIdeaForHook(clean(userIdea)));
-  if (!idea) return idea;
+  if (!idea && !narrativeOverride) return idea;
   const lower = idea.toLowerCase();
   const openingHookStill = options.openingHookStill === true;
   // "vlog" retiré — déclenche le bloc selfie sur des cas terrain non pertinents
@@ -1635,7 +1799,7 @@ export function buildHookImageApiPrompt(
       : forceInitialStateViewByRules;
 
   let narrativeBody = idea;
-  if (openingHookStill) {
+  if (!narrativeOverride && openingHookStill) {
     const isProductBrief = PRODUCT_DECOR_LINE_RE.test(idea);
     if (isProductBrief) {
       narrativeBody = idea;
@@ -1653,8 +1817,9 @@ export function buildHookImageApiPrompt(
     }
   }
 
-  const baseIdea =
-    options.initialStateMode === "from_nothing" || explicitEmptyStart
+  const baseIdea = narrativeOverride
+    ? narrativeOverride
+    : options.initialStateMode === "from_nothing" || explicitEmptyStart
       ? `Ultra-realistic initial state scene ${inferEnvironment()}, with ${inferOpenSpace()}, natural composition, coherent details, and no visual clutter.${
           openingHookStill
             ? `\n\nContexte narratif (extrait accroche, premier instant uniquement) :\n${narrativeBody}`
@@ -1663,7 +1828,9 @@ export function buildHookImageApiPrompt(
       : narrativeBody;
 
   let assembled: string;
-  if (!forceInitialStateView) {
+  if (narrativeOverride) {
+    assembled = narrativeOverride;
+  } else if (!forceInitialStateView) {
     assembled = baseIdea;
     if (stagingIsPresentation) {
       assembled = `${assembled}\n\n${PRODUCT_PRESENTATION_OPENING_DIRECTIVE}`;
@@ -1679,12 +1846,8 @@ export function buildHookImageApiPrompt(
     assembled = `${baseIdea}\n\n${beforeOnly}`;
   }
 
-  if (cameraViewAngleDirective && !enforceSelfiePov) {
+  if (!narrativeOverride && cameraViewAngleDirective && !enforceSelfiePov) {
     assembled = `${cameraViewAngleDirective}\n\n${assembled}`;
-  }
-
-  if (options.lockedVideoScriptScene0?.trim()) {
-    assembled += `\n\n${freezeVideoScriptForHookStill(options.lockedVideoScriptScene0)}`;
   }
 
   if (enforceSelfiePov) {
@@ -1751,6 +1914,61 @@ export function buildHookImageApiPrompt(
   const lines = String(userIdea ?? "").split("\n");
   console.log("[buildHookImageApiPrompt] lines containing box:", lines.filter((l) => l.includes("box")));
   return prompt;
+}
+
+export async function buildHookImageApiPromptAsync(
+  userIdea: string,
+  options: BuildHookImageApiPromptOptions
+): Promise<{ prompt: string; narrativeCoreOverride?: string }> {
+  if (!options.translateNarrativeWithLlm) {
+    return { prompt: buildHookImageApiPrompt(userIdea, options) };
+  }
+
+  const stagingChip = options.stagingIds?.[0];
+  const isProductMode = options.isProductMode === true;
+  const coreIdea =
+    options.coreIdeaForTranslation?.trim() ||
+    cleanHookImageCoreIdea(userIdea);
+
+  let narrativeCoreOverride: string | undefined;
+  if (coreIdea) {
+    try {
+      console.log("[VWS-AICU-1] calling LLM translate, input:", {
+        archetype: resolveHookImageArchetype(stagingChip, isProductMode),
+        job: options.jobTypeLabel?.trim() || "none",
+        ideaFr: userIdea.slice(0, 100),
+      });
+      const translated = await translateHookImageNarrativeWithLlm({
+        archetype: resolveHookImageArchetype(stagingChip, isProductMode),
+        job: options.jobTypeLabel?.trim() || "none",
+        coreIdea,
+        hookLabel: resolveHookImageHookLabel(options.hookId),
+        staging: stagingChip?.trim() || "none",
+        camera: options.cameraViewAngle?.trim() || "none",
+        hasAvatarReference: options.hasAvatarReference === true,
+        hasProductReference: options.hasProductReference === true,
+      });
+      if (translated.trim()) {
+        narrativeCoreOverride = translated;
+      }
+      console.log("[VWS-AICU-2] LLM result:", narrativeCoreOverride);
+    } catch (error) {
+      console.warn(
+        "[buildHookImageApiPromptAsync] LLM narrative translation failed, using sync fallback",
+        error
+      );
+    }
+  }
+
+  console.log(
+    "[VWS-AICU-3] narrativeCoreOverride passed to builder:",
+    narrativeCoreOverride ? narrativeCoreOverride.slice(0, 80) : "NULL/EMPTY"
+  );
+  const prompt = buildHookImageApiPrompt(userIdea, {
+    ...options,
+    narrativeCoreOverride,
+  });
+  return { prompt, narrativeCoreOverride };
 }
 
 export async function clarifyIdea(input: ClarifyIdeaInput): Promise<ClarifyIdeaResult> {

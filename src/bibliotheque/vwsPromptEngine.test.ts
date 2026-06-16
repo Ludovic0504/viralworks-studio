@@ -102,7 +102,7 @@ describe("buildHookImageApiPrompt — openingHookStill vs show_finished_result",
       openingHookStill: true,
     });
     expect(p).toContain("Contrainte visuelle (image d'accroche de départ)");
-    expect(p).toContain("Consigne « image unique d'accroche »");
+    expect(p).toContain("Single opening frame only");
     expect(p).toContain("Contexte narratif (extrait accroche, premier instant uniquement)");
   });
 
@@ -115,7 +115,7 @@ describe("buildHookImageApiPrompt — openingHookStill vs show_finished_result",
       openingHookStill: false,
     });
     expect(p).not.toContain("Contrainte visuelle (image d'accroche de départ)");
-    expect(p).not.toContain("Consigne « image unique d'accroche »");
+    expect(p).not.toContain("Single opening frame only");
   });
 
   it("Image 1 sans from_nothing : avant/après déclenche quand même l’état initial si openingHookStill true", () => {
@@ -127,7 +127,7 @@ describe("buildHookImageApiPrompt — openingHookStill vs show_finished_result",
       openingHookStill: true,
     });
     expect(p).toContain("Contrainte visuelle (image d'accroche de départ)");
-    expect(p).toContain("Consigne « image unique d'accroche »");
+    expect(p).toContain("Single opening frame only");
   });
 
   it("brief produit triplé : le prompt final ne répète pas Décor / Hook", () => {

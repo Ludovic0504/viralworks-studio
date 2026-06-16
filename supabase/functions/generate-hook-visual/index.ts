@@ -16,6 +16,7 @@ const PRODUCT_REF_PROMPT_LINE =
 
 type RequestBody = {
   prompt: string;
+  provider?: Provider;
   hookId: string | null;
   stagingIds: string[];
   aspectRatio: string; // "16:9" | "9:16" | "1:1" — vient du champ "ratio" côté UI
@@ -473,13 +474,15 @@ serve(async (req) => {
     if (!prompt) return jsonResponse({ error: "Le prompt est requis et doit être une chaîne non vide." }, 400);
 
     const provider: Provider =
-      productReference && hookId
-        ? "gpt-image-2"
-        : productReference || subjectReferences.length > 0
-          ? "hailuo"
-          : hookId
-            ? "gpt-image-2"
-            : "hailuo";
+      body.provider === "gpt-image-2" || body.provider === "hailuo"
+        ? body.provider
+        : productReference && hookId
+          ? "gpt-image-2"
+          : productReference || subjectReferences.length > 0
+            ? "hailuo"
+            : hookId
+              ? "gpt-image-2"
+              : "hailuo";
 
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },

@@ -32,7 +32,8 @@ import {
   modifyImageWithNanoBanana,
   IMAGE_EDIT_BUSY_MESSAGE,
 } from "@/bibliotheque/nanobanana/modifyImage";
-import { buildHookImageApiPrompt } from "@/bibliotheque/vwsPromptEngine";
+import { buildHookImageApiPrompt, buildHookImageApiPromptAsync, cleanHookImageCoreIdea } from "@/bibliotheque/vwsPromptEngine";
+import { getImageStudioModelLogo } from "@/bibliotheque/imageStudio/imageStudioModels";
 import { getFormatById } from "@/bibliotheque/vwsVideoFormatsCatalog";
 import {
   Sparkles,
@@ -468,6 +469,7 @@ export default function ImagePage({
   writeHookVisualSpecRef.current = writeHookVisualSpec;
 
   const [model] = useState("Image-01");
+  const [imageProvider, setImageProvider] = useState("hailuo");
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState("");
@@ -749,7 +751,6 @@ export default function ImagePage({
           revealMode: canonicalSpec.rendering.camera.reveal_mode === true,
           initialStateMode: null,
           jobTypeLabel: canonicalSpec.campaign.profession || "",
-          lockedVideoScriptScene0: undefined,
           cameraAerialAngle: canonicalSpec.campaign.clarification.camera_aerial_angle,
           cameraViewAngle: canonicalSpec.campaign.clarification.camera_view_angle,
           globalIntent: getSafeIntentProfile(canonicalSpec),
@@ -1280,53 +1281,81 @@ export default function ImagePage({
         clarifyMode: canonicalSpec.campaign.clarification.mode,
       });
 
-      const baseImage1Prompt = buildHookImageApiPrompt(
-        [
+      const hookSubjectRefs = buildHookSubjectReferences({
+        isProductMode,
+        avatarRefDataUrl: productAvatarRefUrl,
+        productRefDataUrl: productProductRefUrl,
+        refCharDataUrl,
+      });
+      const subjectReferences = hookSubjectRefs.subjectReferences;
+      const productReference = hookSubjectRefs.productReference ?? null;
+
+      const hookImageUserIdea = [
+        String(canonicalSpec.creative.hook_visual.prompt_text || "").trim() ||
+          String(canonicalSpec.campaign.core_idea || "").trim(),
+        canonicalSpec.campaign.profession
+          ? `Métier: ${canonicalSpec.campaign.profession}`
+          : "",
+        canonicalSpec.campaign.style_details
+          ? `Style: ${canonicalSpec.campaign.style_details}`
+          : "",
+        canonicalSpec.campaign.video_format_id === "produit_unboxing" &&
+        canonicalSpec.campaign.packaging_box_appearance
+          ? `Product box appearance: ${canonicalSpec.campaign.packaging_box_appearance}`
+          : "",
+        clarificationModeToImagePromptLine(
+          canonicalSpec.campaign.clarification.mode,
+          hookStagingId
+        ),
+        canonicalSpec.campaign.clarification.last_user_freeform_answer
+          ? `Précision utilisateur: ${canonicalSpec.campaign.clarification.last_user_freeform_answer}`
+          : "",
+        canonicalSpec.campaign.clarification.camera_aerial_angle
+          ? `Aerial angle: ${canonicalSpec.campaign.clarification.camera_aerial_angle}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      const hookImagePromptOptions = {
+        revealMode: canonicalSpec.rendering.camera.reveal_mode === true,
+        initialStateMode:
+          canonicalSpec.campaign.clarification.initial_state === "from_nothing"
+            ? "from_nothing"
+            : null,
+        jobTypeLabel: canonicalSpec.campaign.profession || "",
+        cameraAerialAngle: canonicalSpec.campaign.clarification.camera_aerial_angle,
+        cameraViewAngle: canonicalSpec.campaign.clarification.camera_view_angle,
+        globalIntent: getSafeIntentProfile(canonicalSpec),
+        selfieMode: canonicalSpec.rendering.camera.selfie_mode === true,
+        cameraFixed: canonicalSpec.rendering.camera.fixed === true,
+        openingHookStill: true,
+        hookId: canonicalSpec.campaign.product_opening_hook_id,
+        stagingIds: hookStagingId ? [hookStagingId] : canonicalSpec.campaign.staging_chips,
+        translateNarrativeWithLlm: true,
+        isProductMode,
+        hasAvatarReference:
+          Array.isArray(subjectReferences) && subjectReferences.length > 0,
+        hasProductReference: Boolean(productReference),
+        coreIdeaForTranslation: cleanHookImageCoreIdea(
           String(canonicalSpec.creative.hook_visual.prompt_text || "").trim() ||
-            String(canonicalSpec.campaign.core_idea || "").trim(),
-          canonicalSpec.campaign.profession
-            ? `Métier: ${canonicalSpec.campaign.profession}`
-            : "",
-          canonicalSpec.campaign.style_details
-            ? `Style: ${canonicalSpec.campaign.style_details}`
-            : "",
-          canonicalSpec.campaign.video_format_id === "produit_unboxing" &&
-          canonicalSpec.campaign.packaging_box_appearance
-            ? `Product box appearance: ${canonicalSpec.campaign.packaging_box_appearance}`
-            : "",
-          clarificationModeToImagePromptLine(
-            canonicalSpec.campaign.clarification.mode,
-            hookStagingId
-          ),
-          canonicalSpec.campaign.clarification.last_user_freeform_answer
-            ? `Précision utilisateur: ${canonicalSpec.campaign.clarification.last_user_freeform_answer}`
-            : "",
-          canonicalSpec.campaign.clarification.camera_aerial_angle
-            ? `Aerial angle: ${canonicalSpec.campaign.clarification.camera_aerial_angle}`
-            : "",
-        ]
-          .filter(Boolean)
-          .join("\n"),
-        {
-          revealMode: canonicalSpec.rendering.camera.reveal_mode === true,
-          initialStateMode:
-            canonicalSpec.campaign.clarification.initial_state === "from_nothing"
-              ? "from_nothing"
-              : null,
-          jobTypeLabel: canonicalSpec.campaign.profession || "",
-          lockedVideoScriptScene0:
-            String(getSafeScenes(canonicalSpec)[0]?.script_text || "").trim() || undefined,
-          cameraAerialAngle: canonicalSpec.campaign.clarification.camera_aerial_angle,
-          cameraViewAngle: canonicalSpec.campaign.clarification.camera_view_angle,
-          // Guard: fallback neutre si intent profile absent/incomplet.
-          globalIntent: getSafeIntentProfile(canonicalSpec),
-          selfieMode: canonicalSpec.rendering.camera.selfie_mode === true,
-          cameraFixed: canonicalSpec.rendering.camera.fixed === true,
-          openingHookStill: true,
-          hookId: canonicalSpec.campaign.product_opening_hook_id,
-          stagingIds: hookStagingId ? [hookStagingId] : canonicalSpec.campaign.staging_chips,
-        }
+            String(canonicalSpec.campaign.core_idea || "").trim()
+        ),
+      };
+
+      setProgress(25);
+      setProgressMessage("Traduction du prompt image (IA)...");
+
+      console.log("[VWS-OVERRIDE-CHECK] before async", hookImagePromptOptions.narrativeCoreOverride ?? null);
+
+      const { prompt: baseImage1Prompt, narrativeCoreOverride } = await buildHookImageApiPromptAsync(
+        hookImageUserIdea,
+        hookImagePromptOptions
       );
+
+      console.log("[VWS-BASE-PROMPT] baseImage1Prompt:", baseImage1Prompt?.slice(0, 150));
+
+      console.log("[VWS-OVERRIDE-CHECK] after async", narrativeCoreOverride ?? null);
       const refPromptPrefix = buildProductRefPromptPrefix({
         isProductMode,
         avatarRefDataUrl: productAvatarRefUrl,
@@ -1338,17 +1367,11 @@ export default function ImagePage({
 
       patchImageStep({ prompt: image1Prompt });
 
-      const hookSubjectRefs = buildHookSubjectReferences({
-        isProductMode,
-        avatarRefDataUrl: productAvatarRefUrl,
-        productRefDataUrl: productProductRefUrl,
-        refCharDataUrl,
-      });
-      const subjectReferences = hookSubjectRefs.subjectReferences;
-      const productReference = hookSubjectRefs.productReference ?? null;
+      console.log("[VWS-PROVIDER-CHECK] imageProvider at send time:", imageProvider);
 
       const image1RequestBody = {
         prompt: image1Prompt,
+        provider: imageProvider,
         hookId: canonicalSpec.campaign.product_opening_hook_id,
         stagingIds: hookStagingId ? [hookStagingId] : canonicalSpec.campaign.staging_chips,
         aspectRatio: ratio,
@@ -1407,6 +1430,8 @@ export default function ImagePage({
 
       setProgress(40);
       setProgressMessage("Génération des images en cours...");
+
+      console.log("[VWS-HOOK-PROMPT]", image1Prompt);
 
       const callGenerateHookVisualOnce = async () => {
         const response = await fetch(functionUrl, {
@@ -1946,8 +1971,6 @@ export default function ImagePage({
         initialStateMode:
           canonicalSpec.campaign.clarification.initial_state === "from_nothing" ? "from_nothing" : null,
         jobTypeLabel: canonicalSpec.campaign.profession || "",
-        lockedVideoScriptScene0:
-          String(getSafeScenes(canonicalSpec)[0]?.script_text || "").trim() || undefined,
         cameraAerialAngle: canonicalSpec.campaign.clarification.camera_aerial_angle,
         cameraViewAngle: canonicalSpec.campaign.clarification.camera_view_angle,
         globalIntent: getSafeIntentProfile(canonicalSpec),
@@ -2001,7 +2024,6 @@ export default function ImagePage({
           revealMode: canonicalSpec.rendering.camera.reveal_mode === true,
           initialStateMode: null,
           jobTypeLabel: canonicalSpec.campaign.profession || "",
-          lockedVideoScriptScene0: undefined,
           cameraAerialAngle: canonicalSpec.campaign.clarification.camera_aerial_angle,
           cameraViewAngle: canonicalSpec.campaign.clarification.camera_view_angle,
           globalIntent: getSafeIntentProfile(canonicalSpec),
@@ -2470,6 +2492,35 @@ export default function ImagePage({
               ))}
             </select>
           </div>
+          <div className="col-span-2 min-w-0">
+            <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+              Modèle
+            </span>
+            <div className="inline-flex w-full rounded-xl border border-white/10 bg-[#0d0d0d] p-1 gap-0.5">
+              {[
+                { id: "hailuo", label: "Hailuo", logoId: "hailuo" },
+                { id: "gpt-image-2", label: "GPT Image 2.0", logoId: "gpt_image_2" },
+              ].map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setImageProvider(opt.id)}
+                  className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium transition-all ${
+                    imageProvider === opt.id
+                      ? "bg-[#2af598]/15 text-[#2af598] border border-[#2af598]/40"
+                      : "text-gray-400 hover:text-gray-200 border border-transparent"
+                  }`}
+                >
+                  <img
+                    src={getImageStudioModelLogo(opt.logoId)}
+                    alt=""
+                    className="h-4 w-4 rounded object-cover"
+                  />
+                  <span>{opt.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       ) : null}
       <div
@@ -2511,6 +2562,33 @@ export default function ImagePage({
                 }`}
               >
                 {n}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-col items-center gap-1.5 sm:items-end sm:ml-auto">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Modèle</span>
+          <div className="inline-flex rounded-xl border border-white/10 bg-[#0d0d0d] p-1 gap-0.5">
+            {[
+              { id: "hailuo", label: "Hailuo", logoId: "hailuo" },
+              { id: "gpt-image-2", label: "GPT Image 2.0", logoId: "gpt_image_2" },
+            ].map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => setImageProvider(opt.id)}
+                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all ${
+                  imageProvider === opt.id
+                    ? "bg-[#2af598]/15 text-[#2af598] border border-[#2af598]/40"
+                    : "text-gray-400 hover:text-gray-200 border border-transparent"
+                }`}
+              >
+                <img
+                  src={getImageStudioModelLogo(opt.logoId)}
+                  alt=""
+                  className="h-4 w-4 rounded object-cover"
+                />
+                <span className="hidden sm:inline">{opt.label}</span>
               </button>
             ))}
           </div>
