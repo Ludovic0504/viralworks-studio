@@ -125,9 +125,10 @@ export default function Accueil() {
 
       <div className="relative z-[1] flex h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
         <section className="relative flex min-h-0 w-full min-w-0 flex-1 flex-col items-center overflow-hidden max-md:pt-[calc(var(--promo-images-banner-height,0px)+0.5rem)] max-md:justify-start md:justify-center md:pt-[var(--promo-images-banner-height,0px)]">
-          <div className="relative z-10 mx-auto flex h-full min-h-0 w-full min-w-0 max-w-[1100px] flex-col items-center max-md:justify-start md:justify-center gap-2 px-6 sm:px-8 max-md:gap-0 md:gap-3 md:px-12 xl:px-16">
-            <div className="flex w-full min-w-0 max-md:flex-none flex-col items-center gap-0 max-md:pt-1 md:min-h-0 md:flex-1 md:flex-row md:items-center md:gap-10 md:py-2">
-              <div className="w-full min-w-0 max-md:flex-none text-left max-[580px]:text-center md:flex-[1.1] md:pr-2 xl:pr-6">
+          <div className="relative z-10 mx-auto flex h-full min-h-0 w-full min-w-0 max-w-[1100px] flex-col items-center max-md:min-h-0 max-md:flex-1 max-md:justify-start md:justify-center gap-2 px-6 sm:px-8 max-md:gap-0 md:gap-3 md:px-12 xl:px-16">
+            <div className="flex w-full min-w-0 flex-col items-center gap-0 max-md:grid max-md:min-h-0 max-md:flex-1 max-md:grid-cols-1 max-md:grid-rows-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(12px,0.22fr)] max-md:pt-1 md:min-h-0 md:flex-1 md:flex-row md:items-center md:gap-10 md:py-2">
+              <div className="max-md:row-start-1 md:hidden" aria-hidden />
+              <div className="w-full min-w-0 shrink-0 text-left max-md:row-start-2 max-[580px]:text-center md:flex-[1.1] md:pr-2 xl:pr-6">
                 <div className="accueil-fade-up accueil-fade-up-d1 mb-2 inline-flex max-md:mb-1.5 max-[580px]:mx-auto max-[580px]:w-full max-[580px]:justify-center md:mb-3">
                   <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5">
                     <span className="accueil-badge-dot h-1.5 w-1.5 shrink-0 rounded-full bg-[#34d399]" />
@@ -191,9 +192,9 @@ export default function Accueil() {
                   </span>
                 </div>
               </div>
-
+              <div className="max-md:row-start-3 md:hidden" aria-hidden />
               <div
-                className="accueil-fade-up accueil-fade-up-d5 flex w-full min-h-0 min-w-0 max-md:-mt-10 max-md:flex-none max-md:items-center max-md:justify-start max-md:py-0 max-md:overflow-hidden md:mt-0 md:flex-1 md:items-center md:justify-end"
+                className="accueil-fade-up accueil-fade-up-d5 flex w-full min-h-0 min-w-0 max-md:row-start-4 max-md:-mt-10 max-md:shrink-0 max-md:items-center max-md:justify-start max-md:py-0 max-md:overflow-hidden md:mt-0 md:flex-1 md:items-center md:justify-end"
                 onContextMenu={blockMediaSave}
               >
                 <div className="relative mx-auto aspect-[260/340] max-md:h-[clamp(280px,min(50lvh,520px),560px)] w-auto max-w-full shrink-0 overflow-hidden md:h-[clamp(200px,min(34dvh,38vh),440px)] md:max-w-[min(96vw,400px)] md:overflow-visible">
@@ -232,6 +233,7 @@ export default function Accueil() {
                   ) : null}
                 </div>
               </div>
+              <div className="max-md:row-start-5 md:hidden" aria-hidden />
             </div>
           </div>
         </section>
