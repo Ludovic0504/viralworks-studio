@@ -15,16 +15,30 @@ function DashboardShell() {
 
   const isAccueilPage = location.pathname === "/";
 
+  const shellLayoutClass = isAccueilPage
+    ? "h-dvh overflow-hidden"
+    : isAvatarStudioPage
+      ? "min-h-dvh max-lg:overflow-y-auto lg:h-dvh lg:overflow-hidden"
+      : "min-h-dvh";
+
   const mainShellTopPadding = isAccueilPage
     ? "max-md:pt-[calc(4rem+var(--pwa-install-banner-height,0px))] md:pt-16"
     : "pt-[calc(4rem+var(--promo-images-banner-height,0px))] max-md:pt-[calc(4rem+var(--promo-images-banner-height,0px)+var(--pwa-install-banner-height,0px))]";
 
+  const sidebarMainClassName = isAccueilPage
+    ? "flex min-h-0 flex-1 flex-col overflow-hidden"
+    : isAvatarStudioPage
+      ? "min-h-0 max-lg:overflow-y-auto lg:overflow-hidden"
+      : "overflow-y-auto";
+
   const main = (
     <div
       className={`flex flex-col ${
-        isAvatarStudioPage
-          ? "max-lg:flex-none max-lg:min-h-0 lg:min-h-0 lg:flex-1"
-          : "min-h-0 flex-1"
+        isAccueilPage
+          ? "min-h-0 flex-1 overflow-hidden"
+          : isAvatarStudioPage
+            ? "max-lg:flex-none max-lg:min-h-0 lg:min-h-0 lg:flex-1"
+            : "min-h-0 flex-1"
       }`}
     >
       <Outlet />
@@ -34,22 +48,14 @@ function DashboardShell() {
   return (
     <>
       <div
-        className={`flex flex-col bg-gradient-to-br from-[#050810] via-[#0C1116] to-[#080b10] text-white relative ${
-          isAvatarStudioPage
-            ? "min-h-dvh max-lg:overflow-y-auto lg:h-dvh lg:overflow-hidden"
-            : "min-h-dvh"
-        }`}
+        className={`flex flex-col bg-gradient-to-br from-[#050810] via-[#0C1116] to-[#080b10] text-white relative ${shellLayoutClass}`}
       >
         <Header onOpenMenu={() => setMenuOpen(true)} />
         <div className={`flex min-h-0 flex-1 flex-col ${mainShellTopPadding}`}>
           <SidebarShell
             open={menuOpen}
             onCloseMenu={() => setMenuOpen(false)}
-            mainClassName={
-              isAvatarStudioPage
-                ? "min-h-0 max-lg:overflow-y-auto lg:overflow-hidden"
-                : "overflow-y-auto"
-            }
+            mainClassName={sidebarMainClassName}
           >
             <div
               className={`flex flex-col ${
@@ -62,7 +68,7 @@ function DashboardShell() {
             </div>
           </SidebarShell>
         </div>
-        <Footer />
+        <Footer compact={isAccueilPage} />
       </div>
     </>
   );

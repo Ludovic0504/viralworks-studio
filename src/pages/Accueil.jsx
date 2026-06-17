@@ -1,4 +1,4 @@
-import { useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { ArrowRight } from "lucide-react";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
@@ -83,8 +83,21 @@ export default function Accueil() {
   const preloadSide = isMobileLayout ? "none" : "metadata";
   const preloadCenter = isMobileLayout ? "metadata" : "auto";
 
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    const prevHtmlOverflow = html.style.overflow;
+    const prevBodyOverflow = body.style.overflow;
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    return () => {
+      html.style.overflow = prevHtmlOverflow;
+      body.style.overflow = prevBodyOverflow;
+    };
+  }, []);
+
   return (
-    <div className="relative flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-x-hidden bg-[#07090f] md:min-h-[calc(100svh-4rem)] md:overflow-hidden">
+    <div className="relative flex h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden bg-[#07090f]">
       <div className="pointer-events-none absolute inset-0 z-0">
         <div
           className="absolute inset-0 bg-[#07090f]"
@@ -110,12 +123,12 @@ export default function Accueil() {
         />
       </div>
 
-      <div className="relative z-[1] flex min-h-0 w-full min-w-0 flex-1 flex-col max-md:min-h-[min(100%,calc(100svh-4rem))] max-md:overflow-x-hidden md:min-h-full md:overflow-hidden">
-        <section className="relative flex min-h-0 w-full min-w-0 flex-1 flex-col items-center max-md:justify-start max-md:overflow-x-hidden md:justify-center md:overflow-hidden">
-          <div className="relative z-10 mx-auto flex w-full min-w-0 max-w-[1100px] flex-col items-center gap-3 px-6 sm:px-8 md:gap-4 md:px-12 xl:px-16">
-            <div className="flex min-h-0 w-full min-w-0 flex-col items-center gap-0 max-md:pt-8 md:flex-row md:items-center md:gap-12">
+      <div className="relative z-[1] flex h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
+        <section className="relative flex min-h-0 w-full min-w-0 flex-1 flex-col items-center overflow-hidden pt-[var(--promo-images-banner-height,0px)] max-md:justify-start md:justify-center">
+          <div className="relative z-10 mx-auto flex h-full min-h-0 w-full min-w-0 max-w-[1100px] flex-col items-center justify-center gap-2 px-6 sm:px-8 max-md:gap-1 md:gap-3 md:px-12 xl:px-16">
+            <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col items-center gap-0 max-md:pt-1 max-md:pb-1 md:flex-row md:items-center md:gap-10 md:py-2">
               <div className="w-full min-w-0 flex-[1.1] max-md:flex-none text-left max-[580px]:text-center md:pr-2 xl:pr-6">
-                <div className="accueil-fade-up accueil-fade-up-d1 mb-3 inline-flex max-md:mb-2 max-[580px]:mx-auto max-[580px]:w-full max-[580px]:justify-center md:mb-4">
+                <div className="accueil-fade-up accueil-fade-up-d1 mb-2 inline-flex max-md:mb-1.5 max-[580px]:mx-auto max-[580px]:w-full max-[580px]:justify-center md:mb-3">
                   <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5">
                     <span className="accueil-badge-dot h-1.5 w-1.5 shrink-0 rounded-full bg-[#34d399]" />
                     <span className="text-[9px] font-bold uppercase tracking-[0.13em] text-emerald-300/90">
@@ -124,7 +137,7 @@ export default function Accueil() {
                   </div>
                 </div>
 
-                <h1 className="accueil-fade-up accueil-fade-up-d2 mb-3 font-black tracking-tight text-white/[0.93] max-md:text-[clamp(26px,8vw,34px)] max-md:leading-[0.92] text-[clamp(34px,6vw,58px)] leading-[0.9] md:mb-4">
+                <h1 className="accueil-fade-up accueil-fade-up-d2 mb-2 font-black tracking-tight text-white/[0.93] max-md:text-[clamp(24px,7.2vw,32px)] max-md:leading-[0.92] text-[clamp(30px,5.2vw,52px)] leading-[0.9] md:mb-3">
                   <span className="block">Créez des vidéos</span>
                   <span className="block">qui attirent</span>
                   <span className="block bg-gradient-to-br from-[#21f3b9] from-0% via-[#818cf8] via-[42%] to-[#facc15] to-100% bg-clip-text text-transparent">
@@ -132,16 +145,16 @@ export default function Accueil() {
                   </span>
                 </h1>
 
-                <p className="accueil-fade-up accueil-fade-up-d3 mb-4 max-w-[440px] max-md:mb-3 max-md:text-[13px] max-md:leading-snug text-sm leading-relaxed text-white/[0.36] max-[580px]:mx-auto md:mb-5">
+                <p className="accueil-fade-up accueil-fade-up-d3 mb-3 max-w-[440px] max-md:mb-2 max-md:text-[12px] max-md:leading-snug text-sm leading-relaxed text-white/[0.36] max-[580px]:mx-auto md:mb-4">
                   L&apos;outil IA des entrepreneurs qui veulent publier tous les jours sur TikTok, Reels et Shorts —{" "}
                   <strong className="font-medium text-white/[0.58]">sans y passer des heures.</strong>
                 </p>
 
-                <div className="accueil-fade-up accueil-fade-up-d4 mb-3 flex flex-wrap items-center gap-2 max-md:mb-2 max-md:gap-2 md:mb-4 md:gap-2.5 max-[580px]:justify-center">
+                <div className="accueil-fade-up accueil-fade-up-d4 mb-2 flex flex-wrap items-center gap-2 max-md:mb-1.5 max-md:gap-2 md:mb-3 md:gap-2.5 max-[580px]:justify-center">
                   {session ? (
                     <LienNavSync
                       to="/viralworks"
-                      className="group inline-flex items-center gap-2 rounded-[11px] bg-[#21f3b9] px-6 py-3.5 text-sm font-extrabold text-[#07090f] shadow-[0_0_28px_rgba(33,243,185,0.26)] transition-all duration-200 hover:-translate-y-px hover:shadow-[0_0_44px_rgba(33,243,185,0.42)]"
+                      className="group inline-flex items-center gap-2 rounded-[11px] bg-[#21f3b9] px-5 py-3 text-sm font-extrabold text-[#07090f] shadow-[0_0_28px_rgba(33,243,185,0.26)] transition-all duration-200 hover:-translate-y-px hover:shadow-[0_0_44px_rgba(33,243,185,0.42)] max-md:px-4 max-md:py-2.5 max-md:text-[13px]"
                     >
                       <span>Créer ma vidéo</span>
                       <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5" />
@@ -150,7 +163,7 @@ export default function Accueil() {
                     <button
                       type="button"
                       onClick={() => openAuthModal?.()}
-                      className="group inline-flex items-center gap-2 rounded-[11px] bg-[#21f3b9] px-6 py-3.5 text-sm font-extrabold text-[#07090f] shadow-[0_0_28px_rgba(33,243,185,0.26)] transition-all duration-200 hover:-translate-y-px hover:shadow-[0_0_44px_rgba(33,243,185,0.42)]"
+                      className="group inline-flex items-center gap-2 rounded-[11px] bg-[#21f3b9] px-5 py-3 text-sm font-extrabold text-[#07090f] shadow-[0_0_28px_rgba(33,243,185,0.26)] transition-all duration-200 hover:-translate-y-px hover:shadow-[0_0_44px_rgba(33,243,185,0.42)] max-md:px-4 max-md:py-2.5 max-md:text-[13px]"
                     >
                       <span>Se connecter</span>
                       <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5" />
@@ -158,7 +171,7 @@ export default function Accueil() {
                   )}
                   <LienNavSync
                     to="/lab"
-                    className="inline-flex items-center rounded-[11px] border border-white/[0.08] bg-white/[0.03] px-[18px] py-3.5 text-[13px] font-semibold text-white/35 transition-all duration-200 hover:bg-white/[0.06] hover:text-white/60"
+                    className="inline-flex items-center rounded-[11px] border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-[13px] font-semibold text-white/35 transition-all duration-200 hover:bg-white/[0.06] hover:text-white/60 max-md:px-3.5 max-md:py-2.5 max-md:text-xs"
                   >
                     Voir les nouveautés
                   </LienNavSync>
@@ -180,10 +193,10 @@ export default function Accueil() {
               </div>
 
               <div
-                className="accueil-fade-up accueil-fade-up-d5 flex w-full min-w-0 max-md:-mt-10 max-md:flex-none max-md:items-center max-md:justify-start max-md:py-0 max-md:overflow-hidden md:mt-0 md:flex-1 md:items-center md:justify-end"
+                className="accueil-fade-up accueil-fade-up-d5 flex w-full min-h-0 min-w-0 max-md:flex-none max-md:items-center max-md:justify-center max-md:py-0 max-md:overflow-hidden md:mt-0 md:flex-1 md:items-center md:justify-end"
                 onContextMenu={blockMediaSave}
               >
-                <div className="relative mx-auto aspect-[260/340] max-md:h-[clamp(280px,min(50lvh,520px),560px)] w-auto max-w-full shrink-0 overflow-hidden md:h-[clamp(240px,min(48vw,44vh),520px)] md:max-w-[min(96vw,440px)] md:overflow-visible">
+                <div className="relative mx-auto aspect-[260/340] max-md:h-[min(20dvh,168px)] w-auto max-w-full shrink-0 overflow-hidden max-md:max-w-[min(72vw,200px)] md:h-[clamp(200px,min(34dvh,38vh),440px)] md:max-w-[min(96vw,400px)] md:overflow-visible">
                   <div
                     className="pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 rounded-full bg-[rgba(33,243,185,0.08)] blur-[clamp(18px,4vw,28px)] max-md:blur-[14px]"
                     style={{
@@ -221,7 +234,7 @@ export default function Accueil() {
               </div>
             </div>
 
-            <div className="relative z-[1] mx-auto flex w-full shrink-0 items-center gap-3.5 pb-4 pt-1 max-md:mt-7 max-md:pt-3 md:mt-0 md:pt-1">
+            <div className="relative z-[1] mx-auto flex w-full shrink-0 items-center gap-3 pb-1 pt-0 max-md:mt-1 md:pb-2">
               <div
                 className="div-line-accueil-l h-px max-w-[90px] flex-1"
                 style={{
