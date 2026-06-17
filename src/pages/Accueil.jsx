@@ -124,10 +124,10 @@ export default function Accueil() {
       </div>
 
       <div className="relative z-[1] flex h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
-        <section className="relative flex min-h-0 w-full min-w-0 flex-1 flex-col items-center overflow-hidden pt-[var(--promo-images-banner-height,0px)] max-md:justify-start md:justify-center">
+        <section className="relative flex min-h-0 w-full min-w-0 flex-1 flex-col items-center overflow-hidden max-md:pt-[calc(var(--promo-images-banner-height,0px)+0.5rem)] max-md:justify-start md:justify-center md:pt-[var(--promo-images-banner-height,0px)]">
           <div className="relative z-10 mx-auto flex h-full min-h-0 w-full min-w-0 max-w-[1100px] flex-col items-center max-md:justify-start md:justify-center gap-2 px-6 sm:px-8 max-md:gap-0 md:gap-3 md:px-12 xl:px-16">
             <div className="flex w-full min-w-0 max-md:flex-none flex-col items-center gap-0 max-md:pt-1 md:min-h-0 md:flex-1 md:flex-row md:items-center md:gap-10 md:py-2">
-              <div className="w-full min-w-0 flex-[1.1] max-md:flex-none text-left max-[580px]:text-center md:pr-2 xl:pr-6">
+              <div className="w-full min-w-0 max-md:flex-none text-left max-[580px]:text-center md:flex-[1.1] md:pr-2 xl:pr-6">
                 <div className="accueil-fade-up accueil-fade-up-d1 mb-2 inline-flex max-md:mb-1.5 max-[580px]:mx-auto max-[580px]:w-full max-[580px]:justify-center md:mb-3">
                   <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5">
                     <span className="accueil-badge-dot h-1.5 w-1.5 shrink-0 rounded-full bg-[#34d399]" />
@@ -177,7 +177,7 @@ export default function Accueil() {
                   </LienNavSync>
                 </div>
 
-                <div className="accueil-fade-up accueil-fade-up-d4 mb-2 flex flex-wrap items-center gap-2 text-[10px] font-medium text-white/25 max-md:-mb-2 max-[580px]:justify-center md:mb-0 md:gap-3">
+                <div className="accueil-fade-up accueil-fade-up-d4 mb-2 flex flex-wrap items-center gap-2 text-[10px] font-medium text-white/25 max-md:mb-0 max-[580px]:justify-center md:mb-0 md:gap-3">
                   <span className="inline-flex items-center gap-1.5">
                     <span className="text-[#21f3b9]">✓</span> Sans abonnement caché
                   </span>
@@ -193,7 +193,7 @@ export default function Accueil() {
               </div>
 
               <div
-                className="accueil-fade-up accueil-fade-up-d5 flex w-full min-h-0 min-w-0 max-md:flex-none max-md:items-center max-md:justify-center max-md:py-0 max-md:overflow-hidden md:mt-0 md:flex-1 md:items-center md:justify-end"
+                className="accueil-fade-up accueil-fade-up-d5 flex w-full min-h-0 min-w-0 max-md:-mt-10 max-md:flex-none max-md:items-center max-md:justify-start max-md:py-0 max-md:overflow-hidden md:mt-0 md:flex-1 md:items-center md:justify-end"
                 onContextMenu={blockMediaSave}
               >
                 <div className="relative mx-auto aspect-[260/340] max-md:h-[clamp(280px,min(50lvh,520px),560px)] w-auto max-w-full shrink-0 overflow-hidden md:h-[clamp(200px,min(34dvh,38vh),440px)] md:max-w-[min(96vw,400px)] md:overflow-visible">
@@ -232,24 +232,6 @@ export default function Accueil() {
                   ) : null}
                 </div>
               </div>
-            </div>
-
-            <div className="relative z-[1] mx-auto flex w-full shrink-0 items-center gap-3 max-md:mt-0 max-md:pb-0 max-md:pt-0 md:pb-2 md:pt-1">
-              <div
-                className="div-line-accueil-l h-px max-w-[90px] flex-1"
-                style={{
-                  background: "linear-gradient(to right, transparent, rgba(255,255,255,0.1))",
-                }}
-              />
-              <span className="whitespace-nowrap text-[9px] font-semibold uppercase tracking-[0.14em] text-white/15">
-                Propulsé par l&apos;IA générative
-              </span>
-              <div
-                className="div-line-accueil-r h-px max-w-[90px] flex-1"
-                style={{
-                  background: "linear-gradient(to left, transparent, rgba(255,255,255,0.1))",
-                }}
-              />
             </div>
           </div>
         </section>
