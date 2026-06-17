@@ -104,7 +104,7 @@ export default function SidebarShell({
   };
 
   return (
-    <div className="w-full h-full flex flex-col">
+    <div className="w-full min-h-0 flex-1 flex flex-col">
       <aside
         ref={panelRef}
         className={`fixed inset-y-0 left-0 w-72 bg-gradient-to-b from-[#0C1116] via-[#0a0f14] to-[#0C1116] border-r border-white/10 transform transform-gpu will-change-transform transition-transform duration-300 z-50 md:hidden shadow-2xl ${
