@@ -13,11 +13,15 @@ function DashboardShell() {
   const isAvatarStudioPage =
     location.pathname === "/studio" || location.pathname.startsWith("/studio/");
 
+  const isImageStudioPage = location.pathname === "/image-studio";
+
+  const isImmersiveStudioPage = isAvatarStudioPage || isImageStudioPage;
+
   const isAccueilPage = location.pathname === "/";
 
   const shellLayoutClass = isAccueilPage
     ? "h-dvh overflow-hidden"
-    : isAvatarStudioPage
+    : isImmersiveStudioPage
       ? "min-h-dvh max-lg:overflow-y-auto lg:h-dvh lg:overflow-hidden"
       : "min-h-dvh";
 
@@ -27,7 +31,7 @@ function DashboardShell() {
 
   const sidebarMainClassName = isAccueilPage
     ? "flex min-h-0 flex-1 flex-col overflow-hidden"
-    : isAvatarStudioPage
+    : isImmersiveStudioPage
       ? "min-h-0 max-lg:overflow-y-auto lg:overflow-hidden"
       : "overflow-y-auto";
 
@@ -36,8 +40,8 @@ function DashboardShell() {
       className={`flex flex-col ${
         isAccueilPage
           ? "min-h-0 flex-1 overflow-hidden"
-          : isAvatarStudioPage
-            ? "max-lg:flex-none max-lg:min-h-0 lg:min-h-0 lg:flex-1"
+          : isImmersiveStudioPage
+            ? "max-lg:flex-none max-lg:min-h-0 lg:min-h-0 lg:flex-1 lg:overflow-hidden"
             : "min-h-0 flex-1"
       }`}
     >
@@ -59,7 +63,7 @@ function DashboardShell() {
           >
             <div
               className={`flex flex-col ${
-                isAvatarStudioPage
+                isImmersiveStudioPage
                   ? "max-lg:flex-none max-lg:min-h-0 lg:min-h-0 lg:flex-1"
                   : "min-h-0 flex-1"
               }`}

@@ -32,7 +32,9 @@ import ImageStudioModelIcon from "@/composants/image/ImageStudioModelIcon";
 import ModalAbonnementImageStudio from "@/composants/image/ModalAbonnementImageStudio";
 import ModalPromptsImageStudio from "@/composants/image/ModalPromptsImageStudio";
 import SheetReglagesImageStudio from "@/composants/image/SheetReglagesImageStudio";
-import ImageStudioFeedPanel from "@/composants/image/ImageStudioFeedPanel";
+import ImageStudioFeedPanel, {
+  scrollImageStudioFeedToItem,
+} from "@/composants/image/ImageStudioFeedPanel";
 import ImageStudioHistoryPanel from "@/composants/image/ImageStudioHistoryPanel";
 import ModalImageStudioPreview from "@/composants/image/ModalImageStudioPreview";
 import ModalQuotaImageStudio from "@/composants/image/ModalQuotaImageStudio";
@@ -51,6 +53,7 @@ import {
   saveImageStudioHistory,
 } from "@/bibliotheque/imageStudio/imageStudioHistory";
 import { groupHistoryIntoFeedRows, mergeFeedRowsFromHistory } from "@/bibliotheque/imageStudio/imageStudioFeed";
+import { subscribeImageStudioHistory } from "@/bibliotheque/imageStudio/imageStudioRealtime";
 import {
   loadImageStudioUiState,
   saveImageStudioUiState,
@@ -651,9 +654,9 @@ export default function ImageStudio() {
   }, [session?.user?.id, authLoading]);
 
   useEffect(() => {
-    if (generating || authLoading || !session?.user?.id) return;
+    if (authLoading || !session?.user?.id) return;
     setFeedRows((prev) => mergeFeedRowsFromHistory(history, prev));
-  }, [history, generating, authLoading, session?.user?.id]);
+  }, [history, authLoading, session?.user?.id]);
 
   useEffect(() => {
     let active = true;
@@ -710,6 +713,38 @@ export default function ImageStudio() {
       document.removeEventListener("visibilitychange", refreshHistory);
       window.removeEventListener("focus", refreshHistory);
     };
+  }, [authLoading, session?.user?.id, loadHistory]);
+
+  useEffect(() => {
+    const userId = session?.user?.id;
+    if (authLoading || !userId) return;
+
+    return subscribeImageStudioHistory(userId, {
+      onInsert: (item) => {
+        setHistory((prev) => {
+          if (prev.some((row) => row.id === item.id)) return prev;
+          return [item, ...prev];
+        });
+        setScrollToEndToken((token) => token + 1);
+      },
+      onUpdate: (item) => {
+        setHistory((prev) =>
+          prev.map((row) => (row.id === item.id ? { ...row, ...item } : row)),
+        );
+      },
+      onDelete: (id) => {
+        setHistory((prev) => prev.filter((row) => row.id !== id));
+        setFeedRows((prev) =>
+          prev
+            .map((row) => ({
+              ...row,
+              images: row.images.filter((image) => image.historyId !== id),
+            }))
+            .filter((row) => row.images.length > 0 || row.generating),
+        );
+        setActiveHistoryId((current) => (current === id ? null : current));
+      },
+    });
   }, [authLoading, session?.user?.id, loadHistory]);
 
   useEffect(() => {
@@ -856,27 +891,8 @@ export default function ImageStudio() {
     if (!url) return;
     setActiveHistoryId(item.id);
 
-    document.querySelector(".image-studio-workspace")?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
-
     window.requestAnimationFrame(() => {
-      const historyId = item.id;
-      const imageEl = historyId
-        ? document.querySelector(`[data-history-id="${historyId}"]`)
-        : null;
-      if (imageEl) {
-        imageEl.scrollIntoView({ behavior: "smooth", block: "center" });
-        return;
-      }
-
-      const batchId = item.metadata?.batchId;
-      if (batchId) {
-        document
-          .querySelector(`[data-batch-id="${batchId}"]`)
-          ?.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
+      scrollImageStudioFeedToItem(item, { behavior: "smooth" });
     });
   }, []);
 
@@ -1092,7 +1108,7 @@ export default function ImageStudio() {
   };
 
   return (
-    <div className="image-studio-shell flex min-h-0 flex-1 flex-col">
+    <div className="image-studio-shell flex min-h-0 flex-1 flex-col overflow-hidden">
       <div className="flex shrink-0 items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
         <div>
           <h1 className="text-lg font-semibold tracking-tight text-white sm:text-xl">
@@ -1115,7 +1131,7 @@ export default function ImageStudio() {
 
       <div className="image-studio-main flex min-h-0 flex-1 flex-col">
         <div className="image-studio-workspace flex min-h-0 flex-col gap-2 px-4 sm:flex-1 sm:px-6 lg:px-8">
-          <div className="image-studio-canvas image-studio-canvas--feed relative flex min-h-[min(36vh,300px)] min-w-0 flex-col overflow-hidden rounded-2xl sm:min-h-[min(55vh,480px)] sm:flex-1 lg:min-h-[min(72vh,720px)]">
+          <div className="image-studio-canvas image-studio-canvas--feed relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl max-sm:min-h-[min(36vh,300px)] sm:min-h-[min(55vh,480px)] lg:min-h-[min(72vh,720px)]">
             <ImageStudioFeedPanel
               feedRows={feedRows}
               history={history}

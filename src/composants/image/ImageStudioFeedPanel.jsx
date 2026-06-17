@@ -16,6 +16,51 @@ function sortHistoryOldestFirst(items) {
   });
 }
 
+function clampScrollTop(el, top) {
+  if (!el || typeof top !== "number" || Number.isNaN(top)) return;
+  const max = Math.max(0, el.scrollHeight - el.clientHeight);
+  el.scrollTop = Math.min(Math.max(0, top), max);
+}
+
+function scrollChildIntoView(container, child, { block = "center", behavior = "smooth" } = {}) {
+  if (!container || !child) return;
+  const containerRect = container.getBoundingClientRect();
+  const childRect = child.getBoundingClientRect();
+  const childOffsetTop = childRect.top - containerRect.top + container.scrollTop;
+  let target = childOffsetTop;
+
+  if (block === "end") {
+    target = childOffsetTop - container.clientHeight + childRect.height;
+  } else if (block === "center") {
+    target = childOffsetTop - (container.clientHeight - childRect.height) / 2;
+  }
+
+  const max = Math.max(0, container.scrollHeight - container.clientHeight);
+  container.scrollTo({
+    top: Math.min(Math.max(0, target), max),
+    behavior,
+  });
+}
+
+export function scrollImageStudioFeedToItem(item, { behavior = "smooth" } = {}) {
+  if (!item) return;
+  const feedEl = document.querySelector(".image-studio-feed");
+  if (!feedEl) return;
+
+  const imageEl = item.id ? document.querySelector(`[data-history-id="${item.id}"]`) : null;
+  if (imageEl) {
+    scrollChildIntoView(feedEl, imageEl, { block: "center", behavior });
+    return;
+  }
+
+  const batchId = item.metadata?.batchId;
+  if (!batchId) return;
+  const batchEl = document.querySelector(`[data-batch-id="${batchId}"]`);
+  if (batchEl) {
+    scrollChildIntoView(feedEl, batchEl, { block: "center", behavior });
+  }
+}
+
 function FeedRow({ row, activeHistoryId, onImageOpen }) {
   const aspectClass = feedRowAspectClass(row.aspectRatio);
   const promptSnippet = truncateFeedPrompt(row.prompt);
@@ -92,10 +137,10 @@ export default function ImageStudioFeedPanel({
   onFeedScroll,
   onThumbScroll,
 }) {
-  const feedEndRef = useRef(null);
   const feedScrollRef = useRef(null);
   const thumbScrollRef = useRef(null);
-  const restoredScrollRef = useRef(false);
+  const userScrolledRef = useRef(false);
+  const restoreTargetsRef = useRef({ feed: undefined, thumb: undefined });
   const prevScrollTokenRef = useRef(scrollToEndToken);
   const thumbHistory = useMemo(() => sortHistoryOldestFirst(history), [history]);
   const historyImageCount = useMemo(
@@ -104,58 +149,87 @@ export default function ImageStudioFeedPanel({
   );
   const showEmptyFeed = feedRows.length === 0 && !generating && historyImageCount === 0;
 
-  const applyFeedScroll = useCallback((top) => {
-    const el = feedScrollRef.current;
-    if (!el || typeof top !== "number") return;
-    el.scrollTop = top;
-  }, []);
+  useEffect(() => {
+    restoreTargetsRef.current = {
+      feed: restoreFeedScrollTop,
+      thumb: restoreThumbScrollTop,
+    };
+  }, [restoreFeedScrollTop, restoreThumbScrollTop]);
 
-  const applyThumbScroll = useCallback((top) => {
-    const el = thumbScrollRef.current;
-    if (!el || typeof top !== "number") return;
-    el.scrollTop = top;
-  }, []);
-
-  useLayoutEffect(() => {
-    if (restoredScrollRef.current || historyLoading) return;
+  const tryRestoreScroll = useCallback(() => {
+    if (userScrolledRef.current || historyLoading) return;
     if (feedRows.length === 0 && history.length === 0) return;
 
-    restoredScrollRef.current = true;
-    requestAnimationFrame(() => {
-      if (typeof restoreFeedScrollTop === "number") {
-        applyFeedScroll(restoreFeedScrollTop);
-      }
-      if (typeof restoreThumbScrollTop === "number") {
-        applyThumbScroll(restoreThumbScrollTop);
-      }
-    });
-  }, [
-    historyLoading,
-    feedRows.length,
-    history.length,
-    restoreFeedScrollTop,
-    restoreThumbScrollTop,
-    applyFeedScroll,
-    applyThumbScroll,
-  ]);
+    const { feed, thumb } = restoreTargetsRef.current;
+    if (typeof feed === "number") {
+      clampScrollTop(feedScrollRef.current, feed);
+    }
+    if (typeof thumb === "number") {
+      clampScrollTop(thumbScrollRef.current, thumb);
+    }
+  }, [historyLoading, feedRows.length, history.length]);
+
+  useLayoutEffect(() => {
+    tryRestoreScroll();
+    const raf = requestAnimationFrame(tryRestoreScroll);
+    const t1 = window.setTimeout(tryRestoreScroll, 80);
+    const t2 = window.setTimeout(tryRestoreScroll, 350);
+
+    const feedEl = feedScrollRef.current;
+    const resizeObserver =
+      feedEl && typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => {
+            if (!userScrolledRef.current) tryRestoreScroll();
+          })
+        : null;
+    if (feedEl) resizeObserver?.observe(feedEl);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      resizeObserver?.disconnect();
+    };
+  }, [tryRestoreScroll]);
 
   useEffect(() => {
     if (scrollToEndToken === prevScrollTokenRef.current) return;
     prevScrollTokenRef.current = scrollToEndToken;
     if (!scrollToEndToken) return;
-    feedEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+
+    userScrolledRef.current = true;
+    const feedEl = feedScrollRef.current;
+    if (feedEl) {
+      feedEl.scrollTo({ top: feedEl.scrollHeight, behavior: "smooth" });
+    }
     const thumbEl = thumbScrollRef.current;
     if (thumbEl) {
       thumbEl.scrollTo({ top: thumbEl.scrollHeight, behavior: "smooth" });
     }
   }, [scrollToEndToken]);
 
+  const handleFeedScroll = useCallback(
+    (scrollTop) => {
+      userScrolledRef.current = true;
+      onFeedScroll?.(scrollTop);
+    },
+    [onFeedScroll],
+  );
+
+  const handleThumbScroll = useCallback(
+    (scrollTop) => {
+      userScrolledRef.current = true;
+      onThumbScroll?.(scrollTop);
+    },
+    [onThumbScroll],
+  );
+
   return (
     <div className="image-studio-feed-shell flex min-h-0 min-w-0 flex-1">
       <div
         ref={feedScrollRef}
         className="studio-subtle-scrollbar image-studio-feed min-h-0 flex-1 overflow-y-auto"
-        onScroll={(e) => onFeedScroll?.(e.currentTarget.scrollTop)}
+        onScroll={(e) => handleFeedScroll(e.currentTarget.scrollTop)}
       >
         {showEmptyFeed ? (
           <div className="image-studio-feed-empty">
@@ -187,7 +261,6 @@ export default function ImageStudioFeedPanel({
                 onImageOpen={onImageOpen}
               />
             ))}
-            <div ref={feedEndRef} className="image-studio-feed-anchor" aria-hidden />
           </div>
         )}
       </div>
@@ -196,7 +269,7 @@ export default function ImageStudioFeedPanel({
         ref={thumbScrollRef}
         className="image-studio-thumb-strip studio-subtle-scrollbar shrink-0"
         aria-label="Historique des images"
-        onScroll={(e) => onThumbScroll?.(e.currentTarget.scrollTop)}
+        onScroll={(e) => handleThumbScroll(e.currentTarget.scrollTop)}
       >
         {historyLoading && history.length === 0 ? (
           <div className="image-studio-thumb-strip-skeletons" aria-hidden>
