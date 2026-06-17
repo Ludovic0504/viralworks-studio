@@ -17,7 +17,7 @@ import {
   WORKFLOW_QUOTA_STORAGE_KEY,
   WORKFLOW_QUOTA_UPDATED_EVENT,
 } from "@/bibliotheque/workflowQuota";
-import { getUserPayments, getUserSubscription, cancelSubscription } from "@/bibliotheque/supabase/stripe";
+import { getUserPayments, getUserSubscriptionDetails, cancelSubscription } from "@/bibliotheque/supabase/stripe";
 import { getUserProfile, updateUserProfile, uploadAvatar, deleteAvatar } from "@/bibliotheque/supabase/profil";
 import { useBoutiqueModal } from "@/contexte/ContexteModalBoutique";
 import { SECTORS, getSectorLabelForDisplay } from "@/bibliotheque/sectorDefaults";
@@ -66,6 +66,7 @@ export default function Profil() {
   const [transactions, setTransactions] = useState([]);
   const [payments, setPayments] = useState([]);
   const [subscription, setSubscription] = useState(null);
+  const [subscriptionPlanName, setSubscriptionPlanName] = useState(null);
   const [userRole, setUserRole] = useState(null);
   const [showAllTransactions, setShowAllTransactions] = useState(false);
   const [showAllPayments, setShowAllPayments] = useState(false);
@@ -260,8 +261,9 @@ export default function Profil() {
 
   const loadSubscription = async () => {
     try {
-      const userSubscription = await getUserSubscription();
-      setSubscription(userSubscription);
+      const details = await getUserSubscriptionDetails();
+      setSubscription(details?.subscription ?? null);
+      setSubscriptionPlanName(details?.planName ?? null);
     } catch (err) {
       console.error("Erreur chargement abonnement:", err);
     }
@@ -1318,7 +1320,9 @@ export default function Profil() {
                   <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex min-w-0 items-center gap-2">
                       <Crown className="h-5 w-5 shrink-0 text-violet-400" />
-                      <span className="text-sm font-semibold text-violet-300">Abonnement actif</span>
+                      <span className="text-sm font-semibold text-violet-300">
+                        {subscriptionPlanName ?? "Abonnement actif"}
+                      </span>
                     </div>
                     {subscription.cancel_at_period_end && (
                       <span className="w-fit rounded border border-yellow-500/30 bg-yellow-500/20 px-2 py-1 text-xs font-medium text-yellow-400">

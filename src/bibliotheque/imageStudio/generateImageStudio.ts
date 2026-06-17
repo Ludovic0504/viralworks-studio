@@ -21,7 +21,7 @@ type ErrorBody = {
 };
 
 const QUOTA_MESSAGE =
-  "Quota mensuel atteint (200 images). Réessayez le mois prochain.";
+  "Quota mensuel atteint. Réessayez le mois prochain.";
 
 export type { ImageStudioAspectRatio };
 

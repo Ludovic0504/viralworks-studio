@@ -7,12 +7,22 @@ export default function ModalQuotaImageStudio({ open, kind, count, limit, onClos
 
   const state = getImageStudioQuotaState(count, limit);
   const isExhausted = kind === "exhausted";
+  const remaining = state.remaining;
+  const imageLabel = remaining > 1 ? "images" : "image";
   const title = isExhausted
-    ? "Crédits épuisés"
-    : "Générations ralenties";
+    ? "Quota d'images épuisé"
+    : "Attention à votre consommation";
   const message = isExhausted
-    ? "Vous avez utilisé tous vos crédits Image Studio pour ce mois. Le quota se réinitialise au début du mois prochain."
-    : `Vous avez utilisé ${state.used} images ce mois-ci. Les générations suivantes peuvent prendre un peu plus de temps.`;
+    ? "Vous avez utilisé toutes vos images Image Studio pour ce mois. Le quota se réinitialise le 1er du mois prochain, sans report des images non utilisées."
+    : `Il ne vous reste plus que ${remaining} ${imageLabel} ce mois-ci (${state.remainingPercent} %). Pensez à répartir vos générations jusqu'au prochain renouvellement.`;
+
+  const batteryFillClass = isExhausted
+    ? " is-empty"
+    : state.remainingPercent <= 20
+      ? " is-low"
+      : state.remainingPercent <= 60
+        ? " is-warning"
+        : "";
 
   return createPortal(
     <div
@@ -39,7 +49,7 @@ export default function ModalQuotaImageStudio({ open, kind, count, limit, onClos
         <div className="image-studio-quota-battery-wrap" aria-hidden>
           <div className="image-studio-quota-battery">
             <div
-              className={`image-studio-quota-battery-fill${isExhausted ? " is-empty" : ""}`}
+              className={`image-studio-quota-battery-fill${batteryFillClass}`}
               style={{ width: `${isExhausted ? 0 : state.remainingPercent}%` }}
             />
             {!isExhausted ? (
@@ -54,7 +64,6 @@ export default function ModalQuotaImageStudio({ open, kind, count, limit, onClos
           {title}
         </h2>
         <p className="image-studio-quota-message">{message}</p>
-        <p className="image-studio-quota-hint">1 image générée = 1 crédit</p>
 
         <button
           type="button"

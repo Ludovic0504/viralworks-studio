@@ -2,6 +2,35 @@ import { getBrowserSupabase } from "./client-navigateur";
 import { getAppOrigin } from "@/bibliotheque/appOrigin";
 import { track } from "@/bibliotheque/meta/pixel";
 import { capturePostHog } from "@/bibliotheque/posthog/client";
+import { type UserPlan } from "./premiumAccess";
+import {
+  fetchMySubscriptionCycle,
+  type SubscriptionCycleSnapshot,
+} from "./subscriptionCycle";
+import {
+  inferSubscriptionPlanFromCycle,
+  subscriptionPlanLabel,
+} from "./subscriptionPlans";
+
+async function loadSubscriptionCycle(
+  stripeSubscriptionId: string,
+): Promise<SubscriptionCycleSnapshot | null> {
+  const fromRpc = await fetchMySubscriptionCycle();
+  if (fromRpc) return fromRpc;
+
+  const supabase = getBrowserSupabase();
+  const { data, error } = await supabase
+    .from("subscription_credit_cycles")
+    .select("plan_key, monthly_credit_amount")
+    .eq("stripe_subscription_id", stripeSubscriptionId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Erreur lecture plan abonnement:", error);
+  }
+
+  return data;
+}
 
 export interface StripePayment {
   id: string;
@@ -271,6 +300,29 @@ export async function getUserSubscription(): Promise<StripeSubscription | null> 
   }
 
   return data;
+}
+
+export type UserSubscriptionDetails = {
+  subscription: StripeSubscription;
+  planKey: UserPlan;
+  planName: string;
+};
+
+/**
+ * Abonnement actif + clé de plan (subscription_credit_cycles).
+ */
+export async function getUserSubscriptionDetails(): Promise<UserSubscriptionDetails | null> {
+  const subscription = await getUserSubscription();
+  if (!subscription) return null;
+
+  const cycle = await loadSubscriptionCycle(subscription.stripe_subscription_id);
+  const planKey = inferSubscriptionPlanFromCycle(cycle);
+
+  return {
+    subscription,
+    planKey,
+    planName: subscriptionPlanLabel(planKey !== "free" ? planKey : cycle?.plan_key),
+  };
 }
 
 /**

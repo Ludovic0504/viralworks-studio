@@ -108,6 +108,10 @@ const files = {
     path.join(ROOT, "supabase/functions/generate-image-studio/index.ts"),
     "utf8",
   ),
+  planAccess: fs.readFileSync(
+    path.join(ROOT, "supabase/functions/_shared/plan-access.ts"),
+    "utf8",
+  ),
 };
 
 ok("payImage9 → plan image_9 à 9€", /image_9[\s\S]*amount:\s*9/.test(files.payImage9));
@@ -122,8 +126,9 @@ ok(
     files.stripeWebhook.includes("return 0"),
 );
 ok(
-  "quota Image Studio = 200",
-  files.generateStudio.includes("IMAGE_STUDIO_LIMIT = 200"),
+  "quota Image Studio selon offre",
+  files.generateStudio.includes("getImageStudioMonthlyLimit") &&
+    files.planAccess.includes("IMAGE_STUDIO_MONTHLY_LIMIT_IMAGE_9 = 150"),
 );
 
 console.log("\n=== 4. Tests unitaires quota ===\n");

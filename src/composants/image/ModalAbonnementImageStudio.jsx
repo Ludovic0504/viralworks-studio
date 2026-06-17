@@ -44,7 +44,7 @@ export default function ModalAbonnementImageStudio({ open, onClose }) {
         <p className="image-studio-quota-message">
           Pour générer vos images en 2K, prenez l&apos;abonnement{" "}
           <strong className="font-semibold text-white">ViralWorks Image</strong>{" "}
-          — 9&nbsp;€/mois, jusqu&apos;à 200 créations par mois.
+          — 9&nbsp;€/mois, jusqu&apos;à 150 créations par mois.
         </p>
         <p className="image-studio-quota-hint">
           Décrivez votre scène, l&apos;IA s&apos;occupe du reste.

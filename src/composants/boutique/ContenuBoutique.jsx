@@ -6,13 +6,17 @@ import { getUserCredits } from "@/bibliotheque/supabase/credits";
 import { track } from "@/bibliotheque/meta/pixel";
 import { capturePostHog, trackPostHogError } from "@/bibliotheque/posthog/client";
 import {
-  getUserSubscription,
+  getUserSubscriptionDetails,
   fetchWelcomeGiftNeedsChoice,
+  cancelSubscription,
 } from "@/bibliotheque/supabase/stripe";
+import {
+  isSameSubscriptionPlan,
+} from "@/bibliotheque/supabase/subscriptionPlans";
 import { useStripePayment, payImage9, payPro59, payPremium129, payVideoPack } from "@/hooks/useStripePayment";
 import ModalCadeauBienvenue from "@/composants/ModalCadeauBienvenue";
 import "./BoutiqueSubCard.css";
-import { CreditCard, Check, Crown, Loader2, CheckCircle, ShoppingBag, ImageIcon, Zap } from "lucide-react";
+import { CreditCard, Check, Crown, Loader2, CheckCircle, ShoppingBag, ImageIcon, Zap, XCircle } from "lucide-react";
 
 const CREDIT_PACKAGES = [
   {
@@ -56,7 +60,7 @@ const SUBSCRIPTION_PLANS = [
     period: "mois",
     popular: false,
     features: [
-      "Image Studio — jusqu'à 200 générations / mois",
+      "Image Studio — jusqu'à 150 générations / mois",
       "Génération d'images par prompt",
       "Accès aux outils image ViralWorks",
     ],
@@ -111,7 +115,8 @@ export default function ContenuBoutique({
   const { session, loading: authLoading } = useAuth();
   const { runWithAuth, openAuthModal } = useRequireAuthAction();
   const [searchParams] = useSearchParams();
-  const [subscription, setSubscription] = useState(null);
+  const [subscriptionDetails, setSubscriptionDetails] = useState(null);
+  const [cancellingSubscription, setCancellingSubscription] = useState(false);
   const { loading: paymentLoading, error, startPayment } = useStripePayment();
   const [activeTab, setActiveTab] = useState(() => {
     const fromProps = resolveSectionTab(initialSection);
@@ -251,7 +256,7 @@ export default function ContenuBoutique({
     return () => {
       cancelled = true;
     };
-  }, [session?.user?.id, subscription?.id, giftModalDismissed]);
+  }, [session?.user?.id, subscriptionDetails?.subscription?.id, giftModalDismissed]);
 
   useEffect(() => {
     if (isModal) {
@@ -267,11 +272,41 @@ export default function ContenuBoutique({
   const loadData = async () => {
     try {
       await getUserCredits();
-
-      const userSubscription = await getUserSubscription();
-      setSubscription(userSubscription);
+      const details = await getUserSubscriptionDetails();
+      setSubscriptionDetails(details);
     } catch (err) {
       console.error("Erreur chargement données:", err);
+    }
+  };
+
+  const handleCancelSubscription = async () => {
+    if (!subscriptionDetails?.subscription) return;
+
+    const confirmCancel = window.confirm(
+      "Êtes-vous sûr de vouloir annuler votre abonnement ?\n\n" +
+        "Votre abonnement restera actif jusqu'à la fin de la période en cours.\n" +
+        "Vous continuerez à bénéficier de tous les avantages jusqu'à cette date.",
+    );
+
+    if (!confirmCancel) return;
+
+    setCancellingSubscription(true);
+    try {
+      const result = await cancelSubscription();
+      if (result.success) {
+        alert(
+          result.message ||
+            "Abonnement annulé avec succès. Il restera actif jusqu'à la fin de la période.",
+        );
+        await loadData();
+      } else {
+        alert(`Erreur : ${result.error}`);
+      }
+    } catch (err) {
+      console.error("Erreur annulation abonnement:", err);
+      alert("Erreur lors de l'annulation de l'abonnement");
+    } finally {
+      setCancellingSubscription(false);
     }
   };
 
@@ -280,8 +315,8 @@ export default function ContenuBoutique({
     try {
       await new Promise((resolve) => setTimeout(resolve, 2000));
       await getUserCredits();
-      const userSubscription = await getUserSubscription();
-      setSubscription(userSubscription);
+      const details = await getUserSubscriptionDetails();
+      setSubscriptionDetails(details);
     } catch (err) {
       console.error("Erreur rafraîchissement crédits:", err);
     } finally {
@@ -403,13 +438,52 @@ export default function ContenuBoutique({
         </div>
 
         <div className={m.statusRow}>
-          {subscription && (
+          {subscriptionDetails && (
             <div className={`bg-violet-500/10 border border-violet-500/30 ${m.statusBadge}`}>
               <Crown className={`text-violet-400 ${m.statusBadgeIcon}`} />
-              <span className={m.statusBadgeText}>Abonnement actif</span>
+              <span className={m.statusBadgeText}>
+                {subscriptionDetails.planName}
+                {subscriptionDetails.subscription.cancel_at_period_end ? " — fin prochaine" : ""}
+              </span>
             </div>
           )}
         </div>
+
+        {subscriptionDetails?.subscription && activeTab === "subscription" && (
+          <div
+            className={`mb-4 rounded-xl border border-violet-500/25 bg-violet-500/5 p-3 sm:p-4 ${isModal ? "max-md:mb-3 max-md:p-3" : ""}`}
+          >
+            <p className="text-sm text-gray-300">
+              Abonnement actuel :{" "}
+              <strong className="text-violet-200">{subscriptionDetails.planName}</strong>
+              {subscriptionDetails.subscription.cancel_at_period_end ? (
+                <span className="text-yellow-400">
+                  {" "}
+                  — se termine le{" "}
+                  {new Date(subscriptionDetails.subscription.current_period_end).toLocaleDateString(
+                    "fr-FR",
+                    { day: "numeric", month: "long", year: "numeric" },
+                  )}
+                </span>
+              ) : null}
+            </p>
+            {!subscriptionDetails.subscription.cancel_at_period_end ? (
+              <button
+                type="button"
+                onClick={handleCancelSubscription}
+                disabled={cancellingSubscription}
+                className="mt-3 inline-flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-300 transition-colors hover:bg-red-500/20 disabled:opacity-50"
+              >
+                {cancellingSubscription ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <XCircle className="h-4 w-4" />
+                )}
+                Annuler l&apos;abonnement
+              </button>
+            ) : null}
+          </div>
+        )}
       </div>
 
       {paymentStatus === "success" && (
@@ -538,6 +612,11 @@ export default function ContenuBoutique({
                   ? "bg-sky-500"
                   : "bg-violet-500";
 
+            const currentPlanKey = subscriptionDetails?.planKey ?? null;
+            const isCurrentPlan = isSameSubscriptionPlan(currentPlanKey, plan.id);
+            const subscribeLabel = isCurrentPlan ? "Déjà abonné" : "S'abonner";
+            const subscribeDisabled = paymentLoading || isCurrentPlan;
+
             return (
             <div
               key={plan.id}
@@ -611,23 +690,23 @@ export default function ContenuBoutique({
                       ),
                     );
                   }}
-                  disabled={paymentLoading || subscription !== null}
+                  disabled={subscribeDisabled}
                   className={`${m.buyBtn} mt-auto ${
-                    plan.popular
+                    isCurrentPlan
+                      ? "bg-white/5 text-gray-500 border border-white/10 cursor-not-allowed"
+                      : plan.popular
                       ? "bg-violet-500 hover:bg-violet-600 text-white"
                       : plan.id === "image_9"
                         ? "bg-emerald-500 hover:bg-emerald-600 text-white"
                         : plan.id === "pro_59"
                           ? "bg-sky-500 hover:bg-sky-600 text-white"
                           : "bg-white/10 hover:bg-white/20 text-gray-200 border border-white/20"
-                  } ${subscription ? "opacity-50 cursor-not-allowed" : ""} disabled:opacity-50 disabled:cursor-not-allowed`}
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
                 >
                   {paymentLoading ? (
                     <Loader2 className="w-5 h-5 mx-auto animate-spin" />
-                  ) : subscription ? (
-                    "Déjà abonné"
                   ) : (
-                    "S'abonner"
+                    subscribeLabel
                   )}
                 </button>
               </div>

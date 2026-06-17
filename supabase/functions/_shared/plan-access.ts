@@ -4,6 +4,14 @@ export type UserPlan = "free" | "image_9" | "pro_59" | "premium_129";
 
 export const SEEDANCE_MONTHLY_LIMIT = 15;
 export const AVATAR_STUDIO_MONTHLY_LIMIT = 5;
+export const IMAGE_STUDIO_MONTHLY_LIMIT_DEFAULT = 200;
+export const IMAGE_STUDIO_MONTHLY_LIMIT_IMAGE_9 = 150;
+
+export function getImageStudioMonthlyLimit(plan: UserPlan): number {
+  if (plan === "image_9") return IMAGE_STUDIO_MONTHLY_LIMIT_IMAGE_9;
+  if (plan === "pro_59" || plan === "premium_129") return IMAGE_STUDIO_MONTHLY_LIMIT_DEFAULT;
+  return 0;
+}
 
 export function normalizeSubscriptionPlan(
   planKey: string | null | undefined,

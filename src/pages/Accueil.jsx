@@ -18,6 +18,44 @@ function getMobileMax767ServerSnapshot() {
   return true;
 }
 
+function blockMediaSave(event) {
+  event.preventDefault();
+}
+
+function AccueilDemoVideo({ src, preload, label, className }) {
+  return (
+    <div
+      className={className}
+      onContextMenu={blockMediaSave}
+      onDragStart={blockMediaSave}
+    >
+      <video
+        src={src}
+        autoPlay
+        loop
+        muted
+        playsInline
+        preload={preload}
+        draggable={false}
+        controls={false}
+        controlsList="nodownload noplaybackrate noremoteplayback"
+        disablePictureInPicture
+        disableRemotePlayback
+        className="accueil-demo-video h-full w-full object-cover"
+      />
+      <div
+        className="absolute inset-0 z-[1]"
+        onContextMenu={blockMediaSave}
+        onDragStart={blockMediaSave}
+        aria-hidden
+      />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[2] bg-gradient-to-t from-black/70 to-transparent px-2 pb-2 pt-8 text-center text-[8px] font-bold uppercase tracking-widest text-white/45">
+        {label}
+      </div>
+    </div>
+  );
+}
+
 export default function Accueil() {
   const { session } = useAuth();
   const { openAuthModal } = useRequireAuthAction();
@@ -141,7 +179,10 @@ export default function Accueil() {
                 </div>
               </div>
 
-              <div className="accueil-fade-up accueil-fade-up-d5 flex w-full min-w-0 max-md:-mt-10 max-md:flex-none max-md:items-center max-md:justify-start max-md:py-0 max-md:overflow-hidden md:mt-0 md:flex-1 md:items-center md:justify-end">
+              <div
+                className="accueil-fade-up accueil-fade-up-d5 flex w-full min-w-0 max-md:-mt-10 max-md:flex-none max-md:items-center max-md:justify-start max-md:py-0 max-md:overflow-hidden md:mt-0 md:flex-1 md:items-center md:justify-end"
+                onContextMenu={blockMediaSave}
+              >
                 <div className="relative mx-auto aspect-[260/340] max-md:h-[clamp(280px,min(50lvh,520px),560px)] w-auto max-w-full shrink-0 overflow-hidden md:h-[clamp(240px,min(48vw,44vh),520px)] md:max-w-[min(96vw,440px)] md:overflow-visible">
                   <div
                     className="pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 rounded-full bg-[rgba(33,243,185,0.08)] blur-[clamp(18px,4vw,28px)] max-md:blur-[14px]"
@@ -153,58 +194,28 @@ export default function Accueil() {
                     aria-hidden
                   />
                   {demoVideos[0] ? (
-                    <div
+                    <AccueilDemoVideo
+                      src={demoVideos[0].src}
+                      preload={preloadSide}
+                      label={demoVideos[0].label}
                       className="accueil-vcard accueil-vcard-l group absolute z-[1] h-[45.882%] w-[33.846%] overflow-hidden rounded-2xl border border-white/10 shadow-[0_18px_50px_rgba(0,0,0,0.65)]"
-                    >
-                      <video
-                        src={demoVideos[0].src}
-                        autoPlay
-                        loop
-                        muted
-                        playsInline
-                        preload={preloadSide}
-                        className="h-full w-full object-cover"
-                      />
-                      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 pb-2 pt-8 text-center text-[8px] font-bold uppercase tracking-widest text-white/45">
-                        {demoVideos[0].label}
-                      </div>
-                    </div>
+                    />
                   ) : null}
                   {demoVideos[1] ? (
-                    <div
+                    <AccueilDemoVideo
+                      src={demoVideos[1].src}
+                      preload={preloadCenter}
+                      label={demoVideos[1].label}
                       className="accueil-vcard accueil-vcard-c group absolute bottom-0 z-[3] h-[57.647%] w-[42.308%] overflow-hidden rounded-2xl border border-[rgba(33,243,185,0.13)] shadow-[0_24px_65px_rgba(0,0,0,0.75)]"
-                    >
-                      <video
-                        src={demoVideos[1].src}
-                        autoPlay
-                        loop
-                        muted
-                        playsInline
-                        preload={preloadCenter}
-                        className="h-full w-full object-cover"
-                      />
-                      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 pb-2 pt-8 text-center text-[8px] font-bold uppercase tracking-widest text-white/45">
-                        {demoVideos[1].label}
-                      </div>
-                    </div>
+                    />
                   ) : null}
                   {demoVideos[2] ? (
-                    <div
+                    <AccueilDemoVideo
+                      src={demoVideos[2].src}
+                      preload={preloadSide}
+                      label={demoVideos[2].label}
                       className="accueil-vcard accueil-vcard-r group absolute z-[1] h-[45.882%] w-[33.846%] overflow-hidden rounded-2xl border border-white/10 shadow-[0_18px_50px_rgba(0,0,0,0.65)]"
-                    >
-                      <video
-                        src={demoVideos[2].src}
-                        autoPlay
-                        loop
-                        muted
-                        playsInline
-                        preload={preloadSide}
-                        className="h-full w-full object-cover"
-                      />
-                      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 pb-2 pt-8 text-center text-[8px] font-bold uppercase tracking-widest text-white/45">
-                        {demoVideos[2].label}
-                      </div>
-                    </div>
+                    />
                   ) : null}
                 </div>
               </div>
@@ -260,6 +271,11 @@ export default function Accueil() {
         }
         .accueil-vcard:hover {
           border-color: rgba(255, 255, 255, 0.2);
+        }
+        .accueil-demo-video {
+          -webkit-user-drag: none;
+          user-select: none;
+          pointer-events: none;
         }
         .accueil-vcard-l {
           bottom: 8.235%;

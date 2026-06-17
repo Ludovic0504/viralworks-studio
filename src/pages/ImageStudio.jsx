@@ -20,11 +20,13 @@ import {
   fetchImageStudioQuota,
   IMAGE_STUDIO_MONTHLY_LIMIT,
 } from "@/bibliotheque/supabase/imageStudioQuota";
+import { getImageStudioMonthlyLimit } from "@/bibliotheque/supabase/planQuotas";
 import {
   dismissImageStudioAlert,
-  IMAGE_STUDIO_WARNING_USED,
+  shouldShowImageStudioLowQuotaWarning,
   wasImageStudioAlertDismissed,
 } from "@/bibliotheque/imageStudio/quotaAlerts";
+import BandeauRenouvellementQuotaImageStudio from "@/composants/image/BandeauRenouvellementQuotaImageStudio";
 import IndicateurCreditsImageStudio from "@/composants/image/IndicateurCreditsImageStudio";
 import ImageStudioModelIcon from "@/composants/image/ImageStudioModelIcon";
 import ModalAbonnementImageStudio from "@/composants/image/ModalAbonnementImageStudio";
@@ -554,6 +556,12 @@ export default function ImageStudio() {
   const hasImagePlan = !accessLoading && hasImageStudioPlan(plan);
 
   useEffect(() => {
+    if (accessLoading) return;
+    const planLimit = getImageStudioMonthlyLimit(plan);
+    if (planLimit > 0) setQuotaLimit(planLimit);
+  }, [plan, accessLoading]);
+
+  useEffect(() => {
     uiStateHydratedRef.current = false;
     setUiPersistReady(false);
 
@@ -714,7 +722,7 @@ export default function ImageStudio() {
       return;
     }
 
-    if (quotaCount >= IMAGE_STUDIO_WARNING_USED) {
+    if (shouldShowImageStudioLowQuotaWarning(quotaCount, quotaLimit)) {
       if (!wasImageStudioAlertDismissed("warning", quotaResetAt)) {
         setQuotaAlert("warning");
       }
@@ -1102,6 +1110,8 @@ export default function ImageStudio() {
           />
         ) : null}
       </div>
+
+      {hasImagePlan ? <BandeauRenouvellementQuotaImageStudio limit={quotaLimit} /> : null}
 
       <div className="image-studio-main flex min-h-0 flex-1 flex-col">
         <div className="image-studio-workspace flex min-h-0 flex-col gap-2 px-4 sm:flex-1 sm:px-6 lg:px-8">

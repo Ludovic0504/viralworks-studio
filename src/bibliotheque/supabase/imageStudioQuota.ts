@@ -1,8 +1,11 @@
 import { getBrowserSupabase } from "./client-navigateur";
+import { fetchPremiumAccess } from "./premiumAccess";
+import {
+  getImageStudioMonthlyLimit,
+  IMAGE_STUDIO_MONTHLY_QUOTA_DEFAULT,
+} from "./planQuotas";
 
-export const IMAGE_STUDIO_MONTHLY_LIMIT = 200;
-/** À partir de ce nombre de générations consommées, throttle serveur (30 s). */
-export const IMAGE_STUDIO_THROTTLE_AFTER = 100;
+export const IMAGE_STUDIO_MONTHLY_LIMIT = IMAGE_STUDIO_MONTHLY_QUOTA_DEFAULT;
 
 export type ImageStudioQuota = {
   count: number;
@@ -21,6 +24,9 @@ export async function fetchImageStudioQuota(): Promise<ImageStudioQuota> {
     return { count: 0, limit: IMAGE_STUDIO_MONTHLY_LIMIT, resetAt: null };
   }
 
+  const { plan } = await fetchPremiumAccess();
+  const limit = getImageStudioMonthlyLimit(plan) || IMAGE_STUDIO_MONTHLY_LIMIT;
+
   const { data, error } = await supabase
     .from("profiles")
     .select("image_studio_count, image_studio_reset_at")
@@ -28,7 +34,7 @@ export async function fetchImageStudioQuota(): Promise<ImageStudioQuota> {
     .maybeSingle();
 
   if (error || !data) {
-    return { count: 0, limit: IMAGE_STUDIO_MONTHLY_LIMIT, resetAt: null };
+    return { count: 0, limit, resetAt: null };
   }
 
   const monthStart = new Date();
@@ -42,14 +48,14 @@ export async function fetchImageStudioQuota(): Promise<ImageStudioQuota> {
   if (!resetAt || resetAt < monthStart) {
     return {
       count: 0,
-      limit: IMAGE_STUDIO_MONTHLY_LIMIT,
+      limit,
       resetAt: monthStart.toISOString(),
     };
   }
 
   return {
     count: data.image_studio_count ?? 0,
-    limit: IMAGE_STUDIO_MONTHLY_LIMIT,
+    limit,
     resetAt: data.image_studio_reset_at,
   };
 }

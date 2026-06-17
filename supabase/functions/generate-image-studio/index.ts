@@ -1,11 +1,12 @@
 /**
- * Image Studio — génération multi-modèles avec quota mensuel (200/mois).
+ * Image Studio — génération multi-modèles avec quota mensuel selon l'offre.
  * GET  → disponibilité des modèles (clés API configurées)
  * POST → génération (nano_banana_pro | hailuo | gpt_image_2)
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
+  getImageStudioMonthlyLimit,
   planAllowsImageStudio,
   resolveUserPlan,
 } from "../_shared/plan-access.ts";
@@ -22,10 +23,6 @@ const KIE_BASE = "https://api.kie.ai";
 const OPENAI_GENERATIONS_URL = "https://api.openai.com/v1/images/generations";
 const OPENAI_EDITS_URL = "https://api.openai.com/v1/images/edits";
 const HAILUO_API_URL = "https://api.minimax.io/v1/image_generation";
-const IMAGE_STUDIO_LIMIT = 200;
-/** Générations 1–100 : pleine vitesse ; à partir de la 101e : pause serveur avant Kie. */
-const IMAGE_STUDIO_THROTTLE_AFTER = 100;
-const IMAGE_STUDIO_THROTTLE_MS = 30_000;
 const KIE_IMAGE_RESOLUTION = "2K";
 const MAX_REF_IMAGE_BYTES = 10 * 1024 * 1024;
 const MSG_BUSY =
@@ -571,6 +568,7 @@ async function generateGptImage2(
 async function assertQuotaAndGenerate(
   supabaseAdmin: SupabaseClient,
   userId: string,
+  imageStudioLimit: number,
   model: ImageStudioModel,
   prompt: string,
   aspectRatio: string,
@@ -587,12 +585,8 @@ async function assertQuotaAndGenerate(
   );
   if (quotaReadError) throw new Error(MSG_BUSY);
   const count = typeof currentCount === "number" ? currentCount : 0;
-  if (count >= IMAGE_STUDIO_LIMIT) {
-    throw new Error(`QUOTA:${IMAGE_STUDIO_LIMIT}`);
-  }
-
-  if (count >= IMAGE_STUDIO_THROTTLE_AFTER) {
-    await sleep(IMAGE_STUDIO_THROTTLE_MS);
+  if (count >= imageStudioLimit) {
+    throw new Error(`QUOTA:${imageStudioLimit}`);
   }
 
   let referenceUrl: string | null = null;
@@ -620,10 +614,10 @@ async function assertQuotaAndGenerate(
 
   const { error: incrementError } = await supabaseAdmin.rpc(
     "increment_image_studio_count",
-    { p_user_id: userId },
+    { p_user_id: userId, p_limit: imageStudioLimit },
   );
   if (incrementError?.message?.includes("IMAGE_STUDIO_QUOTA_EXCEEDED")) {
-    throw new Error(`QUOTA:${IMAGE_STUDIO_LIMIT}`);
+    throw new Error(`QUOTA:${imageStudioLimit}`);
   }
 
   return { url, provider };
@@ -720,10 +714,20 @@ serve(async (req) => {
           }
         : null;
 
+    const imageStudioLimit = getImageStudioMonthlyLimit(userPlan);
+    if (imageStudioLimit <= 0) {
+      return jsonError(
+        403,
+        "IMAGE_STUDIO_SUBSCRIPTION_REQUIRED",
+        "Un abonnement ViralWorks Image est requis pour générer des images.",
+      );
+    }
+
     try {
       const { url, provider } = await assertQuotaAndGenerate(
         supabaseAdmin,
         user.id,
+        imageStudioLimit,
         model,
         prompt,
         aspectRatio,
@@ -764,12 +768,12 @@ serve(async (req) => {
         provider,
         model,
         count: typeof newCount === "number" ? newCount : undefined,
-        limit: IMAGE_STUDIO_LIMIT,
+        limit: imageStudioLimit,
       });
     } catch (genErr) {
       const msg = genErr instanceof Error ? genErr.message : String(genErr);
       if (msg.startsWith("QUOTA:")) {
-        const limit = msg.split(":")[1] || String(IMAGE_STUDIO_LIMIT);
+        const limit = msg.split(":")[1] || String(imageStudioLimit);
         return jsonError(
           429,
           "IMAGE_STUDIO_QUOTA_EXCEEDED",
