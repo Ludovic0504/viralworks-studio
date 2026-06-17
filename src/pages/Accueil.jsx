@@ -125,8 +125,8 @@ export default function Accueil() {
 
       <div className="relative z-[1] flex h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
         <section className="relative flex min-h-0 w-full min-w-0 flex-1 flex-col items-center overflow-hidden pt-[var(--promo-images-banner-height,0px)] max-md:justify-start md:justify-center">
-          <div className="relative z-10 mx-auto flex h-full min-h-0 w-full min-w-0 max-w-[1100px] flex-col items-center justify-center gap-2 px-6 sm:px-8 max-md:gap-1 md:gap-3 md:px-12 xl:px-16">
-            <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col items-center gap-0 max-md:pt-1 max-md:pb-1 md:flex-row md:items-center md:gap-10 md:py-2">
+          <div className="relative z-10 mx-auto flex h-full min-h-0 w-full min-w-0 max-w-[1100px] flex-col items-center max-md:justify-start md:justify-center gap-2 px-6 sm:px-8 max-md:gap-0 md:gap-3 md:px-12 xl:px-16">
+            <div className="flex w-full min-w-0 max-md:flex-none flex-col items-center gap-0 max-md:pt-1 md:min-h-0 md:flex-1 md:flex-row md:items-center md:gap-10 md:py-2">
               <div className="w-full min-w-0 flex-[1.1] max-md:flex-none text-left max-[580px]:text-center md:pr-2 xl:pr-6">
                 <div className="accueil-fade-up accueil-fade-up-d1 mb-2 inline-flex max-md:mb-1.5 max-[580px]:mx-auto max-[580px]:w-full max-[580px]:justify-center md:mb-3">
                   <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5">
@@ -196,7 +196,7 @@ export default function Accueil() {
                 className="accueil-fade-up accueil-fade-up-d5 flex w-full min-h-0 min-w-0 max-md:flex-none max-md:items-center max-md:justify-center max-md:py-0 max-md:overflow-hidden md:mt-0 md:flex-1 md:items-center md:justify-end"
                 onContextMenu={blockMediaSave}
               >
-                <div className="relative mx-auto aspect-[260/340] max-md:h-[min(20dvh,168px)] w-auto max-w-full shrink-0 overflow-hidden max-md:max-w-[min(72vw,200px)] md:h-[clamp(200px,min(34dvh,38vh),440px)] md:max-w-[min(96vw,400px)] md:overflow-visible">
+                <div className="relative mx-auto aspect-[260/340] max-md:h-[clamp(280px,min(50lvh,520px),560px)] w-auto max-w-full shrink-0 overflow-hidden md:h-[clamp(200px,min(34dvh,38vh),440px)] md:max-w-[min(96vw,400px)] md:overflow-visible">
                   <div
                     className="pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 rounded-full bg-[rgba(33,243,185,0.08)] blur-[clamp(18px,4vw,28px)] max-md:blur-[14px]"
                     style={{
@@ -234,7 +234,7 @@ export default function Accueil() {
               </div>
             </div>
 
-            <div className="relative z-[1] mx-auto flex w-full shrink-0 items-center gap-3 pb-1 pt-0 max-md:mt-1 md:pb-2">
+            <div className="relative z-[1] mx-auto flex w-full shrink-0 items-center gap-3 max-md:mt-0 max-md:pb-0 max-md:pt-0 md:pb-2 md:pt-1">
               <div
                 className="div-line-accueil-l h-px max-w-[90px] flex-1"
                 style={{
