@@ -66,6 +66,10 @@ Pas de ponctuation superflue. Pas d'explication. Juste la promesse, rien d'autre
 
 const VALID_TEMPOS = new Set(["real_time", "timelapse", "slow_motion"]);
 
+function formatAllowsFacecamMise(formatId) {
+  return getProductMiseOptionsForFormat(formatId).some((m) => m.id === "facecam");
+}
+
 const MISE_PROMPT_PLACEHOLDER_BY_ID = {
   facecam: "Ex. : Peau visiblement plus jeune en 7 jours",
   mains_produit: "Ex. : Comment j'applique ma routine du soir",
@@ -362,6 +366,9 @@ export default function CampagneVWS({
   const [cameraViewAngle, setCameraViewAngle] = useState(
     campaignData?.cameraViewAngle ?? null
   );
+  const [cameraFaceMode, setCameraFaceMode] = useState(
+    campaignData?.cameraFaceMode ?? null
+  );
   const [narrativeContinuity, setNarrativeContinuity] = useState(
     campaignData?.narrativeContinuity ?? null
   );
@@ -553,6 +560,7 @@ export default function CampagneVWS({
       causalAgentSelection,
       cameraAerialAngle,
       cameraViewAngle,
+      cameraFaceMode,
       narrativeContinuity,
       timelapseCameraPov,
       initialStateSelection,
@@ -620,7 +628,8 @@ export default function CampagneVWS({
     const d = getDialogueDefaultForMiseId(miseId);
     setStagingChips(next);
     setDialogueEnabled(d);
-    onCampaignChange?.(buildCampaignSnapshot({ stagingChips: next, dialogueEnabled: d }));
+    setCameraFaceMode(null);
+    onCampaignChange?.(buildCampaignSnapshot({ stagingChips: next, dialogueEnabled: d, cameraFaceMode: null }));
   };
   const setLieuTournage = (v) => {
     const next = v === "chez_client" || v === "etablissement" || v === "neutre" ? v : "neutre";
@@ -681,6 +690,7 @@ export default function CampagneVWS({
     if (updates.narrativeContinuity !== undefined) setNarrativeContinuity(updates.narrativeContinuity);
     if (updates.timelapseCameraPov !== undefined) setTimelapseCameraPov(updates.timelapseCameraPov);
     if (updates.cameraViewAngle !== undefined) setCameraViewAngle(updates.cameraViewAngle);
+    if (updates.cameraFaceMode !== undefined) setCameraFaceMode(updates.cameraFaceMode);
     if (updates.initialStateSelection !== undefined) setInitialStateSelection(updates.initialStateSelection);
     if (updates.gateResult !== undefined) setGateResult(updates.gateResult);
     if (updates.clarifyAnswer !== undefined) setClarifyAnswer(updates.clarifyAnswer);
@@ -710,6 +720,8 @@ export default function CampagneVWS({
         timelapseCameraPov: updates.timelapseCameraPov ?? timelapseCameraPov,
         cameraViewAngle:
           updates.cameraViewAngle ?? cameraViewAngle,
+        cameraFaceMode:
+          updates.cameraFaceMode ?? cameraFaceMode,
         initialStateSelection:
           updates.initialStateSelection ?? initialStateSelection,
         gateResult: updates.gateResult ?? gateResult,
@@ -776,6 +788,7 @@ export default function CampagneVWS({
       cameraAerialAngle: null,
       narrativeContinuity: null,
       timelapseCameraPov: null,
+      cameraFaceMode: null,
       initialStateSelection: null,
       gateResult: null,
       clarifyAnswer: null,
@@ -1176,6 +1189,8 @@ Réponds uniquement en JSON :
         runOverrides?.microAnswer !== undefined ? runOverrides.microAnswer : microAnswer;
       const effectiveCameraViewAngle =
         runOverrides?.cameraViewAngle !== undefined ? runOverrides.cameraViewAngle : cameraViewAngle;
+      const effectiveCameraFaceMode =
+        runOverrides?.cameraFaceMode !== undefined ? runOverrides.cameraFaceMode : cameraFaceMode;
       const effectiveTempoCompressionDecision =
         runOverrides?.tempoCompressionDecision !== undefined
           ? runOverrides.tempoCompressionDecision
@@ -1223,6 +1238,8 @@ Réponds uniquement en JSON :
         cinematicMovement,
         tempo: effectiveTempo,
         sequenceType: effectiveSequenceType,
+        camera_face_mode: effectiveCameraFaceMode ?? null,
+        video_format_id: videoFormatId ?? null,
       };
       console.log("=== FORMAT CONFIG INJECTÉ ===", formatHint);
       console.log("=== PAYLOAD API ===", payload);
@@ -1368,7 +1385,14 @@ Réponds uniquement en JSON :
       const isPubliciteProduitFormat =
         selectedFormatLabel.toLowerCase() === "publicité produit (shooting esthétique)".toLowerCase();
       const isSelfieFormat = Boolean(catalogFormatDef?.rendering?.selfieMode ?? selfieMode);
-      if (!effectiveCameraViewAngle && !isPubliciteProduitFormat && !isSelfieFormat) {
+      const stagingIsFacecam = stagingChips.includes("facecam");
+      if (
+        !effectiveCameraViewAngle &&
+        !isPubliciteProduitFormat &&
+        !isSelfieFormat &&
+        !stagingIsFacecam &&
+        !effectiveCameraFaceMode
+      ) {
         const personVisible = await detectPersonVisibleInIdea(safeIdea);
         if (personVisible) {
           setMicroQuestion({
@@ -1382,6 +1406,26 @@ Réponds uniquement en JSON :
           setError("Choisis l’angle caméra pour finaliser la préparation.");
           return;
         }
+      }
+
+      const formatPresetSelfieMode = Boolean(catalogFormatDef?.rendering?.selfieMode);
+      if (
+        isProductModeRun &&
+        stagingIsFacecam &&
+        formatAllowsFacecamMise(videoFormatId) &&
+        !formatPresetSelfieMode &&
+        !effectiveCameraFaceMode
+      ) {
+        setMicroQuestion({
+          question: "Comment la caméra est-elle tenue pour cette face caméra ?",
+          reason: "camera_face_mode",
+          options: [
+            { id: "camera_face_mode_selfie", label: "Selfie (caméra tenue en main)" },
+            { id: "camera_face_mode_fixed", label: "Caméra fixe (trépied ou support invisible)" },
+          ],
+        });
+        setError("Choisis le type de caméra face caméra avant de préparer la vidéo.");
+        return;
       }
 
       if (
@@ -1553,6 +1597,7 @@ Réponds uniquement en JSON :
             causal_agent: causalForBrain,
             camera_aerial_angle: cameraAerialForBrain,
             camera_view_angle: effectiveCameraViewAngle,
+            camera_face_mode: effectiveCameraFaceMode,
             last_user_freeform_answer: clarifyAnswer ?? null,
             proceed_anyway: false,
             history: historyLines,
@@ -1581,7 +1626,8 @@ Réponds uniquement en JSON :
             fixed: Boolean(cameraFixed),
             reveal_mode: Boolean(revealMode),
             cinematic_movement: Boolean(cinematicMovement),
-            selfie_mode: Boolean(selfieMode),
+            selfie_mode:
+              effectiveCameraFaceMode === "selfie" ? true : Boolean(selfieMode),
             aerial_angle: cameraAerialForBrain,
           },
           audio: {
@@ -1621,6 +1667,7 @@ Réponds uniquement en JSON :
         narrativeContinuity: effectiveNarrativeContinuity,
         timelapseCameraPov: effectiveTimelapseCameraPov,
         cameraViewAngle: effectiveCameraViewAngle,
+        cameraFaceMode: effectiveCameraFaceMode,
         initialStateSelection: null,
         gateResult: gate,
         clarifyAnswer: clarifyAnswer ?? null,
@@ -1789,6 +1836,19 @@ Réponds uniquement en JSON :
       );
       setError("");
       void handleRun(null, { cameraViewAngle: nextCameraViewAngle });
+      return;
+    }
+    if (optionId === "camera_face_mode_selfie" || optionId === "camera_face_mode_fixed") {
+      const nextCameraFaceMode = optionId === "camera_face_mode_selfie" ? "selfie" : "fixed";
+      setCameraFaceMode(nextCameraFaceMode);
+      setMicroQuestion(null);
+      onCampaignChange?.(
+        buildCampaignSnapshot({
+          cameraFaceMode: nextCameraFaceMode,
+        })
+      );
+      setError("");
+      void handleRun(null, { cameraFaceMode: nextCameraFaceMode });
       return;
     }
     if (optionId === "vws_cont_continuous" || optionId === "vws_cont_cuts") {

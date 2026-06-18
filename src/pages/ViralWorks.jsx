@@ -555,6 +555,7 @@ function buildLegacyCampaignDataFromSpec(spec) {
     dialogueEnabled: s.rendering.audio.dialogue_enabled !== false,
     microAnswer: s.campaign.clarification.initial_state ?? null,
     cameraViewAngle: s.campaign.clarification.camera_view_angle ?? null,
+    cameraFaceMode: s.campaign.clarification.camera_face_mode ?? null,
     tempoCompressionDecision: s.rendering.tempo_resolution_decision ?? null,
     causalAgentSelection: s.campaign.clarification.causal_agent ?? null,
     cameraAerialAngle: s.campaign.clarification.camera_aerial_angle ?? null,
@@ -642,6 +643,10 @@ function applyLegacyCampaignPatchToSpec(prevSpec, patch) {
           patch?.cameraViewAngle !== undefined
             ? patch.cameraViewAngle
             : prev.campaign.clarification.camera_view_angle,
+        camera_face_mode:
+          patch?.cameraFaceMode !== undefined
+            ? patch.cameraFaceMode
+            : prev.campaign.clarification.camera_face_mode,
         last_user_freeform_answer:
           patch?.clarifyAnswer !== undefined
             ? patch.clarifyAnswer
@@ -1568,6 +1573,7 @@ export default function ViralWorks() {
     campaignClarifyAnswer: campaignData?.clarifyAnswer ?? null,
     campaignCameraAerialAngle: campaignData?.cameraAerialAngle ?? null,
     campaignCameraViewAngle: campaignData?.cameraViewAngle ?? null,
+    campaignCameraFaceMode: campaignData?.cameraFaceMode ?? null,
     campaignGlobalIntentProfile: campaignData?.globalIntentProfile ?? null,
     campaignSelfieMode: Boolean(campaignData?.selfieMode),
     sequenceType: campaignData?.sequenceType === "three_x_8s" ? "three_x_8s" : "single_8s",

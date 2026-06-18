@@ -185,6 +185,8 @@ export interface InferGlobalIntentInput {
   sequenceType: SequenceType;
   /** Aligné sur UserIdeaInput.videoFormatHint */
   videoFormatHint?: string;
+  camera_face_mode?: "selfie" | "fixed" | null;
+  video_format_id?: string | null;
 }
 
 export interface ExecutionStep {
@@ -738,6 +740,21 @@ function inferGlobalIntentHeuristic(input: InferGlobalIntentInput): GlobalIntent
     /\b(homme|femme|personne|artisan|ouvrier|il|elle|je|on voit|parle|montre|main|mains)\b/.test(idea);
 
   if (hasSelfie || (hasPresentationVerbs && hasHumanSignals && !hasTransformationSignals)) {
+    // Si camera_face_mode=selfie + format produit démonstration,
+    // le hook doit montrer le produit en action, pas un résultat fini
+    if (
+      input.camera_face_mode === "selfie" &&
+      (input.video_format_id === "produit_demo" ||
+        input.video_format_id === "produit_test_review")
+    ) {
+      return {
+        intentFamily: "presentation",
+        hookGoal: "show_action_in_progress",
+        humanPresence: "selfie",
+        confidence: 0.95,
+        source: "heuristic",
+      };
+    }
     return {
       intentFamily: "presentation",
       hookGoal: "show_finished_result",
@@ -1438,7 +1455,8 @@ export function truncateOpeningHookFallback(raw: string, maxLen: number): string
 
 export function resolveFrame0Intent(
   hookId: string | null | undefined,
-  stagingIds: string[]
+  stagingIds: string[],
+  isSelfie?: boolean
 ): string {
   const hook = hookId ? getProductHookById(hookId) : undefined;
   const miseId = Array.isArray(stagingIds) && stagingIds.length > 0 ? stagingIds[0] : undefined;
@@ -1476,6 +1494,7 @@ export function resolveFrame0Intent(
 
   const productStatus = hook?.product_visibility_at_t0 ?? "held";
   const cameraFeel = hook?.camera_energy ?? "stable";
+  const effectiveCameraFeel = isSelfie === true ? "handheld" : cameraFeel;
 
   const lines: string[] = [];
   lines.push("[FRAME 0 — FIRST INSTANT CONSTRAINTS — HIGHEST PRIORITY]");
@@ -1486,7 +1505,7 @@ export function resolveFrame0Intent(
     lines.push(finalDirectives.join(", "));
   }
   lines.push(`Product status at frame 0: ${productStatus}`);
-  lines.push(`Camera feel: ${cameraFeel}`);
+  lines.push(`Camera feel: ${effectiveCameraFeel}`);
   if (finalNegatives.length) {
     lines.push(`STRICTLY FORBIDDEN at frame 0: ${finalNegatives.join(", ")}`);
   }
@@ -1606,12 +1625,28 @@ OUTPUT RULES — READ ALL BEFORE WRITING:
 10. FORBIDDEN: French words, labels, bullet points, brackets.
 11. Max 1500 characters — count before outputting.`;
 
-const HOOK_IMAGE_LLM_SYSTEM_UGC_PRODUIT = `You are a cinematic image prompt writer for ViralWorks Studio.
+function buildUgcProduitSystemPrompt(options: { isSelfie?: boolean } = {}): string {
+  const cameraLine = options.isSelfie
+    ? "Medium close-up smartphone selfie POV — the creator films themselves, " +
+      "camera held at arm's length, slight upward tilt toward face, " +
+      "characteristic selfie wide-angle distortion, handheld micro-movements visible."
+    : "Medium close-up — product and creator visible, stable framing, " +
+      "camera positioned at eye level or slightly above.";
+
+  const openLine = options.isSelfie
+    ? '2. Open with: "Medium close-up smartphone selfie POV, …"'
+    : '2. Open with: "Medium close-up, …"';
+
+  const cameraFeel = options.isSelfie
+    ? "Camera feel: organic Instagram UGC — handheld slight tilt, not perfectly centered."
+    : "Camera feel: stable eye-level framing, minimal handheld movement.";
+
+  return `You are a cinematic image prompt writer for ViralWorks Studio.
 Your only task: translate a French UGC/product idea into a single English narrative image prompt for Hailuo (image-01) or GPT-image-2, max 1500 characters.
-ARCHETYPE — UGC PRODUCT (creator + product, authentic smartphone feel): The creator faces the camera holding or presenting the product at T=0. Shot type: MCU (Medium Close-Up), selfie smartphone POV. Lighting: natural, no studio, morning or indoor window light. Camera feel: organic Instagram UGC — handheld slight tilt, not perfectly centered. Visual references: authentic creator content, not commercial advertising.
+ARCHETYPE — UGC PRODUCT (creator + product, authentic feel): The creator faces the camera holding or presenting the product at T=0. ${cameraLine} Lighting: natural, no studio, morning or indoor window light. ${cameraFeel} Visual references: authentic creator content, not commercial advertising.
 OUTPUT RULES — READ ALL BEFORE WRITING:
 1. Write a single dense English paragraph. No lists, no headers, no labels.
-2. Open with: "Medium close-up smartphone selfie POV, …"
+${openLine}
 3. Describe in order: creator presence → product held/shown → outfit/setting → light.
 4. Product at T=0: intact, sealed or as received — NOT opened, NOT applied, NOT used.
 5. Specify light: source (window / bathroom light), color temperature (Kelvin).
@@ -1621,12 +1656,25 @@ OUTPUT RULES — READ ALL BEFORE WRITING:
 9. FORBIDDEN: studio lighting, commercial ad vocabulary, perfect symmetry.
 10. FORBIDDEN: French words, labels, bullet points, brackets.
 11. Max 1500 characters — count before outputting.`;
+}
 
-const HOOK_IMAGE_LLM_SYSTEM_BY_ARCHETYPE: Record<HookImageArchetype, string> = {
+const HOOK_IMAGE_LLM_SYSTEM_BY_ARCHETYPE: Record<
+  Exclude<HookImageArchetype, "UGC_PRODUIT">,
+  string
+> = {
   METIER_PROCESS: HOOK_IMAGE_LLM_SYSTEM_METIER_PROCESS,
   METIER_FACECAM: HOOK_IMAGE_LLM_SYSTEM_METIER_FACECAM,
-  UGC_PRODUIT: HOOK_IMAGE_LLM_SYSTEM_UGC_PRODUIT,
 };
+
+function resolveHookImageLlmSystem(
+  archetype: HookImageArchetype,
+  options?: { isSelfie?: boolean }
+): string {
+  if (archetype === "UGC_PRODUIT") {
+    return buildUgcProduitSystemPrompt(options);
+  }
+  return HOOK_IMAGE_LLM_SYSTEM_BY_ARCHETYPE[archetype];
+}
 
 export function resolveHookImageArchetype(
   stagingChip: string | null | undefined,
@@ -1661,6 +1709,7 @@ export type HookImageLlmTranslationInput = {
   camera: string;
   hasAvatarReference: boolean;
   hasProductReference: boolean;
+  isSelfie?: boolean;
 };
 
 export function buildHookImageLlmUserPayload(input: HookImageLlmTranslationInput): string {
@@ -1681,7 +1730,7 @@ export async function translateHookImageNarrativeWithLlm(
 ): Promise<string> {
   const coreIdea = clean(input.coreIdea);
   if (!coreIdea) return "";
-  const system = HOOK_IMAGE_LLM_SYSTEM_BY_ARCHETYPE[input.archetype];
+  const system = resolveHookImageLlmSystem(input.archetype, { isSelfie: input.isSelfie });
   const payload = buildHookImageLlmUserPayload({ ...input, coreIdea });
   const raw = await generateResponse(payload, system, {
     model: "gpt-4o",
@@ -1907,7 +1956,7 @@ export function buildHookImageApiPrompt(
   const firstInstantBlock = openingHookStill ? `\n\n${HOOK_FIRST_INSTANT_DIRECTIVE_FR}` : "";
   const frame0Block =
     openingHookStill && (options.hookId || (Array.isArray(options.stagingIds) && options.stagingIds.length > 0))
-      ? `${resolveFrame0Intent(options.hookId ?? null, options.stagingIds ?? [])}\n\n`
+      ? `${resolveFrame0Intent(options.hookId ?? null, options.stagingIds ?? [], options.selfieMode === true)}\n\n`
       : "";
   const prompt = `${frame0Block}${withViewpoint}${firstInstantBlock}\n\n${antiDistortionBlock}`;
   console.log("🔍 PROMPT FINAL:", prompt.substring(0, 500));
@@ -1947,6 +1996,7 @@ export async function buildHookImageApiPromptAsync(
         camera: options.cameraViewAngle?.trim() || "none",
         hasAvatarReference: options.hasAvatarReference === true,
         hasProductReference: options.hasProductReference === true,
+        isSelfie: options.selfieMode === true,
       });
       if (translated.trim()) {
         narrativeCoreOverride = translated;

@@ -68,6 +68,21 @@ function clarificationModeToImagePromptLine(mode, stagingId) {
   return "";
 }
 
+/** Priorité camera_face_mode sur preset selfie + camera_view_angle pour les prompts hook. */
+function resolveHookCameraPromptOptions(canonicalSpec) {
+  const cameraFaceMode = canonicalSpec?.campaign?.clarification?.camera_face_mode ?? null;
+  const presetSelfieMode = canonicalSpec?.rendering?.camera?.selfie_mode === true;
+  const effectiveSelfieForHook =
+    cameraFaceMode === "selfie"
+      ? true
+      : cameraFaceMode === "fixed"
+        ? false
+        : presetSelfieMode;
+  const cameraViewAngleForHook =
+    cameraFaceMode != null ? null : canonicalSpec?.campaign?.clarification?.camera_view_angle ?? null;
+  return { effectiveSelfieForHook, cameraViewAngleForHook };
+}
+
 const PRODUCT_REF_PROMPT_LINE =
   "Reproduce exactly the same product as shown in the reference image — identical packaging, same colors, same label, same shape.";
 
@@ -306,6 +321,7 @@ export default function ImagePage({
   campaignClarifyAnswer = null,
   campaignCameraAerialAngle = null,
   campaignCameraViewAngle = null,
+  campaignCameraFaceMode = null,
   campaignGlobalIntentProfile = null,
   campaignSelfieMode = false,
   sequenceType = "single_8s",
@@ -366,6 +382,8 @@ export default function ImagePage({
             campaignCameraAerialAngle ?? fromIncoming.campaign.clarification.camera_aerial_angle,
           camera_view_angle:
             campaignCameraViewAngle ?? fromIncoming.campaign.clarification.camera_view_angle,
+          camera_face_mode:
+            campaignCameraFaceMode ?? fromIncoming.campaign.clarification.camera_face_mode,
           initial_state: campaignMicroAnswer ?? fromIncoming.campaign.clarification.initial_state,
         },
       },
@@ -423,6 +441,7 @@ export default function ImagePage({
     campaignClarifyAnswer,
     campaignCameraAerialAngle,
     campaignCameraViewAngle,
+    campaignCameraFaceMode,
     campaignMicroAnswer,
     scriptScene1Idea,
     scriptScene2Idea,
@@ -738,6 +757,8 @@ export default function ImagePage({
       if (!supabaseUrl || !supabaseAnonKey || !accessToken) return null;
 
       const functionUrl = `${supabaseUrl}/functions/v1/hailuo-image`;
+      const { effectiveSelfieForHook, cameraViewAngleForHook } =
+        resolveHookCameraPromptOptions(canonicalSpec);
       const hailuoPrompt = buildHookImageApiPrompt(
         [
           String(canonicalSpec.campaign.core_idea || "").trim(),
@@ -752,9 +773,9 @@ export default function ImagePage({
           initialStateMode: null,
           jobTypeLabel: canonicalSpec.campaign.profession || "",
           cameraAerialAngle: canonicalSpec.campaign.clarification.camera_aerial_angle,
-          cameraViewAngle: canonicalSpec.campaign.clarification.camera_view_angle,
+          cameraViewAngle: cameraViewAngleForHook,
           globalIntent: getSafeIntentProfile(canonicalSpec),
-          selfieMode: canonicalSpec.rendering.camera.selfie_mode === true,
+          selfieMode: effectiveSelfieForHook,
           cameraFixed: canonicalSpec.rendering.camera.fixed === true,
           openingHookStill: false,
         }
@@ -1317,6 +1338,8 @@ export default function ImagePage({
         .filter(Boolean)
         .join("\n");
 
+      const { effectiveSelfieForHook, cameraViewAngleForHook } =
+        resolveHookCameraPromptOptions(canonicalSpec);
       const hookImagePromptOptions = {
         revealMode: canonicalSpec.rendering.camera.reveal_mode === true,
         initialStateMode:
@@ -1325,9 +1348,9 @@ export default function ImagePage({
             : null,
         jobTypeLabel: canonicalSpec.campaign.profession || "",
         cameraAerialAngle: canonicalSpec.campaign.clarification.camera_aerial_angle,
-        cameraViewAngle: canonicalSpec.campaign.clarification.camera_view_angle,
+        cameraViewAngle: cameraViewAngleForHook,
         globalIntent: getSafeIntentProfile(canonicalSpec),
-        selfieMode: canonicalSpec.rendering.camera.selfie_mode === true,
+        selfieMode: effectiveSelfieForHook,
         cameraFixed: canonicalSpec.rendering.camera.fixed === true,
         openingHookStill: true,
         hookId: canonicalSpec.campaign.product_opening_hook_id,
@@ -1947,6 +1970,8 @@ export default function ImagePage({
     const functionUrl = supabaseUrl ? `${supabaseUrl}/functions/v1/hailuo-image` : "";
     const hookStagingId =
       canonicalSpec.campaign.staging_chips?.[0] ?? campaignStagingChips?.[0];
+    const { effectiveSelfieForHook, cameraViewAngleForHook } =
+      resolveHookCameraPromptOptions(canonicalSpec);
     const image1Prompt = buildHookImageApiPrompt(
       [
         String(canonicalSpec.creative.hook_visual.prompt_text || "").trim() ||
@@ -1972,9 +1997,9 @@ export default function ImagePage({
           canonicalSpec.campaign.clarification.initial_state === "from_nothing" ? "from_nothing" : null,
         jobTypeLabel: canonicalSpec.campaign.profession || "",
         cameraAerialAngle: canonicalSpec.campaign.clarification.camera_aerial_angle,
-        cameraViewAngle: canonicalSpec.campaign.clarification.camera_view_angle,
+        cameraViewAngle: cameraViewAngleForHook,
         globalIntent: getSafeIntentProfile(canonicalSpec),
-        selfieMode: canonicalSpec.rendering.camera.selfie_mode === true,
+        selfieMode: effectiveSelfieForHook,
         cameraFixed: canonicalSpec.rendering.camera.fixed === true,
         openingHookStill: true,
         hookId: canonicalSpec.campaign.product_opening_hook_id,
@@ -2011,6 +2036,8 @@ export default function ImagePage({
 
     const mk = (sceneIndex1Based, sceneText) => {
       if (!sceneText) return null;
+      const { effectiveSelfieForHook, cameraViewAngleForHook } =
+        resolveHookCameraPromptOptions(canonicalSpec);
       const hailuoPrompt = buildHookImageApiPrompt(
         [
           String(canonicalSpec.campaign.core_idea || "").trim(),
@@ -2025,9 +2052,9 @@ export default function ImagePage({
           initialStateMode: null,
           jobTypeLabel: canonicalSpec.campaign.profession || "",
           cameraAerialAngle: canonicalSpec.campaign.clarification.camera_aerial_angle,
-          cameraViewAngle: canonicalSpec.campaign.clarification.camera_view_angle,
+          cameraViewAngle: cameraViewAngleForHook,
           globalIntent: getSafeIntentProfile(canonicalSpec),
-          selfieMode: canonicalSpec.rendering.camera.selfie_mode === true,
+          selfieMode: effectiveSelfieForHook,
           cameraFixed: canonicalSpec.rendering.camera.fixed === true,
           openingHookStill: false,
         }

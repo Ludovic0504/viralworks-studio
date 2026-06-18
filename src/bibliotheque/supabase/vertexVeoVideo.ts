@@ -159,7 +159,9 @@ export const VEO3_VISUAL_CONTINUITY_RULES_SUFFIX = `Continuity rules (strictly e
 - No sudden appearance or disappearance of people or props 
   without a cut or a narrative justification.
 - Maintain consistent character appearance (hair, clothing, 
-  face) from first to last frame.`;
+  face) from first to last frame.
+- Human anatomy is fixed: the person has exactly two hands and two arms throughout the entire video. No extra limbs may appear at any frame. Any hand visible on screen belongs to one of these two hands.
+- No anatomical duplication: the same hand must never appear twice in the same frame.`;
 
 const VEO3_CONTINUITY_MARKER = "Continuity rules (strictly enforced):";
 /** Limite côté client : l’Edge tronque à 8000 (text) ou 7600 + consigne image ; on garde une marge pour le suffixe + ligne image. */

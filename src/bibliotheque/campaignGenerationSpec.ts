@@ -10,6 +10,7 @@ export type CampaignClarifyInitialState = "from_nothing" | "partially_built" | n
 export type CampaignClarifyCausalAgent = "visible" | "automatic" | null;
 export type CampaignClarifyCameraAerialAngle = "top_down" | "angled" | null;
 export type CampaignClarifyCameraViewAngle = "subjective_portee" | "exterieure_filmee" | null;
+export type CampaignClarifyCameraFaceMode = "selfie" | "fixed" | null;
 export type RenderingTempo = "real_time" | "timelapse" | "slow_motion";
 export type CreativeSequenceType = "single_8s" | "three_x_8s";
 export type RenderingAspectRatio = "9:16" | "16:9" | "1:1";
@@ -35,6 +36,8 @@ export interface CampaignClarification {
   causal_agent: CampaignClarifyCausalAgent;
   camera_aerial_angle: CampaignClarifyCameraAerialAngle;
   camera_view_angle: CampaignClarifyCameraViewAngle;
+  /** Face caméra produit : selfie handheld vs support fixe invisible. */
+  camera_face_mode: CampaignClarifyCameraFaceMode;
   last_user_freeform_answer: string | null;
   proceed_anyway: boolean;
   history: string[];
@@ -235,6 +238,7 @@ export function createDefaultCampaignGenerationSpec(): CampaignGenerationSpec {
         causal_agent: null,
         camera_aerial_angle: null,
         camera_view_angle: null,
+        camera_face_mode: null,
         last_user_freeform_answer: null,
         proceed_anyway: false,
         history: [],
@@ -533,6 +537,11 @@ export function normalizeCampaignGenerationSpec(raw: unknown): CampaignGeneratio
         camera_view_angle: asOneOf(
           clarification.camera_view_angle ?? campaign.cameraViewAngle,
           ["subjective_portee", "exterieure_filmee", null] as const,
+          null
+        ),
+        camera_face_mode: asOneOf(
+          clarification.camera_face_mode ?? campaign.cameraFaceMode,
+          ["selfie", "fixed", null] as const,
           null
         ),
         last_user_freeform_answer: asNullableString(

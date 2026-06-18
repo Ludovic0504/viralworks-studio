@@ -723,17 +723,39 @@ export function getVideoFormatConfigForCatalogId(catalogId: string | null | unde
 }
 
 /** Bloc texte à injecter dans les prompts (LLM / Veo), sans appel LLM. */
-export function formatVideoFormatParamsPromptAppendix(params: VideoFormatParams): string {
+export function formatVideoFormatParamsPromptAppendix(
+  params: VideoFormatParams,
+  overrides?: {
+    isSelfie?: boolean;
+    actualDurationSeconds?: number;
+  }
+): string {
+  const soundAtmosphere = overrides?.isSelfie
+    ? params.ambiance_sonore
+        .replace(/voix off ou /gi, "")
+        .replace(/voix off/gi, "face caméra")
+        .trim()
+    : params.ambiance_sonore;
+
+  const hookType =
+    overrides?.isSelfie && params.accroche_type === "probleme_solution"
+      ? "show_in_use"
+      : params.accroche_type;
+
   const [dMin, dMax] = params.duree_secondes;
+  const durationDisplay = overrides?.actualDurationSeconds
+    ? `${overrides.actualDurationSeconds}-${overrides.actualDurationSeconds}`
+    : `${dMin}-${dMax}`;
+
   return [
     "Video format parameters (fixed, config):",
     `pace: ${params.vitesse}`,
     `camera: ${params.camera.join(", ")}`,
     `editing: ${params.montage}`,
     `lighting: ${params.eclairage}`,
-    `sound_atmosphere: ${params.ambiance_sonore}`,
-    `hook_type: ${params.accroche_type}`,
-    `duration_seconds: ${dMin}-${dMax}`,
+    `sound_atmosphere: ${soundAtmosphere}`,
+    `hook_type: ${hookType}`,
+    `duration_seconds: ${durationDisplay}`,
     `ratio: ${params.ratio}`,
     `prompt_keywords: ${params.mots_cles_prompt.join(", ")}`,
   ].join("\n");

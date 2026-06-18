@@ -321,6 +321,15 @@ export async function runStudioScriptRefinement({
   }
   const dialogueEnabled = canonicalSpec?.rendering?.audio?.dialogue_enabled !== false;
 
+  const cameraFaceMode = canonicalSpec.campaign.clarification.camera_face_mode ?? null;
+  const presetSelfieMode = canonicalSpec.rendering.camera.selfie_mode === true;
+  const refineSelfieMode =
+    cameraFaceMode === "selfie"
+      ? true
+      : cameraFaceMode === "fixed"
+        ? false
+        : presetSelfieMode;
+
   let refineResult;
   try {
     console.log("[FORMAT FAMILLE]", videoFormatId, "→", enrichedFormatFamilyInstruction?.slice(0, 80));
@@ -341,7 +350,7 @@ export async function runStudioScriptRefinement({
         canonicalSpec.campaign.clarification.causal_agent ?? campaignData?.causalAgentSelection ?? null,
       formatFamilyInstruction: enrichedFormatFamilyInstruction,
       dialogueEnabled,
-      selfieMode: canonicalSpec.rendering.camera.selfie_mode === true,
+      selfieMode: refineSelfieMode,
     });
   } catch (err) {
     return {
