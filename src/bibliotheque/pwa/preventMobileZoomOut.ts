@@ -35,15 +35,24 @@ export function initPreventMobileZoomOut(): () => void {
   let lastPinchDistance = 0;
   let viewportResetTimer: ReturnType<typeof setTimeout> | null = null;
 
+  const currentScale = () => window.visualViewport?.scale ?? 1;
+
   const onGestureChange = (event: Event) => {
     const gesture = event as Event & { scale?: number };
-    const viewportScale = window.visualViewport?.scale ?? 1;
     if (
-      viewportScale <= 1.02 &&
+      currentScale() <= 1.02 &&
       typeof gesture.scale === "number" &&
       gesture.scale < 1
     ) {
       event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+  };
+
+  const onGestureStart = (event: Event) => {
+    if (currentScale() < 1) {
+      event.preventDefault();
+      refreshViewportMeta();
     }
   };
 
@@ -57,10 +66,11 @@ export function initPreventMobileZoomOut(): () => void {
     if (event.touches.length < 2) return;
 
     const distance = touchDistance(event.touches);
-    const scale = window.visualViewport?.scale ?? 1;
+    const scale = currentScale();
 
     if (distance < lastPinchDistance && scale <= 1.02) {
       event.preventDefault();
+      event.stopImmediatePropagation();
     }
 
     lastPinchDistance = distance;
@@ -70,29 +80,34 @@ export function initPreventMobileZoomOut(): () => void {
     if (viewportResetTimer) clearTimeout(viewportResetTimer);
     viewportResetTimer = setTimeout(() => {
       viewportResetTimer = null;
-      if ((window.visualViewport?.scale ?? 1) < 1) {
+      if (currentScale() < 1) {
         refreshViewportMeta();
       }
     }, 80);
   };
 
   const onVisualViewportChange = () => {
-    if ((window.visualViewport?.scale ?? 1) < 1) {
+    if (currentScale() < 1) {
       refreshViewportMeta();
       scheduleViewportReset();
     }
   };
 
-  document.addEventListener("gesturechange", onGestureChange, { passive: false });
-  document.addEventListener("touchstart", onTouchStart, { passive: true });
-  document.addEventListener("touchmove", onTouchMove, { passive: false });
+  const capture = { capture: true, passive: false as const };
+  const capturePassive = { capture: true, passive: true as const };
+
+  window.addEventListener("gesturestart", onGestureStart, capture);
+  window.addEventListener("gesturechange", onGestureChange, capture);
+  window.addEventListener("touchstart", onTouchStart, capturePassive);
+  window.addEventListener("touchmove", onTouchMove, capture);
   window.visualViewport?.addEventListener("resize", onVisualViewportChange);
   window.visualViewport?.addEventListener("scroll", onVisualViewportChange);
 
   return () => {
-    document.removeEventListener("gesturechange", onGestureChange);
-    document.removeEventListener("touchstart", onTouchStart);
-    document.removeEventListener("touchmove", onTouchMove);
+    window.removeEventListener("gesturestart", onGestureStart, capture);
+    window.removeEventListener("gesturechange", onGestureChange, capture);
+    window.removeEventListener("touchstart", onTouchStart, capturePassive);
+    window.removeEventListener("touchmove", onTouchMove, capture);
     window.visualViewport?.removeEventListener("resize", onVisualViewportChange);
     window.visualViewport?.removeEventListener("scroll", onVisualViewportChange);
     if (viewportResetTimer) clearTimeout(viewportResetTimer);

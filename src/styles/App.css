@@ -50,6 +50,16 @@ body{ background:var(--app-bg); color:#e5e5e5; }
     max-width: 100%;
     overflow-x: hidden;
   }
+
+  /* iOS autorise le pinch sur les zones scrollables (overflow-y-auto) — pan-y le désactive */
+  [class*="overflow-y-auto"],
+  [class*="overflow-auto"]:not([class*="overflow-x-auto"]) {
+    touch-action: pan-y;
+  }
+
+  [class*="overflow-x-auto"]:not([class*="overflow-y-auto"]) {
+    touch-action: pan-x;
+  }
 }
 
 .bg-app{ background:var(--app-bg); }
