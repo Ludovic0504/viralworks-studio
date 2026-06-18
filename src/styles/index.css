@@ -526,6 +526,10 @@
   }
 
   @media (max-width: 639px) {
+    .image-studio-shell {
+      touch-action: pan-x pan-y;
+    }
+
     .image-studio-main {
       min-height: 0;
       flex: 1;
@@ -2416,7 +2420,7 @@
 
     .image-studio-prompt-input {
       min-height: 2.125rem;
-      font-size: 0.8125rem;
+      font-size: 16px;
       line-height: 1.35;
     }
   }
@@ -2706,6 +2710,7 @@
     border: none;
     color: #f3f4f6;
     min-height: 2rem;
+    font-size: 0.9375rem;
     scrollbar-width: thin;
     scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
   }

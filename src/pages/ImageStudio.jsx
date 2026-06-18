@@ -1,4 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+
+const DEFAULT_VIEWPORT =
+  "width=device-width, initial-scale=1, viewport-fit=cover";
+const MOBILE_IMAGE_STUDIO_VIEWPORT =
+  "width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover";
 import { createPortal } from "react-dom";
 import {
   BookOpen,
@@ -556,6 +561,28 @@ export default function ImageStudio() {
     capturePostHog("image_studio_opened");
   }, []);
 
+  useEffect(() => {
+    const meta = document.querySelector('meta[name="viewport"]');
+    if (!meta) return undefined;
+
+    const previousContent = meta.getAttribute("content") ?? DEFAULT_VIEWPORT;
+    const mq = window.matchMedia("(max-width: 640px)");
+
+    const applyViewport = () => {
+      meta.setAttribute(
+        "content",
+        mq.matches ? MOBILE_IMAGE_STUDIO_VIEWPORT : previousContent,
+      );
+    };
+
+    applyViewport();
+    mq.addEventListener("change", applyViewport);
+    return () => {
+      mq.removeEventListener("change", applyViewport);
+      meta.setAttribute("content", previousContent);
+    };
+  }, []);
+
   const hasImagePlan = !accessLoading && hasImageStudioPlan(plan);
 
   useEffect(() => {
@@ -1055,6 +1082,7 @@ export default function ImageStudio() {
       }
       await loadHistory({ syncFeed: true });
       setScrollToEndToken((token) => token + 1);
+      setPrompt("");
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Erreur lors de la génération.";
@@ -1186,7 +1214,7 @@ export default function ImageStudio() {
                   placeholder="Décrivez l'image à générer…"
                   aria-label="Prompt de génération"
                   rows={1}
-                  className="image-studio-prompt-input min-w-0 flex-1 resize-none py-1 text-sm leading-relaxed disabled:opacity-50 sm:text-[15px]"
+                  className="image-studio-prompt-input min-w-0 flex-1 resize-none py-1 leading-relaxed disabled:opacity-50"
                 />
               </div>
 
