@@ -526,10 +526,6 @@
   }
 
   @media (max-width: 639px) {
-    .image-studio-shell {
-      touch-action: pan-x pan-y;
-    }
-
     .image-studio-main {
       min-height: 0;
       flex: 1;

@@ -35,5 +35,12 @@
 html,body,#root{ height:100%; }
 body{ background:var(--app-bg); color:#e5e5e5; }
 
+@media (max-width: 639px) {
+  html,
+  body {
+    touch-action: pan-x pan-y;
+  }
+}
+
 .bg-app{ background:var(--app-bg); }
 
