@@ -52,7 +52,7 @@ function DashboardShell() {
   return (
     <>
       <div
-        className={`flex flex-col bg-gradient-to-br from-[#050810] via-[#0C1116] to-[#080b10] text-white relative max-md:touch-pan-y ${shellLayoutClass}`}
+        className={`flex flex-col bg-gradient-to-br from-[#050810] via-[#0C1116] to-[#080b10] text-white relative ${shellLayoutClass}`}
       >
         <Header onOpenMenu={() => setMenuOpen(true)} />
         <div className={`flex min-h-0 flex-1 flex-col ${mainShellTopPadding}`}>

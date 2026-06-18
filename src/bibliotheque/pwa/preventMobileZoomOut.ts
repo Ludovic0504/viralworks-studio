@@ -3,14 +3,17 @@ const MOBILE_MQ = "(max-width: 768px)";
 const VIEWPORT_CONTENT =
   "width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover";
 
+function isStandalonePwa(): boolean {
+  if (typeof window === "undefined") return false;
+  return (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    (window.navigator as Navigator & { standalone?: boolean }).standalone === true
+  );
+}
+
 function shouldGuardMobileZoom(): boolean {
   if (typeof window === "undefined") return false;
-
-  const standalone =
-    window.matchMedia("(display-mode: standalone)").matches ||
-    (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
-
-  return standalone || window.matchMedia(MOBILE_MQ).matches;
+  return isStandalonePwa() || window.matchMedia(MOBILE_MQ).matches;
 }
 
 function touchDistance(touches: TouchList): number {
@@ -26,18 +29,31 @@ function refreshViewportMeta(): void {
   meta.setAttribute("content", VIEWPORT_CONTENT);
 }
 
-/** iOS Safari / PWA ignore souvent minimum-scale — bloque le pinch-out sous 100 %. */
+/**
+ * Bloque le dézoom pinch sous 100 % sans casser le scroll au doigt (1 touch).
+ * iOS ignore minimum-scale : en PWA on bloque tout pinch ; en mobile web on
+ * bloque seulement le pinch-out quand le zoom est déjà à 100 %.
+ */
 export function initPreventMobileZoomOut(): () => void {
   if (typeof window === "undefined" || !shouldGuardMobileZoom()) {
     return () => {};
   }
 
+  const blockAllPinch = isStandalonePwa();
   let lastPinchDistance = 0;
   let viewportResetTimer: ReturnType<typeof setTimeout> | null = null;
 
   const currentScale = () => window.visualViewport?.scale ?? 1;
 
+  const onGestureStart = (event: Event) => {
+    if (blockAllPinch) event.preventDefault();
+  };
+
   const onGestureChange = (event: Event) => {
+    if (blockAllPinch) {
+      event.preventDefault();
+      return;
+    }
     const gesture = event as Event & { scale?: number };
     if (
       currentScale() <= 1.02 &&
@@ -45,14 +61,6 @@ export function initPreventMobileZoomOut(): () => void {
       gesture.scale < 1
     ) {
       event.preventDefault();
-      event.stopImmediatePropagation();
-    }
-  };
-
-  const onGestureStart = (event: Event) => {
-    if (currentScale() < 1) {
-      event.preventDefault();
-      refreshViewportMeta();
     }
   };
 
@@ -65,14 +73,15 @@ export function initPreventMobileZoomOut(): () => void {
   const onTouchMove = (event: TouchEvent) => {
     if (event.touches.length < 2) return;
 
-    const distance = touchDistance(event.touches);
-    const scale = currentScale();
-
-    if (distance < lastPinchDistance && scale <= 1.02) {
+    if (blockAllPinch) {
       event.preventDefault();
-      event.stopImmediatePropagation();
+      return;
     }
 
+    const distance = touchDistance(event.touches);
+    if (distance < lastPinchDistance && currentScale() <= 1.02) {
+      event.preventDefault();
+    }
     lastPinchDistance = distance;
   };
 
@@ -80,9 +89,7 @@ export function initPreventMobileZoomOut(): () => void {
     if (viewportResetTimer) clearTimeout(viewportResetTimer);
     viewportResetTimer = setTimeout(() => {
       viewportResetTimer = null;
-      if (currentScale() < 1) {
-        refreshViewportMeta();
-      }
+      if (currentScale() < 1) refreshViewportMeta();
     }, 80);
   };
 
@@ -93,23 +100,18 @@ export function initPreventMobileZoomOut(): () => void {
     }
   };
 
-  const capture = { capture: true, passive: false as const };
-  const capturePassive = { capture: true, passive: true as const };
-
-  window.addEventListener("gesturestart", onGestureStart, capture);
-  window.addEventListener("gesturechange", onGestureChange, capture);
-  window.addEventListener("touchstart", onTouchStart, capturePassive);
-  window.addEventListener("touchmove", onTouchMove, capture);
+  document.addEventListener("gesturestart", onGestureStart, { passive: false });
+  document.addEventListener("gesturechange", onGestureChange, { passive: false });
+  document.addEventListener("touchstart", onTouchStart, { passive: true });
+  document.addEventListener("touchmove", onTouchMove, { passive: false });
   window.visualViewport?.addEventListener("resize", onVisualViewportChange);
-  window.visualViewport?.addEventListener("scroll", onVisualViewportChange);
 
   return () => {
-    window.removeEventListener("gesturestart", onGestureStart, capture);
-    window.removeEventListener("gesturechange", onGestureChange, capture);
-    window.removeEventListener("touchstart", onTouchStart, capturePassive);
-    window.removeEventListener("touchmove", onTouchMove, capture);
+    document.removeEventListener("gesturestart", onGestureStart);
+    document.removeEventListener("gesturechange", onGestureChange);
+    document.removeEventListener("touchstart", onTouchStart);
+    document.removeEventListener("touchmove", onTouchMove);
     window.visualViewport?.removeEventListener("resize", onVisualViewportChange);
-    window.visualViewport?.removeEventListener("scroll", onVisualViewportChange);
     if (viewportResetTimer) clearTimeout(viewportResetTimer);
   };
 }

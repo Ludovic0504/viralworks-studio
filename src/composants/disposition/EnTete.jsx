@@ -132,7 +132,7 @@ export default function Header({ onOpenMenu }) {
     <img
       src="/Logo_VWS_sans_bordure.png"
       alt="ViralWorks Studio"
-      className="h-10 w-auto block"
+      className="block h-10 w-auto max-w-[148px] shrink-0 object-contain object-center"
       height={40}
       decoding="async"
     />
