@@ -149,7 +149,7 @@ export default function SidebarShell({
         </div>
       </aside>
 
-      <main className={`flex min-h-0 min-w-0 flex-1 flex-col ${mainClassName}`}>
+      <main className={`flex min-h-0 min-w-0 flex-col ${mainClassName}`}>
         {children}
       </main>
     </div>

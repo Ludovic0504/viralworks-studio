@@ -1598,7 +1598,7 @@ export default function ViralWorks() {
   return (
     <div
       ref={studioScrollAnchorRef}
-      className="mx-auto w-full min-w-0 max-w-7xl px-4 sm:px-6 lg:px-8 py-6 space-y-6 max-[640px]:flex max-[640px]:min-h-0 max-[640px]:flex-1 max-[640px]:flex-col max-[640px]:overflow-hidden max-[640px]:space-y-3"
+      className="mx-auto w-full min-w-0 max-w-7xl px-4 sm:px-6 lg:px-8 py-6 space-y-6 max-[640px]:space-y-3"
     >
       <ScriptStepQuotaModal
         open={showScriptQuotaModal}
@@ -1619,8 +1619,7 @@ export default function ViralWorks() {
         />
       </div>
 
-      <div className="max-[640px]:relative max-[640px]:flex max-[640px]:min-h-0 max-[640px]:flex-1 max-[640px]:flex-col max-[640px]:overflow-hidden min-[641px]:min-h-0">
-        <div className="min-h-0 flex-1 space-y-6 overflow-y-auto max-[640px]:space-y-3 min-[641px]:overflow-visible">
+      <div className="space-y-6 max-[640px]:space-y-3">
           {/* Navigation étapes — mêmes patrons desktop / mobile (libellés courts sous breakpoint sm) */}
           <div className="studio-panel max-[640px]:shrink-0 px-4 py-3 sm:px-6 sm:py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex-1 flex flex-wrap gap-3">
@@ -1854,7 +1853,6 @@ export default function ViralWorks() {
               </>
             )}
           </div>
-        </div>
 
         {/* CTA mobile unifié — étape 3 vidéo (étape 2 Visuel : pas de doublon avec « Utiliser cette image » / toolbar) */}
         {currentStep === 3 ? (
