@@ -22,6 +22,17 @@ function clampScrollTop(el, top) {
   el.scrollTop = Math.min(Math.max(0, top), max);
 }
 
+function isFeedNearBottom(el, threshold = 48) {
+  if (!el) return true;
+  const max = Math.max(0, el.scrollHeight - el.clientHeight);
+  return max - el.scrollTop <= threshold;
+}
+
+function scrollFeedToBottom(el, behavior = "auto") {
+  if (!el) return;
+  el.scrollTo({ top: el.scrollHeight, behavior });
+}
+
 function scrollChildIntoView(container, child, { block = "center", behavior = "smooth" } = {}) {
   if (!container || !child) return;
   const containerRect = container.getBoundingClientRect();
@@ -160,10 +171,9 @@ export default function ImageStudioFeedPanel({
     if (userScrolledRef.current || historyLoading) return;
     if (feedRows.length === 0 && history.length === 0) return;
 
-    const { feed, thumb } = restoreTargetsRef.current;
-    if (typeof feed === "number") {
-      clampScrollTop(feedScrollRef.current, feed);
-    }
+    scrollFeedToBottom(feedScrollRef.current, "auto");
+
+    const { thumb } = restoreTargetsRef.current;
     if (typeof thumb === "number") {
       clampScrollTop(thumbScrollRef.current, thumb);
     }
@@ -197,21 +207,22 @@ export default function ImageStudioFeedPanel({
     prevScrollTokenRef.current = scrollToEndToken;
     if (!scrollToEndToken) return;
 
-    userScrolledRef.current = true;
     const feedEl = feedScrollRef.current;
     if (feedEl) {
-      feedEl.scrollTo({ top: feedEl.scrollHeight, behavior: "smooth" });
+      scrollFeedToBottom(feedEl, "smooth");
     }
     const thumbEl = thumbScrollRef.current;
     if (thumbEl) {
       thumbEl.scrollTo({ top: thumbEl.scrollHeight, behavior: "smooth" });
     }
+    userScrolledRef.current = false;
   }, [scrollToEndToken]);
 
   const handleFeedScroll = useCallback(
-    (scrollTop) => {
-      userScrolledRef.current = true;
-      onFeedScroll?.(scrollTop);
+    (event) => {
+      const el = event.currentTarget;
+      userScrolledRef.current = !isFeedNearBottom(el);
+      onFeedScroll?.(el.scrollTop);
     },
     [onFeedScroll],
   );
@@ -229,7 +240,7 @@ export default function ImageStudioFeedPanel({
       <div
         ref={feedScrollRef}
         className="studio-subtle-scrollbar image-studio-feed min-h-0 flex-1 overflow-y-auto"
-        onScroll={(e) => handleFeedScroll(e.currentTarget.scrollTop)}
+        onScroll={(e) => handleFeedScroll(e)}
       >
         {showEmptyFeed ? (
           <div className="image-studio-feed-empty">

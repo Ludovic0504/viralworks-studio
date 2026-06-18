@@ -534,9 +534,21 @@
 
     .image-studio-workspace {
       order: 1;
-      flex: 1;
+      flex: 0 0 auto;
+      flex-shrink: 0;
       min-height: 0;
       padding-bottom: 0;
+    }
+
+    .image-studio-canvas--feed {
+      flex: 0 0 auto;
+      /* Fenêtre : ~1 génération + la moitié de la suivante (format portrait 9:16) */
+      --is-feed-card-w: min(36vw, 9.5rem);
+      --is-feed-row-h: calc(
+        var(--is-feed-card-w) * 16 / 9 + 0.65rem + 5.5rem + 1.15rem
+      );
+      height: calc(var(--is-feed-row-h) * 1.5);
+      max-height: min(calc(var(--is-feed-row-h) * 1.5), 44dvh);
     }
 
     .image-studio-command-bar {
@@ -675,13 +687,6 @@
   .image-studio-canvas--feed {
     display: flex;
     min-height: 0;
-  }
-
-  @media (max-width: 639px) {
-    .image-studio-canvas--feed {
-      flex: 1;
-      min-height: 0;
-    }
   }
 
   .image-studio-feed-shell {

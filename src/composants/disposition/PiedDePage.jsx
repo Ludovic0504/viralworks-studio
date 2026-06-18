@@ -7,11 +7,13 @@ export default function Footer({ compact = false }) {
   const { hideGlobalFooterOnMobile } = useStudioLayoutOptions();
   const location = useLocation();
   const isAccueilCompact = compact || location.pathname === "/";
+  const hideFooterOnMobile =
+    hideGlobalFooterOnMobile || location.pathname === "/image-studio";
 
   return (
     <footer
       className={`shrink-0 border-t border-white/10 bg-[#0C1116]/50 backdrop-blur-sm ${
-        hideGlobalFooterOnMobile ? "max-[640px]:hidden" : ""
+        hideFooterOnMobile ? "max-[640px]:hidden" : ""
       }`}
     >
       <div

@@ -579,10 +579,6 @@ export default function ImageStudio() {
       if (saved.model) setModel(saved.model);
       if (saved.aspectRatio) setAspectRatio(saved.aspectRatio);
       if (saved.generationCount) setGenerationCount(saved.generationCount);
-      if (typeof saved.feedScrollTop === "number") {
-        feedScrollTopRef.current = saved.feedScrollTop;
-        setRestoreFeedScrollTop(saved.feedScrollTop);
-      }
       if (typeof saved.thumbScrollTop === "number") {
         thumbScrollTopRef.current = saved.thumbScrollTop;
         setRestoreThumbScrollTop(saved.thumbScrollTop);
@@ -1132,7 +1128,7 @@ export default function ImageStudio() {
 
       <div className="image-studio-main flex min-h-0 flex-1 flex-col">
         <div className="image-studio-workspace flex min-h-0 flex-col gap-2 px-4 sm:flex-1 sm:px-6 lg:px-8">
-          <div className="image-studio-canvas image-studio-canvas--feed relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl max-sm:min-h-[min(36vh,300px)] sm:min-h-[min(55vh,480px)] lg:min-h-[min(72vh,720px)]">
+          <div className="image-studio-canvas image-studio-canvas--feed relative flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl sm:min-h-[min(55vh,480px)] sm:flex-1 lg:min-h-[min(72vh,720px)]">
             <ImageStudioFeedPanel
               feedRows={feedRows}
               history={history}
