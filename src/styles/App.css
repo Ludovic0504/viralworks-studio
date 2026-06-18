@@ -1,6 +1,6 @@
 
 #root {
-  height: 100%;
+  min-height: 100%;
   margin: 0 auto;
   width: 100%;
 }
@@ -32,8 +32,16 @@
 .read-the-docs { color: #888; }
 
 :root{ --app-bg:#0C1116; }
-html,body,#root{ height:100%; }
-body{ background:var(--app-bg); color:#e5e5e5; }
+html {
+  height: 100%;
+}
+body {
+  min-height: 100%;
+  background: var(--app-bg);
+  color: #e5e5e5;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
 
 @media (max-width: 768px) {
   html {

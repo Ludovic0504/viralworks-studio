@@ -30,9 +30,8 @@ function refreshViewportMeta(): void {
 }
 
 /**
- * Bloque le dézoom pinch sous 100 % sans casser le scroll au doigt (1 touch).
- * iOS ignore minimum-scale : en PWA on bloque tout pinch ; en mobile web on
- * bloque seulement le pinch-out quand le zoom est déjà à 100 %.
+ * Limite le dézoom pinch sous 100 % sans bloquer le scroll vertical (1 doigt).
+ * Ne jamais appeler preventDefault sur gesturestart : iOS désactive alors le scroll.
  */
 export function initPreventMobileZoomOut(): () => void {
   if (typeof window === "undefined" || !shouldGuardMobileZoom()) {
@@ -45,15 +44,7 @@ export function initPreventMobileZoomOut(): () => void {
 
   const currentScale = () => window.visualViewport?.scale ?? 1;
 
-  const onGestureStart = (event: Event) => {
-    if (blockAllPinch) event.preventDefault();
-  };
-
   const onGestureChange = (event: Event) => {
-    if (blockAllPinch) {
-      event.preventDefault();
-      return;
-    }
     const gesture = event as Event & { scale?: number };
     if (
       currentScale() <= 1.02 &&
@@ -100,14 +91,12 @@ export function initPreventMobileZoomOut(): () => void {
     }
   };
 
-  document.addEventListener("gesturestart", onGestureStart, { passive: false });
   document.addEventListener("gesturechange", onGestureChange, { passive: false });
   document.addEventListener("touchstart", onTouchStart, { passive: true });
   document.addEventListener("touchmove", onTouchMove, { passive: false });
   window.visualViewport?.addEventListener("resize", onVisualViewportChange);
 
   return () => {
-    document.removeEventListener("gesturestart", onGestureStart);
     document.removeEventListener("gesturechange", onGestureChange);
     document.removeEventListener("touchstart", onTouchStart);
     document.removeEventListener("touchmove", onTouchMove);
