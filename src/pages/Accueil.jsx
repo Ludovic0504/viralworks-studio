@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { useNavigate } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
@@ -58,7 +59,8 @@ function AccueilDemoVideo({ src, preload, label, className }) {
 
 export default function Accueil() {
   const { session } = useAuth();
-  const { openAuthModal } = useRequireAuthAction();
+  const navigate = useNavigate();
+  const { runWithAuth } = useRequireAuthAction();
   const hasSession = Boolean(session?.user?.id);
 
   const isMobileLayout = useSyncExternalStore(
@@ -82,6 +84,15 @@ export default function Accueil() {
 
   const preloadSide = isMobileLayout ? "none" : "metadata";
   const preloadCenter = isMobileLayout ? "metadata" : "auto";
+
+  const handleCreateVideoClick = (event) => {
+    if (hasSession) return;
+    event.preventDefault();
+    void runWithAuth(async () => {
+      navigate("/viralworks");
+      return true;
+    });
+  };
 
   useEffect(() => {
     const html = document.documentElement;
@@ -127,7 +138,7 @@ export default function Accueil() {
         <section className="accueil-section relative flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden max-md:pt-[calc(var(--promo-images-banner-height,0px)+2.75rem)] md:justify-center md:pt-[var(--promo-images-banner-height,0px)]">
           <div className="accueil-inner relative z-10 mx-auto flex min-h-0 w-full min-w-0 max-w-[1100px] flex-1 flex-col px-6 sm:px-8 md:justify-center md:gap-3 md:px-12 xl:px-16">
             <div className="flex min-h-0 w-full min-w-0 flex-col md:flex-1 md:flex-row md:items-center md:gap-10 md:py-2">
-              <div className="w-full min-w-0 shrink-0 text-left max-[580px]:text-center md:flex-[1.1] md:pr-2 xl:pr-6">
+              <div className="relative z-20 w-full min-w-0 shrink-0 text-left max-[580px]:text-center md:flex-[1.1] md:pr-2 xl:pr-6">
                 <div className="accueil-fade-up accueil-fade-up-d1 mb-2 inline-flex max-md:mb-1.5 max-[580px]:mx-auto max-[580px]:w-full max-[580px]:justify-center md:mb-3">
                   <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5">
                     <span className="accueil-badge-dot h-1.5 w-1.5 shrink-0 rounded-full bg-[#34d399]" />
@@ -150,28 +161,18 @@ export default function Accueil() {
                   <strong className="font-medium text-white/[0.58]">sans y passer des heures.</strong>
                 </p>
 
-                <div className="accueil-fade-up accueil-fade-up-d4 mb-2 flex flex-wrap items-center gap-2 max-md:mb-1.5 max-md:gap-2 md:mb-3 md:gap-2.5 max-[580px]:justify-center">
-                  {session ? (
-                    <LienNavSync
-                      to="/viralworks"
-                      className="group inline-flex items-center gap-2 rounded-[11px] bg-[#21f3b9] px-5 py-3 text-sm font-extrabold text-[#07090f] shadow-[0_0_28px_rgba(33,243,185,0.26)] transition-all duration-200 hover:-translate-y-px hover:shadow-[0_0_44px_rgba(33,243,185,0.42)] max-md:px-4 max-md:py-2.5 max-md:text-[13px]"
-                    >
-                      <span>Créer ma vidéo</span>
-                      <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5" />
-                    </LienNavSync>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => openAuthModal?.()}
-                      className="group inline-flex items-center gap-2 rounded-[11px] bg-[#21f3b9] px-5 py-3 text-sm font-extrabold text-[#07090f] shadow-[0_0_28px_rgba(33,243,185,0.26)] transition-all duration-200 hover:-translate-y-px hover:shadow-[0_0_44px_rgba(33,243,185,0.42)] max-md:px-4 max-md:py-2.5 max-md:text-[13px]"
-                    >
-                      <span>Se connecter</span>
-                      <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5" />
-                    </button>
-                  )}
+                <div className="accueil-fade-up accueil-fade-up-d4 relative z-20 mb-2 flex flex-wrap items-center gap-2 max-md:mb-1.5 max-md:gap-2 md:mb-3 md:gap-2.5 max-[580px]:justify-center">
+                  <LienNavSync
+                    to="/viralworks"
+                    onClick={handleCreateVideoClick}
+                    className="group inline-flex items-center gap-2 rounded-[11px] bg-[#21f3b9] px-5 py-3 text-sm font-extrabold text-[#07090f] shadow-[0_0_28px_rgba(33,243,185,0.26)] transition-all duration-200 hover:-translate-y-px hover:shadow-[0_0_44px_rgba(33,243,185,0.42)] max-md:px-4 max-md:py-2.5 max-md:text-[13px]"
+                  >
+                    <span>Créer ma vidéo</span>
+                    <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5" />
+                  </LienNavSync>
                   <LienNavSync
                     to="/lab"
-                    className="inline-flex items-center rounded-[11px] border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-[13px] font-semibold text-white/35 transition-all duration-200 hover:bg-white/[0.06] hover:text-white/60 max-md:px-3.5 max-md:py-2.5 max-md:text-xs"
+                    className="relative z-20 inline-flex items-center rounded-[11px] border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-[13px] font-semibold text-white/35 transition-all duration-200 hover:bg-white/[0.06] hover:text-white/60 max-md:px-3.5 max-md:py-2.5 max-md:text-xs"
                   >
                     Voir les nouveautés
                   </LienNavSync>
@@ -192,7 +193,7 @@ export default function Accueil() {
                 </div>
               </div>
               <div
-                className="accueil-videos-slot accueil-fade-up accueil-fade-up-d5 flex w-full min-h-0 min-w-0 max-md:-mt-28 max-md:shrink-0 max-md:items-center max-md:justify-center max-md:overflow-hidden md:mt-0 md:flex-1 md:items-center md:justify-end"
+                className="accueil-videos-slot accueil-fade-up accueil-fade-up-d5 pointer-events-none flex w-full min-h-0 min-w-0 max-md:-mt-28 max-md:shrink-0 max-md:items-center max-md:justify-center max-md:overflow-hidden md:mt-0 md:flex-1 md:items-center md:justify-end"
                 onContextMenu={blockMediaSave}
               >
                 <div className="accueil-videos-frame relative mx-auto aspect-[260/340] w-auto max-w-full shrink-0 overflow-hidden md:h-[clamp(200px,min(34dvh,38vh),440px)] md:max-w-[min(96vw,400px)] md:overflow-visible">
