@@ -527,9 +527,8 @@
 
   @media (max-width: 639px) {
     .image-studio-main {
-      min-height: 0;
-      flex: 1;
-      overflow: hidden;
+      flex: 0 0 auto;
+      overflow: visible;
     }
 
     .image-studio-workspace {

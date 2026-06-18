@@ -1105,7 +1105,7 @@ export default function ImageStudio() {
   };
 
   return (
-    <div className="image-studio-shell flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div className="image-studio-shell flex flex-col max-sm:shrink-0 sm:min-h-0 sm:flex-1 sm:overflow-hidden">
       <div className="flex shrink-0 items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
         <div>
           <h1 className="text-lg font-semibold tracking-tight text-white sm:text-xl">
@@ -1126,7 +1126,7 @@ export default function ImageStudio() {
 
       {hasImagePlan ? <BandeauRenouvellementQuotaImageStudio limit={quotaLimit} /> : null}
 
-      <div className="image-studio-main flex min-h-0 flex-1 flex-col">
+      <div className="image-studio-main flex max-sm:flex-none max-sm:flex-col sm:min-h-0 sm:flex-1 sm:flex-col">
         <div className="image-studio-workspace flex min-h-0 flex-col gap-2 px-4 sm:flex-1 sm:px-6 lg:px-8">
           <div className="image-studio-canvas image-studio-canvas--feed relative flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl sm:min-h-[min(55vh,480px)] sm:flex-1 lg:min-h-[min(72vh,720px)]">
             <ImageStudioFeedPanel

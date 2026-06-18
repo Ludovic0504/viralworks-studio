@@ -21,17 +21,15 @@ function DashboardShell() {
 
   const shellLayoutClass = isAccueilPage
     ? "h-dvh overflow-hidden"
-    : isImageStudioPage
-      ? "min-h-dvh max-lg:h-dvh max-lg:overflow-hidden lg:h-dvh lg:overflow-hidden"
-      : isImmersiveStudioPage
-        ? "min-h-dvh max-lg:overflow-y-auto lg:h-dvh lg:overflow-hidden"
-        : "min-h-dvh";
+    : isImmersiveStudioPage
+      ? "min-h-dvh max-lg:overflow-y-auto lg:h-dvh lg:overflow-hidden"
+      : "min-h-dvh";
 
   const mainShellTopPadding = isAccueilPage
     ? "max-md:pt-[calc(4rem+var(--pwa-install-banner-height,0px))] md:pt-16"
     : "pt-[calc(4rem+var(--promo-images-banner-height,0px))] max-md:pt-[calc(4rem+var(--promo-images-banner-height,0px)+var(--pwa-install-banner-height,0px))]";
 
-  const sidebarMainClassName = isAccueilPage || isImageStudioPage
+  const sidebarMainClassName = isAccueilPage
     ? "flex min-h-0 flex-1 flex-col overflow-hidden"
     : isImmersiveStudioPage
       ? "min-h-0 max-lg:overflow-y-auto lg:overflow-hidden"
@@ -40,7 +38,7 @@ function DashboardShell() {
   const main = (
     <div
       className={`flex flex-col ${
-        isAccueilPage || isImageStudioPage
+        isAccueilPage
           ? "min-h-0 flex-1 overflow-hidden"
           : isImmersiveStudioPage
             ? "max-lg:flex-none max-lg:min-h-0 lg:min-h-0 lg:flex-1 lg:overflow-hidden"
@@ -65,8 +63,8 @@ function DashboardShell() {
           >
             <div
               className={`flex flex-col ${
-                isImageStudioPage || isImmersiveStudioPage
-                  ? "min-h-0 flex-1 lg:min-h-0 lg:flex-1"
+                isImmersiveStudioPage
+                  ? "max-lg:flex-none max-lg:min-h-0 lg:min-h-0 lg:flex-1"
                   : "min-h-0 flex-1"
               }`}
             >
