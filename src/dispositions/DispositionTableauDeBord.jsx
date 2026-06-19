@@ -19,13 +19,13 @@ function DashboardShell() {
 
   const isAccueilPage = location.pathname === "/";
 
-  const shellLayoutClass = isAccueilPage
+  const shellLayoutClass = isAccueilPage || isImageStudioPage
     ? "h-dvh overflow-hidden"
     : isImmersiveStudioPage
       ? "min-h-dvh lg:h-dvh lg:overflow-hidden"
       : "min-h-dvh";
 
-  const contentAreaFlexClass = isAccueilPage
+  const contentAreaFlexClass = isAccueilPage || isImageStudioPage
     ? "min-h-0 flex-1"
     : isImmersiveStudioPage
       ? "max-lg:flex-none lg:min-h-0 lg:flex-1"
@@ -35,7 +35,7 @@ function DashboardShell() {
     ? "max-md:pt-[calc(4rem+var(--pwa-install-banner-height,0px))] md:pt-16"
     : "pt-[calc(4rem+var(--promo-images-banner-height,0px))] max-md:pt-[calc(4rem+var(--promo-images-banner-height,0px)+var(--pwa-install-banner-height,0px))]";
 
-  const sidebarMainClassName = isAccueilPage
+  const sidebarMainClassName = isAccueilPage || isImageStudioPage
     ? "flex-1 min-h-0 overflow-hidden"
     : isImmersiveStudioPage
       ? "max-lg:flex-none lg:flex-1 lg:min-h-0 lg:overflow-hidden"
@@ -44,7 +44,7 @@ function DashboardShell() {
   const main = (
     <div
       className={`flex flex-col ${
-        isAccueilPage
+        isAccueilPage || isImageStudioPage
           ? "min-h-0 flex-1 overflow-hidden"
           : isImmersiveStudioPage
             ? "max-lg:flex-none max-lg:min-h-0 lg:min-h-0 lg:flex-1 lg:overflow-hidden"
