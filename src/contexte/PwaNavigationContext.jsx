@@ -4,12 +4,14 @@ import { isStandalonePwa } from "@/bibliotheque/pwa/isStandalonePwa";
 
 const PwaNavigationContext = createContext(null);
 
-export function PwaNavigationProvider({ children }) {
+export function PwaNavigationProvider({ children, onBackGesture }) {
   const location = useLocation();
   const pathnameRef = useRef(location.pathname);
   const nestedBackRef = useRef(null);
+  const onBackGestureRef = useRef(onBackGesture);
 
   pathnameRef.current = location.pathname;
+  onBackGestureRef.current = onBackGesture;
 
   const setNestedBackHandler = useCallback((handler) => {
     nestedBackRef.current = handler;
@@ -41,6 +43,9 @@ export function PwaNavigationProvider({ children }) {
         nestedBack();
         return;
       }
+
+      // Swipe retour / bouton back → ouvrir le menu (sauf accueil) au lieu de quitter.
+      onBackGestureRef.current?.();
 
       window.history.pushState(
         { vwsAnchor: pathnameRef.current },

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Header from "@/composants/disposition/EnTete";
 import SidebarShell from "@/composants/disposition/Navbar";
 import Footer from "@/composants/disposition/PiedDePage";
@@ -14,11 +14,17 @@ function DashboardShell() {
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
   const layout = getDashboardShellLayout(location.pathname);
+  const isAccueilPage = location.pathname === "/";
+
+  const handlePwaBackOpensMenu = useCallback(() => {
+    if (!isAccueilPage) setMenuOpen(true);
+  }, [isAccueilPage]);
 
   usePwaMobileDrawerSwipe({
     open: menuOpen,
     onOpen: () => setMenuOpen(true),
     onClose: () => setMenuOpen(false),
+    openFromEdgeEnabled: !isAccueilPage,
   });
 
   useEffect(() => {
@@ -33,7 +39,7 @@ function DashboardShell() {
   );
 
   return (
-    <PwaNavigationProvider>
+    <PwaNavigationProvider onBackGesture={handlePwaBackOpensMenu}>
       <div
         data-dashboard-profile={layout.profile}
         className={`flex flex-col bg-gradient-to-br from-[#050810] via-[#0C1116] to-[#080b10] text-white relative ${layout.shellLayoutClass}`}
