@@ -18,11 +18,17 @@ export default function ModalPromptsImageStudio({ open, onClose }) {
 
   if (!open) return null;
 
+  const handleBackdropClose = (event) => {
+    if (event.target !== event.currentTarget) return;
+    event.stopPropagation();
+    window.setTimeout(onClose, 0);
+  };
+
   return createPortal(
     <div
       className="image-studio-quota-modal-backdrop"
       role="presentation"
-      onClick={onClose}
+      onClick={handleBackdropClose}
     >
       <div
         className="image-studio-prompts-modal"

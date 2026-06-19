@@ -1402,6 +1402,7 @@ export default function ImageStudio() {
 
       <SheetReglagesImageStudio
         open={mobileSettingsOpen}
+        blockBackdropClose={promptsModalOpen}
         onClose={() => setMobileSettingsOpen(false)}
         model={model}
         onModelChange={setModel}

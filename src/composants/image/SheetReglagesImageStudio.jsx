@@ -18,20 +18,21 @@ export default function SheetReglagesImageStudio({
   generationCounts,
   maxGenerationCount = 4,
   onOpenPrompts,
+  blockBackdropClose = false,
   disabled,
 }) {
   if (!open) return null;
 
-  const openPrompts = () => {
+  const handleBackdropClick = () => {
+    if (blockBackdropClose) return;
     onClose();
-    onOpenPrompts();
   };
 
   return createPortal(
     <div
       className="image-studio-settings-sheet-backdrop"
       role="presentation"
-      onClick={onClose}
+      onClick={handleBackdropClick}
     >
       <div
         className="image-studio-settings-sheet"
@@ -79,7 +80,7 @@ export default function SheetReglagesImageStudio({
                       onModelChange(opt.id);
                     }}
                   >
-                    <ImageStudioModelIcon modelId={opt.id} size="md" />
+                    <ImageStudioModelIcon modelId={opt.id} size="sm" />
                     <span className="image-studio-settings-sheet-model-copy">
                       <span className="image-studio-settings-sheet-model-name">
                         {modelsLoading && selected ? "…" : opt.label}
@@ -169,7 +170,7 @@ export default function SheetReglagesImageStudio({
             type="button"
             className="image-studio-settings-sheet-prompts"
             disabled={disabled}
-            onClick={openPrompts}
+            onClick={onOpenPrompts}
           >
             <BookOpen className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
             Idées de prompts
