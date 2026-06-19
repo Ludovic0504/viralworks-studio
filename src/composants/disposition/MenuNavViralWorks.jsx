@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { ChevronDown, Bolt } from "lucide-react";
+import { ChevronDown, Image, Video } from "lucide-react";
 import LienNavSync from "@/composants/disposition/LienNavSync";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { prefetchPremiumAccess } from "@/hooks/usePremiumAccess";
@@ -186,7 +186,15 @@ export function MenuNavViralWorksDesktop({ showEditVideo = false }) {
   );
 }
 
-function NavAccordionMobile({ label, items, isTriggerActive, isNavItemActive, onNavigate, onPrefetch }) {
+function NavAccordionMobile({
+  label,
+  items,
+  icon: Icon,
+  isTriggerActive,
+  isNavItemActive,
+  onNavigate,
+  onPrefetch,
+}) {
   const [expanded, setExpanded] = useState(false);
   const { session } = useAuth();
 
@@ -210,10 +218,12 @@ function NavAccordionMobile({ label, items, isTriggerActive, isNavItemActive, on
         onFocus={onPrefetch}
       >
         <span className="flex min-w-0 items-center gap-3">
-          <Bolt
+          <Icon
             className={`h-5 w-5 shrink-0 transition-transform ${
               isTriggerActive ? "scale-110" : "group-hover:scale-110"
             }`}
+            strokeWidth={2}
+            aria-hidden
           />
           <span>{label}</span>
         </span>
@@ -259,6 +269,7 @@ export function MenuNavViralWorksMobile({ onNavigate, showEditVideo = false }) {
     <div className="flex flex-col gap-1">
       <NavAccordionMobile
         label="ViralWorks Vidéo"
+        icon={Video}
         items={videoItems}
         isTriggerActive={isVideoTriggerActive}
         isNavItemActive={isNavItemActive}
@@ -267,6 +278,7 @@ export function MenuNavViralWorksMobile({ onNavigate, showEditVideo = false }) {
       />
       <NavAccordionMobile
         label="ViralWorks Image"
+        icon={Image}
         items={IMAGE_ITEMS}
         isTriggerActive={isImageTriggerActive}
         isNavItemActive={isNavItemActive}

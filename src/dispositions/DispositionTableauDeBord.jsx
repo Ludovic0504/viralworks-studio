@@ -5,10 +5,18 @@ import Footer from "@/composants/disposition/PiedDePage";
 import { Outlet, useLocation } from "react-router-dom";
 import { StudioLayoutOptionsProvider } from "@/contexte/StudioLayoutOptionsContext";
 import { FournisseurProfilStudio } from "@/contexte/FournisseurProfilStudio";
+import { PwaNavigationProvider } from "@/contexte/PwaNavigationContext";
+import { usePwaMobileDrawerSwipe } from "@/bibliotheque/pwa/usePwaMobileDrawerSwipe";
 
 function DashboardShell() {
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
+
+  usePwaMobileDrawerSwipe({
+    open: menuOpen,
+    onOpen: () => setMenuOpen(true),
+    onClose: () => setMenuOpen(false),
+  });
 
   const isAvatarStudioPage =
     location.pathname === "/studio" || location.pathname.startsWith("/studio/");
@@ -56,7 +64,7 @@ function DashboardShell() {
   );
 
   return (
-    <>
+    <PwaNavigationProvider>
       <div
         className={`flex flex-col bg-gradient-to-br from-[#050810] via-[#0C1116] to-[#080b10] text-white relative ${shellLayoutClass}`}
       >
@@ -74,7 +82,7 @@ function DashboardShell() {
         </div>
         <Footer compact={isAccueilPage || isImageStudioPage} />
       </div>
-    </>
+    </PwaNavigationProvider>
   );
 }
 

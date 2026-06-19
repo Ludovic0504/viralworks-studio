@@ -51,6 +51,26 @@
   * {
     @apply border-white/5;
   }
+
+  /* PWA installée — gestes natifs (drawer, pas de swipe horizontal parasite) */
+  html.pwa-standalone,
+  html.pwa-standalone body {
+    overscroll-behavior-x: none;
+  }
+
+  html.pwa-standalone body {
+    touch-action: pan-y pinch-zoom;
+  }
+
+  html.pwa-standalone body.pwa-drawer-open {
+    overflow: hidden;
+    touch-action: none;
+  }
+
+  html.pwa-standalone .mobile-nav-drawer-panel {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
 }
 
 @layer components {

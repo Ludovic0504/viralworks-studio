@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   Users,
   Zap,
@@ -16,6 +16,11 @@ import {
   Mic,
   TrendingUp,
 } from "lucide-react";
+import {
+  pwaNestedBackViaHistory,
+  usePwaNestedBack,
+} from "@/contexte/PwaNavigationContext";
+import { isStandalonePwa } from "@/bibliotheque/pwa/isStandalonePwa";
 import rawGuides from "./playbookGuides.json";
 import "./LePlaybook.css";
 
@@ -126,20 +131,29 @@ export default function LePlaybook() {
     return PLAYBOOK_GUIDES.find((g) => g.id === activeId + 1) ?? null;
   }, [activeId]);
 
+  const backToList = useCallback(() => {
+    setView("list");
+    setActiveId(null);
+  }, []);
+
+  usePwaNestedBack(view === "guide", backToList);
+
+  const handleGuideBack = useCallback(() => {
+    if (isStandalonePwa() && view === "guide") {
+      if (pwaNestedBackViaHistory()) return;
+    }
+    backToList();
+  }, [backToList, view]);
+
   const openGuide = (id) => {
     setActiveId(id);
     setView("guide");
   };
 
-  const backToList = () => {
-    setView("list");
-    setActiveId(null);
-  };
-
   if (view === "guide" && activeGuide) {
     return (
       <div className="le-playbook w-full max-w-[860px] mx-auto playbook-root-padding">
-        <button type="button" className="playbook-back-btn" onClick={backToList}>
+        <button type="button" className="playbook-back-btn" onClick={handleGuideBack}>
           ← Le Playbook
         </button>
 
@@ -166,7 +180,7 @@ export default function LePlaybook() {
               {nextGuide.title} →
             </button>
           ) : (
-            <button type="button" onClick={backToList}>
+            <button type="button" onClick={handleGuideBack}>
               ← Retour au Playbook
             </button>
           )}

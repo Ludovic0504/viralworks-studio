@@ -1,3 +1,5 @@
+import { isStandalonePwa } from "@/bibliotheque/pwa/isStandalonePwa";
+
 const MOBILE_MQ = "(max-width: 768px)";
 
 const VIEWPORT_CONTENT =
@@ -7,14 +9,6 @@ const VIEWPORT_CONTENT =
 const MIN_PINCH_SPAN_PX = 28;
 
 const MIN_ZOOM_GUARD = 1.02;
-
-function isStandalonePwa(): boolean {
-  if (typeof window === "undefined") return false;
-  return (
-    window.matchMedia("(display-mode: standalone)").matches ||
-    (window.navigator as Navigator & { standalone?: boolean }).standalone === true
-  );
-}
 
 function shouldGuardMobileZoom(): boolean {
   if (typeof window === "undefined") return false;

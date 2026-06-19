@@ -74,10 +74,16 @@ export default function SidebarShell({
   useEffect(() => {
     if (open) {
       const html = document.documentElement;
-      const prev = html.style.overflow;
+      const body = document.body;
+      const prevHtmlOverflow = html.style.overflow;
+      const prevBodyOverflow = body.style.overflow;
       html.style.overflow = "hidden";
+      body.style.overflow = "hidden";
+      body.classList.add("pwa-drawer-open");
       return () => {
-        html.style.overflow = prev;
+        html.style.overflow = prevHtmlOverflow;
+        body.style.overflow = prevBodyOverflow;
+        body.classList.remove("pwa-drawer-open");
       };
     }
   }, [open]);
@@ -105,9 +111,19 @@ export default function SidebarShell({
 
   return (
     <div className="w-full min-h-0 flex-1 flex flex-col">
+      {open ? (
+        <div
+          className="mobile-nav-drawer-backdrop fixed inset-0 z-40 bg-black/55 backdrop-blur-[2px] md:hidden"
+          role="presentation"
+          aria-hidden
+          data-pwa-block-drawer="true"
+          onClick={() => onCloseMenu?.()}
+        />
+      ) : null}
+
       <aside
         ref={panelRef}
-        className={`fixed inset-y-0 left-0 w-72 bg-gradient-to-b from-[#0C1116] via-[#0a0f14] to-[#0C1116] border-r border-white/10 transform transform-gpu will-change-transform transition-transform duration-300 z-50 md:hidden shadow-2xl ${
+        className={`mobile-nav-drawer-panel fixed inset-y-0 left-0 w-72 bg-gradient-to-b from-[#0C1116] via-[#0a0f14] to-[#0C1116] border-r border-white/10 transform transform-gpu will-change-transform transition-transform duration-300 z-50 md:hidden shadow-2xl ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
         aria-hidden={!open}
