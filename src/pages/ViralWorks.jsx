@@ -978,7 +978,6 @@ export default function ViralWorks() {
   const wasOnVisualLayoutRef = useRef(false);
   /** Évite un double traitement « idée campagne changée » (Strict Mode / effets en cascade). */
   const visualStaleResetOnceRef = useRef(null);
-  const studioScrollAnchorRef = useRef(null);
   /** Mobile : CTA « Préparer » délégué à CampagneVWS */
   const step1PrimaryRef = useRef(null);
   /** Branchement CTA mobile « Générer la vidéo » → VEO3VideoForm */
@@ -999,9 +998,14 @@ export default function ViralWorks() {
     return () => setStudioLayout(null);
   }, [currentStep, setStudioLayout]);
 
+  /**
+   * Remonter en haut à l’arrivée sur la page ou au changement d’étape.
+   * scrollIntoView sur le conteneur décalait la page sous le header fixe (titre masqué).
+   */
   useLayoutEffect(() => {
-    studioScrollAnchorRef.current?.scrollIntoView({ block: "start", behavior: "instant" });
-  }, [currentStep]);
+    if (typeof window === "undefined") return;
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  }, [location.pathname, location.key, currentStep]);
 
   /**
    * Mobile studio : les étapes non actives restent dans le DOM avec `hidden` + `aria-hidden`.
@@ -1597,7 +1601,6 @@ export default function ViralWorks() {
 
   return (
     <div
-      ref={studioScrollAnchorRef}
       className="mx-auto w-full min-w-0 max-w-7xl px-4 sm:px-6 lg:px-8 py-6 space-y-6 max-[640px]:space-y-3"
     >
       <ScriptStepQuotaModal
