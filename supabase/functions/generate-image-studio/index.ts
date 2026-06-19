@@ -32,9 +32,11 @@ type ImageStudioModel = "nano_banana_pro" | "hailuo" | "gpt_image_2";
 
 type RequestBody = {
   prompt?: string;
+  userPrompt?: string;
   aspectRatio?: string;
   model?: string;
   referenceImage?: string;
+  referenceImages?: string[];
   batchId?: string;
   generationRefs?: {
     avatarUrl?: string | null;
@@ -316,12 +318,15 @@ async function kieCreateTask(
   model: string,
   prompt: string,
   aspectRatio: string,
-  referenceUrl?: string | null,
+  referenceUrls?: string[] | null,
 ): Promise<string> {
-  const input: Record<string, unknown> = referenceUrl
+  const urls = Array.isArray(referenceUrls)
+    ? referenceUrls.map((url) => String(url || "").trim()).filter(Boolean)
+    : [];
+  const input: Record<string, unknown> = urls.length > 0
     ? {
         prompt,
-        image_input: [referenceUrl],
+        image_input: urls,
         aspect_ratio: aspectRatio,
         resolution: KIE_IMAGE_RESOLUTION,
         output_format: "png",
@@ -415,13 +420,17 @@ function kiePipelineFailureResponse(err: unknown): Response {
   if (/timeout|504|503|502|429|408|upstream|maintenance/i.test(lower)) {
     return jsonError(503, "KIE_UPSTREAM", MSG_BUSY);
   }
-  return jsonError(503, "KIE_GENERATION_FAILED", MSG_BUSY);
+  const userMessage =
+    raw && raw.length > 0 && raw.length <= 280 && !raw.includes("SUPABASE")
+      ? raw
+      : MSG_BUSY;
+  return jsonError(503, "KIE_GENERATION_FAILED", userMessage);
 }
 
 async function generateNanoBananaPro(
   prompt: string,
   aspectRatio: string,
-  referenceUrl: string | null,
+  referenceUrls: string[] | null,
 ): Promise<string> {
   const kieApiKey = getKieApiKey();
   if (!kieApiKey) {
@@ -436,7 +445,7 @@ async function generateNanoBananaPro(
     kieModel,
     prompt,
     aspectRatio,
-    referenceUrl,
+    referenceUrls,
   );
   const maxPollMs = Number(Deno.env.get("KIE_POLL_MAX_MS") || "") || 14 * 60 * 1000;
   return kiePollUntilImageUrl(taskId, kieApiKey, maxPollMs);
@@ -572,7 +581,7 @@ async function assertQuotaAndGenerate(
   model: ImageStudioModel,
   prompt: string,
   aspectRatio: string,
-  referenceImage: string | null,
+  referenceImages: string[],
 ): Promise<{ url: string; provider: string }> {
   const availability = getModelsAvailability();
   if (!availability[model]) {
@@ -589,26 +598,26 @@ async function assertQuotaAndGenerate(
     throw new Error(`QUOTA:${imageStudioLimit}`);
   }
 
-  let referenceUrl: string | null = null;
-  if (referenceImage) {
-    referenceUrl = await uploadReferenceToStorage(
-      supabaseAdmin,
-      userId,
-      referenceImage,
-    );
+  const referenceUrls: string[] = [];
+  for (const refInput of referenceImages) {
+    const uploaded = await uploadReferenceToStorage(supabaseAdmin, userId, refInput);
+    if (uploaded) referenceUrls.push(uploaded);
   }
+
+  const primaryReferenceUrl = referenceUrls[0] ?? null;
+  const primaryReferenceInput = referenceImages[0] ?? null;
 
   let url: string;
   let provider: string;
 
   if (model === "nano_banana_pro") {
-    url = await generateNanoBananaPro(prompt, aspectRatio, referenceUrl);
+    url = await generateNanoBananaPro(prompt, aspectRatio, referenceUrls);
     provider = "kie";
   } else if (model === "hailuo") {
-    url = await generateHailuoImage(prompt, aspectRatio, referenceUrl);
+    url = await generateHailuoImage(prompt, aspectRatio, primaryReferenceUrl);
     provider = "hailuo";
   } else {
-    url = await generateGptImage2(prompt, aspectRatio, referenceImage);
+    url = await generateGptImage2(prompt, aspectRatio, primaryReferenceInput);
     provider = "openai";
   }
 
@@ -681,9 +690,13 @@ serve(async (req) => {
     }
 
     const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
+    const userPrompt =
+      typeof body.userPrompt === "string" && body.userPrompt.trim()
+        ? body.userPrompt.trim()
+        : prompt;
     if (!prompt) return jsonError(400, "BAD_PROMPT", "Le prompt est requis.");
-    if (prompt.length > 2000) {
-      return jsonError(400, "PROMPT_TOO_LONG", "Le prompt ne doit pas dépasser 2000 caractères.");
+    if (prompt.length > 10000) {
+      return jsonError(400, "PROMPT_TOO_LONG", "Le prompt ne doit pas dépasser 10 000 caractères.");
     }
 
     const aspectRatio = normalizeAspectRatio(body.aspectRatio);
@@ -692,6 +705,13 @@ serve(async (req) => {
       typeof body.referenceImage === "string" && body.referenceImage.trim()
         ? body.referenceImage.trim()
         : null;
+    const referenceImages = Array.isArray(body.referenceImages)
+      ? body.referenceImages
+          .map((item) => (typeof item === "string" ? item.trim() : ""))
+          .filter(Boolean)
+      : referenceImage
+        ? [referenceImage]
+        : [];
     const batchId =
       typeof body.batchId === "string" && body.batchId.trim()
         ? body.batchId.trim()
@@ -731,7 +751,7 @@ serve(async (req) => {
         model,
         prompt,
         aspectRatio,
-        referenceImage,
+        referenceImages,
       );
 
       let persistedUrl = url;
@@ -749,7 +769,7 @@ serve(async (req) => {
       const historyId = await saveImageStudioHistoryEntry(
         supabaseAdmin,
         user.id,
-        prompt,
+        userPrompt,
         persistedUrl,
         aspectRatio,
         model,

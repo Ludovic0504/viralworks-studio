@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   BookOpen,
@@ -36,6 +36,9 @@ import ImageStudioFeedPanel, {
   scrollImageStudioFeedToItem,
 } from "@/composants/image/ImageStudioFeedPanel";
 import ImageStudioHistoryPanel from "@/composants/image/ImageStudioHistoryPanel";
+import ImageStudioPromptInput, {
+  insertPromptMentionAtCursor,
+} from "@/composants/image/ImageStudioPromptInput";
 import ModalImageStudioPreview from "@/composants/image/ModalImageStudioPreview";
 import ModalQuotaImageStudio from "@/composants/image/ModalQuotaImageStudio";
 import {
@@ -58,6 +61,8 @@ import {
   loadImageStudioUiState,
   saveImageStudioUiState,
 } from "@/bibliotheque/imageStudio/imageStudioUiState";
+import { resolvePromptMentions, IMAGE_STUDIO_PROMPT_MAX_LENGTH, getImageStudioUserPrompt } from "@/bibliotheque/imageStudio/promptMentions";
+import { uploadImageStudioReferenceUrl } from "@/bibliotheque/imageStudio/uploadImageStudioReference";
 import ModalBibliothequeAvatars from "@/composants/studio/avatar/ModalBibliothequeAvatars";
 import ModalBibliothequeProduits from "@/composants/studio/product/ModalBibliothequeProduits";
 import { capturePostHog, trackPostHogError } from "@/bibliotheque/posthog/client";
@@ -393,9 +398,9 @@ function PromptImportSlot({ preview, disabled, onPick, onClear }) {
         disabled={disabled}
         onClick={onPick}
         className={`image-studio-add-btn ${preview ? "has-ref" : ""}`}
-        title={preview ? "Image importée — cliquer pour remplacer" : "Importer une image depuis l'appareil"}
+        title={preview ? "Image @Image1 — cliquer pour remplacer" : "Importer une image de référence (@Image1)"}
         aria-label={
-          preview ? "Image importée — cliquer pour remplacer" : "Importer une image depuis l'appareil"
+          preview ? "Image @Image1 — cliquer pour remplacer" : "Importer une image de référence (@Image1)"
         }
       >
         {preview ? (
@@ -832,16 +837,33 @@ export default function ImageStudio() {
     e.target.value = "";
     if (!file || !file.type.startsWith("image/")) return;
 
+    const userId = session?.user?.id;
+    if (!userId) {
+      setError("Connexion requise pour importer une image de référence.");
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = () => {
-      const dataUrl = String(reader.result || "");
-      if (!dataUrl) return;
-      setImportedRefImage(dataUrl);
-      setImportedRefPreview(dataUrl);
-      setError(null);
+      void (async () => {
+        try {
+          const dataUrl = String(reader.result || "");
+          if (!dataUrl) return;
+          const publicUrl = await uploadImageStudioReferenceUrl(userId, dataUrl);
+          setImportedRefImage(publicUrl);
+          setImportedRefPreview(publicUrl);
+          setError(null);
+        } catch (err) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Impossible d'importer l'image de référence.",
+          );
+        }
+      })();
     };
     reader.readAsDataURL(file);
-  }, []);
+  }, [session?.user?.id]);
 
   const clearImportedRef = useCallback(() => {
     setImportedRefImage(null);
@@ -931,7 +953,7 @@ export default function ImageStudio() {
     (item) => {
       if (!item) return;
 
-      const promptText = item.input?.trim() || "";
+      const promptText = getImageStudioUserPrompt(item.input);
       if (promptText) setPrompt(promptText);
 
       const ratio = item.metadata?.aspectRatio;
@@ -976,16 +998,30 @@ export default function ImageStudio() {
   const handleGenerate = async () => {
     if (!hasImagePlan || !canGenerate) return;
     setError(null);
-    setGenerating(true);
-    const batchId = crypto.randomUUID();
+
     const trimmedPrompt = prompt.trim();
-    const reference = importedRefImage || referenceImage;
+    const resolved = resolvePromptMentions(trimmedPrompt, {
+      avatarUrl: referenceImage,
+      productUrl: productImage,
+      image1Url: importedRefImage,
+    });
+
+    const generationPrompt = resolved.generationPrompt;
+
+    if (generationPrompt.length > IMAGE_STUDIO_PROMPT_MAX_LENGTH) {
+      setError(
+        `Prompt trop long (${generationPrompt.length.toLocaleString("fr-FR")} / ${IMAGE_STUDIO_PROMPT_MAX_LENGTH.toLocaleString("fr-FR")} caractères). Raccourcissez le texte.`,
+      );
+      return;
+    }
+    const batchId = crypto.randomUUID();
     const generationRefs = {
       avatarUrl: referenceImage || null,
       productUrl: productImage || null,
       importedRefUrl: importedRefImage || null,
     };
 
+    setGenerating(true);
     setFeedRows((prev) => [
       ...prev,
       {
@@ -1013,12 +1049,14 @@ export default function ImageStudio() {
         );
 
         const result = await generateImageStudio(
-          trimmedPrompt,
+          generationPrompt,
           aspectRatio,
           model,
-          reference,
+          null,
           batchId,
           generationRefs,
+          resolved.referenceImages.length > 0 ? resolved.referenceImages : null,
+          trimmedPrompt,
         );
         lastResult = result;
         setActiveHistoryId(result.historyId ?? null);
@@ -1085,6 +1123,31 @@ export default function ImageStudio() {
     }
   };
 
+  const handleAvatarShortcut = useCallback(() => {
+    if (referenceImage) {
+      insertPromptMentionAtCursor(promptInputRef, "@Avatar");
+      return;
+    }
+    openAvatarLibrary();
+  }, [referenceImage, openAvatarLibrary]);
+
+  const handleProductShortcut = useCallback(() => {
+    if (productImage) {
+      insertPromptMentionAtCursor(promptInputRef, "@Produit");
+      return;
+    }
+    openProductLibrary();
+  }, [productImage, openProductLibrary]);
+
+  const mentionAssets = useMemo(
+    () => ({
+      avatarUrl: referenceImage,
+      productUrl: productImage,
+      image1Url: importedRefImage,
+    }),
+    [referenceImage, productImage, importedRefImage],
+  );
+
   const requestGenerate = () => {
     void runWithAuth(async () => {
       if (accessLoading) return false;
@@ -1095,13 +1158,6 @@ export default function ImageStudio() {
       await handleGenerate();
       return true;
     });
-  };
-
-  const onPromptKeyDown = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      requestGenerate();
-    }
   };
 
   return (
@@ -1174,16 +1230,17 @@ export default function ImageStudio() {
                   tabIndex={-1}
                 />
 
-                <textarea
-                  ref={promptInputRef}
+                <ImageStudioPromptInput
+                  inputRef={promptInputRef}
                   value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  onKeyDown={onPromptKeyDown}
+                  onChange={setPrompt}
+                  onSubmit={requestGenerate}
                   disabled={generating || quotaReached}
-                  placeholder="Décrivez l'image à générer…"
-                  aria-label="Prompt de génération"
-                  rows={1}
-                  className="image-studio-prompt-input min-w-0 flex-1 resize-none py-1 leading-relaxed disabled:opacity-50"
+                  assets={mentionAssets}
+                  onOpenAvatarPicker={openAvatarLibrary}
+                  onOpenProductPicker={openProductLibrary}
+                  onOpenImage1Upload={openPromptImport}
+                  onResize={resizePromptTextarea}
                 />
               </div>
 
@@ -1241,7 +1298,7 @@ export default function ImageStudio() {
                     label="Avatar"
                     preview={referencePreview}
                     disabled={generating}
-                    onPick={openAvatarLibrary}
+                    onPick={handleAvatarShortcut}
                     onClear={clearReference}
                     imageClassName="[object-position:16%_center]"
                   />
@@ -1250,7 +1307,7 @@ export default function ImageStudio() {
                     label="Produit"
                     preview={productPreview}
                     disabled={generating}
-                    onPick={openProductLibrary}
+                    onPick={handleProductShortcut}
                     onClear={clearProduct}
                   />
                 </div>

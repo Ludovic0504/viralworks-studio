@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import ImageStudioModelIcon from "@/composants/image/ImageStudioModelIcon";
 import { downloadImageAsPng } from "@/bibliotheque/imageStudio/downloadImagePng";
+import { getImageStudioUserPrompt } from "@/bibliotheque/imageStudio/promptMentions";
 import { getGenerationRefsFromHistory } from "@/bibliotheque/imageStudio/imageStudioHistory";
 import { getImageStudioModelLabel } from "@/bibliotheque/imageStudio/imageStudioModels";
 
@@ -28,7 +29,7 @@ export default function ModalImageStudioPreview({
   const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
-  const promptText = item?.input?.trim() || "";
+  const promptText = getImageStudioUserPrompt(item?.input);
   const modelId = item?.metadata?.imageStudioModel;
   const aspectRatio = item?.metadata?.aspectRatio;
   const generationRefs = getGenerationRefsFromHistory(item);

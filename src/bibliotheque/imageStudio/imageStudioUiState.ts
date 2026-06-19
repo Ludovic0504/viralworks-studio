@@ -1,5 +1,6 @@
 import type { ImageStudioAspectRatio } from "./imageStudioHistory";
 import type { ImageStudioModelId } from "./generateImageStudio";
+import { IMAGE_STUDIO_PROMPT_MAX_LENGTH } from "./promptMentions";
 
 export type ImageStudioUiState = {
   feedScrollTop: number;
@@ -45,7 +46,7 @@ export function loadImageStudioUiState(userId: string): Partial<ImageStudioUiSta
       state.activeHistoryId = parsed.activeHistoryId;
     }
     if (typeof parsed.prompt === "string") {
-      state.prompt = parsed.prompt.slice(0, 2000);
+      state.prompt = parsed.prompt.slice(0, IMAGE_STUDIO_PROMPT_MAX_LENGTH);
     }
     if (isModelId(parsed.model)) {
       state.model = parsed.model;

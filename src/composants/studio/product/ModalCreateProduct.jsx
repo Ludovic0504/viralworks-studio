@@ -2,8 +2,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Plus, X } from "lucide-react";
 import { persistStudioProduct } from "@/bibliotheque/studio/studioProducts";
 
+function isImageFile(file) {
+  if (!file) return false;
+  if (file.type.startsWith("image/")) return true;
+  return /\.(jpe?g|png|webp|gif|bmp|avif)$/i.test(String(file.name || ""));
+}
+
 function readImageFile(file, onDone) {
-  if (!file || !file.type.startsWith("image/")) return;
+  if (!isImageFile(file)) {
+    onDone(null, "Le fichier sélectionné n'est pas une image supportée.");
+    return;
+  }
   if (file.size > 10 * 1024 * 1024) {
     onDone(null, "Chaque image ne doit pas dépasser 10 Mo.");
     return;
@@ -19,6 +28,7 @@ function readImageFile(file, onDone) {
 
 export default function ModalCreateProduct({ open, onClose, onCreated }) {
   const fileInputRef = useRef(null);
+  const wasOpenRef = useRef(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [images, setImages] = useState([]);
@@ -37,14 +47,25 @@ export default function ModalCreateProduct({ open, onClose, onCreated }) {
   }, []);
 
   useEffect(() => {
+    if (open && !wasOpenRef.current) {
+      resetForm();
+    }
+    wasOpenRef.current = open;
+  }, [open, resetForm]);
+
+  useEffect(() => {
     if (!open) return undefined;
-    resetForm();
     const onKeyDown = (event) => {
       if (event.key === "Escape" && !saving) onClose?.();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, onClose, resetForm, saving]);
+  }, [open, onClose, saving]);
+
+  const openFilePicker = useCallback(() => {
+    if (saving || images.length >= 8) return;
+    fileInputRef.current?.click();
+  }, [images.length, saving]);
 
   const addFiles = (fileList) => {
     const files = Array.from(fileList || []).slice(0, 8 - images.length);
@@ -67,6 +88,13 @@ export default function ModalCreateProduct({ open, onClose, onCreated }) {
 
   const canCreate = Boolean(name.trim()) && images.length > 0 && !saving;
   const previewUrl = images[selectedIndex]?.dataUrl ?? null;
+  const missingImages = images.length === 0;
+  const missingName = !name.trim();
+  const createHint = missingImages
+    ? "Ajoutez au moins une photo pour continuer."
+    : missingName
+      ? "Indiquez un nom de produit pour activer la création."
+      : null;
 
   const handleCreate = async () => {
     if (!canCreate) return;
@@ -122,21 +150,26 @@ export default function ModalCreateProduct({ open, onClose, onCreated }) {
 
         <div className="studio-subtle-scrollbar grid min-h-0 flex-1 gap-5 overflow-y-auto p-5 sm:grid-cols-[1.1fr_0.9fr]">
           <div className="flex min-w-0 flex-col gap-3">
-            <div className="flex aspect-square w-full items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-[#0a0e14]">
+            <button
+              type="button"
+              disabled={saving || images.length >= 8}
+              onClick={openFilePicker}
+              className="flex aspect-square w-full items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-[#0a0e14] transition hover:border-[#00c896]/35 hover:bg-white/[0.02] disabled:cursor-not-allowed disabled:opacity-60"
+            >
               {previewUrl ? (
                 <img src={previewUrl} alt="" className="h-full w-full object-contain" />
               ) : (
                 <p className="px-6 text-center text-sm text-white/35">
-                  Ajoutez une ou plusieurs photos de votre produit
+                  Cliquez pour ajouter une ou plusieurs photos de votre produit
                 </p>
               )}
-            </div>
+            </button>
 
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 disabled={saving || images.length >= 8}
-                onClick={() => fileInputRef.current?.click()}
+                onClick={openFilePicker}
                 className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg border border-dashed border-white/15 bg-white/[0.03] text-white/70 transition hover:border-[#00c896]/40 hover:bg-white/[0.06] disabled:opacity-40"
                 aria-label="Ajouter une image"
               >
@@ -171,7 +204,7 @@ export default function ModalCreateProduct({ open, onClose, onCreated }) {
           <div className="flex min-w-0 flex-col gap-4">
             <div>
               <label htmlFor="product-name" className="mb-1.5 block text-sm text-white/70">
-                Nom du produit
+                Nom du produit <span className="text-[#00c896]">*</span>
               </label>
               <input
                 id="product-name"
@@ -204,6 +237,10 @@ export default function ModalCreateProduct({ open, onClose, onCreated }) {
           {error ? (
             <p className="mb-3 text-sm text-red-400" role="alert">
               {error}
+            </p>
+          ) : createHint && !saving ? (
+            <p className="mb-3 text-sm text-white/45" role="status">
+              {createHint}
             </p>
           ) : null}
           <button

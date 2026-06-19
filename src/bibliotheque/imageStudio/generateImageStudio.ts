@@ -1,5 +1,7 @@
 import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
 import type { ImageStudioAspectRatio, ImageStudioGenerationRefs } from "./imageStudioHistory";
+import { IMAGE_STUDIO_PROMPT_MAX_LENGTH } from "./promptMentions";
+import { uploadImageStudioReferenceUrls } from "./uploadImageStudioReference";
 
 export type ImageStudioModelId = "nano_banana_pro" | "hailuo" | "gpt_image_2";
 
@@ -20,10 +22,57 @@ type ErrorBody = {
   code?: string;
 };
 
+export const IMAGE_STUDIO_BUSY_MESSAGE =
+  "Les serveurs sont saturés, réessaye dans quelques instants.";
+
 const QUOTA_MESSAGE =
   "Quota mensuel atteint. Réessayez le mois prochain.";
 
+const KIE_CREDITS_MESSAGE =
+  "Crédits Kie AI insuffisants. Recharge ton compte Kie puis réessaie.";
+
 export type { ImageStudioAspectRatio };
+
+export { IMAGE_STUDIO_PROMPT_MAX_LENGTH };
+
+function pickUserFacingMessage(
+  response: Response,
+  data: ErrorBody | null,
+  rawText: string,
+): string {
+  const code = data?.code ?? "";
+
+  if (code === "IMAGE_STUDIO_QUOTA_EXCEEDED") return QUOTA_MESSAGE;
+  if (code === "IMAGE_STUDIO_SUBSCRIPTION_REQUIRED") {
+    return data?.userMessage || "Un abonnement ViralWorks Image est requis pour générer des images.";
+  }
+  if (code === "KIE_CREDITS") return KIE_CREDITS_MESSAGE;
+  if (code === "PROMPT_TOO_LONG") {
+    return data?.userMessage || "Le prompt est trop long.";
+  }
+
+  if (data?.userMessage) return data.userMessage;
+  if (data?.error) {
+    if (response.status >= 500 && data.error.length <= 280) return data.error;
+    if (response.status < 500) return data.error;
+  }
+
+  if (response.status === 429) return QUOTA_MESSAGE;
+  if (response.status === 402) return KIE_CREDITS_MESSAGE;
+  if (response.status === 413) {
+    return "Les images jointes sont trop lourdes. Réduis la taille de @Image1 ou utilise une photo plus légère.";
+  }
+  if (response.status === 504 || response.status === 503 || response.status >= 502) {
+    return IMAGE_STUDIO_BUSY_MESSAGE;
+  }
+
+  const trimmed = rawText.trim();
+  if (trimmed && trimmed.length <= 280 && !trimmed.startsWith("{")) {
+    return trimmed;
+  }
+
+  return IMAGE_STUDIO_BUSY_MESSAGE;
+}
 
 export async function fetchImageStudioModels(): Promise<ImageStudioModelsAvailability> {
   const supabase = getBrowserSupabase();
@@ -67,60 +116,91 @@ export async function generateImageStudio(
   referenceImage?: string | null,
   batchId?: string,
   generationRefs?: ImageStudioGenerationRefs | null,
+  referenceImages?: string[] | null,
+  userPrompt?: string | null,
 ): Promise<GenerateImageStudioResult> {
   const supabase = getBrowserSupabase();
   const session = await supabase.auth.getSession();
   const accessToken = session.data.session?.access_token;
+  const userId = session.data.session?.user?.id;
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.replace(/\/$/, "");
+  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-  if (!accessToken) {
+  if (!accessToken || !userId) {
     throw new Error("Connexion requise pour générer une image.");
   }
-
-  const { data, error } = await supabase.functions.invoke("generate-image-studio", {
-    body: {
-      prompt: prompt.trim(),
-      aspectRatio,
-      model,
-      ...(referenceImage ? { referenceImage } : {}),
-      ...(batchId ? { batchId } : {}),
-      ...(generationRefs ? { generationRefs } : {}),
-    },
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-
-  if (error) {
-    let message = error.message || "Erreur lors de la génération.";
-    if (error.context instanceof Response) {
-      try {
-        const parsed = (await error.context.clone().json()) as ErrorBody;
-        if (parsed.code === "IMAGE_STUDIO_QUOTA_EXCEEDED") {
-          throw new Error(QUOTA_MESSAGE);
-        }
-        if (parsed.code === "IMAGE_STUDIO_SUBSCRIPTION_REQUIRED") {
-          throw new Error(
-            parsed.userMessage ||
-              "Un abonnement ViralWorks Image est requis pour générer des images.",
-          );
-        }
-        message = parsed.userMessage || parsed.error || message;
-      } catch (inner) {
-        if (inner instanceof Error && inner.message === QUOTA_MESSAGE) throw inner;
-      }
-    }
-    throw new Error(message);
+  if (!supabaseUrl || !anonKey) {
+    throw new Error("Configuration Supabase manquante.");
   }
 
-  const body = data as {
+  const trimmedPrompt = prompt.trim();
+  if (trimmedPrompt.length > IMAGE_STUDIO_PROMPT_MAX_LENGTH) {
+    throw new Error(
+      `Le prompt ne doit pas dépasser ${IMAGE_STUDIO_PROMPT_MAX_LENGTH.toLocaleString("fr-FR")} caractères.`,
+    );
+  }
+
+  const rawReferenceImages = Array.isArray(referenceImages)
+    ? referenceImages.map((url) => String(url || "").trim()).filter(Boolean)
+    : referenceImage
+      ? [String(referenceImage).trim()].filter(Boolean)
+      : [];
+
+  const normalizedReferenceImages =
+    rawReferenceImages.length > 0
+      ? await uploadImageStudioReferenceUrls(userId, rawReferenceImages)
+      : [];
+
+  let response: Response;
+  try {
+    response = await fetch(`${supabaseUrl}/functions/v1/generate-image-studio`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+        apikey: anonKey,
+      },
+      body: JSON.stringify({
+        prompt: trimmedPrompt,
+        ...(userPrompt?.trim() ? { userPrompt: userPrompt.trim() } : {}),
+        aspectRatio,
+        model,
+        ...(normalizedReferenceImages.length > 0
+          ? { referenceImages: normalizedReferenceImages }
+          : {}),
+        ...(batchId ? { batchId } : {}),
+        ...(generationRefs ? { generationRefs } : {}),
+      }),
+    });
+  } catch (err) {
+    if (err instanceof TypeError) {
+      throw new Error(IMAGE_STUDIO_BUSY_MESSAGE);
+    }
+    throw err;
+  }
+
+  const rawText = await response.text();
+  let body: ErrorBody & {
     url?: string;
     count?: number;
     limit?: number;
     historyId?: string;
-    code?: string;
-    userMessage?: string;
-    error?: string;
     model?: ImageStudioModelId;
     provider?: string;
   };
+
+  try {
+    body = JSON.parse(rawText) as typeof body;
+  } catch {
+    if (!response.ok) {
+      throw new Error(pickUserFacingMessage(response, null, rawText));
+    }
+    throw new Error("Réponse serveur invalide.");
+  }
+
+  if (!response.ok) {
+    throw new Error(pickUserFacingMessage(response, body, rawText));
+  }
 
   if (body?.code === "IMAGE_STUDIO_QUOTA_EXCEEDED") {
     throw new Error(QUOTA_MESSAGE);

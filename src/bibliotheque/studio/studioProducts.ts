@@ -54,15 +54,86 @@ function isSupabaseStoredImageUrl(url: string): boolean {
   return u.includes("/storage/v1/object/public/generated-images/");
 }
 
+function parseProductImageDataUrl(
+  dataUrl: string,
+): { bytes: Uint8Array; mime: string; ext: string } | null {
+  const match = String(dataUrl || "")
+    .trim()
+    .match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+  if (!match) return null;
+
+  try {
+    const mime = match[1].toLowerCase();
+    const binary = atob(match[2]);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    const ext =
+      mime.includes("jpeg") || mime.includes("jpg")
+        ? "jpg"
+        : mime.includes("webp")
+          ? "webp"
+          : mime.includes("png")
+            ? "png"
+            : "png";
+    return { bytes, mime, ext };
+  } catch {
+    return null;
+  }
+}
+
+async function uploadProductDataUrl(
+  userId: string,
+  dataUrl: string,
+): Promise<{ url: string | null; error?: string }> {
+  const parsed = parseProductImageDataUrl(dataUrl);
+  if (!parsed) {
+    return { url: null, error: "Format d'image invalide." };
+  }
+
+  const supabase = getBrowserSupabase();
+  const timestamp = Date.now();
+  const random = Math.random().toString(36).slice(2, 9);
+  const filePath = `${userId}/products/${timestamp}-${random}.${parsed.ext}`;
+
+  const { error } = await supabase.storage.from("generated-images").upload(filePath, parsed.bytes, {
+    contentType: parsed.mime,
+    cacheControl: "3600",
+    upsert: false,
+  });
+
+  if (error) {
+    return { url: null, error: error.message || "Upload Storage refusé." };
+  }
+
+  const {
+    data: { publicUrl },
+  } = supabase.storage.from("generated-images").getPublicUrl(filePath);
+
+  return { url: normalizeProductStorageUrl(publicUrl) };
+}
+
 async function uploadProductImages(
   userId: string,
   imageInputs: string[],
-): Promise<string[]> {
+): Promise<{ urls: string[]; error?: string }> {
   const uploaded: string[] = [];
+  let lastError: string | undefined;
 
   for (const input of imageInputs) {
     const trimmed = String(input || "").trim();
     if (!trimmed) continue;
+
+    if (trimmed.startsWith("data:")) {
+      const result = await uploadProductDataUrl(userId, trimmed);
+      if (result.url) {
+        uploaded.push(result.url);
+      } else {
+        lastError = result.error ?? "Impossible d'envoyer l'image produit.";
+      }
+      continue;
+    }
 
     const normalized = normalizeProductStorageUrl(trimmed);
     if (isSupabaseStoredImageUrl(normalized)) {
@@ -76,10 +147,12 @@ async function uploadProductImages(
     const rawUrl = result.urls?.[0];
     if (result.success && rawUrl && isSupabaseStoredImageUrl(rawUrl)) {
       uploaded.push(normalizeProductStorageUrl(rawUrl));
+    } else {
+      lastError = result.errors?.[0] ?? "Impossible d'envoyer l'image produit.";
     }
   }
 
-  return uploaded;
+  return { urls: uploaded, error: uploaded.length ? undefined : lastError };
 }
 
 export async function listStudioProducts(limit = 20): Promise<StudioProductHistoryItem[]> {
@@ -154,9 +227,9 @@ export async function persistStudioProduct({
     throw new Error("Ajoutez au moins une image produit.");
   }
 
-  const imageUrls = await uploadProductImages(user.id, inputs);
+  const { urls: imageUrls, error: uploadError } = await uploadProductImages(user.id, inputs);
   if (!imageUrls.length) {
-    throw new Error("Impossible d'enregistrer les images produit.");
+    throw new Error(uploadError ?? "Impossible d'enregistrer les images produit.");
   }
 
   const coverUrl = imageUrls[0];
