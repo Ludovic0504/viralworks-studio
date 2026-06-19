@@ -5,6 +5,7 @@ import LienNavSync from "@/composants/disposition/LienNavSync";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { prefetchPremiumAccess } from "@/hooks/usePremiumAccess";
 import { prefetchAdminAccess } from "@/bibliotheque/supabase/credits";
+import { prefetchImageStudioHistory } from "@/bibliotheque/imageStudio/imageStudioHistoryCache";
 
 const VIDEO_ITEMS = [
   { to: "/viralworks", label: "Créer ma vidéo", matchCreator: true },
@@ -66,7 +67,10 @@ function NewBadge() {
 }
 
 function prefetchNavTarget(to, userId) {
-  if (to === "/image-studio") prefetchPremiumAccess(userId);
+  if (to === "/image-studio") {
+    prefetchPremiumAccess(userId);
+    prefetchImageStudioHistory(userId);
+  }
   if (to === "/edit-video") prefetchAdminAccess(userId);
 }
 
@@ -164,7 +168,10 @@ export function MenuNavViralWorksDesktop({ showEditVideo = false }) {
   const prefetchEditVideo = () => {
     if (showEditVideo) prefetchAdminAccess(session?.user?.id);
   };
-  const prefetchImageStudio = () => prefetchPremiumAccess(session?.user?.id);
+  const prefetchImageStudio = () => {
+    prefetchPremiumAccess(session?.user?.id);
+    prefetchImageStudioHistory(session?.user?.id);
+  };
 
   return (
     <>
@@ -263,7 +270,10 @@ export function MenuNavViralWorksMobile({ onNavigate, showEditVideo = false }) {
   const prefetchEditVideo = () => {
     if (showEditVideo) prefetchAdminAccess(session?.user?.id);
   };
-  const prefetchImageStudio = () => prefetchPremiumAccess(session?.user?.id);
+  const prefetchImageStudio = () => {
+    prefetchPremiumAccess(session?.user?.id);
+    prefetchImageStudioHistory(session?.user?.id);
+  };
 
   return (
     <div className="flex flex-col gap-1">

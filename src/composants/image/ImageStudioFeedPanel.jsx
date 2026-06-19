@@ -102,7 +102,14 @@ function FeedRow({ row, activeHistoryId, onImageOpen }) {
             }
             aria-label="Ouvrir l'image en grand"
           >
-            <img src={image.url} alt="" className="image-studio-feed-image" loading="lazy" />
+            <img
+              src={image.url}
+              alt=""
+              className="image-studio-feed-image"
+              loading="eager"
+              decoding="async"
+              fetchPriority="high"
+            />
           </button>
         ))}
         {row.generating
@@ -158,7 +165,11 @@ export default function ImageStudioFeedPanel({
     () => history.filter((item) => getImageUrlFromHistory(item)).length,
     [history],
   );
-  const showEmptyFeed = feedRows.length === 0 && !generating && historyImageCount === 0;
+  const showEmptyFeed =
+    feedRows.length === 0 &&
+    !generating &&
+    historyImageCount === 0 &&
+    !(historyLoading && history.length === 0);
 
   useEffect(() => {
     restoreTargetsRef.current = {
@@ -168,12 +179,17 @@ export default function ImageStudioFeedPanel({
   }, [restoreFeedScrollTop, restoreThumbScrollTop]);
 
   const tryRestoreScroll = useCallback(() => {
-    if (userScrolledRef.current || historyLoading) return;
+    if (userScrolledRef.current) return;
+    if (historyLoading && feedRows.length === 0 && history.length === 0) return;
     if (feedRows.length === 0 && history.length === 0) return;
 
-    scrollFeedToBottom(feedScrollRef.current, "auto");
+    const { feed, thumb } = restoreTargetsRef.current;
+    if (typeof feed === "number") {
+      clampScrollTop(feedScrollRef.current, feed);
+    } else {
+      scrollFeedToBottom(feedScrollRef.current, "auto");
+    }
 
-    const { thumb } = restoreTargetsRef.current;
     if (typeof thumb === "number") {
       clampScrollTop(thumbScrollRef.current, thumb);
     }
@@ -182,8 +198,6 @@ export default function ImageStudioFeedPanel({
   useLayoutEffect(() => {
     tryRestoreScroll();
     const raf = requestAnimationFrame(tryRestoreScroll);
-    const t1 = window.setTimeout(tryRestoreScroll, 80);
-    const t2 = window.setTimeout(tryRestoreScroll, 350);
 
     const feedEl = feedScrollRef.current;
     const resizeObserver =
@@ -196,11 +210,9 @@ export default function ImageStudioFeedPanel({
 
     return () => {
       cancelAnimationFrame(raf);
-      window.clearTimeout(t1);
-      window.clearTimeout(t2);
       resizeObserver?.disconnect();
     };
-  }, [tryRestoreScroll]);
+  }, [tryRestoreScroll, feedRows.length, history.length]);
 
   useEffect(() => {
     if (scrollToEndToken === prevScrollTokenRef.current) return;
@@ -282,7 +294,7 @@ export default function ImageStudioFeedPanel({
         aria-label="Historique des images"
         onScroll={(e) => handleThumbScroll(e.currentTarget.scrollTop)}
       >
-        {historyLoading && history.length === 0 ? (
+        {historyLoading && history.length === 0 && feedRows.length === 0 ? (
           <div className="image-studio-thumb-strip-skeletons" aria-hidden>
             {Array.from({ length: 6 }).map((_, index) => (
               <div key={index} className="image-studio-thumb-strip-skeleton" />

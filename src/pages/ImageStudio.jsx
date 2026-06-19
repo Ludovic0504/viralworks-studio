@@ -62,6 +62,10 @@ import {
   loadImageStudioUiState,
   saveImageStudioUiState,
 } from "@/bibliotheque/imageStudio/imageStudioUiState";
+import {
+  applyImageStudioHistoryCache,
+  saveImageStudioHistoryCache,
+} from "@/bibliotheque/imageStudio/imageStudioHistoryCache";
 import { resolvePromptMentions, IMAGE_STUDIO_PROMPT_MAX_LENGTH, getImageStudioUserPrompt } from "@/bibliotheque/imageStudio/promptMentions";
 import { uploadImageStudioReferenceUrl } from "@/bibliotheque/imageStudio/uploadImageStudioReference";
 import ModalBibliothequeAvatars from "@/composants/studio/avatar/ModalBibliothequeAvatars";
@@ -590,12 +594,31 @@ export default function ImageStudio() {
         thumbScrollTopRef.current = saved.thumbScrollTop;
         setRestoreThumbScrollTop(saved.thumbScrollTop);
       }
+      if (typeof saved.feedScrollTop === "number") {
+        feedScrollTopRef.current = saved.feedScrollTop;
+        setRestoreFeedScrollTop(saved.feedScrollTop);
+      }
       if (saved.activeHistoryId) setActiveHistoryId(saved.activeHistoryId);
     }
 
     uiStateHydratedRef.current = true;
     setUiPersistReady(true);
   }, [session?.user?.id]);
+
+  useLayoutEffect(() => {
+    if (!session?.user?.id) return;
+
+    const cached = applyImageStudioHistoryCache(session.user.id);
+    if (cached?.length) {
+      setHistory(cached);
+      setFeedRows(mergeFeedRowsFromHistory(cached, []));
+    }
+  }, [session?.user?.id]);
+
+  useEffect(() => {
+    if (!session?.user?.id || history.length === 0) return;
+    saveImageStudioHistoryCache(session.user.id, history);
+  }, [history, session?.user?.id]);
 
   useEffect(() => {
     const onPersist = () => persistUiState();
@@ -625,17 +648,25 @@ export default function ImageStudio() {
   ]);
 
   const loadHistory = useCallback(async (options = {}) => {
-    const { syncFeed = false } = options;
+    const { syncFeed = false, silent = false } = options;
     if (!session?.user?.id) {
       if (authLoading) return [];
       setHistory([]);
       if (syncFeed) setFeedRows([]);
       return [];
     }
-    setHistoryLoading(true);
+
+    const hasCachedHistory = Boolean(applyImageStudioHistoryCache(session.user.id)?.length);
+    if (!silent && !hasCachedHistory) {
+      setHistoryLoading(true);
+    }
+
     try {
       const rows = await listImageStudioHistory();
       setHistory(rows);
+      if (rows.length > 0) {
+        saveImageStudioHistoryCache(session.user.id, rows);
+      }
       if (syncFeed) {
         setFeedRows((prev) => mergeFeedRowsFromHistory(rows, prev));
         if (session?.user?.id) {
@@ -700,8 +731,10 @@ export default function ImageStudio() {
   useEffect(() => {
     if (authLoading) return;
     void loadQuota();
-    void loadHistory({ syncFeed: true });
-  }, [authLoading, loadQuota, loadHistory]);
+    if (!session?.user?.id) return;
+    const hasCache = Boolean(applyImageStudioHistoryCache(session.user.id)?.length);
+    void loadHistory({ syncFeed: true, silent: hasCache });
+  }, [authLoading, loadQuota, loadHistory, session?.user?.id]);
 
   useEffect(() => {
     const refreshHistory = () => {
