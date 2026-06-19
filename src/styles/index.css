@@ -52,17 +52,14 @@
     @apply border-white/5;
   }
 
-  /* PWA installée — gestes natifs (drawer, pas de swipe horizontal parasite) */
+  /* PWA installée — gestes drawer (sans toucher au scroll vertical global) */
   html.pwa-standalone,
   html.pwa-standalone body {
     overscroll-behavior-x: none;
   }
 
-  html.pwa-standalone body {
-    touch-action: pan-y pinch-zoom;
-  }
-
-  html.pwa-standalone body.pwa-drawer-open {
+  html.mobile-nav-drawer-lock,
+  html.mobile-nav-drawer-lock body {
     overflow: hidden;
     touch-action: none;
   }

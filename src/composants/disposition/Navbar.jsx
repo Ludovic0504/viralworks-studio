@@ -6,6 +6,10 @@ import LienNavSync from "@/composants/disposition/LienNavSync";
 import { MenuNavViralWorksMobile } from "@/composants/disposition/MenuNavViralWorks";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { isAdmin } from "@/bibliotheque/supabase/credits";
+import {
+  clearMobileNavDrawerScrollLock,
+  setMobileNavDrawerScrollLock,
+} from "@/bibliotheque/pwa/mobileNavDrawerScrollLock";
 
 const links = [
   { path: "/", label: "Accueil", icon: Home },
@@ -72,21 +76,13 @@ export default function SidebarShell({
 
 
   useEffect(() => {
-    if (open) {
-      const html = document.documentElement;
-      const body = document.body;
-      const prevHtmlOverflow = html.style.overflow;
-      const prevBodyOverflow = body.style.overflow;
-      html.style.overflow = "hidden";
-      body.style.overflow = "hidden";
-      body.classList.add("pwa-drawer-open");
-      return () => {
-        html.style.overflow = prevHtmlOverflow;
-        body.style.overflow = prevBodyOverflow;
-        body.classList.remove("pwa-drawer-open");
-      };
-    }
+    setMobileNavDrawerScrollLock(open);
+    return () => {
+      if (open) clearMobileNavDrawerScrollLock();
+    };
   }, [open]);
+
+  useEffect(() => clearMobileNavDrawerScrollLock, []);
 
   const Item = ({ path, label, icon }) => {
     const location = useLocation();
