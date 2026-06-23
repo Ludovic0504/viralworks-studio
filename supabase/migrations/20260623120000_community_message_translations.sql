@@ -1,7 +1,30 @@
 -- Traductions à la demande des messages communauté (cache partagé, affichage par utilisateur).
 
+do $$
+begin
+  if not exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'profiles'
+      and column_name = 'preferred_locale'
+  ) then
+    alter table public.profiles
+      add column preferred_locale text;
+  end if;
+end $$;
+
+update public.profiles
+set preferred_locale = 'fr'
+where preferred_locale is null
+   or btrim(preferred_locale) = ''
+   or preferred_locale not in ('fr', 'en', 'es');
+
 alter table public.profiles
-  add column if not exists preferred_locale text not null default 'fr';
+  alter column preferred_locale set default 'fr';
+
+alter table public.profiles
+  alter column preferred_locale set not null;
 
 alter table public.profiles
   drop constraint if exists profiles_preferred_locale_check;
