@@ -9,6 +9,7 @@ import { PwaNavigationProvider } from "@/contexte/PwaNavigationContext";
 import { usePwaMobileDrawerSwipe } from "@/bibliotheque/pwa/usePwaMobileDrawerSwipe";
 import { clearMobileNavDrawerScrollLock } from "@/bibliotheque/pwa/mobileNavDrawerScrollLock";
 import { getDashboardShellLayout } from "@/bibliotheque/disposition/dashboardShellLayout";
+import FondApp from "@/composants/disposition/FondApp";
 
 function DashboardShell() {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -42,10 +43,11 @@ function DashboardShell() {
     <PwaNavigationProvider onBackGesture={handlePwaBackOpensMenu}>
       <div
         data-dashboard-profile={layout.profile}
-        className={`flex flex-col bg-gradient-to-br from-[#050810] via-[#0C1116] to-[#080b10] text-white relative ${layout.shellLayoutClass}`}
+        className={`relative flex flex-col bg-[#07090f] text-white ${layout.shellLayoutClass}`}
       >
+        <FondApp />
         <Header onOpenMenu={() => setMenuOpen(true)} />
-        <div className={`flex flex-col ${layout.contentAreaFlexClass} ${layout.mainShellTopPadding}`}>
+        <div className={`relative z-[1] flex flex-col ${layout.contentAreaFlexClass} ${layout.mainShellTopPadding}`}>
           <SidebarShell
             open={menuOpen}
             onCloseMenu={() => setMenuOpen(false)}

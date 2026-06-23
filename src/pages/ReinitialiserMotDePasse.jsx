@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
 import { Lock, Eye, EyeOff, CheckCircle, XCircle } from "lucide-react";
+import FondApp from "@/composants/disposition/FondApp";
 
 export default function ResetPassword() {
   const navigate = useNavigate();
@@ -147,8 +148,9 @@ export default function ResetPassword() {
 
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: "#0C1116" }}>
-        <div className="max-w-md w-full mx-4">
+      <div className="relative min-h-screen flex items-center justify-center bg-[#07090f]">
+        <FondApp fixed />
+        <div className="relative z-[1] mx-4 w-full max-w-md">
           <div className="bg-white/5 border border-white/10 rounded-2xl p-8 text-center">
             <div className="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
               <CheckCircle className="w-8 h-8 text-emerald-400" />
@@ -164,8 +166,9 @@ export default function ResetPassword() {
 
   if (checkingSession) {
     return (
-      <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8" style={{ background: "#0C1116" }}>
-        <div className="max-w-md w-full">
+      <div className="relative min-h-screen flex items-center justify-center bg-[#07090f] px-4 py-12 sm:px-6 lg:px-8">
+        <FondApp fixed />
+        <div className="relative z-[1] w-full max-w-md">
           <div className="bg-white/5 border border-white/10 rounded-2xl p-8 shadow-2xl text-center">
             <div className="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-400"></div>
@@ -179,8 +182,9 @@ export default function ResetPassword() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8" style={{ background: "#0C1116" }}>
-      <div className="max-w-md w-full">
+    <div className="relative min-h-screen flex items-center justify-center bg-[#07090f] px-4 py-12 sm:px-6 lg:px-8">
+      <FondApp fixed />
+      <div className="relative z-[1] w-full max-w-md">
         <div className="bg-white/5 border border-white/10 rounded-2xl p-8 shadow-2xl">
           <div className="text-center mb-8">
             <div className="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-4">

@@ -1,6 +1,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { ChevronRight } from "lucide-react";
+import FondApp from "@/composants/disposition/FondApp";
 
 const textSlides = [
   { text: "Créez des textes puissants", subtext: "avec l'intelligence artificielle" },
@@ -114,7 +115,8 @@ export default function ChargeurInitial({ onEnter }) {
   }, [isSliding, handleEnter]);
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-gradient-to-br from-[#050810] via-[#0C1116] to-[#080b10] overflow-hidden">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-hidden bg-[#07090f]">
+        <FondApp fixed />
         <div className="absolute inset-0 opacity-30">
           <svg className="absolute inset-0 w-full h-full" viewBox="0 0 1200 800" preserveAspectRatio="none">
             <defs>

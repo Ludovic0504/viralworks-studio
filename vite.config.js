@@ -22,7 +22,7 @@ export default defineConfig(({ mode }) => {
   plugins: [
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['logo.png', 'pwa-192x192.png', 'pwa-512x512.png'],
+      includeAssets: ['logo.png', 'Logo_VWS_sans_bordure.png', 'pwa-192x192.png', 'pwa-512x512.png'],
       manifest: {
         name: 'ViralWorks Studio',
         short_name: 'ViralWorks',

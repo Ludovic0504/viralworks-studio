@@ -108,32 +108,7 @@ export default function Accueil() {
   }, []);
 
   return (
-    <div className="relative flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden bg-[#07090f]">
-      <div className="pointer-events-none absolute inset-0 z-0">
-        <div
-          className="absolute inset-0 bg-[#07090f]"
-          style={{
-            backgroundImage:
-              "radial-gradient(circle, rgba(255,255,255,0.042) 1px, transparent 1px)",
-            backgroundSize: "30px 30px",
-          }}
-        />
-        <div
-          className="absolute -top-20 left-[25%] hidden h-[420px] w-[420px] rounded-full opacity-100 md:block"
-          style={{
-            background: "rgba(33,243,185,0.055)",
-            filter: "blur(100px)",
-          }}
-        />
-        <div
-          className="absolute top-[15%] -right-[60px] hidden h-[340px] w-[340px] rounded-full opacity-100 md:block"
-          style={{
-            background: "rgba(129,140,248,0.07)",
-            filter: "blur(90px)",
-          }}
-        />
-      </div>
-
+    <div className="relative flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
       <div className="relative z-[1] flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
         <section className="accueil-section relative flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden max-md:pt-[calc(var(--promo-images-banner-height,0px)+2.75rem)] md:justify-center md:pt-[var(--promo-images-banner-height,0px)]">
           <div className="accueil-inner relative z-10 mx-auto flex min-h-0 w-full min-w-0 max-w-[1100px] flex-1 flex-col px-6 sm:px-8 md:justify-center md:gap-3 md:px-12 xl:px-16">

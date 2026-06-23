@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { CheckCircle2, MailCheck, ShieldCheck, XCircle, RefreshCw } from "lucide-react";
 import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
 import { track } from "@/bibliotheque/meta/pixel";
+import FondApp from "@/composants/disposition/FondApp";
 
 /**
  * Page de confirmation d'email basée sur le flux `verifyOtp` Supabase.
@@ -103,11 +104,9 @@ export default function ConfirmerEmail() {
   };
 
   return (
-    <div
-      className="min-h-screen flex items-center justify-center px-4 py-12"
-      style={{ background: "#0C1116" }}
-    >
-      <div className="w-full max-w-md">
+    <div className="relative min-h-screen flex items-center justify-center bg-[#07090f] px-4 py-12">
+      <FondApp fixed />
+      <div className="relative z-[1] w-full max-w-md">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-black mb-2">
             <span className="bg-gradient-to-r from-cyan-300 via-violet-300 to-yellow-300 bg-clip-text text-transparent">

@@ -2,6 +2,7 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
+import FondApp from "@/composants/disposition/FondApp";
 
 export default function AuthCallback() {
   const navigate = useNavigate();
@@ -107,10 +108,8 @@ export default function AuthCallback() {
   }, [navigate]);
 
   return (
-    <div
-      className="min-h-screen flex items-center justify-center text-white"
-      style={{ background: "#0C1116" }}
-    >
+    <div className="relative min-h-screen flex items-center justify-center bg-[#07090f] text-white">
+      <FondApp fixed />
       Validation en cours…
     </div>
   );
