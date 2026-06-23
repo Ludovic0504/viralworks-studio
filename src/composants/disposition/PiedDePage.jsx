@@ -1,5 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import { FileText } from "lucide-react";
+import { PAGE_SHELL_INNER_CLASS } from "@/bibliotheque/disposition/dashboardShellLayout";
 import { useStudioLayoutOptions } from "@/contexte/StudioLayoutOptionsContext";
 
 export default function Footer({ compact = false }) {
@@ -12,12 +13,12 @@ export default function Footer({ compact = false }) {
 
   return (
     <footer
-      className={`shrink-0 border-t border-white/10 bg-[#0C1116]/50 backdrop-blur-sm ${
+      className={`mt-auto shrink-0 border-t border-white/10 bg-[#0C1116]/50 backdrop-blur-sm ${
         hideFooterOnMobile ? "max-[640px]:hidden" : ""
       }`}
     >
       <div
-        className={`mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 ${
+        className={`${PAGE_SHELL_INNER_CLASS} ${
           isAccueilCompact ? "py-2.5 sm:py-3" : "py-6"
         }`}
       >

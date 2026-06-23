@@ -9,6 +9,10 @@ const ACCUEIL_PADDING =
 const DEFAULT_PADDING =
   "pt-[calc(4rem+var(--promo-images-banner-height,0px))] max-md:pt-[calc(4rem+var(--promo-images-banner-height,0px)+var(--pwa-install-banner-height,0px))]";
 
+/** Gouttière horizontale partagée : header, pages, footer (alignement logo ↔ contenu). */
+export const PAGE_SHELL_INNER_CLASS =
+  "relative mx-auto w-full min-w-0 max-w-7xl px-4 sm:px-6 lg:px-8";
+
 /** Accueil — plein écran, sans scroll document. */
 const ACCUEIL = {
   shellLayoutClass: "h-dvh overflow-hidden",

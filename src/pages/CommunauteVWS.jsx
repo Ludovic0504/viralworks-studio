@@ -2,14 +2,15 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router-dom";
 import PageTitle from "@/composants/interface/TitrePage";
-import { MessageCircle, Users, Send, Paperclip, Plus, X, MoreVertical } from "lucide-react";
+import { MessageCircle, Users, Send, Paperclip, Plus, X, MoreVertical, Languages } from "lucide-react";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { useCommunauteVWSNotif } from "@/contexte/FournisseurCommunauteVWSNotif.jsx";
+import { useAdminAccess } from "@/hooks/useAdminAccess";
+import { PAGE_SHELL_INNER_CLASS } from "@/bibliotheque/disposition/dashboardShellLayout";
 import {
   deletePrivateMessage,
   deletePublicMessage,
-  getCommunityAdminUser,
   getCommunitySupportUser,
   hideConversationForMe,
   listPrivateConversations,
@@ -21,6 +22,11 @@ import {
   sendPrivateMessage,
   sendPublicMessage,
   startPrivateConversation,
+  COMMUNITY_LOCALES,
+  getProfilePreferredLocale,
+  updateProfilePreferredLocale,
+  resolveCommunityMessageTranslations,
+  getMemoryCachedTranslation,
 } from "@/bibliotheque/supabase/communaute";
 
 function formatDate(iso) {
@@ -37,9 +43,73 @@ function formatDate(iso) {
   }
 }
 
+function formatConversationTime(iso) {
+  if (!iso) return "";
+  try {
+    const date = new Date(iso);
+    const now = new Date();
+    const sameDay =
+      date.getDate() === now.getDate() &&
+      date.getMonth() === now.getMonth() &&
+      date.getFullYear() === now.getFullYear();
+    if (sameDay) {
+      return date.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+    }
+    return date.toLocaleDateString("fr-FR", { day: "2-digit", month: "short" });
+  } catch {
+    return "";
+  }
+}
+
+function conversationAvatarStyle(seed) {
+  let hash = 0;
+  const value = String(seed || "");
+  for (let i = 0; i < value.length; i += 1) {
+    hash = value.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const hue = Math.abs(hash) % 360;
+  return {
+    backgroundColor: `hsla(${hue}, 55%, 42%, 0.35)`,
+    borderColor: `hsla(${hue}, 60%, 58%, 0.55)`,
+    color: `hsl(${hue}, 75%, 88%)`,
+  };
+}
+
+function ConversationAvatar({ username, userId, isSupport }) {
+  const initial = String(username || "?").trim().charAt(0).toUpperCase() || "?";
+  const style = isSupport
+    ? {
+        backgroundColor: "rgba(6, 182, 212, 0.2)",
+        borderColor: "rgba(34, 211, 238, 0.45)",
+        color: "rgb(207, 250, 254)",
+      }
+    : conversationAvatarStyle(userId);
+
+  return (
+    <span
+      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-sm font-semibold"
+      style={style}
+      aria-hidden
+    >
+      {initial}
+    </span>
+  );
+}
+
 const FLOATING_MENU_WIDTH = 160;
 /** Hauteur approximative (une ligne + padding) pour le placement au-dessus du trigger si bas de viewport */
 const FLOATING_MENU_HEIGHT = 52;
+
+const CHAT_PANEL_BASE_CLASS = "studio-panel p-4 sm:p-5 flex flex-col min-h-0";
+const SIDEBAR_PANEL_CLASS = `${CHAT_PANEL_BASE_CLASS} md:col-span-4 gap-3`;
+const CHAT_MESSAGES_FRAME_CLASS =
+  "flex-1 min-h-[48vh] md:min-h-0 overflow-y-auto space-y-3 pr-1";
+const CHAT_MESSAGES_FRAME_PUBLIC_CLASS =
+  "min-h-[56vh] max-h-[56vh] overflow-y-auto space-y-3 pr-1";
+const CHAT_COMPOSER_CLASS = "border-t border-white/10 pt-3 space-y-2 shrink-0";
+const SIDEBAR_SCROLL_FRAME_CLASS = "flex-1 min-h-0 overflow-y-auto space-y-2";
+const COMMUNITY_GRID_CLASS = "grid grid-cols-1 md:grid-cols-12 gap-4 md:items-stretch";
+const COMMUNITY_PANEL_HEIGHT_CLASS = "md:min-h-[calc(56vh+7.5rem)]";
 
 function useFloatingMenuCoords(open, anchorRef) {
   const [coords, setCoords] = useState({ top: 0, left: 0 });
@@ -75,17 +145,55 @@ function useFloatingMenuCoords(open, anchorRef) {
   return coords;
 }
 
-function MessageItem({ mine, msg, onDelete, menuOpen, onMenuToggle }) {
+function buildInstantTranslations(messages, scope, lang) {
+  if (lang === "fr") return {};
+  const instant = {};
+  for (const message of messages) {
+    if (!String(message.content || "").trim()) continue;
+    const cached = getMemoryCachedTranslation(message.id, scope, lang);
+    if (cached) instant[message.id] = cached;
+  }
+  return instant;
+}
+function messagesAreSame(prev, next) {
+  if (prev.length !== next.length) return false;
+  return prev.every(
+    (message, index) =>
+      message.id === next[index]?.id &&
+      message.content === next[index]?.content &&
+      message.createdAt === next[index]?.createdAt
+  );
+}
+
+function MessageItem({
+  mine,
+  msg,
+  onDelete,
+  menuOpen,
+  onMenuToggle,
+  preferredLocale,
+  translatedText = "",
+}) {
   const anchorRef = useRef(null);
   const { top, left } = useFloatingMenuCoords(menuOpen && mine, anchorRef);
+  const [showOriginal, setShowOriginal] = useState(false);
+
+  const shouldAutoTranslate = preferredLocale !== "fr";
+
+  useEffect(() => {
+    setShowOriginal(false);
+  }, [msg.id, preferredLocale]);
+
+  const displayedText =
+    shouldAutoTranslate && translatedText && !showOriginal ? translatedText : msg.content || "";
 
   return (
     <div className={`rounded-xl border px-3 py-2 ${mine ? "border-cyan-500/40 bg-cyan-500/10" : "border-white/10 bg-white/[0.03]"}`}>
       <div className="flex items-center justify-between gap-2 text-[11px] text-gray-400 mb-1">
-        <span className="font-medium text-gray-300 inline-flex items-center gap-1.5">
-          <span>{msg.username}</span>
+        <span className="font-medium text-gray-300 inline-flex items-center gap-1.5 min-w-0">
+          <span className="truncate">{msg.username}</span>
           {msg.isSupport ? (
-            <span className="rounded-full border border-cyan-400/40 bg-cyan-500/15 px-2 py-0.5 text-[10px] text-cyan-100">
+            <span className="rounded-full border border-cyan-400/40 bg-cyan-500/15 px-2 py-0.5 text-[10px] text-cyan-100 shrink-0">
               Support officiel
             </span>
           ) : null}
@@ -142,7 +250,29 @@ function MessageItem({ mine, msg, onDelete, menuOpen, onMenuToggle }) {
           ) : null}
         </div>
       </div>
-      {msg.content ? <p className="text-sm text-gray-200 whitespace-pre-wrap">{msg.content}</p> : null}
+      {msg.content ? (
+        <>
+          <p className="text-sm text-gray-200 whitespace-pre-wrap">{displayedText}</p>
+          {shouldAutoTranslate && translatedText && !showOriginal ? (
+            <button
+              type="button"
+              onClick={() => setShowOriginal(true)}
+              className="mt-1 text-[11px] text-gray-500 hover:text-gray-300"
+            >
+              Voir l&apos;original
+            </button>
+          ) : null}
+          {shouldAutoTranslate && showOriginal && translatedText ? (
+            <button
+              type="button"
+              onClick={() => setShowOriginal(false)}
+              className="mt-1 text-[11px] text-gray-500 hover:text-gray-300"
+            >
+              Voir la traduction
+            </button>
+          ) : null}
+        </>
+      ) : null}
       {msg.attachment ? (
         <div className="mt-2">
           {msg.attachment.mimeType.startsWith("image/") ? (
@@ -162,23 +292,36 @@ function MessageItem({ mine, msg, onDelete, menuOpen, onMenuToggle }) {
 function PrivateConversationRow({ conversation: c, isActive, onSelect, menuOpen, onToggleMenu, onRemoveForMe }) {
   const anchorRef = useRef(null);
   const { top, left } = useFloatingMenuCoords(menuOpen, anchorRef);
+  const timeLabel = formatConversationTime(c.lastMessageAt || c.updatedAt);
 
   return (
     <div
       className={`flex items-stretch gap-1 rounded-lg border ${
-        isActive ? "border-cyan-400/40 bg-cyan-500/10" : "border-white/10 bg-white/[0.03]"
+        isActive
+          ? "border-violet-400/45 bg-violet-500/10 ring-1 ring-violet-400/20"
+          : "border-white/10 bg-white/[0.03] hover:border-violet-400/25"
       }`}
     >
-      <button type="button" onClick={onSelect} className="min-w-0 flex-1 text-left px-3 py-2">
-        <p className="text-sm text-gray-200 font-medium inline-flex items-center gap-1.5">
-          <span>{c.otherUsername}</span>
-          {c.isSupport ? (
-            <span className="rounded-full border border-cyan-400/40 bg-cyan-500/15 px-2 py-0.5 text-[10px] text-cyan-100">
-              Support officiel
-            </span>
-          ) : null}
-        </p>
-        <p className="text-xs text-gray-500 truncate">{c.lastMessage || "Aucun message"}</p>
+      <button type="button" onClick={onSelect} className="min-w-0 flex-1 text-left px-3 py-2.5">
+        <div className="flex items-start gap-2.5">
+          <ConversationAvatar username={c.otherUsername} userId={c.otherUserId} isSupport={c.isSupport} />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-sm text-gray-200 font-medium inline-flex items-center gap-1.5 min-w-0">
+                <span className="truncate">{c.otherUsername}</span>
+                {c.isSupport ? (
+                  <span className="shrink-0 rounded-full border border-cyan-400/40 bg-cyan-500/15 px-2 py-0.5 text-[10px] text-cyan-100">
+                    Support officiel
+                  </span>
+                ) : null}
+              </p>
+              {timeLabel ? <span className="shrink-0 text-[10px] text-gray-500">{timeLabel}</span> : null}
+            </div>
+            <p className="mt-0.5 text-xs text-gray-500 truncate">
+              {c.lastMessage ? c.lastMessage : "Aucun message — conversation prête"}
+            </p>
+          </div>
+        </div>
       </button>
       <div className="flex shrink-0 items-start pt-1.5 pr-1.5">
         {c.isSupport ? null : (
@@ -232,6 +375,7 @@ function PrivateConversationRow({ conversation: c, isActive, onSelect, menuOpen,
 
 export default function CommunauteVWS() {
   const { session } = useAuth();
+  const { isAdmin: isAdminUser } = useAdminAccess();
   const { runWithAuth, openAuthModal } = useRequireAuthAction();
   const [searchParams, setSearchParams] = useSearchParams();
   const {
@@ -259,12 +403,67 @@ export default function CommunauteVWS() {
   const [searchUser, setSearchUser] = useState("");
   const [msgMenuId, setMsgMenuId] = useState(null);
   const [convMenuId, setConvMenuId] = useState(null);
+  const [userSearchOpen, setUserSearchOpen] = useState(false);
+  const [localeMenuOpen, setLocaleMenuOpen] = useState(false);
+  const [preferredLocale, setPreferredLocale] = useState("fr");
+  const [messageTranslations, setMessageTranslations] = useState({});
 
   const publicEndRef = useRef(null);
+  const userSearchRef = useRef(null);
+  const localeMenuRef = useRef(null);
   const privateEndRef = useRef(null);
   const publicFileRef = useRef(null);
   const privateFileRef = useRef(null);
   const activeConversationIdRef = useRef(activeConversationId);
+  const translationRequestRef = useRef(0);
+
+  useEffect(() => {
+    if (!session?.user?.id) return;
+    void getProfilePreferredLocale()
+      .then(setPreferredLocale)
+      .catch(() => setPreferredLocale("fr"));
+  }, [session?.user?.id]);
+
+  useEffect(() => {
+    if (preferredLocale === "fr" || tab !== "public") {
+      if (tab === "public") setMessageTranslations({});
+      return;
+    }
+
+    const requestId = ++translationRequestRef.current;
+    setMessageTranslations(buildInstantTranslations(publicMessages, "public", preferredLocale));
+    if (!publicMessages.length) return;
+
+    void resolveCommunityMessageTranslations({
+      messages: publicMessages.map((message) => ({ id: message.id, content: message.content })),
+      messageScope: "public",
+      targetLang: preferredLocale,
+    }).then((map) => {
+      if (translationRequestRef.current !== requestId) return;
+      setMessageTranslations(map);
+    });
+  }, [tab, publicMessages, preferredLocale]);
+
+  useEffect(() => {
+    if (preferredLocale === "fr" || tab !== "private" || !activeConversationId) {
+      if (tab === "private") setMessageTranslations({});
+      return;
+    }
+
+    const requestId = ++translationRequestRef.current;
+    setMessageTranslations(buildInstantTranslations(privateMessages, "private", preferredLocale));
+    if (!privateMessages.length) return;
+
+    void resolveCommunityMessageTranslations({
+      messages: privateMessages.map((message) => ({ id: message.id, content: message.content })),
+      messageScope: "private",
+      conversationId: activeConversationId,
+      targetLang: preferredLocale,
+    }).then((map) => {
+      if (translationRequestRef.current !== requestId) return;
+      setMessageTranslations(map);
+    });
+  }, [tab, privateMessages, activeConversationId, preferredLocale]);
 
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
@@ -275,9 +474,15 @@ export default function CommunauteVWS() {
     [privateConversations, activeConversationId]
   );
 
+  const activeConversations = useMemo(
+    () => privateConversations.filter((c) => c.isSupport || Boolean(c.lastMessageAt)),
+    [privateConversations]
+  );
+
   const refreshPublic = async () => {
     try {
-      setPublicMessages(await listPublicMessages());
+      const messages = await listPublicMessages();
+      setPublicMessages((prev) => (messagesAreSame(prev, messages) ? prev : messages));
     } catch (e) {
       setError(e?.message || "Erreur chargement discussion publique.");
     }
@@ -309,10 +514,11 @@ export default function CommunauteVWS() {
           resolvedId = prev;
           return prev;
         }
-        resolvedId = list[0]?.id || "";
+        const supportConv = list.find((c) => c.isSupport);
+        const withMessages = list.filter((c) => Boolean(c.lastMessageAt));
+        resolvedId = isAdminUser ? withMessages[0]?.id || "" : supportConv?.id || "";
         return resolvedId;
       });
-      console.log("[debug] refreshConversations resolvedId:", resolvedId, "list ids:", list.map(c => c.id));
       return resolvedId;
     } catch (e) {
       setError(e?.message || "Erreur chargement conversations.");
@@ -332,7 +538,6 @@ export default function CommunauteVWS() {
   };
 
   const refreshPrivateMessages = async (conversationId) => {
-    console.log("[debug] refreshPrivateMessages appelé, conversationId:", conversationId, "ref actuel:", activeConversationIdRef.current);
     if (!conversationId) {
       setPrivateMessages([]);
       return;
@@ -340,19 +545,16 @@ export default function CommunauteVWS() {
     try {
       const messages = await listPrivateMessages(conversationId);
       if (activeConversationIdRef.current !== conversationId) return;
-      setPrivateMessages(messages);
+      setPrivateMessages((prev) => (messagesAreSame(prev, messages) ? prev : messages));
     } catch (e) {
       if (activeConversationIdRef.current !== conversationId) return;
       setError(e?.message || "Erreur chargement messages privés.");
     }
   };
 
-  const refreshUsers = async () => {
+  const refreshUsers = async (query = searchUser) => {
     try {
-      const all = await listCommunityUsers(searchUser);
-      const admin = await getCommunityAdminUser();
-      const withAdmin = admin && !all.some((u) => u.userId === admin.userId) ? [admin, ...all] : all;
-      setUsers(withAdmin);
+      setUsers(await listCommunityUsers(query));
     } catch (e) {
       setError(e?.message || "Erreur chargement utilisateurs.");
     }
@@ -370,6 +572,12 @@ export default function CommunauteVWS() {
   }, [session?.user?.id]);
 
   useEffect(() => {
+    if (!activeConversationId) {
+      setPrivateMessages([]);
+      return;
+    }
+    setPrivateMessages([]);
+    setMessageTranslations({});
     void refreshPrivateMessages(activeConversationId);
   }, [activeConversationId]);
 
@@ -408,6 +616,26 @@ export default function CommunauteVWS() {
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, [msgMenuId, convMenuId]);
+
+  useEffect(() => {
+    if (!userSearchOpen) return;
+    const onDoc = (e) => {
+      if (userSearchRef.current?.contains(e.target)) return;
+      setUserSearchOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [userSearchOpen]);
+
+  useEffect(() => {
+    if (!localeMenuOpen) return;
+    const onDoc = (e) => {
+      if (localeMenuRef.current?.contains(e.target)) return;
+      setLocaleMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [localeMenuOpen]);
 
   useEffect(() => {
     if (tabQueryHandledRef.current) return;
@@ -504,24 +732,18 @@ export default function CommunauteVWS() {
   };
 
   const createConversation = async (otherUserId) => {
-    console.log("[debug] createConversation appelé, otherUserId:", otherUserId);
     try {
       setBusy(true);
       setError("");
       const id = await startPrivateConversation(otherUserId);
-      console.log("[debug] startPrivateConversation retourne id:", id);
       await refreshConversations(id, otherUserId);
       const freshList = await listPrivateConversations();
-      console.log("[debug] freshList complet:", JSON.stringify(freshList.map(c => ({ id: c.id, otherUserId: c.otherUserId, otherUsername: c.otherUsername }))));
-      console.log("[debug] otherUserId cherché:", otherUserId);
       setPrivateConversations(freshList);
       const match = freshList.find((c) => c.otherUserId === otherUserId);
       const visibleId = match?.id || id;
-      console.log("[debug] visibleId résolu:", visibleId);
       setActiveConversationId(visibleId);
       activeConversationIdRef.current = visibleId;
       await refreshPrivateMessages(visibleId);
-      console.log("[debug] messages chargés pour visibleId:", visibleId);
       setConvMenuId(null);
     } catch (e) {
       setError(e?.message || "Impossible de créer la conversation.");
@@ -550,74 +772,154 @@ export default function CommunauteVWS() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+    <div className={`${PAGE_SHELL_INNER_CLASS} py-6 space-y-6`}>
       <PageTitle
         green="Communauté"
         subtitle="Salon public et conversations privées, simple et persistant."
       />
 
-      <div className="inline-flex rounded-xl border border-white/10 bg-white/[0.03] p-1">
-        <button
-          type="button"
-          onClick={() => void runWithAuth(async () => setTab("public"))}
-          className={`px-4 py-2 rounded-lg text-sm ${tab === "public" ? "bg-cyan-500/20 text-cyan-100 border border-cyan-400/40" : "text-gray-400"}`}
-        >
-          <span className="inline-flex items-center gap-1.5">
-            <MessageCircle className="w-4 h-4 shrink-0" />
-            <span>Discussion publique</span>
-            {hasNewPublicSinceLastVisit ? (
-              <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" aria-hidden />
-            ) : null}
-          </span>
-        </button>
-        <button
-          type="button"
-          onClick={() => void runWithAuth(async () => setTab("private"))}
-          className={`px-4 py-2 rounded-lg text-sm ${tab === "private" ? "bg-cyan-500/20 text-cyan-100 border border-cyan-400/40" : "text-gray-400"}`}
-        >
-          <span className="inline-flex items-center gap-1.5">
-            <Users className="w-4 h-4 shrink-0" />
-            <span>Conversations privées</span>
-            {unreadPrivateCount > 0 ? (
-              <span className="min-w-[1.25rem] rounded-full bg-[#BA7517] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
-                {unreadPrivateCount > 99 ? "99+" : unreadPrivateCount}
-              </span>
-            ) : null}
-          </span>
-        </button>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="inline-flex rounded-xl border border-white/10 bg-white/[0.03] p-1">
+          <button
+            type="button"
+            onClick={() => void runWithAuth(async () => setTab("public"))}
+            className={`px-4 py-2 rounded-lg text-sm ${tab === "public" ? "bg-cyan-500/20 text-cyan-100 border border-cyan-400/40" : "text-gray-400"}`}
+          >
+            <span className="inline-flex items-center gap-1.5">
+              <MessageCircle className="w-4 h-4 shrink-0" />
+              <span>Discussion publique</span>
+              {hasNewPublicSinceLastVisit ? (
+                <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" aria-hidden />
+              ) : null}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => void runWithAuth(async () => setTab("private"))}
+            className={`px-4 py-2 rounded-lg text-sm ${tab === "private" ? "bg-cyan-500/20 text-cyan-100 border border-cyan-400/40" : "text-gray-400"}`}
+          >
+            <span className="inline-flex items-center gap-1.5">
+              <Users className="w-4 h-4 shrink-0" />
+              <span>Conversations privées</span>
+              {unreadPrivateCount > 0 ? (
+                <span className="min-w-[1.25rem] rounded-full bg-[#BA7517] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
+                  {unreadPrivateCount > 99 ? "99+" : unreadPrivateCount}
+                </span>
+              ) : null}
+            </span>
+          </button>
+        </div>
+
+        <div ref={localeMenuRef} className="relative">
+          <button
+            type="button"
+            aria-label="Langue des traductions"
+            aria-expanded={localeMenuOpen}
+            title="Langue des traductions"
+            onClick={() => setLocaleMenuOpen((open) => !open)}
+            className={`inline-flex h-10 w-10 items-center justify-center rounded-xl border transition-colors ${
+              localeMenuOpen
+                ? "border-cyan-400/40 bg-cyan-500/15 text-cyan-100"
+                : "border-white/10 bg-white/[0.03] text-gray-400 hover:border-white/20 hover:text-gray-200"
+            }`}
+          >
+            <Languages className="w-4 h-4" />
+          </button>
+          {localeMenuOpen ? (
+            <div
+              role="menu"
+              className="absolute left-0 z-20 mt-1 min-w-[10.5rem] overflow-hidden rounded-lg border border-white/10 bg-[#0f1629] py-1 shadow-xl shadow-black/40"
+            >
+              <p className="px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-gray-500">
+                Langue des traductions
+              </p>
+              {COMMUNITY_LOCALES.map((l) => (
+                <button
+                  key={l.code}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={preferredLocale === l.code}
+                  onClick={() => {
+                    setPreferredLocale(l.code);
+                    setLocaleMenuOpen(false);
+                    void runWithAuth(async () => {
+                      await updateProfilePreferredLocale(l.code);
+                    });
+                  }}
+                  className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm ${
+                    preferredLocale === l.code
+                      ? "bg-cyan-500/10 text-cyan-100"
+                      : "text-gray-300 hover:bg-white/5"
+                  }`}
+                >
+                  <span>{l.label}</span>
+                  {preferredLocale === l.code ? (
+                    <span className="text-[10px] text-cyan-300">Actif</span>
+                  ) : null}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
       </div>
 
       {error ? (
         <p className="text-xs text-red-300 border border-red-500/30 bg-red-500/10 rounded-lg px-3 py-2">{error}</p>
       ) : null}
 
-      <section className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        <div className="lg:col-span-4 studio-panel p-4 sm:p-5 space-y-3">
-          {tab === "private" ? (
-            <>
-              <div className="flex items-center gap-2">
+      <section className={COMMUNITY_GRID_CLASS}>
+        {tab === "private" ? (
+          <div className={`${SIDEBAR_PANEL_CLASS} ${COMMUNITY_PANEL_HEIGHT_CLASS}`}>
+            <div ref={userSearchRef} className="relative shrink-0">
                 <input
                   value={searchUser}
-                  onChange={(e) => setSearchUser(e.target.value)}
-                  placeholder="Chercher un utilisateur..."
-                  className="flex-1 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-gray-200"
+                  onChange={(e) => {
+                    setSearchUser(e.target.value);
+                    setUserSearchOpen(true);
+                    void refreshUsers(e.target.value);
+                  }}
+                  onFocus={() => {
+                    setUserSearchOpen(true);
+                    void refreshUsers(searchUser);
+                  }}
+                  placeholder="Chercher un utilisateur pour envoyer un message..."
+                  className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-gray-200"
                 />
+                {userSearchOpen ? (
+                  <div className="absolute z-20 mt-1 w-full max-h-64 overflow-y-auto rounded-lg border border-white/10 bg-[#0f1629] py-1 shadow-xl shadow-black/40">
+                    {users.length > 0 ? (
+                      users.map((u) => (
+                        <button
+                          key={u.userId}
+                          type="button"
+                          onClick={() => {
+                            setUserSearchOpen(false);
+                            setSearchUser("");
+                            void runWithAuth(() => createConversation(u.userId));
+                          }}
+                          className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-sm text-gray-300 hover:bg-white/5"
+                        >
+                          <Plus className="w-3 h-3 shrink-0 text-gray-500" />
+                          <span className="truncate">{u.username}</span>
+                          {u.isSupport ? (
+                            <span className="ml-auto shrink-0 rounded-full border border-cyan-400/40 bg-cyan-500/15 px-2 py-0.5 text-[10px] text-cyan-100">
+                              Support
+                            </span>
+                          ) : null}
+                        </button>
+                      ))
+                    ) : (
+                      <p className="px-3 py-2 text-xs text-gray-500">Aucun utilisateur trouvé.</p>
+                    )}
+                  </div>
+                ) : null}
               </div>
-              <div className="max-h-32 overflow-y-auto space-y-1 border border-white/10 rounded-lg p-2">
-                {users.map((u) => (
-                  <button
-                    key={u.userId}
-                    type="button"
-                    onClick={() => void runWithAuth(() => createConversation(u.userId))}
-                    className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-white/5 text-gray-300"
-                  >
-                    <Plus className="w-3 h-3 inline mr-1" />
-                    {u.username}
-                  </button>
-                ))}
-              </div>
-              <div className="border-t border-white/10 pt-3 space-y-2 max-h-[45vh] overflow-y-auto">
-                {privateConversations.map((c) => (
+              <p className="shrink-0 text-[11px] font-medium uppercase tracking-wide text-gray-500">
+                Conversations actives
+              </p>
+              <div className={SIDEBAR_SCROLL_FRAME_CLASS}>
+                {activeConversations.length > 0 ? (
+                  activeConversations.map((c) => (
                   <PrivateConversationRow
                     key={c.id}
                     conversation={c}
@@ -626,33 +928,35 @@ export default function CommunauteVWS() {
                     onSelect={() => {
                       setActiveConversationId(c.id);
                       setConvMenuId(null);
-                      void refreshPrivateMessages(c.id);
                     }}
                     onToggleMenu={() => setConvMenuId((prev) => (prev === c.id ? null : c.id))}
                     onRemoveForMe={removePrivateConversationForMe}
                   />
-                ))}
+                  ))
+                ) : (
+                  <p className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-4 text-xs text-gray-500 text-center">
+                    Aucune conversation active. Utilise la recherche ci-dessus pour envoyer un message.
+                  </p>
+                )}
               </div>
-            </>
-          ) : (
-            <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4 text-sm text-gray-300">
-              <p className="font-medium text-gray-200 mb-1">Salon public</p>
-              <p className="text-xs text-gray-500">
-                Tous les utilisateurs voient et participent à cette discussion.
-              </p>
-            </div>
-          )}
-        </div>
+          </div>
+        ) : null}
 
-        <div className="lg:col-span-8 studio-panel p-4 sm:p-5 space-y-4">
+        <div
+          className={`${CHAT_PANEL_BASE_CLASS} ${COMMUNITY_PANEL_HEIGHT_CLASS} ${
+            tab === "public" ? "md:col-span-12" : "md:col-span-8"
+          }`}
+        >
           {tab === "public" ? (
             <>
-              <div className="max-h-[56vh] overflow-y-auto space-y-3 pr-1">
+              <div className={CHAT_MESSAGES_FRAME_PUBLIC_CLASS}>
                 {publicMessages.map((msg) => (
                   <MessageItem
                     key={msg.id}
                     mine={msg.userId === myUserId}
                     msg={msg}
+                    preferredLocale={preferredLocale}
+                    translatedText={messageTranslations[msg.id] || ""}
                     menuOpen={msgMenuId === msg.id}
                     onMenuToggle={() => setMsgMenuId((p) => (p === msg.id ? null : msg.id))}
                     onDelete={() =>
@@ -665,7 +969,7 @@ export default function CommunauteVWS() {
                 ))}
                 <div ref={publicEndRef} />
               </div>
-              <div className="border-t border-white/10 pt-3 space-y-2">
+              <div className={CHAT_COMPOSER_CLASS}>
                 {publicFile ? (
                   <div className="flex items-center gap-2 text-xs text-gray-400">
                     <span>{publicFile.name}</span>
@@ -674,8 +978,8 @@ export default function CommunauteVWS() {
                     </button>
                   </div>
                 ) : null}
-                <div className="flex gap-2">
-                  <input
+                <div className="flex gap-2 items-end">
+                  <textarea
                     value={publicInput}
                     onChange={(e) => setPublicInput(e.target.value)}
                     onKeyDown={(e) => {
@@ -688,7 +992,8 @@ export default function CommunauteVWS() {
                       if (!session) openAuthModal();
                     }}
                     placeholder="Écrire un message public..."
-                    className="flex-1 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-gray-200"
+                    rows={2}
+                    className="flex-1 resize-y min-h-[2.75rem] max-h-40 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-gray-200"
                   />
                   <input
                     ref={publicFileRef}
@@ -717,32 +1022,36 @@ export default function CommunauteVWS() {
             </>
           ) : (
             <>
-              <div className="flex items-center justify-between border-b border-white/10 pb-2">
-                <h3 className="text-sm text-gray-200 font-semibold">
-                  {activeConversation ? `Conversation avec ${activeConversation.otherUsername}` : "Choisis une conversation"}
-                </h3>
-              </div>
-
-              <div className="max-h-[50vh] overflow-y-auto space-y-3 pr-1">
-                {privateMessages.map((msg) => (
-                  <MessageItem
-                    key={msg.id}
-                    mine={msg.userId === myUserId}
-                    msg={msg}
-                    menuOpen={msgMenuId === msg.id}
-                    onMenuToggle={() => setMsgMenuId((p) => (p === msg.id ? null : msg.id))}
-                    onDelete={() =>
-                      deletePrivateMessage(msg.id)
-                        .then(() => refreshPrivateMessages(activeConversationId))
-                        .then(() => setMsgMenuId(null))
-                        .catch((e) => setError(e.message))
-                    }
-                  />
-                ))}
+              <div className={CHAT_MESSAGES_FRAME_CLASS}>
+                {privateMessages.length > 0 ? (
+                  privateMessages.map((msg) => (
+                    <MessageItem
+                      key={msg.id}
+                      mine={msg.userId === myUserId}
+                      msg={msg}
+                      preferredLocale={preferredLocale}
+                      translatedText={messageTranslations[msg.id] || ""}
+                      menuOpen={msgMenuId === msg.id}
+                      onMenuToggle={() => setMsgMenuId((p) => (p === msg.id ? null : msg.id))}
+                      onDelete={() =>
+                        deletePrivateMessage(msg.id)
+                          .then(() => refreshPrivateMessages(activeConversationId))
+                          .then(() => setMsgMenuId(null))
+                          .catch((e) => setError(e.message))
+                      }
+                    />
+                  ))
+                ) : (
+                  <p className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-4 text-xs text-gray-500 text-center">
+                    {activeConversation
+                      ? `Conversation avec ${activeConversation.otherUsername} — aucun message pour l'instant.`
+                      : "Choisis une conversation dans la liste ou via la recherche."}
+                  </p>
+                )}
                 <div ref={privateEndRef} />
               </div>
 
-              <div className="border-t border-white/10 pt-3 space-y-2">
+              <div className={CHAT_COMPOSER_CLASS}>
                 {privateFile ? (
                   <div className="flex items-center gap-2 text-xs text-gray-400">
                     <span>{privateFile.name}</span>
@@ -751,8 +1060,8 @@ export default function CommunauteVWS() {
                     </button>
                   </div>
                 ) : null}
-                <div className="flex gap-2">
-                  <input
+                <div className="flex gap-2 items-end">
+                  <textarea
                     value={privateInput}
                     onChange={(e) => setPrivateInput(e.target.value)}
                     onKeyDown={(e) => {
@@ -765,7 +1074,8 @@ export default function CommunauteVWS() {
                       if (!session) openAuthModal();
                     }}
                     placeholder="Écrire un message privé..."
-                    className="flex-1 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-gray-200"
+                    rows={2}
+                    className="flex-1 resize-y min-h-[2.75rem] max-h-40 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-gray-200"
                   />
                   <input
                     ref={privateFileRef}

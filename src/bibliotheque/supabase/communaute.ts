@@ -37,12 +37,69 @@ export type CommunityConversation = {
   isSupport?: boolean;
 };
 
+export type CommunityMessageScope = "public" | "private";
+
+export type CommunityLocale = "fr" | "en" | "es";
+
+export const COMMUNITY_LOCALES: { code: CommunityLocale; label: string }[] = [
+  { code: "fr", label: "Français" },
+  { code: "en", label: "English" },
+  { code: "es", label: "Español" },
+];
+
 const COMMUNITY_MEDIA_BUCKET = "community-media";
 const SUPPORT_EMAIL = "jean.limonta06@gmail.com";
 const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const ALLOWED_VIDEO_TYPES = new Set(["video/mp4", "video/webm", "video/quicktime"]);
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 25 * 1024 * 1024;
+const TRANSLATION_FETCH_CONCURRENCY = 3;
+
+const translationMemoryCache = new Map<string, string>();
+
+function translationMemoryKey(
+  messageId: string,
+  messageScope: CommunityMessageScope,
+  targetLang: CommunityLocale
+) {
+  return `${messageScope}:${messageId}:${targetLang}`;
+}
+
+function rememberTranslation(
+  messageId: string,
+  messageScope: CommunityMessageScope,
+  targetLang: CommunityLocale,
+  text: string
+) {
+  const value = String(text || "").trim();
+  if (!value) return;
+  translationMemoryCache.set(translationMemoryKey(messageId, messageScope, targetLang), value);
+}
+
+export function getMemoryCachedTranslation(
+  messageId: string,
+  messageScope: CommunityMessageScope,
+  targetLang: CommunityLocale
+): string | null {
+  const text = translationMemoryCache.get(translationMemoryKey(messageId, messageScope, targetLang));
+  return text ? String(text) : null;
+}
+
+async function mapWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<void>
+) {
+  if (!items.length) return;
+  const queue = [...items];
+  const runners = Array.from({ length: Math.min(limit, queue.length) }, async () => {
+    while (queue.length) {
+      const item = queue.shift();
+      if (item !== undefined) await worker(item);
+    }
+  });
+  await Promise.all(runners);
+}
 
 function toUsername(row: any): string {
   const raw =
@@ -74,6 +131,26 @@ async function ensureAuthUser() {
   } = await supabase.auth.getUser();
   if (error || !user) throw new Error("Utilisateur non connecté.");
   return { supabase, user };
+}
+
+type ViewerContext = {
+  supabase: ReturnType<typeof getBrowserSupabase>;
+  user: { id: string; email?: string | null };
+  isAdmin: boolean;
+  isSupport: boolean;
+  canMessageAnyone: boolean;
+};
+
+async function getViewerContext(): Promise<ViewerContext> {
+  const { supabase, user } = await ensureAuthUser();
+  const { data: prof } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  const isAdmin = String(prof?.role || "").toLowerCase() === "admin";
+  const isSupport = String(user.email || "").toLowerCase() === SUPPORT_EMAIL;
+  return { supabase, user, isAdmin, isSupport, canMessageAnyone: isAdmin || isSupport };
 }
 
 async function loadProfilesMap(userIds: string[]): Promise<Map<string, CommunityUser>> {
@@ -171,14 +248,14 @@ async function uploadAttachment(file: File, userId: string): Promise<CommunityAt
 }
 
 export async function listCommunityUsers(search = ""): Promise<CommunityUser[]> {
-  const { supabase, user } = await ensureAuthUser();
+  const { supabase, user, canMessageAnyone } = await getViewerContext();
+  const q = search.trim().toLowerCase();
   const { data, error } = await supabase
     .from("profiles")
     .select("user_id, full_name, first_name, last_name, email, role")
     .neq("user_id", user.id)
     .limit(200);
   if (error) throw new Error(error.message);
-  const q = search.trim().toLowerCase();
   return (data || [])
     .map((row) => {
       const email = String(row.email || "").toLowerCase();
@@ -189,7 +266,10 @@ export async function listCommunityUsers(search = ""): Promise<CommunityUser[]> 
         isSupport: email === SUPPORT_EMAIL,
       };
     })
-    .filter((u) => (q ? u.username.toLowerCase().includes(q) : true))
+    .filter((u) => {
+      if (!canMessageAnyone && String(u.role || "").toLowerCase() === "admin") return false;
+      return q ? u.username.toLowerCase().includes(q) : true;
+    })
     .sort((a, b) => a.username.localeCompare(b.username, "fr"));
 }
 
@@ -340,8 +420,7 @@ async function findOrCreateDirectConversation(otherUserId: string): Promise<stri
 }
 
 export async function listPrivateConversations(): Promise<CommunityConversation[]> {
-  const { supabase, user } = await ensureAuthUser();
-  const isSupportViewer = String(user.email || "").toLowerCase() === SUPPORT_EMAIL;
+  const { supabase, user } = await getViewerContext();
   const { data: hiddenRows } = await supabase
     .from("community_private_hidden")
     .select("conversation_id")
@@ -577,4 +656,184 @@ export async function hideConversationForMe(conversationId: string): Promise<voi
     hidden_at: new Date().toISOString(),
   });
   if (error) throw new Error(error.message);
+}
+
+export async function getProfilePreferredLocale(): Promise<CommunityLocale> {
+  const { supabase, user } = await ensureAuthUser();
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("preferred_locale")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  const raw = String(data?.preferred_locale || "fr").toLowerCase();
+  return raw === "en" || raw === "es" ? raw : "fr";
+}
+
+export async function updateProfilePreferredLocale(locale: CommunityLocale): Promise<void> {
+  const { supabase, user } = await ensureAuthUser();
+  const { error } = await supabase
+    .from("profiles")
+    .update({ preferred_locale: locale })
+    .eq("user_id", user.id);
+  if (error) throw new Error(error.message);
+}
+
+export async function getCachedCommunityMessageTranslation(input: {
+  messageId: string;
+  messageScope: CommunityMessageScope;
+  targetLang: CommunityLocale;
+}): Promise<string | null> {
+  const memory = getMemoryCachedTranslation(input.messageId, input.messageScope, input.targetLang);
+  if (memory) return memory;
+
+  const { supabase } = await ensureAuthUser();
+  const { data, error } = await supabase
+    .from("community_message_translations")
+    .select("translated_text")
+    .eq("message_id", input.messageId)
+    .eq("message_scope", input.messageScope)
+    .eq("target_lang", input.targetLang)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  const text = String(data?.translated_text || "").trim();
+  if (text) {
+    rememberTranslation(input.messageId, input.messageScope, input.targetLang, text);
+  }
+  return text || null;
+}
+
+export async function listCachedCommunityMessageTranslations(input: {
+  messageIds: string[];
+  messageScope: CommunityMessageScope;
+  targetLang: CommunityLocale;
+}): Promise<Record<string, string>> {
+  const result: Record<string, string> = {};
+  const missingIds: string[] = [];
+
+  for (const messageId of input.messageIds) {
+    const memory = getMemoryCachedTranslation(messageId, input.messageScope, input.targetLang);
+    if (memory) {
+      result[messageId] = memory;
+    } else {
+      missingIds.push(messageId);
+    }
+  }
+
+  if (!missingIds.length) return result;
+
+  const { supabase } = await ensureAuthUser();
+  const { data, error } = await supabase
+    .from("community_message_translations")
+    .select("message_id, translated_text")
+    .eq("message_scope", input.messageScope)
+    .eq("target_lang", input.targetLang)
+    .in("message_id", missingIds);
+  if (error) throw new Error(error.message);
+
+  for (const row of data || []) {
+    const messageId = String(row.message_id || "");
+    const text = String(row.translated_text || "").trim();
+    if (!messageId || !text) continue;
+    result[messageId] = text;
+    rememberTranslation(messageId, input.messageScope, input.targetLang, text);
+  }
+
+  return result;
+}
+
+export async function resolveCommunityMessageTranslations(input: {
+  messages: Array<{ id: string; content: string }>;
+  messageScope: CommunityMessageScope;
+  conversationId?: string | null;
+  targetLang: CommunityLocale;
+}): Promise<Record<string, string>> {
+  if (input.targetLang === "fr") return {};
+
+  const result: Record<string, string> = {};
+  const pending: Array<{ id: string; content: string }> = [];
+
+  for (const message of input.messages) {
+    const content = String(message.content || "").trim();
+    if (!content) continue;
+
+    const memory = getMemoryCachedTranslation(message.id, input.messageScope, input.targetLang);
+    if (memory) {
+      result[message.id] = memory;
+      continue;
+    }
+    pending.push({ id: message.id, content });
+  }
+
+  if (!pending.length) return result;
+
+  const cached = await listCachedCommunityMessageTranslations({
+    messageIds: pending.map((m) => m.id),
+    messageScope: input.messageScope,
+    targetLang: input.targetLang,
+  });
+  Object.assign(result, cached);
+
+  const toTranslate = pending.filter((message) => !result[message.id]);
+  await mapWithConcurrency(toTranslate, TRANSLATION_FETCH_CONCURRENCY, async (message) => {
+    try {
+      const translated = await translateCommunityMessage({
+        messageId: message.id,
+        messageScope: input.messageScope,
+        conversationId: input.messageScope === "private" ? input.conversationId : null,
+        targetLang: input.targetLang,
+        sourceText: message.content,
+      });
+      result[message.id] = translated;
+    } catch {
+      // Garder l'original si une traduction échoue.
+    }
+  });
+
+  return result;
+}
+
+export async function translateCommunityMessage(input: {
+  messageId: string;
+  messageScope: CommunityMessageScope;
+  conversationId?: string | null;
+  targetLang: CommunityLocale;
+  sourceText: string;
+}): Promise<string> {
+  const text = String(input.sourceText || "").trim();
+  if (!text) throw new Error("Message vide.");
+
+  const cached = await getCachedCommunityMessageTranslation({
+    messageId: input.messageId,
+    messageScope: input.messageScope,
+    targetLang: input.targetLang,
+  });
+  if (cached) {
+    rememberTranslation(input.messageId, input.messageScope, input.targetLang, cached);
+    return cached;
+  }
+
+  const { supabase } = await ensureAuthUser();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.access_token) throw new Error("Utilisateur non connecté.");
+
+  const { data, error } = await supabase.functions.invoke("translate-community-message", {
+    body: {
+      messageId: input.messageId,
+      messageScope: input.messageScope,
+      conversationId: input.messageScope === "private" ? input.conversationId : null,
+      targetLang: input.targetLang,
+      sourceText: text,
+    },
+    headers: { Authorization: `Bearer ${session.access_token}` },
+  });
+
+  if (error) throw new Error(error.message || "Traduction impossible.");
+  if (data?.error) throw new Error(String(data.error));
+  const translated = String(data?.translatedText || "").trim();
+  if (!translated) throw new Error("Traduction vide.");
+  rememberTranslation(input.messageId, input.messageScope, input.targetLang, translated);
+  return translated;
 }

@@ -65,7 +65,7 @@ export default function PromoImagesBanner() {
       role="region"
       aria-label="Offre ViralWorks Images"
     >
-      <div className="mx-auto flex max-w-7xl items-center gap-2 px-3 py-2 sm:gap-3 sm:px-6 lg:px-8 md:py-2.5">
+      <div className={`mx-auto flex w-full min-w-0 max-w-7xl items-center gap-2 px-4 py-2 sm:gap-3 sm:px-6 lg:px-8 md:py-2.5`}>
         <Sparkles
           className="hidden h-4 w-4 shrink-0 sm:block"
           strokeWidth={2.25}

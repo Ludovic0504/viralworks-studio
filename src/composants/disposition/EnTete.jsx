@@ -9,6 +9,7 @@ import MenuProfilConnecte from "@/composants/disposition/MenuProfilConnecte";
 import { MenuNavViralWorksDesktop } from "@/composants/disposition/MenuNavViralWorks";
 import { isAdmin } from "@/bibliotheque/supabase/credits";
 import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
+import { PAGE_SHELL_INNER_CLASS } from "@/bibliotheque/disposition/dashboardShellLayout";
 
 const navLinks = [
   { path: "/", label: "Accueil" },
@@ -132,7 +133,7 @@ export default function Header({ onOpenMenu }) {
     <img
       src="/Logo_VWS_sans_bordure.png"
       alt="ViralWorks Studio"
-      className="block h-10 w-auto max-w-[148px] shrink-0 object-contain object-center"
+      className="block h-10 w-auto max-w-[148px] shrink-0 object-contain object-left"
       height={40}
       decoding="async"
     />
@@ -182,7 +183,7 @@ export default function Header({ onOpenMenu }) {
   return (
     <header className="fixed left-0 right-0 top-0 z-50 max-md:top-[var(--pwa-install-banner-height,0px)]">
       <div className="absolute inset-0 bg-[#0C1116]/30 backdrop-blur-xl" />
-      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className={PAGE_SHELL_INNER_CLASS}>
         <div className="flex h-16 w-full items-center gap-2 md:justify-between">
           <button
             type="button"
