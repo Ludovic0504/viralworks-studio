@@ -43,7 +43,27 @@ export function useStripePayment() {
         body: { ...checkoutBody, origin: getAppOrigin() },
         ...(headers ? { headers } : {}),
       });
-      if (fnError) throw new Error(fnError.message || "Erreur lors du paiement");
+      if (fnError) {
+        let message = fnError.message || "Erreur lors du paiement";
+        const ctx = fnError.context;
+        if (typeof Response !== "undefined" && ctx instanceof Response) {
+          try {
+            const rawText = await ctx.clone().text();
+            if (rawText) {
+              try {
+                const parsed = JSON.parse(rawText);
+                if (parsed?.error) message = parsed.error;
+                else if (parsed?.message) message = parsed.message;
+              } catch {
+                message = rawText;
+              }
+            }
+          } catch {
+            // keep fallback message
+          }
+        }
+        throw new Error(message);
+      }
       if (!data?.url) throw new Error("URL de paiement manquante dans la réponse");
 
       try {

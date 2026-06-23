@@ -28,6 +28,12 @@ const MAX_REF_IMAGE_BYTES = 10 * 1024 * 1024;
 const MSG_BUSY =
   "Les serveurs sont saturés, réessaye dans quelques instants.";
 
+/** Nouvelles tentatives createTask uniquement (pas de taskId = pas de débit Kie). */
+const KIE_CREATE_MAX_ATTEMPTS = 4;
+const KIE_CREATE_BACKOFF_MS = [4000, 10000, 20000];
+/** Extension du polling sur la même tâche Kie (pas de second createTask). */
+const KIE_POLL_EXTENSION_MS = 5 * 60 * 1000;
+
 type ImageStudioModel = "nano_banana_pro" | "hailuo" | "gpt_image_2";
 
 type RequestBody = {
@@ -130,6 +136,45 @@ function openAiSizeForRatio(ratio: string): string {
 
 async function sleep(ms: number): Promise<void> {
   await new Promise((r) => setTimeout(r, ms));
+}
+
+function isKieCreditsError(message: string): boolean {
+  const lower = message.toLowerCase();
+  return /402|credits?\s+insufficient|insufficient\s+credit|crédit\s+insuffisant/i.test(
+    lower,
+  );
+}
+
+/** Erreurs avant obtention d’un taskId — safe pour retry sans second débit Kie. */
+function isRetryableKieCreateError(err: unknown): boolean {
+  const raw = err instanceof Error ? err.message : String(err);
+  const lower = raw.toLowerCase();
+  if (isKieCreditsError(lower)) return false;
+  if (
+    /invalid|bad request|parameter|unauthorized|forbidden|401|403|prompt rejected|content policy/i.test(
+      lower,
+    )
+  ) {
+    return false;
+  }
+  return (
+    /429|503|502|504|408|timeout|rate limit|too many|upstream|maintenance|unavailable|gateway|temporarily|saturation|busy|overloaded/i.test(
+      lower,
+    ) ||
+    /réponse invalide|createTask échoué|recordInfo/i.test(lower)
+  );
+}
+
+function isKiePollTimeout(err: unknown): boolean {
+  const raw = err instanceof Error ? err.message : String(err);
+  return /délai dépassé|timeout|timed out/i.test(raw);
+}
+
+function isKieTaskTerminalFailure(err: unknown): boolean {
+  const raw = err instanceof Error ? err.message : String(err);
+  return /génération échouée|aucune image dans resulturls|succès sans resultjson/i.test(
+    raw,
+  );
 }
 
 function base64ToUint8Array(b64: string): Uint8Array {
@@ -362,6 +407,38 @@ async function kieCreateTask(
   return json.data.taskId;
 }
 
+async function kieCreateTaskWithRetries(
+  kieApiKey: string,
+  model: string,
+  prompt: string,
+  aspectRatio: string,
+  referenceUrls?: string[] | null,
+): Promise<string> {
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= KIE_CREATE_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      return await kieCreateTask(
+        kieApiKey,
+        model,
+        prompt,
+        aspectRatio,
+        referenceUrls,
+      );
+    } catch (err) {
+      lastErr = err;
+      if (!isRetryableKieCreateError(err) || attempt >= KIE_CREATE_MAX_ATTEMPTS) {
+        throw err;
+      }
+      const backoff = KIE_CREATE_BACKOFF_MS[attempt - 1] ?? 20000;
+      console.warn(
+        `generate-image-studio: createTask tentative ${attempt}/${KIE_CREATE_MAX_ATTEMPTS}, nouvel essai dans ${backoff}ms`,
+      );
+      await sleep(backoff);
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+}
+
 async function kiePollUntilImageUrl(
   taskId: string,
   kieApiKey: string,
@@ -411,20 +488,31 @@ async function kiePollUntilImageUrl(
   throw new Error("Kie AI : délai dépassé");
 }
 
+/** Polling prolongé sur le même taskId — pas de second createTask / pas de double débit Kie. */
+async function kiePollWithOptionalExtension(
+  taskId: string,
+  kieApiKey: string,
+  maxPollMs: number,
+): Promise<string> {
+  try {
+    return await kiePollUntilImageUrl(taskId, kieApiKey, maxPollMs);
+  } catch (err) {
+    if (isKiePollTimeout(err) && !isKieTaskTerminalFailure(err)) {
+      console.warn(
+        `generate-image-studio: délai polling dépassé pour ${taskId}, extension sur la même tâche (${KIE_POLL_EXTENSION_MS}ms)`,
+      );
+      return await kiePollUntilImageUrl(taskId, kieApiKey, KIE_POLL_EXTENSION_MS);
+    }
+    throw err;
+  }
+}
+
 function kiePipelineFailureResponse(err: unknown): Response {
   const raw = err instanceof Error ? err.message : String(err);
-  const lower = raw.toLowerCase();
-  if (/402|credits?\s+insufficient|insufficient\s+credit/i.test(lower)) {
+  if (isKieCreditsError(raw)) {
     return jsonError(402, "KIE_CREDITS", "Crédits Kie AI insuffisants. Réessaie plus tard.");
   }
-  if (/timeout|504|503|502|429|408|upstream|maintenance/i.test(lower)) {
-    return jsonError(503, "KIE_UPSTREAM", MSG_BUSY);
-  }
-  const userMessage =
-    raw && raw.length > 0 && raw.length <= 280 && !raw.includes("SUPABASE")
-      ? raw
-      : MSG_BUSY;
-  return jsonError(503, "KIE_GENERATION_FAILED", userMessage);
+  return jsonError(503, "KIE_UPSTREAM", MSG_BUSY);
 }
 
 async function generateNanoBananaPro(
@@ -440,7 +528,7 @@ async function generateNanoBananaPro(
     Deno.env.get("KIE_IMAGE_STUDIO_MODEL")?.trim() ||
     Deno.env.get("KIE_IMAGE_EDIT_MODEL")?.trim() ||
     "nano-banana-pro";
-  const taskId = await kieCreateTask(
+  const taskId = await kieCreateTaskWithRetries(
     kieApiKey,
     kieModel,
     prompt,
@@ -448,7 +536,7 @@ async function generateNanoBananaPro(
     referenceUrls,
   );
   const maxPollMs = Number(Deno.env.get("KIE_POLL_MAX_MS") || "") || 14 * 60 * 1000;
-  return kiePollUntilImageUrl(taskId, kieApiKey, maxPollMs);
+  return kiePollWithOptionalExtension(taskId, kieApiKey, maxPollMs);
 }
 
 async function generateHailuoImage(

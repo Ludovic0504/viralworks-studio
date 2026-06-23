@@ -25,6 +25,12 @@ type ErrorBody = {
 export const IMAGE_STUDIO_BUSY_MESSAGE =
   "Les serveurs sont saturés, réessaye dans quelques instants.";
 
+export const IMAGE_STUDIO_PATIENT_HINT =
+  "Les serveurs sont occupés, patientez…";
+
+export const IMAGE_STUDIO_RETRY_HINT =
+  "Nouvel essai automatique en cours…";
+
 const QUOTA_MESSAGE =
   "Quota mensuel atteint. Réessayez le mois prochain.";
 
@@ -47,13 +53,17 @@ function pickUserFacingMessage(
     return data?.userMessage || "Un abonnement ViralWorks Image est requis pour générer des images.";
   }
   if (code === "KIE_CREDITS") return KIE_CREDITS_MESSAGE;
+  if (code.startsWith("KIE_")) return IMAGE_STUDIO_BUSY_MESSAGE;
   if (code === "PROMPT_TOO_LONG") {
     return data?.userMessage || "Le prompt est trop long.";
   }
 
-  if (data?.userMessage) return data.userMessage;
+  if (data?.userMessage) {
+    if (response.status >= 500) return IMAGE_STUDIO_BUSY_MESSAGE;
+    return data.userMessage;
+  }
   if (data?.error) {
-    if (response.status >= 500 && data.error.length <= 280) return data.error;
+    if (response.status >= 500) return IMAGE_STUDIO_BUSY_MESSAGE;
     if (response.status < 500) return data.error;
   }
 

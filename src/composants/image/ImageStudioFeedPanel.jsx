@@ -72,7 +72,7 @@ export function scrollImageStudioFeedToItem(item, { behavior = "smooth" } = {}) 
   }
 }
 
-function FeedRow({ row, activeHistoryId, onImageOpen }) {
+function FeedRow({ row, activeHistoryId, onImageOpen, loadingHint }) {
   const aspectClass = feedRowAspectClass(row.aspectRatio);
   const promptSnippet = truncateFeedPrompt(row.prompt);
   const modelLabel = row.model ? getImageStudioModelLabel(row.model) : null;
@@ -117,7 +117,9 @@ function FeedRow({ row, activeHistoryId, onImageOpen }) {
               <div
                 key={`loading-${row.id}-${index}`}
                 className="image-studio-feed-image-card is-loading"
-                aria-hidden
+                aria-hidden={index > 0}
+                aria-busy={index === 0 ? "true" : undefined}
+                aria-label={index === 0 && loadingHint ? loadingHint : undefined}
               >
                 <Loader2 className="h-6 w-6 animate-spin text-white/35" strokeWidth={2} />
               </div>
@@ -135,6 +137,9 @@ function FeedRow({ row, activeHistoryId, onImageOpen }) {
             <span className="image-studio-feed-tag">{row.aspectRatio}</span>
           ) : null}
           <span className="image-studio-feed-tag">2K</span>
+          {row.generating && loadingHint ? (
+            <span className="image-studio-feed-loading-hint">{loadingHint}</span>
+          ) : null}
         </div>
       </div>
     </article>
@@ -146,6 +151,7 @@ export default function ImageStudioFeedPanel({
   history,
   historyLoading,
   generating,
+  generationLoadingHint,
   activeHistoryId,
   onSelectHistoryItem,
   onImageOpen,
@@ -282,6 +288,7 @@ export default function ImageStudioFeedPanel({
                 row={row}
                 activeHistoryId={activeHistoryId}
                 onImageOpen={onImageOpen}
+                loadingHint={row.generating ? generationLoadingHint : ""}
               />
             ))}
           </div>

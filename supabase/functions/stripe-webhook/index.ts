@@ -8,6 +8,7 @@ import {
   getStripeWebhookSigningSecrets,
 } from "../_shared/stripe-keys.ts";
 import { nextVideoDisplayCap } from "../_shared/video-display-cap.ts";
+import { replacePriorSubscriptions } from "../_shared/subscription-replacement.ts";
 
 function makeStripe(apiKey: string): Stripe {
   return new Stripe(apiKey, {
@@ -244,19 +245,33 @@ serve(async (req) => {
         
         // Récupérer les détails de l'abonnement
         const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-        
+
+        const isReplacement = await replacePriorSubscriptions(
+          stripe,
+          supabaseClient,
+          userId,
+          subscriptionId,
+          typeof subscription.customer === "string"
+            ? subscription.customer
+            : subscription.customer?.id ?? null,
+        );
+
         // Créer ou mettre à jour l'abonnement dans la base
         await supabaseClient
           .from("stripe_subscriptions")
-          .upsert({
-            user_id: userId,
-            stripe_subscription_id: subscriptionId,
-            stripe_customer_id: subscription.customer as string,
-            status: subscription.status,
-            current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-            current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
-            cancel_at_period_end: subscription.cancel_at_period_end,
-          });
+          .upsert(
+            {
+              user_id: userId,
+              stripe_subscription_id: subscriptionId,
+              stripe_customer_id: subscription.customer as string,
+              status: subscription.status,
+              current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
+              current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+              cancel_at_period_end: subscription.cancel_at_period_end,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "stripe_subscription_id" },
+          );
 
         const monthlyCredits = resolveSubscriptionCreditsFromPlan(planKey);
         const storedPlanKey = normalizeStoredPlanKey(planKey);
@@ -269,13 +284,22 @@ serve(async (req) => {
             .single();
 
           const currentCredits = creditsData?.credits || 0;
-          const newCredits = currentCredits + monthlyCredits;
-          const nextCap = nextVideoDisplayCap({
-            balanceBefore: currentCredits,
-            oldCap: creditsData?.video_display_cap,
-            purchaseQty: monthlyCredits,
-            balanceAfter: newCredits,
-          });
+          const newCredits = isReplacement
+            ? monthlyCredits
+            : currentCredits + monthlyCredits;
+          const nextCap = isReplacement
+            ? nextVideoDisplayCap({
+                balanceBefore: 0,
+                oldCap: creditsData?.video_display_cap,
+                purchaseQty: monthlyCredits,
+                balanceAfter: monthlyCredits,
+              })
+            : nextVideoDisplayCap({
+                balanceBefore: currentCredits,
+                oldCap: creditsData?.video_display_cap,
+                purchaseQty: monthlyCredits,
+                balanceAfter: newCredits,
+              });
 
           if (creditsData) {
             await supabaseClient
@@ -298,10 +322,12 @@ serve(async (req) => {
               user_id: userId,
               amount: monthlyCredits,
               type: "credit",
-              reason: "subscription_payment",
+              reason: isReplacement ? "subscription_plan_change" : "subscription_payment",
               metadata: {
                 subscription_id: subscriptionId,
                 payment_intent: session.payment_intent,
+                plan_key: storedPlanKey,
+                plan_replacement: isReplacement,
               },
             });
 
@@ -312,7 +338,9 @@ serve(async (req) => {
           }
 
           console.log(
-            `✅ Abonnement créé et ${monthlyCredits} crédits ajoutés pour l'utilisateur ${userId}`,
+            isReplacement
+              ? `✅ Abonnement remplacé — ${monthlyCredits} crédits vidéo (quota du nouveau plan) pour ${userId}`
+              : `✅ Abonnement créé et ${monthlyCredits} crédits ajoutés pour l'utilisateur ${userId}`,
           );
         } else {
           console.log(

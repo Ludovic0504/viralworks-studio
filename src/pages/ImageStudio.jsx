@@ -45,6 +45,8 @@ import ModalQuotaImageStudio from "@/composants/image/ModalQuotaImageStudio";
 import {
   fetchImageStudioModels,
   generateImageStudio,
+  IMAGE_STUDIO_PATIENT_HINT,
+  IMAGE_STUDIO_RETRY_HINT,
 } from "@/bibliotheque/imageStudio/generateImageStudio";
 import {
   IMAGE_STUDIO_MODEL_OPTIONS,
@@ -500,6 +502,7 @@ export default function ImageStudio() {
   const [modelsAvailability, setModelsAvailability] = useState(DEFAULT_MODELS);
   const [modelsLoading, setModelsLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [generationLoadingHint, setGenerationLoadingHint] = useState("");
   const [error, setError] = useState(null);
   const [quotaCount, setQuotaCount] = useState(0);
   const [quotaLimit, setQuotaLimit] = useState(IMAGE_STUDIO_MONTHLY_LIMIT);
@@ -566,6 +569,26 @@ export default function ImageStudio() {
   useEffect(() => {
     capturePostHog("image_studio_opened");
   }, []);
+
+  useEffect(() => {
+    if (!generating) {
+      setGenerationLoadingHint("");
+      return undefined;
+    }
+
+    setGenerationLoadingHint("");
+    const patientTimer = window.setTimeout(() => {
+      setGenerationLoadingHint(IMAGE_STUDIO_PATIENT_HINT);
+    }, 25000);
+    const retryTimer = window.setTimeout(() => {
+      setGenerationLoadingHint(IMAGE_STUDIO_RETRY_HINT);
+    }, 55000);
+
+    return () => {
+      window.clearTimeout(patientTimer);
+      window.clearTimeout(retryTimer);
+    };
+  }, [generating]);
 
   const hasImagePlan = !accessLoading && hasImageStudioPlan(plan);
 
@@ -1240,6 +1263,7 @@ export default function ImageStudio() {
               history={history}
               historyLoading={historyLoading}
               generating={generating}
+              generationLoadingHint={generationLoadingHint}
               activeHistoryId={activeHistoryId}
               onSelectHistoryItem={focusHistoryImageInCanvas}
               onImageOpen={openImagePreview}
