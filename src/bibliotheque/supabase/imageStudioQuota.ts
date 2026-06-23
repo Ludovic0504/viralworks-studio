@@ -27,35 +27,33 @@ export async function fetchImageStudioQuota(): Promise<ImageStudioQuota> {
   const { plan } = await fetchPremiumAccess();
   const limit = getImageStudioMonthlyLimit(plan) || IMAGE_STUDIO_MONTHLY_LIMIT;
 
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("image_studio_count, image_studio_reset_at")
-    .eq("user_id", user.id)
-    .maybeSingle();
+  const { data: quotaRow, error: rpcError } = await supabase.rpc(
+    "get_my_image_studio_quota",
+  );
 
-  if (error || !data) {
-    return { count: 0, limit, resetAt: null };
-  }
+  if (rpcError || !quotaRow || typeof quotaRow !== "object") {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("image_studio_count, image_studio_reset_at")
+      .eq("user_id", user.id)
+      .maybeSingle();
 
-  const monthStart = new Date();
-  monthStart.setDate(1);
-  monthStart.setHours(0, 0, 0, 0);
+    if (error || !data) {
+      return { count: 0, limit, resetAt: null };
+    }
 
-  const resetAt = data.image_studio_reset_at
-    ? new Date(data.image_studio_reset_at)
-    : null;
-
-  if (!resetAt || resetAt < monthStart) {
     return {
-      count: 0,
+      count: data.image_studio_count ?? 0,
       limit,
-      resetAt: monthStart.toISOString(),
+      resetAt: data.image_studio_reset_at,
     };
   }
 
+  const row = quotaRow as { count?: number; reset_at?: string | null };
+
   return {
-    count: data.image_studio_count ?? 0,
+    count: typeof row.count === "number" ? row.count : 0,
     limit,
-    resetAt: data.image_studio_reset_at,
+    resetAt: row.reset_at ?? null,
   };
 }

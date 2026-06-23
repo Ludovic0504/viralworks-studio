@@ -563,10 +563,12 @@ export default function CommunauteVWS() {
   useEffect(() => {
     if (!session?.user?.id) return;
     const bootstrap = async () => {
-      await ensureSupportConversation();
-      await refreshPublic();
-      await refreshConversations();
-      await refreshUsers();
+      await Promise.all([
+        ensureSupportConversation(),
+        refreshPublic(),
+        refreshConversations(),
+        refreshUsers(),
+      ]);
     };
     void bootstrap();
   }, [session?.user?.id]);

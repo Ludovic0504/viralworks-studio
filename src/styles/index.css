@@ -1430,6 +1430,11 @@
     backdrop-filter: blur(6px);
   }
 
+  /* Au-dessus de la modale boutique (z-index 200) */
+  .cancel-subscription-modal-backdrop {
+    z-index: 210;
+  }
+
   .image-studio-quota-modal {
     position: relative;
     width: min(100%, 22rem);

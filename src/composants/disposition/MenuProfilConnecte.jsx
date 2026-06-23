@@ -5,8 +5,8 @@ import { useAuth } from "@/contexte/FournisseurAuth";
 import LienNavSync from "@/composants/disposition/LienNavSync";
 import { getUserWorkflowVideoWallet, USER_CREDITS_UPDATED_EVENT } from "@/bibliotheque/supabase/credits";
 import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
-import { getUserProfile } from "@/bibliotheque/supabase/profil";
-import { getUserSubscription } from "@/bibliotheque/supabase/stripe";
+import { getUserProfile, readCachedUserProfile } from "@/bibliotheque/supabase/profil";
+import { getUserSubscriptionDetails, readCachedUserSubscriptionDetails } from "@/bibliotheque/supabase/stripe";
 import { useBoutiqueModal } from "@/contexte/ContexteModalBoutique";
 
 const RING_R = 17;
@@ -45,33 +45,36 @@ function resolveDisplayName(profile, session) {
 
 export default function MenuProfilConnecte({ onLogout, signingOut }) {
   const { session } = useAuth();
-  const { openBoutiqueModal } = useBoutiqueModal();
+  const userId = session?.user?.id;
+  const { openBoutiqueModal, refreshSubscriptionDetails } = useBoutiqueModal();
   const rootRef = useRef(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [coachingOpen, setCoachingOpen] = useState(false);
   const [creditsRemaining, setCreditsRemaining] = useState(null);
   const [videoDisplayCap, setVideoDisplayCap] = useState(null);
-  const [hasSubscription, setHasSubscription] = useState(false);
-  const [profile, setProfile] = useState(null);
+  const [hasSubscription, setHasSubscription] = useState(() =>
+    Boolean(readCachedUserSubscriptionDetails(userId)?.subscription),
+  );
+  const [profile, setProfile] = useState(() => readCachedUserProfile(userId));
 
   const loadWallet = useCallback(async () => {
-    if (!session?.user?.id) return;
+    if (!userId) return;
     try {
-      const [wallet, sub, prof] = await Promise.all([
-        getUserWorkflowVideoWallet(),
-        getUserSubscription(),
-        getUserProfile(),
+      const [wallet, subDetails, prof] = await Promise.all([
+        getUserWorkflowVideoWallet(userId),
+        getUserSubscriptionDetails({ userId }),
+        getUserProfile(userId),
       ]);
       setCreditsRemaining(typeof wallet.balance === "number" ? wallet.balance : Number(wallet.balance) || 0);
       setVideoDisplayCap(typeof wallet.cap === "number" ? wallet.cap : Number(wallet.cap) || 30);
-      setHasSubscription(Boolean(sub));
+      setHasSubscription(Boolean(subDetails?.subscription));
       setProfile(prof);
     } catch {
       setCreditsRemaining(0);
       setVideoDisplayCap(30);
       setHasSubscription(false);
     }
-  }, [session?.user?.id]);
+  }, [userId]);
 
   useEffect(() => {
     void loadWallet();
@@ -236,8 +239,13 @@ export default function MenuProfilConnecte({ onLogout, signingOut }) {
           aria-haspopup="true"
           onClick={(e) => {
             e.stopPropagation();
-            setMenuOpen((v) => !v);
+            setMenuOpen((v) => {
+              if (!v) void refreshSubscriptionDetails();
+              return !v;
+            });
           }}
+          onMouseEnter={() => void refreshSubscriptionDetails()}
+          onFocus={() => void refreshSubscriptionDetails()}
         >
           <span className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center">
             <svg

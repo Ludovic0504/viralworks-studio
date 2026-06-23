@@ -1,4 +1,5 @@
 import { getBrowserSupabase } from "./client-navigateur";
+import { resolveAuthenticatedUserId } from "./authSession";
 
 export type HistoryKind = "prompt" | "image" | "video" | "avatar" | "product";
 
@@ -68,20 +69,22 @@ export async function listHistory({
   kind,
   limit = 20,
   metadataSource,
+  userId,
 }: {
   kind?: HistoryKind;
   limit?: number;
   metadataSource?: string;
+  userId?: string | null;
 }) {
   const supabase = getBrowserSupabase();
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return [];
+  const uid = await resolveAuthenticatedUserId(userId);
+  if (!uid) return [];
 
   let query = supabase
     .from("history")
     .select("*")
-    .eq("user_id", user.id)
+    .eq("user_id", uid)
     .order("created_at", { ascending: false })
     .limit(limit);
 
@@ -118,6 +121,49 @@ export async function listHistory({
   });
 
   return normalizedData;
+}
+
+export type HistoryCounts = {
+  prompts: number;
+  images: number;
+  videos: number;
+  total: number;
+};
+
+/** Compteurs légers (COUNT) — évite de charger des centaines de lignes pour les stats Profil. */
+export async function getHistoryCounts(userId?: string | null): Promise<HistoryCounts> {
+  const uid = await resolveAuthenticatedUserId(userId);
+  if (!uid) return { prompts: 0, images: 0, videos: 0, total: 0 };
+
+  const supabase = getBrowserSupabase();
+  const [promptRes, imageRes, videoRes, totalRes] = await Promise.all([
+    supabase
+      .from("history")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", uid)
+      .eq("kind", "prompt"),
+    supabase
+      .from("history")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", uid)
+      .eq("kind", "image"),
+    supabase
+      .from("history")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", uid)
+      .eq("kind", "video"),
+    supabase
+      .from("history")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", uid),
+  ]);
+
+  return {
+    prompts: promptRes.count ?? 0,
+    images: imageRes.count ?? 0,
+    videos: videoRes.count ?? 0,
+    total: totalRes.count ?? 0,
+  };
 }
 
 /**

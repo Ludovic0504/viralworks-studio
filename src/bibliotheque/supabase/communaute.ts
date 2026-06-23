@@ -1,4 +1,5 @@
 import { getBrowserSupabase } from "./client-navigateur";
+import { getUserProfile } from "./profil";
 
 export type CommunityUser = {
   userId: string;
@@ -126,11 +127,11 @@ function toAttachment(row: any): CommunityAttachment | null {
 async function ensureAuthUser() {
   const supabase = getBrowserSupabase();
   const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-  if (error || !user) throw new Error("Utilisateur non connecté.");
-  return { supabase, user };
+    data: { session },
+  } = await supabase.auth.getSession();
+  const user = session?.user;
+  if (!user?.id) throw new Error("Utilisateur non connecté.");
+  return { supabase, user: { id: user.id, email: user.email } };
 }
 
 type ViewerContext = {
@@ -141,16 +142,52 @@ type ViewerContext = {
   canMessageAnyone: boolean;
 };
 
+const VIEWER_CONTEXT_TTL_MS = 60_000;
+let viewerContextCache: {
+  userId: string;
+  ctx: ViewerContext;
+  fetchedAt: number;
+} | null = null;
+let viewerContextInflight: {
+  userId: string;
+  promise: Promise<ViewerContext>;
+} | null = null;
+
 async function getViewerContext(): Promise<ViewerContext> {
   const { supabase, user } = await ensureAuthUser();
-  const { data: prof } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("user_id", user.id)
-    .maybeSingle();
-  const isAdmin = String(prof?.role || "").toLowerCase() === "admin";
-  const isSupport = String(user.email || "").toLowerCase() === SUPPORT_EMAIL;
-  return { supabase, user, isAdmin, isSupport, canMessageAnyone: isAdmin || isSupport };
+
+  if (
+    viewerContextCache?.userId === user.id &&
+    Date.now() - viewerContextCache.fetchedAt < VIEWER_CONTEXT_TTL_MS
+  ) {
+    return viewerContextCache.ctx;
+  }
+
+  if (viewerContextInflight?.userId === user.id) {
+    return viewerContextInflight.promise;
+  }
+
+  const promise = (async () => {
+    const profile = await getUserProfile(user.id);
+    const isAdmin = String(profile?.role || "").toLowerCase() === "admin";
+    const isSupport = String(user.email || "").toLowerCase() === SUPPORT_EMAIL;
+    const ctx: ViewerContext = {
+      supabase,
+      user,
+      isAdmin,
+      isSupport,
+      canMessageAnyone: isAdmin || isSupport,
+    };
+    viewerContextCache = { userId: user.id, ctx, fetchedAt: Date.now() };
+    return ctx;
+  })().finally(() => {
+    if (viewerContextInflight?.userId === user.id) {
+      viewerContextInflight = null;
+    }
+  });
+
+  viewerContextInflight = { userId: user.id, promise };
+  return promise;
 }
 
 async function loadProfilesMap(userIds: string[]): Promise<Map<string, CommunityUser>> {
@@ -659,14 +696,9 @@ export async function hideConversationForMe(conversationId: string): Promise<voi
 }
 
 export async function getProfilePreferredLocale(): Promise<CommunityLocale> {
-  const { supabase, user } = await ensureAuthUser();
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("preferred_locale")
-    .eq("user_id", user.id)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  const raw = String(data?.preferred_locale || "fr").toLowerCase();
+  const { user } = await ensureAuthUser();
+  const profile = await getUserProfile(user.id);
+  const raw = String(profile?.preferred_locale || "fr").toLowerCase();
   return raw === "en" || raw === "es" ? raw : "fr";
 }
 

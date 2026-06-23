@@ -1,20 +1,17 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import {
-  fetchPremiumAccess,
+  readCachedPremiumAccess,
+  resolvePremiumAccess,
+  type PremiumAccessData,
   type UserPlan,
 } from "@/bibliotheque/supabase/premiumAccess";
 
-type AccessData = {
-  isSubscribed: boolean;
-  isTester: boolean;
-  hasAccess: boolean;
-  plan: UserPlan;
-};
+export type { UserPlan };
 
-type PremiumState = AccessData & { loading: boolean };
+type PremiumState = PremiumAccessData & { loading: boolean };
 
-const FREE_ACCESS: AccessData = {
+const FREE_ACCESS: PremiumAccessData = {
   isSubscribed: false,
   isTester: false,
   hasAccess: false,
@@ -23,34 +20,10 @@ const FREE_ACCESS: AccessData = {
 
 const LOADING_ACCESS: PremiumState = { ...FREE_ACCESS, loading: true };
 
-let cached: { userId: string; data: AccessData } | null = null;
-let inflight: { userId: string; promise: Promise<AccessData> } | null = null;
-
-function resolvePremiumAccess(userId: string): Promise<AccessData> {
-  if (cached?.userId === userId) {
-    return Promise.resolve(cached.data);
-  }
-  if (inflight?.userId === userId) {
-    return inflight.promise;
-  }
-
-  const promise = fetchPremiumAccess()
-    .then((data) => {
-      cached = { userId, data };
-      return data;
-    })
-    .catch(() => FREE_ACCESS)
-    .finally(() => {
-      if (inflight?.userId === userId) inflight = null;
-    });
-
-  inflight = { userId, promise };
-  return promise;
-}
-
-function readCachedAccess(userId: string | undefined): PremiumState | null {
-  if (!userId || cached?.userId !== userId) return null;
-  return { ...cached.data, loading: false };
+function readCachedState(userId: string | undefined): PremiumState | null {
+  const cached = readCachedPremiumAccess(userId);
+  if (!cached) return null;
+  return { ...cached, loading: false };
 }
 
 /** Précharge l'abonnement (ex. au survol du lien Image Studio). */
@@ -65,7 +38,7 @@ export function usePremiumAccess() {
 
   const [state, setState] = useState<PremiumState>(() => {
     if (!userId) return { ...FREE_ACCESS, loading: false };
-    return readCachedAccess(userId) ?? LOADING_ACCESS;
+    return readCachedState(userId) ?? LOADING_ACCESS;
   });
 
   useEffect(() => {
@@ -78,7 +51,7 @@ export function usePremiumAccess() {
       };
     }
 
-    const hit = readCachedAccess(userId);
+    const hit = readCachedState(userId);
     if (hit) {
       setState(hit);
       return () => {

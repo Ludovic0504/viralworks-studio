@@ -1,5 +1,6 @@
 import type { UserIntent } from "@/bibliotheque/sectorDefaults";
 import { getBrowserSupabase } from "./client-navigateur";
+import { resolveAuthenticatedUserId } from "./authSession";
 
 export interface UserProfile {
   user_id: string;
@@ -18,23 +19,88 @@ export interface UserProfile {
   role: string;
   /** Accès premium sans abonnement actif (compte testeur). */
   is_tester?: boolean;
+  preferred_locale?: string | null;
 }
 
-/**
- * Récupère le profil de l'utilisateur connecté
- */
-export async function getUserProfile(): Promise<UserProfile | null> {
-  const supabase = getBrowserSupabase();
+const PROFILE_CACHE_TTL_MS = 60_000;
+const PROFILE_STORAGE_PREFIX = "vws:profile:";
+const PROFILE_STORAGE_TTL_MS = 24 * 60 * 60 * 1000;
 
-  const { data: { user }, error: userErr } = await supabase.auth.getUser();
-  if (userErr || !user) {
+let profileCache: {
+  userId: string;
+  data: UserProfile | null;
+  fetchedAt: number;
+} | null = null;
+
+let profileInflight: {
+  userId: string;
+  promise: Promise<UserProfile | null>;
+} | null = null;
+
+function readPersistedUserProfile(userId: string): UserProfile | null {
+  if (typeof sessionStorage === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(`${PROFILE_STORAGE_PREFIX}${userId}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { fetchedAt?: number; data?: UserProfile | null };
+    if (!parsed?.fetchedAt || Date.now() - parsed.fetchedAt >= PROFILE_STORAGE_TTL_MS) {
+      sessionStorage.removeItem(`${PROFILE_STORAGE_PREFIX}${userId}`);
+      return null;
+    }
+    return parsed.data ?? null;
+  } catch {
     return null;
   }
+}
 
+function writePersistedUserProfile(userId: string, data: UserProfile | null): void {
+  if (typeof sessionStorage === "undefined") return;
+  try {
+    sessionStorage.setItem(
+      `${PROFILE_STORAGE_PREFIX}${userId}`,
+      JSON.stringify({ fetchedAt: Date.now(), data }),
+    );
+  } catch {
+    // quota / private mode
+  }
+}
+
+function removePersistedUserProfile(userId: string): void {
+  if (typeof sessionStorage === "undefined") return;
+  try {
+    sessionStorage.removeItem(`${PROFILE_STORAGE_PREFIX}${userId}`);
+  } catch {
+    // no-op
+  }
+}
+
+function commitProfileCache(userId: string, data: UserProfile | null): void {
+  profileCache = { userId, data, fetchedAt: Date.now() };
+  writePersistedUserProfile(userId, data);
+}
+
+export function invalidateUserProfileCache(userId?: string | null): void {
+  profileCache = null;
+  if (userId) removePersistedUserProfile(userId);
+}
+
+export function readCachedUserProfile(userId?: string | null): UserProfile | null {
+  if (!userId) return null;
+  if (
+    profileCache?.userId === userId &&
+    Date.now() - profileCache.fetchedAt < PROFILE_CACHE_TTL_MS
+  ) {
+    return profileCache.data;
+  }
+  return readPersistedUserProfile(userId);
+}
+
+async function fetchUserProfileRow(uid: string): Promise<UserProfile | null> {
+  const supabase = getBrowserSupabase();
   const { data, error } = await supabase
     .from("profiles")
     .select("*")
-    .eq("user_id", user.id)
+    .eq("user_id", uid)
     .single();
 
   if (error) {
@@ -43,6 +109,41 @@ export async function getUserProfile(): Promise<UserProfile | null> {
   }
 
   return data;
+}
+
+/**
+ * Récupère le profil de l'utilisateur connecté
+ */
+export async function getUserProfile(userId?: string | null): Promise<UserProfile | null> {
+  const uid = await resolveAuthenticatedUserId(userId);
+  if (!uid) {
+    return null;
+  }
+
+  if (
+    profileCache?.userId === uid &&
+    Date.now() - profileCache.fetchedAt < PROFILE_CACHE_TTL_MS
+  ) {
+    return profileCache.data;
+  }
+
+  if (profileInflight?.userId === uid) {
+    return profileInflight.promise;
+  }
+
+  const promise = fetchUserProfileRow(uid)
+    .then((data) => {
+      commitProfileCache(uid, data);
+      return data;
+    })
+    .finally(() => {
+      if (profileInflight?.userId === uid) {
+        profileInflight = null;
+      }
+    });
+
+  profileInflight = { userId: uid, promise };
+  return promise;
 }
 
 /**
@@ -80,6 +181,7 @@ export async function updateUserProfile(updates: {
     return { success: false, error: error.message };
   }
 
+  invalidateUserProfileCache(user.id);
   return { success: true };
 }
 

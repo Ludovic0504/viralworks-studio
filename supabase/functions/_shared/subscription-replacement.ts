@@ -91,8 +91,32 @@ export async function resetImageStudioQuotaOnPlanChange(
   console.log(`✅ Quota Image Studio réinitialisé (changement de plan) pour ${userId}`);
 }
 
+export async function resetAvatarStudioQuotaOnPlanChange(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<void> {
+  const { error } = await supabase.rpc("reset_avatar_studio_quota_on_plan_change", {
+    p_user_id: userId,
+  });
+
+  if (error) {
+    console.error("reset_avatar_studio_quota_on_plan_change:", error);
+    return;
+  }
+
+  console.log(`✅ Quota Avatar Studio réinitialisé (changement de plan) pour ${userId}`);
+}
+
+async function resetPlanQuotasOnChange(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<void> {
+  await resetImageStudioQuotaOnPlanChange(supabase, userId);
+  await resetAvatarStudioQuotaOnPlanChange(supabase, userId);
+}
+
 /**
- * Annule les autres abonnements Stripe actifs et réinitialise le quota Image Studio.
+ * Annule les autres abonnements Stripe actifs et réinitialise les quotas mensuels (images + avatars).
  * @returns true si au moins un abonnement précédent a été remplacé
  */
 export async function replacePriorSubscriptions(
@@ -128,6 +152,6 @@ export async function replacePriorSubscriptions(
   );
 
   await cancelStripeSubscriptionsImmediately(stripe, supabase, priorIds);
-  await resetImageStudioQuotaOnPlanChange(supabase, userId);
+  await resetPlanQuotasOnChange(supabase, userId);
   return true;
 }

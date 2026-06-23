@@ -1,6 +1,11 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from "react";
 import type { Session, SupabaseClient } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
+import { invalidateAuthUserIdCache } from "@/bibliotheque/supabase/authSession";
+import {
+  bootstrapSessionData,
+  resetSessionBootstrap,
+} from "@/bibliotheque/supabase/sessionBootstrap";
 import {
   clearAllViralWorksStudioPersistence,
   migrateLegacySessionStorageToLocal,
@@ -84,60 +89,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [session]);
 
   useEffect(() => {
-    let unsub: (() => void) | undefined;
     let isMounted = true;
+    let unsub: (() => void) | undefined;
 
-    const init = async () => {
-      setLoading(true);
-      
-      try {
-        const { data, error } = await supabase.auth.getSession();
-        
-        if (!isMounted) return;
-        
-        if (error || !data.session) {
-          setSession(null);
-          try {
-            localStorage.removeItem(LAST_ACTIVITY_KEY);
-          } catch {}
-          setLoading(false);
-          
-          if (!mountedRef.current) {
-            setupAuthListener();
-          }
-          return;
-        }
-
-        const validSession = data.session;
-        updateLastActivity();
-        if (validSession.user?.id) {
-          setStudioScopedUserId(validSession.user.id);
-          migrateLegacySessionStorageToLocal(validSession.user.id);
-        }
-        
-        setSession(validSession);
-        setLoading(false);
-
-        if (!mountedRef.current) {
-          setupAuthListener();
-        }
-      } catch (err) {
-        console.error("Erreur lors de l'initialisation de la session:", err);
-        if (isMounted) {
-          setSession(null);
-          setLoading(false);
-        }
+    const applySession = (s: Session | null) => {
+      if (!isMounted) return;
+      setSession(s);
+      setLoading(false);
+      if (s?.user?.id) {
+        bootstrapSessionData(s.user.id);
+      } else {
+        resetSessionBootstrap();
       }
     };
 
     const setupAuthListener = () => {
       const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
         if (!isMounted) return;
-        
+
         console.log("[Auth] Événement:", event, "Session:", s ? "présente" : "absente");
-        
-        setSession(s ?? null);
-        setLoading(false);
+
+        applySession(s ?? null);
 
         if (event === "SIGNED_IN" && s?.user?.id) {
           try {
@@ -178,9 +150,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             console.warn("[Auth] Erreur reset workflow studio (INITIAL_SESSION):", err);
           }
         }
-        
+
         if (event === "SIGNED_OUT") {
           try {
+            invalidateAuthUserIdCache();
+            resetSessionBootstrap();
             resetPostHogUser();
             localStorage.removeItem(LAST_ACTIVITY_KEY);
             const signedOutUserId = previousUserIdRef.current;
@@ -192,7 +166,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             console.warn("[Auth] Erreur lors du nettoyage:", err);
           }
         }
-        
+
         if (event === "TOKEN_REFRESHED") {
           updateLastActivity();
           console.log("[Auth] Token rafraîchi, activité mise à jour");
@@ -202,8 +176,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       mountedRef.current = true;
     };
 
-    void init();
-    return () => { 
+    setupAuthListener();
+
+    void supabase.auth.getSession().then(({ data, error }) => {
+      if (!isMounted) return;
+
+      if (error || !data.session) {
+        applySession(null);
+        try {
+          localStorage.removeItem(LAST_ACTIVITY_KEY);
+        } catch {}
+        return;
+      }
+
+      updateLastActivity();
+      if (data.session.user?.id) {
+        setStudioScopedUserId(data.session.user.id);
+        migrateLegacySessionStorageToLocal(data.session.user.id);
+      }
+      applySession(data.session);
+    }).catch((err) => {
+      console.error("Erreur lors de l'initialisation de la session:", err);
+      if (isMounted) {
+        applySession(null);
+      }
+    });
+
+    return () => {
       isMounted = false;
       if (unsub) unsub();
     };

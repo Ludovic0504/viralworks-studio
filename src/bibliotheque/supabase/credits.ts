@@ -1,4 +1,5 @@
 import { getBrowserSupabase } from "./client-navigateur";
+import { resolveAuthenticatedUserId } from "./authSession";
 
 /** Émis après un débit (ou autre action) pour rafraîchir l’affichage des crédits (ex. page Profil). */
 export const USER_CREDITS_UPDATED_EVENT = "vws:user-credits-updated";
@@ -44,30 +45,34 @@ export interface UserCreditBuckets {
   video_generation: number;
 }
 
+let lastCreditsSyncAt = 0;
+const CREDITS_SYNC_INTERVAL_MS = 60_000;
+
+function scheduleSubscriptionCreditsSync(supabase: ReturnType<typeof getBrowserSupabase>): void {
+  const now = Date.now();
+  if (now - lastCreditsSyncAt < CREDITS_SYNC_INTERVAL_MS) return;
+  lastCreditsSyncAt = now;
+  void supabase.functions.invoke("sync-subscription-credits", { body: {} }).catch(() => {});
+}
+
 /**
  * Récupère les crédits de l'utilisateur connecté
  */
-export async function getUserCredits(): Promise<number> {
+export async function getUserCredits(userId?: string | null): Promise<number> {
   const supabase = getBrowserSupabase();
-  
-  const { data: { user }, error: userErr } = await supabase.auth.getUser();
-  if (userErr || !user) {
+
+  const uid = await resolveAuthenticatedUserId(userId);
+  if (!uid) {
     console.warn("Utilisateur non connecté");
     return 0;
   }
 
-  // Rattrape les crédits mensuels de l'abonnement annuel (30/mois) si nécessaire.
-  // On ignore les erreurs pour ne pas bloquer l'affichage des crédits.
-  try {
-    await supabase.functions.invoke("sync-subscription-credits", { body: {} });
-  } catch {
-    // no-op
-  }
+  scheduleSubscriptionCreditsSync(supabase);
 
   const { data: rows, error } = await supabase
     .from("user_credits")
     .select("credits")
-    .eq("user_id", user.id);
+    .eq("user_id", uid);
 
   if (error) {
     console.error("Erreur récupération crédits:", error);
@@ -79,27 +84,20 @@ export async function getUserCredits(): Promise<number> {
 }
 
 /** Solde workflow + plafond affiché (menu profil « restant / total »). */
-export async function getUserWorkflowVideoWallet(): Promise<{ balance: number; cap: number }> {
+export async function getUserWorkflowVideoWallet(userId?: string | null): Promise<{ balance: number; cap: number }> {
   const supabase = getBrowserSupabase();
 
-  const {
-    data: { user },
-    error: userErr,
-  } = await supabase.auth.getUser();
-  if (userErr || !user) {
+  const uid = await resolveAuthenticatedUserId(userId);
+  if (!uid) {
     return { balance: 0, cap: 30 };
   }
 
-  try {
-    await supabase.functions.invoke("sync-subscription-credits", { body: {} });
-  } catch {
-    // no-op
-  }
+  scheduleSubscriptionCreditsSync(supabase);
 
   const { data: rows, error } = await supabase
     .from("user_credits")
     .select("credits, video_display_cap")
-    .eq("user_id", user.id);
+    .eq("user_id", uid);
 
   if (error) {
     console.error("Erreur récupération wallet vidéo:", error);
@@ -120,6 +118,164 @@ export async function getUserWorkflowVideoWallet(): Promise<{ balance: number; c
   const cap = Math.max(capBase, balance, 1);
 
   return { balance, cap };
+}
+
+export type ProfilCreditsSnapshot = {
+  credits: number;
+  balance: number;
+  cap: number;
+  buckets: UserCreditBuckets;
+};
+
+const WALLET_CACHE_TTL_MS = 60_000;
+const WALLET_STORAGE_PREFIX = "vws:wallet:";
+const WALLET_STORAGE_TTL_MS = 24 * 60 * 60 * 1000;
+
+let walletCache: {
+  userId: string;
+  data: ProfilCreditsSnapshot;
+  fetchedAt: number;
+} | null = null;
+
+let walletInflight: {
+  userId: string;
+  promise: Promise<ProfilCreditsSnapshot>;
+} | null = null;
+
+function readPersistedWallet(userId: string): ProfilCreditsSnapshot | null {
+  if (typeof sessionStorage === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(`${WALLET_STORAGE_PREFIX}${userId}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { fetchedAt?: number; data?: ProfilCreditsSnapshot };
+    if (!parsed?.fetchedAt || Date.now() - parsed.fetchedAt >= WALLET_STORAGE_TTL_MS) {
+      sessionStorage.removeItem(`${WALLET_STORAGE_PREFIX}${userId}`);
+      return null;
+    }
+    return parsed.data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function writePersistedWallet(userId: string, data: ProfilCreditsSnapshot): void {
+  if (typeof sessionStorage === "undefined") return;
+  try {
+    sessionStorage.setItem(
+      `${WALLET_STORAGE_PREFIX}${userId}`,
+      JSON.stringify({ fetchedAt: Date.now(), data }),
+    );
+  } catch {
+    // no-op
+  }
+}
+
+export function invalidateUserWalletCache(userId?: string | null): void {
+  walletCache = null;
+  if (userId && typeof sessionStorage !== "undefined") {
+    try {
+      sessionStorage.removeItem(`${WALLET_STORAGE_PREFIX}${userId}`);
+    } catch {
+      // no-op
+    }
+  }
+}
+
+export function readCachedProfilCreditsSnapshot(userId?: string | null): ProfilCreditsSnapshot | null {
+  if (!userId) return null;
+  if (
+    walletCache?.userId === userId &&
+    Date.now() - walletCache.fetchedAt < WALLET_CACHE_TTL_MS
+  ) {
+    return walletCache.data;
+  }
+  return readPersistedWallet(userId);
+}
+
+async function fetchProfilCreditsSnapshot(uid: string): Promise<ProfilCreditsSnapshot> {
+  const supabase = getBrowserSupabase();
+  scheduleSubscriptionCreditsSync(supabase);
+
+  const emptyBuckets: UserCreditBuckets = {
+    text_generation: 0,
+    image_generation: 0,
+    image_modification: 0,
+    video_generation: 0,
+  };
+
+  const [creditRes, bucketRes] = await Promise.all([
+    supabase.from("user_credits").select("credits, video_display_cap").eq("user_id", uid),
+    supabase
+      .from("user_credit_buckets")
+      .select("text_generation, image_generation, image_modification, video_generation")
+      .eq("user_id", uid)
+      .maybeSingle(),
+  ]);
+
+  const rows = creditRes.data ?? [];
+  const credits = rows.reduce((sum, r) => sum + Number(r.credits ?? 0), 0);
+  const maxCap = rows.reduce((m, r) => {
+    const c = r.video_display_cap;
+    if (c == null || Number.isNaN(Number(c))) return m;
+    return Math.max(m, Number(c));
+  }, 0);
+  const capBase = maxCap > 0 ? maxCap : 30;
+  const cap = Math.max(capBase, credits, 1);
+
+  const buckets: UserCreditBuckets = bucketRes.data
+    ? {
+        text_generation: Number(bucketRes.data.text_generation || 0),
+        image_generation: Number(bucketRes.data.image_generation || 0),
+        image_modification: Number(bucketRes.data.image_modification || 0),
+        video_generation: Number(bucketRes.data.video_generation || 0),
+      }
+    : emptyBuckets;
+
+  return { credits, balance: credits, cap, buckets };
+}
+
+/** Wallet + buckets en une requête parallèle (cache + sessionStorage). */
+export async function getProfilCreditsSnapshot(
+  userId?: string | null,
+): Promise<ProfilCreditsSnapshot> {
+  const uid = await resolveAuthenticatedUserId(userId);
+  if (!uid) {
+    return {
+      credits: 0,
+      balance: 0,
+      cap: 30,
+      buckets: {
+        text_generation: 0,
+        image_generation: 0,
+        image_modification: 0,
+        video_generation: 0,
+      },
+    };
+  }
+
+  if (
+    walletCache?.userId === uid &&
+    Date.now() - walletCache.fetchedAt < WALLET_CACHE_TTL_MS
+  ) {
+    return walletCache.data;
+  }
+
+  if (walletInflight?.userId === uid) {
+    return walletInflight.promise;
+  }
+
+  const promise = fetchProfilCreditsSnapshot(uid)
+    .then((data) => {
+      walletCache = { userId: uid, data, fetchedAt: Date.now() };
+      writePersistedWallet(uid, data);
+      return data;
+    })
+    .finally(() => {
+      if (walletInflight?.userId === uid) walletInflight = null;
+    });
+
+  walletInflight = { userId: uid, promise };
+  return promise;
 }
 
 /**
@@ -185,7 +341,7 @@ export async function getUserWorkflowCompleteVideoWallet(): Promise<{ balance: n
 /**
  * Récupère les crédits dédiés par catégorie (texte/image/vidéo).
  */
-export async function getUserCreditBuckets(): Promise<UserCreditBuckets> {
+export async function getUserCreditBuckets(userId?: string | null): Promise<UserCreditBuckets> {
   const supabase = getBrowserSupabase();
   const empty: UserCreditBuckets = {
     text_generation: 0,
@@ -194,16 +350,13 @@ export async function getUserCreditBuckets(): Promise<UserCreditBuckets> {
     video_generation: 0,
   };
 
-  const {
-    data: { user },
-    error: userErr,
-  } = await supabase.auth.getUser();
-  if (userErr || !user) return empty;
+  const uid = await resolveAuthenticatedUserId(userId);
+  if (!uid) return empty;
 
   const { data, error } = await supabase
     .from("user_credit_buckets")
     .select("text_generation,image_generation,image_modification,video_generation")
-    .eq("user_id", user.id)
+    .eq("user_id", uid)
     .single();
 
   if (error) {
@@ -289,18 +442,18 @@ export async function debitCredits(
 /**
  * Récupère l'historique des transactions de crédits
  */
-export async function getCreditTransactions(limit: number = 50): Promise<CreditTransaction[]> {
+export async function getCreditTransactions(limit: number = 50, userId?: string | null): Promise<CreditTransaction[]> {
   const supabase = getBrowserSupabase();
-  
-  const { data: { user }, error: userErr } = await supabase.auth.getUser();
-  if (userErr || !user) {
+
+  const uid = await resolveAuthenticatedUserId(userId);
+  if (!uid) {
     return [];
   }
 
   const { data, error } = await supabase
     .from("credit_transactions")
     .select("*")
-    .eq("user_id", user.id)
+    .eq("user_id", uid)
     .order("created_at", { ascending: false })
     .limit(limit);
 
@@ -315,18 +468,18 @@ export async function getCreditTransactions(limit: number = 50): Promise<CreditT
 /**
  * Récupère le rôle de l'utilisateur depuis profiles
  */
-export async function getUserRole(): Promise<'user' | 'admin' | null> {
+export async function getUserRole(userId?: string | null): Promise<'user' | 'admin' | null> {
   const supabase = getBrowserSupabase();
-  
-  const { data: { user }, error: userErr } = await supabase.auth.getUser();
-  if (userErr || !user) {
+
+  const uid = await resolveAuthenticatedUserId(userId);
+  if (!uid) {
     return null;
   }
 
   const { data, error } = await supabase
     .from("profiles")
     .select("role")
-    .eq("user_id", user.id)
+    .eq("user_id", uid)
     .single();
 
   if (error) {
@@ -355,7 +508,7 @@ async function resolveAdminStatus(userId: string): Promise<boolean> {
   if (adminCache?.userId === userId) return adminCache.value;
   if (adminInflight?.userId === userId) return adminInflight.promise;
 
-  const promise = getUserRole()
+  const promise = getUserRole(userId)
     .then((role) => {
       const value = role === "admin";
       adminCache = { userId, value };
@@ -381,10 +534,7 @@ export function resolveAdminStatusForUser(userId: string): Promise<boolean> {
  * Vérifie si l'utilisateur est admin
  */
 export async function isAdmin(): Promise<boolean> {
-  const supabase = getBrowserSupabase();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return false;
-  return resolveAdminStatus(user.id);
+  const uid = await resolveAuthenticatedUserId();
+  if (!uid) return false;
+  return resolveAdminStatus(uid);
 }

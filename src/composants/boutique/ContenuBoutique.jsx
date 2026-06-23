@@ -2,19 +2,20 @@ import { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
-import { getUserCredits } from "@/bibliotheque/supabase/credits";
-import { track } from "@/bibliotheque/meta/pixel";
+import { useBoutiqueModal } from "@/contexte/ContexteModalBoutique";
 import { capturePostHog, trackPostHogError } from "@/bibliotheque/posthog/client";
+import { track } from "@/bibliotheque/meta/pixel";
 import {
-  getUserSubscriptionDetails,
   fetchWelcomeGiftNeedsChoice,
   cancelSubscription,
+  invalidateUserSubscriptionDetailsCache,
 } from "@/bibliotheque/supabase/stripe";
 import {
   isSameSubscriptionPlan,
 } from "@/bibliotheque/supabase/subscriptionPlans";
 import { useStripePayment, payImage9, payPro59, payPremium129, payVideoPack } from "@/hooks/useStripePayment";
 import ModalCadeauBienvenue from "@/composants/ModalCadeauBienvenue";
+import ModalConfirmAnnulationAbonnement from "@/composants/boutique/ModalConfirmAnnulationAbonnement";
 import "./BoutiqueSubCard.css";
 import { CreditCard, Check, Crown, Loader2, CheckCircle, ShoppingBag, ImageIcon, Zap, XCircle } from "lucide-react";
 
@@ -114,9 +115,14 @@ export default function ContenuBoutique({
 }) {
   const { session, loading: authLoading } = useAuth();
   const { runWithAuth, openAuthModal } = useRequireAuthAction();
+  const {
+    subscriptionDetails,
+    subscriptionLoading,
+    refreshSubscriptionDetails,
+  } = useBoutiqueModal();
   const [searchParams] = useSearchParams();
-  const [subscriptionDetails, setSubscriptionDetails] = useState(null);
   const [cancellingSubscription, setCancellingSubscription] = useState(false);
+  const [cancelModalOpen, setCancelModalOpen] = useState(false);
   const { loading: paymentLoading, error, startPayment } = useStripePayment();
   const [activeTab, setActiveTab] = useState(() => {
     const fromProps = resolveSectionTab(initialSection);
@@ -148,12 +154,6 @@ export default function ContenuBoutique({
       trackPostHogError(error, "/boutique", "payment");
     }
   }, [error]);
-
-  useEffect(() => {
-    if (session) {
-      loadData();
-    }
-  }, [session]);
 
   useEffect(() => {
     if (paymentStatus === "success") {
@@ -269,36 +269,25 @@ export default function ContenuBoutique({
     if (tab) setActiveTab(tab);
   }, [initialSection, searchParams, isModal]);
 
-  const loadData = async () => {
-    try {
-      await getUserCredits();
-      const details = await getUserSubscriptionDetails();
-      setSubscriptionDetails(details);
-    } catch (err) {
-      console.error("Erreur chargement données:", err);
-    }
+  const handleCancelSubscription = () => {
+    if (!subscriptionDetails?.subscription) return;
+    setCancelModalOpen(true);
   };
 
-  const handleCancelSubscription = async () => {
+  const executeCancelSubscription = async () => {
     if (!subscriptionDetails?.subscription) return;
-
-    const confirmCancel = window.confirm(
-      "Êtes-vous sûr de vouloir annuler votre abonnement ?\n\n" +
-        "Votre abonnement restera actif jusqu'à la fin de la période en cours.\n" +
-        "Vous continuerez à bénéficier de tous les avantages jusqu'à cette date.",
-    );
-
-    if (!confirmCancel) return;
 
     setCancellingSubscription(true);
     try {
       const result = await cancelSubscription();
       if (result.success) {
+        setCancelModalOpen(false);
+        invalidateUserSubscriptionDetailsCache();
         alert(
           result.message ||
             "Abonnement annulé avec succès. Il restera actif jusqu'à la fin de la période.",
         );
-        await loadData();
+        await refreshSubscriptionDetails({ skipCache: true });
       } else {
         alert(`Erreur : ${result.error}`);
       }
@@ -310,15 +299,26 @@ export default function ContenuBoutique({
     }
   };
 
+  const handleChooseAlternativePlan = (planId) => {
+    setCancelModalOpen(false);
+    setActiveTab("subscription");
+    void runWithAuth(() =>
+      startPayment(
+        planId === "image_9"
+          ? payImage9()
+          : planId === "pro_59"
+            ? payPro59()
+            : payPremium129(),
+      ),
+    );
+  };
+
   const refreshCredits = async () => {
     setRefreshing(true);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      await getUserCredits();
-      const details = await getUserSubscriptionDetails();
-      setSubscriptionDetails(details);
+      await refreshSubscriptionDetails({ skipCache: true });
     } catch (err) {
-      console.error("Erreur rafraîchissement crédits:", err);
+      console.error("Erreur rafraîchissement abonnement:", err);
     } finally {
       setRefreshing(false);
     }
@@ -438,7 +438,12 @@ export default function ContenuBoutique({
         </div>
 
         <div className={m.statusRow}>
-          {subscriptionDetails && (
+          {subscriptionLoading ? (
+            <div className={`bg-white/5 border border-white/10 ${m.statusBadge}`}>
+              <Loader2 className={`animate-spin text-gray-400 ${m.statusBadgeIcon}`} />
+              <span className={`text-gray-400 ${m.statusBadgeText}`}>Chargement…</span>
+            </div>
+          ) : subscriptionDetails ? (
             <div className={`bg-violet-500/10 border border-violet-500/30 ${m.statusBadge}`}>
               <Crown className={`text-violet-400 ${m.statusBadgeIcon}`} />
               <span className={m.statusBadgeText}>
@@ -446,10 +451,10 @@ export default function ContenuBoutique({
                 {subscriptionDetails.subscription.cancel_at_period_end ? " — fin prochaine" : ""}
               </span>
             </div>
-          )}
+          ) : null}
         </div>
 
-        {subscriptionDetails?.subscription && activeTab === "subscription" && (
+        {subscriptionDetails?.subscription && activeTab === "subscription" && !subscriptionLoading && (
           <div
             className={`mb-4 rounded-xl border border-violet-500/25 bg-violet-500/5 p-3 sm:p-4 ${isModal ? "max-md:mb-3 max-md:p-3" : ""}`}
           >
@@ -615,7 +620,7 @@ export default function ContenuBoutique({
             const currentPlanKey = subscriptionDetails?.planKey ?? null;
             const isCurrentPlan = isSameSubscriptionPlan(currentPlanKey, plan.id);
             const subscribeLabel = isCurrentPlan ? "Déjà abonné" : "S'abonner";
-            const subscribeDisabled = paymentLoading || isCurrentPlan;
+            const subscribeDisabled = paymentLoading || isCurrentPlan || subscriptionLoading;
 
             return (
             <div
@@ -721,6 +726,18 @@ export default function ContenuBoutique({
         open={showGiftModal}
         onConfirmed={handleGiftFlowComplete}
         onClose={handleGiftModalClose}
+      />
+
+      <ModalConfirmAnnulationAbonnement
+        open={cancelModalOpen}
+        onClose={() => {
+          if (!cancellingSubscription) setCancelModalOpen(false);
+        }}
+        currentPlanKey={subscriptionDetails?.planKey ?? null}
+        currentPlanName={subscriptionDetails?.planName ?? null}
+        onConfirmCancel={executeCancelSubscription}
+        onChooseAlternativePlan={handleChooseAlternativePlan}
+        cancelling={cancellingSubscription}
       />
 
       {!isModal && (

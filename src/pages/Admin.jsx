@@ -1,7 +1,15 @@
 import { useState, useEffect, useMemo } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexte/FournisseurAuth";
-import { isAdmin, notifyUserCreditsUpdated } from "@/bibliotheque/supabase/credits";
+import { useAdminAccess } from "@/hooks/useAdminAccess";
+import { notifyUserCreditsUpdated } from "@/bibliotheque/supabase/credits";
+import {
+  fetchAdminDashboardSections,
+  readCachedAdminDashboard,
+  invalidateAdminDashboardCache,
+  adminTabToSection,
+  isAdminSectionCached,
+} from "@/bibliotheque/supabase/adminDashboardCache";
 import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
 import PageTitle from "../composants/interface/TitrePage";
 import {
@@ -32,26 +40,36 @@ import {
 
 export default function Admin() {
   const { session } = useAuth();
+  const { isAdmin: isAdminUser, loading: adminAccessLoading } = useAdminAccess();
   const location = useLocation();
-  const [isAdminUser, setIsAdminUser] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [users, setUsers] = useState([]);
-  const [payments, setPayments] = useState([]);
-  const [transactions, setTransactions] = useState([]);
-  const [subscriptions, setSubscriptions] = useState([]);
-  const [history, setHistory] = useState([]);
-  const [adminNotifications, setAdminNotifications] = useState([]);
+  const cachedDashboard = readCachedAdminDashboard();
+  const [dashboardLoading, setDashboardLoading] = useState(() => !cachedDashboard);
+  const [dashboardRefreshing, setDashboardRefreshing] = useState(false);
+  const [sectionLoading, setSectionLoading] = useState({});
+  const [listVisibleCount, setListVisibleCount] = useState(50);
+  const [users, setUsers] = useState(() => cachedDashboard?.users ?? []);
+  const [payments, setPayments] = useState(() => cachedDashboard?.payments ?? []);
+  const [transactions, setTransactions] = useState(() => cachedDashboard?.transactions ?? []);
+  const [subscriptions, setSubscriptions] = useState(() => cachedDashboard?.subscriptions ?? []);
+  const [history, setHistory] = useState(() => cachedDashboard?.history ?? []);
+  const [adminNotifications, setAdminNotifications] = useState(
+    () => cachedDashboard?.adminNotifications ?? [],
+  );
   const [selectedNotifIds, setSelectedNotifIds] = useState(() => new Set());
-  const [stats, setStats] = useState({
-    totalUsers: 0,
-    activeSubscriptions: 0,
-    recentSignups: 0,
-    verifiedEmails: 0,
-    totalPayments: 0,
-    totalTransactions: 0,
-    totalHistory: 0,
-    unreadAdminNotifications: 0,
-  });
+  const [stats, setStats] = useState(
+    () =>
+      cachedDashboard?.stats ?? {
+        totalUsers: 0,
+        activeSubscriptions: 0,
+        recentSignups: 0,
+        verifiedEmails: 0,
+        totalPayments: 0,
+        totalTransactions: 0,
+        totalHistory: 0,
+        unreadAdminNotifications: 0,
+        totalSubscriptions: 0,
+      },
+  );
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedUser, setSelectedUser] = useState(null);
   const [creditAmount, setCreditAmount] = useState("");
@@ -80,25 +98,15 @@ export default function Admin() {
     CREDIT_CATEGORY_OPTIONS.find((opt) => opt.value === creditCategory)?.label || "Crédits";
 
   useEffect(() => {
-    const checkAdminAccess = async () => {
-      if (!session) {
-        setLoading(false);
-        return;
-      }
+    if (!session?.user?.id || adminAccessLoading || !isAdminUser) return;
+    void loadOverview({ silent: Boolean(readCachedAdminDashboard()) });
+  }, [session?.user?.id, adminAccessLoading, isAdminUser]);
 
-      try {
-        const admin = await isAdmin();
-        setIsAdminUser(admin);
-        if (admin) loadDashboardData();
-      } catch (err) {
-        console.error("Erreur vérification admin:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    checkAdminAccess();
-  }, [session]);
+  useEffect(() => {
+    if (!session?.user?.id || !isAdminUser) return;
+    void loadSectionForTab(activeTab);
+    setListVisibleCount(50);
+  }, [activeTab, session?.user?.id, isAdminUser]);
 
   useEffect(() => {
     const sp = new URLSearchParams(location.search);
@@ -107,39 +115,71 @@ export default function Admin() {
     if (tab && allowed.has(tab)) setActiveTab(tab);
   }, [location.search]);
 
-  const loadDashboardData = async () => {
+  const applyPayload = (data) => {
+    if (data.stats) setStats((prev) => ({ ...prev, ...data.stats }));
+    if (data.users) setUsers(data.users);
+    if (data.payments) setPayments(data.payments);
+    if (data.transactions) setTransactions(data.transactions);
+    if (data.subscriptions) setSubscriptions(data.subscriptions);
+    if (data.history) setHistory(data.history);
+    if (data.adminNotifications) {
+      setAdminNotifications(data.adminNotifications);
+      setSelectedNotifIds(new Set());
+    }
+  };
+
+  const loadOverview = async ({ skipCache = false, silent = false } = {}) => {
+    if (skipCache) invalidateAdminDashboardCache();
+    const hasCache = Boolean(readCachedAdminDashboard());
+    if (!silent && !hasCache) setDashboardLoading(true);
+    else setDashboardRefreshing(true);
     try {
-      const supabase = getBrowserSupabase();
-      const { data: { session: currentSession } } = await supabase.auth.getSession();
-      
-      if (!currentSession?.access_token) {
-        console.error("Pas de token d'accès");
-        return;
-      }
-
-      const { data, error } = await supabase.functions.invoke("admin-dashboard", {
-        headers: {
-          Authorization: `Bearer ${currentSession.access_token}`,
-        },
-      });
-
-      if (error) {
-        throw new Error(error.message || "Erreur chargement données");
-      }
-
-      if (data) {
-        setStats(data.stats || {});
-        setUsers(data.users || []);
-        setPayments(data.payments || []);
-        setTransactions(data.transactions || []);
-        setSubscriptions(data.subscriptions || []);
-        setHistory(data.history || []);
-        setAdminNotifications(data.adminNotifications || []);
-        setSelectedNotifIds(new Set());
-      }
+      const data = await fetchAdminDashboardSections(["overview"], { skipCache });
+      applyPayload(data);
     } catch (err) {
       console.error("Erreur chargement dashboard:", err);
-      alert(`Erreur: ${err.message}`);
+      if (!readCachedAdminDashboard()) {
+        alert(`Erreur: ${err.message}`);
+      }
+    } finally {
+      setDashboardLoading(false);
+      setDashboardRefreshing(false);
+    }
+  };
+
+  const loadSectionForTab = async (tab) => {
+    const section = adminTabToSection(tab);
+    if (!section || section === "overview") return;
+    if (isAdminSectionCached(section)) return;
+    setSectionLoading((prev) => ({ ...prev, [tab]: true }));
+    try {
+      const data = await fetchAdminDashboardSections([section]);
+      applyPayload(data);
+    } catch (err) {
+      console.error(`Erreur chargement section ${section}:`, err);
+    } finally {
+      setSectionLoading((prev) => ({ ...prev, [tab]: false }));
+    }
+  };
+
+  const loadDashboardData = async ({ skipCache = false } = {}) => {
+    const section = adminTabToSection(activeTab) || "overview";
+    if (skipCache) invalidateAdminDashboardCache();
+    if (section === "overview") {
+      await loadOverview({ skipCache, silent: false });
+      return;
+    }
+    setSectionLoading((prev) => ({ ...prev, [activeTab]: true }));
+    try {
+      const data = await fetchAdminDashboardSections(["overview", section], { skipCache });
+      applyPayload(data);
+    } catch (err) {
+      console.error("Erreur chargement dashboard:", err);
+      if (!readCachedAdminDashboard()) {
+        alert(`Erreur: ${err.message}`);
+      }
+    } finally {
+      setSectionLoading((prev) => ({ ...prev, [activeTab]: false }));
     }
   };
 
@@ -398,41 +438,87 @@ export default function Admin() {
     });
   };
 
-  const filteredUsers = users.filter(
-    (user) =>
-      user.id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.email?.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredUsers = useMemo(() => {
+    const q = searchTerm.toLowerCase();
+    if (!q) return users;
+    return users.filter(
+      (user) =>
+        user.user_id?.toLowerCase().includes(q) ||
+        user.email?.toLowerCase().includes(q),
+    );
+  }, [users, searchTerm]);
+
+  const filteredPayments = useMemo(() => {
+    const q = searchTerm.toLowerCase();
+    if (!q) return payments;
+    return payments.filter(
+      (payment) =>
+        payment.user_id?.toLowerCase().includes(q) ||
+        payment.stripe_session_id?.toLowerCase().includes(q) ||
+        payment.client_email?.toLowerCase().includes(q) ||
+        payment.client_name?.toLowerCase().includes(q),
+    );
+  }, [payments, searchTerm]);
+
+  const filteredTransactions = useMemo(() => {
+    const q = searchTerm.toLowerCase();
+    if (!q) return transactions;
+    return transactions.filter(
+      (transaction) =>
+        transaction.user_id?.toLowerCase().includes(q) ||
+        transaction.client_email?.toLowerCase().includes(q) ||
+        transaction.client_name?.toLowerCase().includes(q),
+    );
+  }, [transactions, searchTerm]);
+
+  const filteredHistory = useMemo(() => {
+    const q = searchTerm.toLowerCase();
+    if (!q) return history;
+    return history.filter(
+      (item) =>
+        item.user_id?.toLowerCase().includes(q) ||
+        item.client_email?.toLowerCase().includes(q) ||
+        item.client_name?.toLowerCase().includes(q) ||
+        item.kind?.toLowerCase().includes(q) ||
+        item.model?.toLowerCase().includes(q) ||
+        item.input?.toLowerCase().includes(q),
+    );
+  }, [history, searchTerm]);
+
+  const tabLoading = sectionLoading[activeTab];
+
+  const paginatedPayments = useMemo(
+    () => filteredPayments.slice(0, listVisibleCount),
+    [filteredPayments, listVisibleCount],
+  );
+  const paginatedTransactions = useMemo(
+    () => filteredTransactions.slice(0, listVisibleCount),
+    [filteredTransactions, listVisibleCount],
+  );
+  const paginatedHistory = useMemo(
+    () => filteredHistory.slice(0, listVisibleCount),
+    [filteredHistory, listVisibleCount],
+  );
+  const filteredSubscriptions = useMemo(() => {
+    const q = searchTerm.toLowerCase();
+    if (!q) return subscriptions;
+    return subscriptions.filter(
+      (s) =>
+        s.user_id?.toLowerCase().includes(q) ||
+        s.client_email?.toLowerCase().includes(q) ||
+        s.client_name?.toLowerCase().includes(q),
+    );
+  }, [subscriptions, searchTerm]);
+
+  const paginatedSubscriptions = useMemo(
+    () => filteredSubscriptions.slice(0, listVisibleCount),
+    [filteredSubscriptions, listVisibleCount],
   );
 
-  const filteredPayments = payments.filter(
-    (payment) =>
-      payment.user_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      payment.stripe_session_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      payment.client_email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      payment.client_name?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const filteredTransactions = transactions.filter(
-    (transaction) =>
-      transaction.user_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      transaction.client_email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      transaction.client_name?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const filteredHistory = history.filter(
-    (item) =>
-      item.user_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.client_email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.client_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.kind?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.model?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.input?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  if (loading) {
+  if (adminAccessLoading) {
     return (
       <div className="max-w-7xl mx-auto w-full min-w-0 px-4 sm:px-6 lg:px-8 py-4 lg:py-8">
-        <div className="text-center py-12 text-gray-400">Chargement...</div>
+        <div className="text-center py-12 text-gray-400">Vérification des droits…</div>
       </div>
     );
   }
@@ -463,6 +549,12 @@ export default function Admin() {
           Analytics réseaux
         </Link>
       </div>
+
+      {dashboardLoading ? (
+        <p className="mt-3 text-sm text-gray-500">Chargement du tableau de bord…</p>
+      ) : dashboardRefreshing ? (
+        <p className="mt-3 text-sm text-gray-500">Actualisation des données…</p>
+      ) : null}
 
       {/* Statistiques globales */}
       <div className="mt-8 grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-5 lg:gap-4">
@@ -550,7 +642,7 @@ export default function Admin() {
             }`}
           >
             <CreditCard className="w-4 h-4 inline mr-2" />
-            Paiements ({payments.length})
+            Paiements ({stats.totalPayments ?? payments.length})
           </button>
           <button
             onClick={() => setActiveTab("transactions")}
@@ -561,7 +653,7 @@ export default function Admin() {
             }`}
           >
             <FileText className="w-4 h-4 inline mr-2" />
-            Transactions ({transactions.length})
+            Transactions ({stats.totalTransactions ?? transactions.length})
           </button>
           <button
             onClick={() => setActiveTab("subscriptions")}
@@ -572,7 +664,7 @@ export default function Admin() {
             }`}
           >
             <Crown className="w-4 h-4 inline mr-2" />
-            Abonnements ({subscriptions.length})
+            Abonnements ({stats.totalSubscriptions ?? subscriptions.length})
           </button>
           <button
             onClick={() => setActiveTab("history")}
@@ -583,7 +675,7 @@ export default function Admin() {
             }`}
           >
             <History className="w-4 h-4 inline mr-2" />
-            Historique ({history.length})
+            Historique ({stats.totalHistory ?? history.length})
           </button>
           <button
             onClick={() => setActiveTab("notifications")}
@@ -622,7 +714,7 @@ export default function Admin() {
                 />
                 </div>
                 <button
-                  onClick={loadDashboardData}
+                  onClick={() => loadDashboardData({ skipCache: true })}
                   className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-gray-300 transition-all hover:bg-white/10 max-lg:self-end"
                   title="Rafraîchir"
                 >
@@ -710,6 +802,10 @@ export default function Admin() {
           {/* Onglet Paiements */}
           {activeTab === "payments" && (
             <div className="glass-strong min-w-0 overflow-hidden rounded-xl border border-white/10 p-4 lg:p-6">
+              {tabLoading ? (
+                <p className="py-8 text-center text-sm text-gray-500">Chargement des paiements…</p>
+              ) : (
+              <>
               <div className="mb-4 flex items-center gap-3 max-lg:flex-col max-lg:items-stretch max-lg:gap-2">
                 <div className="flex min-w-0 flex-1 items-center gap-2 max-lg:w-full">
                   <Search className="h-5 w-5 shrink-0 text-gray-400" />
@@ -722,7 +818,7 @@ export default function Admin() {
                 />
                 </div>
                 <button
-                  onClick={loadDashboardData}
+                  onClick={() => loadDashboardData({ skipCache: true })}
                   className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-gray-300 transition-all hover:bg-white/10 max-lg:self-end"
                 >
                   <RefreshCw className="w-4 h-4" />
@@ -730,7 +826,7 @@ export default function Admin() {
               </div>
 
               <div className="min-w-0 space-y-2 max-h-[600px] overflow-y-auto">
-                {filteredPayments.map((payment) => (
+                {paginatedPayments.map((payment) => (
                   <div key={payment.id} className="p-4 rounded-lg border bg-white/5 border-white/10">
                     <div className="flex items-start justify-between">
                       <div className="min-w-0 flex-1">
@@ -763,12 +859,27 @@ export default function Admin() {
                   </div>
                 ))}
               </div>
+              {filteredPayments.length > listVisibleCount ? (
+                <button
+                  type="button"
+                  onClick={() => setListVisibleCount((n) => n + 50)}
+                  className="mt-4 w-full rounded-lg border border-white/10 bg-white/5 py-2 text-sm text-gray-300 hover:bg-white/10"
+                >
+                  Afficher plus ({filteredPayments.length - listVisibleCount} restants)
+                </button>
+              ) : null}
+              </>
+              )}
             </div>
           )}
 
           {/* Onglet Transactions */}
           {activeTab === "transactions" && (
             <div className="glass-strong min-w-0 overflow-hidden rounded-xl border border-white/10 p-4 lg:p-6">
+              {tabLoading ? (
+                <p className="py-8 text-center text-sm text-gray-500">Chargement des transactions…</p>
+              ) : (
+              <>
               <div className="mb-4 flex items-center gap-3 max-lg:flex-col max-lg:items-stretch max-lg:gap-2">
                 <div className="flex min-w-0 flex-1 items-center gap-2 max-lg:w-full">
                   <Search className="h-5 w-5 shrink-0 text-gray-400" />
@@ -781,7 +892,7 @@ export default function Admin() {
                 />
                 </div>
                 <button
-                  onClick={loadDashboardData}
+                  onClick={() => loadDashboardData({ skipCache: true })}
                   className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-gray-300 transition-all hover:bg-white/10 max-lg:self-end"
                 >
                   <RefreshCw className="w-4 h-4" />
@@ -789,7 +900,7 @@ export default function Admin() {
               </div>
 
               <div className="min-w-0 space-y-2 max-h-[600px] overflow-y-auto">
-                {filteredTransactions.map((transaction) => (
+                {paginatedTransactions.map((transaction) => (
                   <div key={transaction.id} className="p-4 rounded-lg border bg-white/5 border-white/10">
                     <div className="flex items-start justify-between">
                       <div className="min-w-0 flex-1">
@@ -825,12 +936,27 @@ export default function Admin() {
                   </div>
                 ))}
               </div>
+              {filteredTransactions.length > listVisibleCount ? (
+                <button
+                  type="button"
+                  onClick={() => setListVisibleCount((n) => n + 50)}
+                  className="mt-4 w-full rounded-lg border border-white/10 bg-white/5 py-2 text-sm text-gray-300 hover:bg-white/10"
+                >
+                  Afficher plus ({filteredTransactions.length - listVisibleCount} restants)
+                </button>
+              ) : null}
+              </>
+              )}
             </div>
           )}
 
           {/* Onglet Abonnements */}
           {activeTab === "subscriptions" && (
             <div className="glass-strong min-w-0 overflow-hidden rounded-xl border border-white/10 p-4 lg:p-6">
+              {tabLoading ? (
+                <p className="py-8 text-center text-sm text-gray-500">Chargement des abonnements…</p>
+              ) : (
+              <>
               <div className="mb-4 flex items-center gap-3 max-lg:flex-col max-lg:items-stretch max-lg:gap-2">
                 <div className="flex min-w-0 flex-1 items-center gap-2 max-lg:w-full">
                   <Search className="h-5 w-5 shrink-0 text-gray-400" />
@@ -843,7 +969,7 @@ export default function Admin() {
                 />
                 </div>
                 <button
-                  onClick={loadDashboardData}
+                  onClick={() => loadDashboardData({ skipCache: true })}
                   className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-gray-300 transition-all hover:bg-white/10 max-lg:self-end"
                 >
                   <RefreshCw className="w-4 h-4" />
@@ -851,12 +977,7 @@ export default function Admin() {
               </div>
 
               <div className="min-w-0 space-y-2 max-h-[600px] overflow-y-auto">
-                {subscriptions.filter(s => 
-                  !searchTerm || 
-                  s.user_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                  s.client_email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                  s.client_name?.toLowerCase().includes(searchTerm.toLowerCase())
-                ).map((subscription) => (
+                {paginatedSubscriptions.map((subscription) => (
                   <div key={subscription.id} className="p-4 rounded-lg border bg-white/5 border-white/10">
                     <div className="flex items-start justify-between">
                       <div className="min-w-0 flex-1">
@@ -886,12 +1007,27 @@ export default function Admin() {
                   </div>
                 ))}
               </div>
+              {filteredSubscriptions.length > listVisibleCount ? (
+                <button
+                  type="button"
+                  onClick={() => setListVisibleCount((n) => n + 50)}
+                  className="mt-4 w-full rounded-lg border border-white/10 bg-white/5 py-2 text-sm text-gray-300 hover:bg-white/10"
+                >
+                  Afficher plus ({filteredSubscriptions.length - listVisibleCount} restants)
+                </button>
+              ) : null}
+              </>
+              )}
             </div>
           )}
 
           {/* Onglet Historique */}
           {activeTab === "history" && (
             <div className="glass-strong min-w-0 overflow-hidden rounded-xl border border-white/10 p-4 lg:p-6">
+              {tabLoading ? (
+                <p className="py-8 text-center text-sm text-gray-500">Chargement de l'historique…</p>
+              ) : (
+              <>
               <div className="mb-4 flex items-center gap-3 max-lg:flex-col max-lg:items-stretch max-lg:gap-2">
                 <div className="flex min-w-0 flex-1 items-center gap-2 max-lg:w-full">
                   <Search className="h-5 w-5 shrink-0 text-gray-400" />
@@ -904,7 +1040,7 @@ export default function Admin() {
                 />
                 </div>
                 <button
-                  onClick={loadDashboardData}
+                  onClick={() => loadDashboardData({ skipCache: true })}
                   className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-gray-300 transition-all hover:bg-white/10 max-lg:self-end"
                 >
                   <RefreshCw className="w-4 h-4" />
@@ -918,7 +1054,7 @@ export default function Admin() {
                     <p>Aucune génération trouvée</p>
                   </div>
                 ) : (
-                  filteredHistory.map((item) => {
+                  paginatedHistory.map((item) => {
                     const getKindIcon = () => {
                       switch (item.kind) {
                         case "prompt":
@@ -996,12 +1132,27 @@ export default function Admin() {
                   })
                 )}
               </div>
+              {filteredHistory.length > listVisibleCount ? (
+                <button
+                  type="button"
+                  onClick={() => setListVisibleCount((n) => n + 50)}
+                  className="mt-4 w-full rounded-lg border border-white/10 bg-white/5 py-2 text-sm text-gray-300 hover:bg-white/10"
+                >
+                  Afficher plus ({filteredHistory.length - listVisibleCount} restants)
+                </button>
+              ) : null}
+              </>
+              )}
             </div>
           )}
 
           {/* Onglet Notifications */}
           {activeTab === "notifications" && (
             <div className="glass-strong min-w-0 overflow-hidden rounded-xl border border-white/10 p-4 lg:p-6">
+              {tabLoading ? (
+                <p className="py-8 text-center text-sm text-gray-500">Chargement des notifications…</p>
+              ) : (
+              <>
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
                 <div>
                   <p className="text-sm font-semibold text-gray-200">Notifications admin</p>
@@ -1037,7 +1188,7 @@ export default function Admin() {
                     Supprimer{selectedCount ? ` (${selectedCount})` : ""}
                   </button>
                   <button
-                    onClick={loadDashboardData}
+                    onClick={() => loadDashboardData({ skipCache: true })}
                     className="px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 transition-all flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Rafraîchir"
                     disabled={processing}
@@ -1125,6 +1276,8 @@ export default function Admin() {
                     </div>
                   ))}
                 </div>
+              )}
+              </>
               )}
             </div>
           )}

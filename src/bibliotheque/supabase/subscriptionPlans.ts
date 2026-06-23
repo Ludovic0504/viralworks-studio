@@ -59,3 +59,41 @@ export function canUpgradeToSubscriptionPlan(
   const targetRank = subscriptionPlanRank(targetPlanId);
   return currentRank >= 0 && targetRank > currentRank;
 }
+
+export type SubscriptionPlanOption = {
+  id: "image_9" | "pro_59" | "premium_129";
+  name: string;
+  priceLabel: string;
+  summary: string;
+};
+
+export const SUBSCRIPTION_PLAN_OPTIONS: SubscriptionPlanOption[] = [
+  {
+    id: "image_9",
+    name: "ViralWorks Image",
+    priceLabel: "9 €/mois",
+    summary: "150 images / mois",
+  },
+  {
+    id: "pro_59",
+    name: "ViralWorks Pro",
+    priceLabel: "59 €/mois",
+    summary: "200 images + 10 vidéos / mois",
+  },
+  {
+    id: "premium_129",
+    name: "ViralWorks Studio",
+    priceLabel: "129 €/mois",
+    summary: "200 images + 30 vidéos / mois",
+  },
+];
+
+export function getAlternativeSubscriptionPlans(
+  currentPlanKey: string | null | undefined,
+): SubscriptionPlanOption[] {
+  const current = normalizeSubscriptionPlan(currentPlanKey);
+  if (current === "free") return [...SUBSCRIPTION_PLAN_OPTIONS];
+  return SUBSCRIPTION_PLAN_OPTIONS.filter(
+    (plan) => normalizeSubscriptionPlan(plan.id) !== current,
+  );
+}

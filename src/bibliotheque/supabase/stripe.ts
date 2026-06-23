@@ -1,4 +1,5 @@
 import { getBrowserSupabase } from "./client-navigateur";
+import { resolveAuthenticatedUserId } from "./authSession";
 import { getAppOrigin } from "@/bibliotheque/appOrigin";
 import { track } from "@/bibliotheque/meta/pixel";
 import { capturePostHog } from "@/bibliotheque/posthog/client";
@@ -12,9 +13,66 @@ import {
   subscriptionPlanLabel,
 } from "./subscriptionPlans";
 
+const SUBSCRIPTION_DETAILS_CACHE_TTL_MS = 45_000;
+
+let subscriptionDetailsCache: {
+  userId: string;
+  data: UserSubscriptionDetails | null;
+  fetchedAt: number;
+} | null = null;
+
+let subscriptionDetailsInflight: {
+  userId: string;
+  promise: Promise<UserSubscriptionDetails | null>;
+} | null = null;
+
+export { resolveAuthenticatedUserId } from "./authSession";
+
+export function invalidateUserSubscriptionDetailsCache(): void {
+  subscriptionDetailsCache = null;
+}
+
+export function readCachedUserSubscriptionDetails(
+  userId?: string | null,
+): UserSubscriptionDetails | null {
+  if (!subscriptionDetailsCache || !userId) return null;
+  if (subscriptionDetailsCache.userId !== userId) return null;
+  if (Date.now() - subscriptionDetailsCache.fetchedAt >= SUBSCRIPTION_DETAILS_CACHE_TTL_MS) {
+    return null;
+  }
+  return subscriptionDetailsCache.data;
+}
+
+export function hasCachedUserSubscriptionDetails(userId?: string | null): boolean {
+  if (!subscriptionDetailsCache || !userId) return false;
+  if (subscriptionDetailsCache.userId !== userId) return false;
+  return Date.now() - subscriptionDetailsCache.fetchedAt < SUBSCRIPTION_DETAILS_CACHE_TTL_MS;
+}
+
+/** Lance le chargement en arrière-plan (ex. au clic « Boutique »). */
+export function prefetchUserSubscriptionDetails(): void {
+  void getUserSubscriptionDetails();
+}
+
+function normalizeActiveSubscription(
+  data: StripeSubscription | null,
+): StripeSubscription | null {
+  if (!data) return null;
+  if (data.cancel_at_period_end) {
+    const periodEndMs = new Date(data.current_period_end).getTime();
+    if (Number.isFinite(periodEndMs) && Date.now() >= periodEndMs) {
+      return null;
+    }
+  }
+  return data;
+}
+
 async function loadSubscriptionCycle(
   stripeSubscriptionId: string,
+  prefetchedCycle?: SubscriptionCycleSnapshot | null,
 ): Promise<SubscriptionCycleSnapshot | null> {
+  if (prefetchedCycle) return prefetchedCycle;
+
   const fromRpc = await fetchMySubscriptionCycle();
   if (fromRpc) return fromRpc;
 
@@ -56,6 +114,12 @@ export interface StripeSubscription {
   created_at: string;
   updated_at: string;
 }
+
+export type UserSubscriptionDetails = {
+  subscription: StripeSubscription;
+  planKey: UserPlan;
+  planName: string;
+};
 
 /** Identifiant de plan d'abonnement — utilisé par Stripe et le cadeau Gelato. */
 export type SubscriptionPlanKey =
@@ -241,18 +305,21 @@ export async function redirectToCheckout(
 /**
  * Récupère les paiements de l'utilisateur
  */
-export async function getUserPayments(limit: number = 50): Promise<StripePayment[]> {
+export async function getUserPayments(
+  limit: number = 50,
+  userId?: string | null,
+): Promise<StripePayment[]> {
   const supabase = getBrowserSupabase();
 
-  const { data: { user }, error: userErr } = await supabase.auth.getUser();
-  if (userErr || !user) {
+  const uid = await resolveAuthenticatedUserId(userId);
+  if (!uid) {
     return [];
   }
 
   const { data, error } = await supabase
     .from("stripe_payments")
     .select("*")
-    .eq("user_id", user.id)
+    .eq("user_id", uid)
     .order("created_at", { ascending: false })
     .limit(limit);
 
@@ -267,62 +334,91 @@ export async function getUserPayments(limit: number = 50): Promise<StripePayment
 /**
  * Récupère l'abonnement actif de l'utilisateur
  */
-export async function getUserSubscription(): Promise<StripeSubscription | null> {
-  const supabase = getBrowserSupabase();
-
-  const { data: { user }, error: userErr } = await supabase.auth.getUser();
-  if (userErr || !user) {
-    return null;
-  }
-
-  const { data, error } = await supabase
-    .from("stripe_subscriptions")
-    .select("*")
-    .eq("user_id", user.id)
-    .eq("status", "active")
-    .maybeSingle();
-
-  if (error) {
-    console.error("Erreur récupération abonnement:", error);
-    return null;
-  }
-
-  if (!data) return null;
-
-  // Sécurité anti-ambiguïté: si l'abonnement est programmé pour s'arrêter
-  // et que sa fin de période est passée, on le considère inactif même
-  // si le webhook Stripe n'a pas encore mis à jour le status en base.
-  if (data.cancel_at_period_end) {
-    const periodEndMs = new Date(data.current_period_end).getTime();
-    if (Number.isFinite(periodEndMs) && Date.now() >= periodEndMs) {
-      return null;
-    }
-  }
-
-  return data;
+export async function getUserSubscription(userId?: string | null): Promise<StripeSubscription | null> {
+  const details = await getUserSubscriptionDetails({ userId });
+  return details?.subscription ?? null;
 }
-
-export type UserSubscriptionDetails = {
-  subscription: StripeSubscription;
-  planKey: UserPlan;
-  planName: string;
-};
 
 /**
  * Abonnement actif + clé de plan (subscription_credit_cycles).
  */
-export async function getUserSubscriptionDetails(): Promise<UserSubscriptionDetails | null> {
-  const subscription = await getUserSubscription();
-  if (!subscription) return null;
+export async function getUserSubscriptionDetails(options?: {
+  skipCache?: boolean;
+  userId?: string | null;
+}): Promise<UserSubscriptionDetails | null> {
+  const userId = await resolveAuthenticatedUserId(options?.userId);
+  if (!userId) return null;
 
-  const cycle = await loadSubscriptionCycle(subscription.stripe_subscription_id);
-  const planKey = inferSubscriptionPlanFromCycle(cycle);
+  if (
+    !options?.skipCache &&
+    subscriptionDetailsCache?.userId === userId &&
+    Date.now() - subscriptionDetailsCache.fetchedAt < SUBSCRIPTION_DETAILS_CACHE_TTL_MS
+  ) {
+    return subscriptionDetailsCache.data;
+  }
 
-  return {
-    subscription,
-    planKey,
-    planName: subscriptionPlanLabel(planKey !== "free" ? planKey : cycle?.plan_key),
+  if (
+    !options?.skipCache &&
+    subscriptionDetailsInflight?.userId === userId
+  ) {
+    return subscriptionDetailsInflight.promise;
+  }
+
+  const supabase = getBrowserSupabase();
+
+  const fetchDetails = async (): Promise<UserSubscriptionDetails | null> => {
+    const [subResult, cycleFromRpc] = await Promise.all([
+      supabase
+        .from("stripe_subscriptions")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("status", "active")
+        .maybeSingle(),
+      fetchMySubscriptionCycle(),
+    ]);
+
+    if (subResult.error) {
+      console.error("Erreur récupération abonnement:", subResult.error);
+    }
+
+    const subscription = normalizeActiveSubscription(subResult.data ?? null);
+    if (!subscription) {
+      subscriptionDetailsCache = {
+        userId,
+        data: null,
+        fetchedAt: Date.now(),
+      };
+      return null;
+    }
+
+    const cycle = await loadSubscriptionCycle(
+      subscription.stripe_subscription_id,
+      cycleFromRpc,
+    );
+    const planKey = inferSubscriptionPlanFromCycle(cycle);
+    const details: UserSubscriptionDetails = {
+      subscription,
+      planKey,
+      planName: subscriptionPlanLabel(planKey !== "free" ? planKey : cycle?.plan_key),
+    };
+
+    subscriptionDetailsCache = {
+      userId,
+      data: details,
+      fetchedAt: Date.now(),
+    };
+
+    return details;
   };
+
+  const promise = fetchDetails().finally(() => {
+    if (subscriptionDetailsInflight?.promise === promise) {
+      subscriptionDetailsInflight = null;
+    }
+  });
+
+  subscriptionDetailsInflight = { userId, promise };
+  return promise;
 }
 
 /**

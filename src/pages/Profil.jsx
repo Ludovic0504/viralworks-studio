@@ -2,12 +2,11 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexte/FournisseurAuth";
-import { listHistory } from "@/bibliotheque/supabase/historique";
+import { listHistory, getHistoryCounts } from "@/bibliotheque/supabase/historique";
 import {
-  getUserCredits,
-  getUserCreditBuckets,
+  getProfilCreditsSnapshot,
+  readCachedProfilCreditsSnapshot,
   getCreditTransactions,
-  getUserRole,
   USER_CREDITS_UPDATED_EVENT,
 } from "@/bibliotheque/supabase/credits";
 import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
@@ -17,9 +16,12 @@ import {
   WORKFLOW_QUOTA_STORAGE_KEY,
   WORKFLOW_QUOTA_UPDATED_EVENT,
 } from "@/bibliotheque/workflowQuota";
-import { getUserPayments, getUserSubscriptionDetails, cancelSubscription } from "@/bibliotheque/supabase/stripe";
-import { getUserProfile, updateUserProfile, uploadAvatar, deleteAvatar } from "@/bibliotheque/supabase/profil";
+import { getUserPayments, cancelSubscription } from "@/bibliotheque/supabase/stripe";
+import { getUserProfile, readCachedUserProfile, updateUserProfile, uploadAvatar, deleteAvatar } from "@/bibliotheque/supabase/profil";
+import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { useBoutiqueModal } from "@/contexte/ContexteModalBoutique";
+import ModalConfirmAnnulationAbonnement from "@/composants/boutique/ModalConfirmAnnulationAbonnement";
+import { useStripePayment, payImage9, payPro59, payPremium129 } from "@/hooks/useStripePayment";
 import { SECTORS, getSectorLabelForDisplay } from "@/bibliotheque/sectorDefaults";
 import { 
   User, Mail, Calendar, Settings, LogOut, Edit2, Save, X, 
@@ -55,67 +57,195 @@ function normalizeHistory(items = []) {
     });
 }
 
+function profileToFormData(userProfile) {
+  if (!userProfile) {
+    return {
+      first_name: "",
+      last_name: "",
+      full_name: "",
+      job: "",
+      birth_date: "",
+      avatar_url: "",
+      secteur: "",
+    };
+  }
+  return {
+    first_name: userProfile.first_name || "",
+    last_name: userProfile.last_name || "",
+    full_name: userProfile.full_name || "",
+    job: userProfile.job || "",
+    birth_date: userProfile.birth_date || "",
+    avatar_url: userProfile.avatar_url || "",
+    secteur: userProfile.secteur != null ? String(userProfile.secteur) : "",
+  };
+}
+
+/** Affichage immédiat depuis JWT / OAuth pendant le fetch Supabase. */
+function profilePreviewFromSession(session) {
+  const user = session?.user;
+  if (!user?.id) return null;
+  const meta = user.user_metadata || {};
+  const stamp = user.created_at || new Date().toISOString();
+  return {
+    user_id: user.id,
+    email: user.email,
+    full_name: typeof meta.full_name === "string" ? meta.full_name : undefined,
+    first_name: typeof meta.first_name === "string" ? meta.first_name : undefined,
+    last_name: typeof meta.last_name === "string" ? meta.last_name : undefined,
+    avatar_url:
+      typeof meta.avatar_url === "string"
+        ? meta.avatar_url
+        : typeof meta.picture === "string"
+          ? meta.picture
+          : undefined,
+    role: "user",
+    created_at: stamp,
+    updated_at: stamp,
+  };
+}
+
+function resolveInitialProfile(session) {
+  const userId = session?.user?.id;
+  if (!userId) return null;
+  return readCachedUserProfile(userId) ?? profilePreviewFromSession(session);
+}
+
+function resolveInitialCredits(session) {
+  const userId = session?.user?.id;
+  const snapshot = readCachedProfilCreditsSnapshot(userId);
+  if (!snapshot) return null;
+  return snapshot.credits;
+}
+
+function resolveInitialCreditBuckets(session) {
+  const snapshot = readCachedProfilCreditsSnapshot(session?.user?.id);
+  return (
+    snapshot?.buckets ?? {
+      text_generation: 0,
+      image_generation: 0,
+      image_modification: 0,
+      video_generation: 0,
+    }
+  );
+}
+
+function resolveInitialStats(session) {
+  const userId = session?.user?.id;
+  if (!userId || typeof sessionStorage === "undefined") {
+    return { prompts: 0, images: 0, videos: 0, total: 0 };
+  }
+  try {
+    const raw = sessionStorage.getItem(`vws:history-counts:${userId}`);
+    if (!raw) return { prompts: 0, images: 0, videos: 0, total: 0 };
+    const parsed = JSON.parse(raw);
+    if (!parsed?.counts) return { prompts: 0, images: 0, videos: 0, total: 0 };
+    return parsed.counts;
+  } catch {
+    return { prompts: 0, images: 0, videos: 0, total: 0 };
+  }
+}
+
+function persistHistoryCounts(userId, counts) {
+  if (typeof sessionStorage === "undefined") return;
+  try {
+    sessionStorage.setItem(
+      `vws:history-counts:${userId}`,
+      JSON.stringify({ fetchedAt: Date.now(), counts }),
+    );
+  } catch {
+    // no-op
+  }
+}
+
 export default function Profil() {
   const { session, signOut } = useAuth();
-  const { openBoutiqueModal } = useBoutiqueModal();
+  const { openBoutiqueModal, subscriptionDetails, refreshSubscriptionDetails } = useBoutiqueModal();
+  const subscription = subscriptionDetails?.subscription ?? null;
+  const subscriptionPlanName = subscriptionDetails?.planName ?? null;
+  const subscriptionPlanKey = subscriptionDetails?.planKey ?? null;
+  const { runWithAuth } = useRequireAuthAction();
+  const { startPayment } = useStripePayment();
   const [isEditing, setIsEditing] = useState(false);
-  const [stats, setStats] = useState({ prompts: 0, images: 0, videos: 0, total: 0 });
+  const [stats, setStats] = useState(() => resolveInitialStats(session));
   const [recentHistory, setRecentHistory] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [credits, setCredits] = useState(null);
+  const [statsLoading, setStatsLoading] = useState(() => {
+    const userId = session?.user?.id;
+    if (!userId || typeof sessionStorage === "undefined") return false;
+    try {
+      return !sessionStorage.getItem(`vws:history-counts:${userId}`);
+    } catch {
+      return true;
+    }
+  });
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [credits, setCredits] = useState(() => resolveInitialCredits(session));
   const [transactions, setTransactions] = useState([]);
   const [payments, setPayments] = useState([]);
-  const [subscription, setSubscription] = useState(null);
-  const [subscriptionPlanName, setSubscriptionPlanName] = useState(null);
+  const [cancelModalOpen, setCancelModalOpen] = useState(false);
   const [userRole, setUserRole] = useState(null);
   const [showAllTransactions, setShowAllTransactions] = useState(false);
   const [showAllPayments, setShowAllPayments] = useState(false);
   const [showAllHistory, setShowAllHistory] = useState(false);
   const [cancellingSubscription, setCancellingSubscription] = useState(false);
-  const [profile, setProfile] = useState(null);
+  const [profile, setProfile] = useState(() => resolveInitialProfile(session));
+  const [profileRefreshing, setProfileRefreshing] = useState(
+    () => Boolean(session?.user?.id) && !readCachedUserProfile(session?.user?.id),
+  );
   const [saving, setSaving] = useState(false);
   const [selectedImageUrl, setSelectedImageUrl] = useState(null);
   const [selectedVideoItem, setSelectedVideoItem] = useState(null);
   const [downloadFormat, setDownloadFormat] = useState("png");
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [showQuotaDetails, setShowQuotaDetails] = useState(false);
-  const [creditBuckets, setCreditBuckets] = useState({
-    text_generation: 0,
-    image_generation: 0,
-    image_modification: 0,
-    video_generation: 0,
-  });
+  const [creditBuckets, setCreditBuckets] = useState(() => resolveInitialCreditBuckets(session));
   /** Compteurs studio (localStorage) : générations déjà faites dans le cycle courant. */
   const [workflowStudioUsage, setWorkflowStudioUsage] = useState(() => getWorkflowUsage());
   
-  const [formData, setFormData] = useState({
-    first_name: "",
-    last_name: "",
-    full_name: "",
-    job: "",
-    birth_date: "",
-    avatar_url: "",
-    secteur: "",
-  });
+  const [formData, setFormData] = useState(() => profileToFormData(resolveInitialProfile(session)));
 
   useEffect(() => {
-    if (session) {
-      loadStats();
-      loadCredits();
-      loadPayments();
-      loadSubscription();
-      loadUserRole();
-      loadProfile();
+    const userId = session?.user?.id;
+    if (!userId) return;
+
+    const cached = readCachedUserProfile(userId);
+    if (cached) {
+      setProfile(cached);
+      setFormData(profileToFormData(cached));
+      setProfileRefreshing(false);
+    } else {
+      const preview = profilePreviewFromSession(session);
+      if (preview) {
+        setProfile((prev) => prev ?? preview);
+        setFormData((prev) => (prev.first_name || prev.last_name || prev.full_name ? prev : profileToFormData(preview)));
+      }
+      setProfileRefreshing(true);
     }
-  }, [session]);
+
+    void loadProfile(userId);
+    void loadCredits(userId);
+
+    const statsTimer = window.setTimeout(() => {
+      void loadStats(userId);
+    }, 0);
+
+    const paymentsTimer = window.setTimeout(() => {
+      void loadPayments(userId);
+      void loadTransactions(userId);
+    }, 250);
+
+    return () => {
+      window.clearTimeout(statsTimer);
+      window.clearTimeout(paymentsTimer);
+    };
+  }, [session?.user?.id]);
 
   useEffect(() => {
     if (!session) return;
     const refresh = () => {
-      loadStats();
+      void loadStats();
     };
     const refreshCreditsOnly = () => {
-      loadCredits();
+      void loadCredits();
       setWorkflowStudioUsage(getWorkflowUsage());
     };
     const onVisibility = () => {
@@ -202,57 +332,56 @@ export default function Profil() {
     return () => window.clearInterval(id);
   }, [showQuotaDetails]);
 
-  const loadStats = async () => {
-    setLoading(true);
+  const loadStats = async (userId = session?.user?.id) => {
+    if (!userId) return;
+    setStatsLoading(true);
     try {
-      let allHistory = [];
-      if (session?.user?.id) {
-        try {
-          allHistory = await listHistory({ limit: 1000 });
-        } catch (err) {
-          console.warn("Erreur chargement historique Supabase (Profil):", err);
-        }
-        if (!Array.isArray(allHistory)) allHistory = [];
-      } else {
-        allHistory = loadLocalHistory();
-      }
-      const normalized = normalizeHistory(allHistory);
-      
-      const prompts = normalized.filter(h => h.kind === "prompt").length;
-      const images = normalized.filter(h => h.kind === "image").length;
-      const videos = normalized.filter(h => h.kind === "video").length;
-      
-      setStats({
-        prompts,
-        images,
-        videos,
-        total: normalized.length
-      });
-
-      setRecentHistory(normalized);
+      const counts = await getHistoryCounts(userId);
+      setStats(counts);
+      persistHistoryCounts(userId, counts);
     } catch (err) {
       console.error("Erreur chargement stats:", err);
     } finally {
-      setLoading(false);
+      setStatsLoading(false);
+    }
+    void loadRecentHistory(userId);
+  };
+
+  const loadRecentHistory = async (userId = session?.user?.id) => {
+    if (!userId) return;
+    setHistoryLoading(true);
+    try {
+      const allHistory = await listHistory({ limit: 50, userId });
+      setRecentHistory(normalizeHistory(allHistory));
+    } catch (err) {
+      console.warn("Erreur chargement historique récent (Profil):", err);
+    } finally {
+      setHistoryLoading(false);
     }
   };
 
-  const loadCredits = async () => {
+  const loadCredits = async (userId = session?.user?.id) => {
     try {
-      const userCredits = await getUserCredits();
-      setCredits(userCredits);
-      const buckets = await getUserCreditBuckets();
-      setCreditBuckets(buckets);
-      const userTransactions = await getCreditTransactions(100);
-      setTransactions(userTransactions);
+      const snapshot = await getProfilCreditsSnapshot(userId);
+      setCredits(snapshot.credits);
+      setCreditBuckets(snapshot.buckets);
     } catch (err) {
       console.error("Erreur chargement crédits:", err);
     }
   };
 
-  const loadPayments = async () => {
+  const loadTransactions = async (userId = session?.user?.id) => {
     try {
-      const userPayments = await getUserPayments(100);
+      const userTransactions = await getCreditTransactions(100, userId);
+      setTransactions(userTransactions);
+    } catch (err) {
+      console.error("Erreur chargement transactions:", err);
+    }
+  };
+
+  const loadPayments = async (userId = session?.user?.id) => {
+    try {
+      const userPayments = await getUserPayments(100, userId);
       setPayments(userPayments);
     } catch (err) {
       console.error("Erreur chargement paiements:", err);
@@ -260,41 +389,26 @@ export default function Profil() {
   };
 
   const loadSubscription = async () => {
-    try {
-      const details = await getUserSubscriptionDetails();
-      setSubscription(details?.subscription ?? null);
-      setSubscriptionPlanName(details?.planName ?? null);
-    } catch (err) {
-      console.error("Erreur chargement abonnement:", err);
-    }
+    await refreshSubscriptionDetails({ skipCache: true });
   };
 
-  const loadUserRole = async () => {
+  const loadProfile = async (userId = session?.user?.id) => {
+    if (!userId) return;
+    const hadCachedProfile = Boolean(readCachedUserProfile(userId));
+    if (!hadCachedProfile) setProfileRefreshing(true);
     try {
-      const role = await getUserRole();
-      setUserRole(role);
-    } catch (err) {
-      console.error("Erreur chargement rôle:", err);
-    }
-  };
-
-  const loadProfile = async () => {
-    try {
-      const userProfile = await getUserProfile();
-      setProfile(userProfile);
+      const userProfile = await getUserProfile(userId);
       if (userProfile) {
-        setFormData({
-          first_name: userProfile.first_name || "",
-          last_name: userProfile.last_name || "",
-          full_name: userProfile.full_name || "",
-          job: userProfile.job || "",
-          birth_date: userProfile.birth_date || "",
-          avatar_url: userProfile.avatar_url || "",
-          secteur: userProfile.secteur != null ? String(userProfile.secteur) : "",
-        });
+        setProfile(userProfile);
+        setFormData(profileToFormData(userProfile));
+        if (userProfile.role) {
+          setUserRole(userProfile.role === "admin" ? "admin" : "user");
+        }
       }
     } catch (err) {
       console.error("Erreur chargement profil:", err);
+    } finally {
+      setProfileRefreshing(false);
     }
   };
 
@@ -365,21 +479,19 @@ export default function Profil() {
     }
   };
 
-  const handleCancelSubscription = async () => {
+  const handleCancelSubscription = () => {
     if (!subscription) return;
+    setCancelModalOpen(true);
+  };
 
-    const confirmCancel = window.confirm(
-      "Êtes-vous sûr de vouloir annuler votre abonnement ?\n\n" +
-      "Votre abonnement restera actif jusqu'à la fin de la période en cours.\n" +
-      "Vous continuerez à bénéficier de tous les avantages jusqu'à cette date."
-    );
-
-    if (!confirmCancel) return;
+  const executeCancelSubscription = async () => {
+    if (!subscription) return;
 
     setCancellingSubscription(true);
     try {
       const result = await cancelSubscription();
       if (result.success) {
+        setCancelModalOpen(false);
         alert(result.message || "Abonnement annulé avec succès. Il restera actif jusqu'à la fin de la période.");
         await loadSubscription();
       } else {
@@ -391,6 +503,19 @@ export default function Profil() {
     } finally {
       setCancellingSubscription(false);
     }
+  };
+
+  const handleChooseAlternativePlan = (planId) => {
+    setCancelModalOpen(false);
+    void runWithAuth(() =>
+      startPayment(
+        planId === "image_9"
+          ? payImage9()
+          : planId === "pro_59"
+            ? payPro59()
+            : payPremium129(),
+      ),
+    );
   };
 
   const handleDownloadImage = async (url, format = "png") => {
@@ -889,7 +1014,7 @@ export default function Profil() {
             <TrendingUp className="h-3 w-3 shrink-0 text-gray-400 sm:h-4 sm:w-4" />
           </div>
           <p className="truncate text-base font-bold tabular-nums text-gray-200 sm:text-2xl">
-            {loading ? "..." : stats.prompts}
+            {statsLoading ? "..." : stats.prompts}
           </p>
           <p className="mt-0.5 text-[9px] leading-tight text-gray-400 sm:mt-1 sm:text-xs">Textes créés</p>
         </div>
@@ -902,7 +1027,7 @@ export default function Profil() {
             <TrendingUp className="h-3 w-3 shrink-0 text-gray-400 sm:h-4 sm:w-4" />
           </div>
           <p className="truncate text-base font-bold tabular-nums text-gray-200 sm:text-2xl">
-            {loading ? "..." : stats.images}
+            {statsLoading ? "..." : stats.images}
           </p>
           <p className="mt-0.5 text-[9px] leading-tight text-gray-400 sm:mt-1 sm:text-xs">Images créées</p>
         </div>
@@ -915,7 +1040,7 @@ export default function Profil() {
             <TrendingUp className="h-3 w-3 shrink-0 text-gray-400 sm:h-4 sm:w-4" />
           </div>
           <p className="truncate text-base font-bold tabular-nums text-gray-200 sm:text-2xl">
-            {loading ? "..." : stats.videos}
+            {statsLoading ? "..." : stats.videos}
           </p>
           <p className="mt-0.5 text-[9px] leading-tight text-gray-400 sm:mt-1 sm:text-xs">Vidéos créées</p>
         </div>
@@ -928,7 +1053,7 @@ export default function Profil() {
             <TrendingUp className="h-3 w-3 shrink-0 text-gray-400 sm:h-4 sm:w-4" />
           </div>
           <p className="truncate text-base font-bold tabular-nums text-gray-200 sm:text-2xl">
-            {loading ? "..." : stats.total}
+            {statsLoading ? "..." : stats.total}
           </p>
           <p className="mt-0.5 text-[9px] leading-tight text-gray-400 sm:mt-1 sm:text-xs">Total créations</p>
         </div>
@@ -940,6 +1065,9 @@ export default function Profil() {
             <h3 className="flex min-w-0 items-center gap-2 text-base font-semibold text-gray-200 sm:text-lg">
               <User className="h-5 w-5 shrink-0 text-emerald-400" />
               Profil
+              {profileRefreshing ? (
+                <span className="text-xs font-normal text-gray-500">Mise à jour…</span>
+              ) : null}
             </h3>
             {!isEditing && (
               <button
@@ -1140,9 +1268,11 @@ export default function Profil() {
                 <div className="min-w-0 flex-1">
                   <p className="mb-1 text-xs text-gray-400">Nom complet</p>
                   <p className="break-words text-sm font-medium text-gray-200">
-                    {profile?.full_name || profile?.first_name || profile?.last_name 
+                    {profile?.full_name || profile?.first_name || profile?.last_name
                       ? `${profile?.first_name || ""} ${profile?.last_name || ""}`.trim() || profile?.full_name
-                      : "Non renseigné"}
+                      : profileRefreshing
+                        ? "Chargement…"
+                        : "Non renseigné"}
                   </p>
                 </div>
               </div>
@@ -1479,7 +1609,7 @@ export default function Profil() {
                 <ExternalLink className="w-3 h-3" />
               </Link>
             </div>
-            {loading ? (
+            {historyLoading ? (
               <div className="text-center py-8 text-gray-400">Chargement...</div>
             ) : (() => {
               const images = recentHistory
@@ -1642,7 +1772,7 @@ export default function Profil() {
                 <ExternalLink className="w-3 h-3" />
               </Link>
             </div>
-            {loading ? (
+            {historyLoading ? (
               <div className="text-center py-8 text-gray-400">Chargement...</div>
             ) : (() => {
               const videos = recentHistory
@@ -1829,7 +1959,7 @@ export default function Profil() {
               <Clock className="w-5 h-5 text-emerald-400" />
               Historique récent
             </h3>
-            {loading ? (
+            {historyLoading ? (
               <div className="text-center py-8 text-gray-400">Chargement...</div>
             ) : recentHistory.length > 0 ? (
               <>
@@ -1876,6 +2006,18 @@ export default function Profil() {
           </div>
         </div>
       </div>
+
+      <ModalConfirmAnnulationAbonnement
+        open={cancelModalOpen}
+        onClose={() => {
+          if (!cancellingSubscription) setCancelModalOpen(false);
+        }}
+        currentPlanKey={subscriptionPlanKey}
+        currentPlanName={subscriptionPlanName}
+        onConfirmCancel={executeCancelSubscription}
+        onChooseAlternativePlan={handleChooseAlternativePlan}
+        cancelling={cancellingSubscription}
+      />
     </div>
   );
 }
