@@ -373,6 +373,8 @@ export async function getUserSubscriptionDetails(options?: {
         .select("*")
         .eq("user_id", userId)
         .eq("status", "active")
+        .order("updated_at", { ascending: false })
+        .limit(1)
         .maybeSingle(),
       fetchMySubscriptionCycle(),
     ]);

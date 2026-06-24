@@ -9,6 +9,7 @@ import {
 } from "../_shared/stripe-keys.ts";
 import { nextVideoDisplayCap } from "../_shared/video-display-cap.ts";
 import { replacePriorSubscriptions } from "../_shared/subscription-replacement.ts";
+import { subscriptionPeriodToIso } from "../_shared/subscription-period.ts";
 
 function makeStripe(apiKey: string): Stripe {
   return new Stripe(apiKey, {
@@ -256,8 +257,17 @@ serve(async (req) => {
             : subscription.customer?.id ?? null,
         );
 
+        const periodIso = subscriptionPeriodToIso(subscription);
+        if (!periodIso) {
+          console.error(
+            "❌ Période d'abonnement introuvable (API Stripe):",
+            subscriptionId,
+          );
+          return new Response("Période d'abonnement introuvable", { status: 500 });
+        }
+
         // Créer ou mettre à jour l'abonnement dans la base
-        await supabaseClient
+        const { error: subscriptionUpsertError } = await supabaseClient
           .from("stripe_subscriptions")
           .upsert(
             {
@@ -265,13 +275,18 @@ serve(async (req) => {
               stripe_subscription_id: subscriptionId,
               stripe_customer_id: subscription.customer as string,
               status: subscription.status,
-              current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-              current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+              current_period_start: periodIso.current_period_start,
+              current_period_end: periodIso.current_period_end,
               cancel_at_period_end: subscription.cancel_at_period_end,
               updated_at: new Date().toISOString(),
             },
             { onConflict: "stripe_subscription_id" },
           );
+
+        if (subscriptionUpsertError) {
+          console.error("❌ Erreur upsert stripe_subscriptions:", subscriptionUpsertError);
+          return new Response("Erreur enregistrement abonnement", { status: 500 });
+        }
 
         const monthlyCredits = resolveSubscriptionCreditsFromPlan(planKey);
         const storedPlanKey = normalizeStoredPlanKey(planKey);

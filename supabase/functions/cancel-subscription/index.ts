@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getStripeSecretKeyForCheckout } from "../_shared/stripe-keys.ts";
+import { subscriptionPeriodToIso } from "../_shared/subscription-period.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -110,12 +111,14 @@ serve(async (req) => {
 
     console.log(`✅ Abonnement ${subscriptionData.stripe_subscription_id} sera annulé à la fin de la période`);
 
+    const periodIso = subscriptionPeriodToIso(canceledSubscription);
+
     return new Response(
       JSON.stringify({
         success: true,
         message: "Abonnement annulé. Il restera actif jusqu'à la fin de la période en cours.",
         cancel_at_period_end: canceledSubscription.cancel_at_period_end,
-        current_period_end: new Date(canceledSubscription.current_period_end * 1000).toISOString(),
+        current_period_end: periodIso?.current_period_end ?? null,
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
