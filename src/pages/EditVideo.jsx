@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { fetchFile } from "@ffmpeg/util";
-import { GripVertical, Loader2, Plus, Upload, X } from "lucide-react";
-import PageTitle from "@/composants/interface/TitrePage";
+import { GripVertical, Loader2, Plus, Sparkles, Video, Wand2, X } from "lucide-react";
 import ModalBibliothequeAvatars from "@/composants/studio/avatar/ModalBibliothequeAvatars";
+import ModalAbonnementRequis from "@/composants/studio/avatar/ModalAbonnementRequis";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
+import { usePremiumAccess } from "@/hooks/usePremiumAccess";
+import { hasSeedancePlan } from "@/bibliotheque/supabase/premiumAccess";
+import { getSeedanceMonthlyLimit } from "@/bibliotheque/supabase/planQuotas";
 import { getFFmpeg } from "@/bibliotheque/videoUtils";
 import {
   buildVideoEditPrompt,
@@ -32,22 +35,16 @@ const REF_IMAGE_MODES = [
   {
     id: "final",
     label: "État final",
-    hint: "Le système génère une transformation progressive avant/après",
+    hint: "Transformation progressive vers le rendu de ta photo",
   },
   {
     id: "inspiration",
     label: "Inspiration",
-    hint: "Le système s'inspire du style sans reproduire exactement",
+    hint: "Style et ambiance sans copie exacte",
   },
 ];
 
-const COMING_SOON_MESSAGE =
-  "Cette fonctionnalité arrive très bientôt. Nous intégrons actuellement l'API Seedance 2.0 pour rendre cela possible.";
-
 const AVATAR_SLOT_COUNT = 3;
-
-const INPUT_CLASS =
-  "w-full rounded-lg border border-white/10 bg-[#161d2e] px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:border-cyan-500/40 focus:outline-none";
 
 function newInstructionId() {
   return `instr-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -396,111 +393,113 @@ function getVideoDurationSeconds(file) {
   });
 }
 
-function SectionCard({ title, children, className = "" }) {
+function EditVideoSection({ step, title, hint, optional = false, children }) {
   return (
-    <section
-      className={`rounded-xl border border-white/10 bg-white/[0.03] p-4 sm:p-5 ${className}`.trim()}
-    >
-      {title ? <h2 className="mb-3 text-sm font-semibold text-gray-200">{title}</h2> : null}
-      {children}
+    <section className="edit-video-section">
+      <div className="edit-video-section-head">
+        <span className="edit-video-step" aria-hidden>
+          {step}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="edit-video-section-title-row">
+            <h2 className="edit-video-section-title">{title}</h2>
+            {optional ? (
+              <span className="edit-video-optional-tag">Optionnel</span>
+            ) : null}
+          </div>
+          {hint ? <p className="edit-video-section-hint">{hint}</p> : null}
+        </div>
+      </div>
+      <div className="edit-video-section-body">{children}</div>
     </section>
   );
 }
 
-function EditVideoAvatarSlot({ selection, isLast, onChoose, onClear }) {
-  const separatorClass = isLast
-    ? ""
-    : "border-b border-white/10 pb-4 sm:border-b-0 sm:border-r sm:pb-0 sm:pr-4";
-
-  if (selection) {
-    return (
-      <div
-        className={`flex min-w-0 flex-1 flex-col items-center gap-2 px-1 sm:px-3 ${separatorClass}`.trim()}
-      >
-        <div className="w-[100px] shrink-0 overflow-hidden rounded-lg border border-white/10 bg-[#161d2e]">
-          <img
-            src={selection.url}
-            alt=""
-            className="aspect-[2/3] w-full object-cover [object-position:16%_center]"
-          />
-        </div>
-        <div className="flex flex-col items-center gap-2">
-          <button
-            type="button"
-            onClick={onChoose}
-            className="text-xs text-cyan-400/90 underline-offset-2 hover:underline"
-          >
-            Changer
-          </button>
-          <button
-            type="button"
-            onClick={onClear}
-            className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-200"
-          >
-            <X className="h-3 w-3" aria-hidden />
-            Retirer
-          </button>
-        </div>
-      </div>
-    );
-  }
-
+function EditVideoRefSlot({
+  label,
+  preview,
+  onPick,
+  onClear,
+  imageClassName = "",
+  className = "",
+}) {
   return (
-    <div
-      className={`flex min-w-0 flex-1 flex-col items-center justify-center px-1 sm:px-3 ${separatorClass}`.trim()}
-    >
+    <div className={`edit-video-ref-slot ${className}`.trim()}>
       <button
         type="button"
-        onClick={onChoose}
-        className="inline-flex w-full max-w-[200px] items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.05] px-4 py-3 text-sm font-medium text-gray-200 transition hover:border-cyan-500/30 hover:bg-white/[0.08]"
+        onClick={onPick}
+        className={`edit-video-ref-slot-btn ${preview ? "has-ref" : ""}`}
+        title={label}
+        aria-label={label}
       >
-        Choisir un avatar
+        {preview ? (
+          <>
+            <img
+              src={preview}
+              alt=""
+              className={`edit-video-ref-slot-img ${imageClassName}`.trim()}
+            />
+            <span className="edit-video-ref-slot-label">{label}</span>
+          </>
+        ) : (
+          <>
+            <span className="edit-video-ref-slot-plus" aria-hidden>
+              <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
+            </span>
+            <span className="edit-video-ref-slot-label">{label}</span>
+          </>
+        )}
       </button>
+      {preview ? (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onClear();
+          }}
+          className="edit-video-ref-slot-clear"
+          aria-label={`Retirer ${label}`}
+        >
+          <X className="h-2.5 w-2.5" />
+        </button>
+      ) : null}
     </div>
   );
 }
 
-function ComingSoonModal({ open, onClose }) {
-  if (!open) return null;
+function EditVideoModeSegment({ modes, value, onChange }) {
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
-      onClick={onClose}
-      role="presentation"
-    >
-      <div
-        className="studio-panel max-w-xl w-full overflow-hidden border border-white/10 bg-[#131920]"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-labelledby="edit-video-coming-soon-title"
-        aria-modal="true"
-      >
-        <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">
-          <h2 id="edit-video-coming-soon-title" className="text-base font-semibold text-gray-200">
-            Bientôt disponible
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-white/10 hover:text-gray-200"
-            aria-label="Fermer"
-          >
-            <X className="h-4 w-4" aria-hidden />
-          </button>
-        </div>
-        <div className="space-y-4 p-6">
-          <p className="text-sm leading-relaxed text-gray-300">{COMING_SOON_MESSAGE}</p>
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-gray-300 transition-all hover:bg-white/10"
-            >
-              Fermer
-            </button>
-          </div>
-        </div>
-      </div>
+    <div className="edit-video-segment" role="tablist" aria-label="Mode image de référence">
+      {modes.map((mode) => (
+        <button
+          key={mode.id}
+          type="button"
+          role="tab"
+          aria-selected={value === mode.id}
+          className={`edit-video-segment-btn ${value === mode.id ? "is-active" : ""}`}
+          onClick={() => onChange(mode.id)}
+        >
+          {mode.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function EditVideoResolutionPills({ value, onChange }) {
+  return (
+    <div className="edit-video-toolbar" role="group" aria-label="Qualité de génération">
+      {["480p", "720p"].map((res) => (
+        <button
+          key={res}
+          type="button"
+          className={`edit-video-pill ${value === res ? "is-active" : ""}`}
+          onClick={() => onChange(res)}
+        >
+          <Sparkles className="edit-video-pill-icon" strokeWidth={2} aria-hidden />
+          {res}
+        </button>
+      ))}
     </div>
   );
 }
@@ -639,7 +638,7 @@ function VideoFilmstrip({
   };
 
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+    <div className="edit-video-filmstrip">
       {needsSelectionWindow ? (
         <p className="mb-3 text-[10px] leading-snug text-gray-400 sm:text-xs">
           Glisse pour choisir l&apos;extrait (4 à 15 s) à envoyer à l&apos;IA
@@ -878,23 +877,18 @@ function VideoPreviewBlock({
   if (previewUrl && videoFile) {
     const displayError = stripError || error;
     return (
-      <div className="flex flex-col gap-3">
-        <div className="aspect-video w-full overflow-hidden rounded-lg border border-white/10 bg-black">
-          <video
-            src={previewUrl}
-            controls
-            playsInline
-            className="h-full w-full object-cover"
-          />
+      <div className="flex flex-col gap-0">
+        <div className="edit-video-canvas">
+          <video src={previewUrl} controls playsInline />
         </div>
         {durationSec > MAX_VIDEO_SECONDS ? (
           stripLoading ? (
-            <div className="flex min-h-[50px] items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-6 sm:min-h-[80px]">
-              <Loader2 className="h-5 w-5 shrink-0 animate-spin text-emerald-400" aria-hidden />
+            <div className="edit-video-filmstrip flex min-h-[50px] items-center justify-center gap-2 sm:min-h-[80px]">
+              <Loader2 className="h-5 w-5 shrink-0 animate-spin text-[#2af598]" aria-hidden />
               <span className="text-sm text-gray-300">Analyse de la vidéo…</span>
             </div>
           ) : stripError ? (
-            <p className="text-xs text-red-400" role="alert">
+            <p className="mt-2 text-xs text-red-400" role="alert">
               {stripError}
             </p>
           ) : (
@@ -909,21 +903,17 @@ function VideoPreviewBlock({
             />
           )
         ) : (
-          <p className="text-xs text-gray-500">
-            Toute la vidéo sera envoyée à l&apos;IA ({durationSec}s)
+          <p className="edit-video-meta mt-2">
+            Extrait envoyé à l&apos;IA : {durationSec}s (vidéo complète)
           </p>
         )}
-        <div className="flex flex-wrap items-center gap-x-1 gap-y-1 self-start text-xs">
-          <button
-            type="button"
-            onClick={onChangeVideo}
-            className="text-cyan-400/90 underline-offset-2 hover:underline"
-          >
+        <div className="edit-video-toolbar">
+          <button type="button" onClick={onChangeVideo} className="edit-video-text-link">
             Changer la vidéo
           </button>
           {durationSec > MAX_VIDEO_SECONDS ? (
             <>
-              <span className="text-gray-500" aria-hidden>
+              <span className="edit-video-meta" aria-hidden>
                 ·
               </span>
               <button
@@ -934,46 +924,27 @@ function VideoPreviewBlock({
                     duration: Math.min(MAX_VIDEO_SECONDS, durationSec),
                   })
                 }
-                className="text-emerald-400 underline-offset-2 hover:underline"
+                className="edit-video-text-link"
               >
-                <span className="hidden sm:inline">Sélectionner les 15 premières secondes</span>
-                <span className="inline sm:hidden">15 premières sec.</span>
+                15 premières sec.
               </button>
             </>
           ) : null}
         </div>
-        <div className="flex flex-col gap-2">
-          <p className="text-sm text-gray-300">Qualité de génération</p>
-          <div
-            className="flex w-full min-w-0 rounded-xl border border-white/10 bg-white/[0.03] p-1"
-            role="tablist"
-            aria-label="Qualité de génération"
-          >
-            {(["480p", "720p"]).map((res) => (
-              <button
-                key={res}
-                type="button"
-                role="tab"
-                aria-selected={selectedResolution === res}
-                onClick={() => onSelectedResolutionChange(res)}
-                className={`flex-1 rounded-lg px-2 py-2 text-center text-[11px] font-medium transition sm:text-xs ${
-                  selectedResolution === res
-                    ? "bg-emerald-500/20 text-emerald-300"
-                    : "text-gray-400 hover:text-gray-200"
-                }`}
-              >
-                {res}
-              </button>
-            ))}
-          </div>
-          <p className="text-xs text-gray-500">
+        <div className="mt-2">
+          <p className="edit-video-field-label mb-1.5">Qualité</p>
+          <EditVideoResolutionPills
+            value={selectedResolution}
+            onChange={onSelectedResolutionChange}
+          />
+          <p className="edit-video-meta mt-1.5">
             {selectedResolution === "480p"
-              ? "Recommandé — rendu plus rapide, consommation de crédits réduite"
-              : "Rendu haute qualité — consomme environ 2.5x plus"}
+              ? "Plus rapide, idéal pour tester"
+              : "Haute qualité (~2,5× plus de ressources)"}
           </p>
         </div>
         {displayError && !stripError ? (
-          <p className="text-xs text-red-400" role="alert">
+          <p className="edit-video-error mt-2" role="alert">
             {displayError}
           </p>
         ) : null}
@@ -992,23 +963,18 @@ function VideoPreviewBlock({
         }}
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
-        className={`flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed px-4 py-10 text-xs text-gray-400 transition hover:text-gray-300 ${
-          dragging
-            ? "border-cyan-500/50 bg-cyan-500/5 text-gray-300"
-            : "border-white/20 hover:border-cyan-500/30"
-        }`}
+        className={`edit-video-dropzone ${dragging ? "is-dragging" : ""}`}
       >
-        <Upload className="h-6 w-6" aria-hidden />
-        <span className="text-center text-sm text-gray-300">
-          Glisse ta vidéo ici ou clique pour importer
+        <span className="edit-video-dropzone-icon">
+          <Video className="h-5 w-5" strokeWidth={2} aria-hidden />
         </span>
-        <span className="text-center text-[11px] text-gray-500">
-          MP4, MOV — 720p recommandé, 50 Mo max. Au-delà de 15 s, choisis l&apos;extrait sur la
-          pellicule.
+        <span className="font-medium text-white/80">Importer ta vidéo</span>
+        <span className="edit-video-meta max-w-xs">
+          MP4 ou MOV · 50 Mo max · 15 s max envoyés à l&apos;IA
         </span>
       </button>
       {error ? (
-        <p className="text-xs text-red-400" role="alert">
+        <p className="edit-video-error" role="alert">
           {error}
         </p>
       ) : null}
@@ -1054,65 +1020,36 @@ function ReferenceImageBlock({ imageDataUrl, mode, onModeChange, onImageChange, 
 
   return (
     <div className="flex flex-col gap-3">
-      <div
-        className="flex w-full min-w-0 rounded-xl border border-white/10 bg-white/[0.03] p-1"
-        role="tablist"
-        aria-label="Mode image de référence"
-      >
-        {REF_IMAGE_MODES.map((m) => (
-          <button
-            key={m.id}
-            type="button"
-            role="tab"
-            aria-selected={mode === m.id}
-            onClick={() => onModeChange(m.id)}
-            className={`flex-1 rounded-lg px-2 py-2 text-center text-[11px] font-medium transition sm:text-xs ${
-              mode === m.id
-                ? "bg-emerald-500/20 text-emerald-300"
-                : "text-gray-400 hover:text-gray-200"
-            }`}
-          >
-            {m.label}
-          </button>
-        ))}
-      </div>
-      <p className="text-xs text-gray-500">{activeMode.hint}</p>
+      <EditVideoModeSegment modes={REF_IMAGE_MODES} value={mode} onChange={onModeChange} />
+      <p className="edit-video-meta">{activeMode.hint}</p>
 
-      {imageDataUrl ? (
-        <div className="flex items-center gap-3">
-          <img
-            src={imageDataUrl}
-            alt=""
-            className="h-24 w-24 shrink-0 rounded-lg border border-white/10 object-cover"
-          />
-          <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap items-start gap-3">
+        <EditVideoRefSlot
+          className="edit-video-ref-image-slot"
+          label="RÉF."
+          preview={imageDataUrl}
+          onPick={() => inputRef.current?.click()}
+          onClear={onClear}
+        />
+        {imageDataUrl ? (
+          <div className="flex min-w-0 flex-1 flex-col gap-1 pt-1">
             <button
               type="button"
               onClick={() => inputRef.current?.click()}
-              className="text-left text-xs text-cyan-400/90 underline-offset-2 hover:underline"
+              className="edit-video-text-link text-left"
             >
               Changer l&apos;image
             </button>
-            <button
-              type="button"
-              onClick={onClear}
-              className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-200"
-            >
-              <X className="h-3 w-3" aria-hidden />
-              Retirer
-            </button>
+            <p className="edit-video-meta">
+              JPG, PNG ou WebP · 30 Mo max
+            </p>
           </div>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-white/20 px-4 py-6 text-xs text-gray-400 transition hover:border-cyan-500/30 hover:text-gray-300"
-        >
-          <Upload className="h-5 w-5" aria-hidden />
-          Importer une image (JPG, PNG, WebP, max 30 Mo)
-        </button>
-      )}
+        ) : (
+          <p className="edit-video-meta min-w-0 flex-1 pt-2">
+            Photo du rendu visé ou du style souhaité
+          </p>
+        )}
+      </div>
       <input
         ref={inputRef}
         type="file"
@@ -1145,21 +1082,25 @@ function InstructionCard({ instruction, index, canRemove, onChange, onRemove, on
   };
 
   return (
-    <div className="relative rounded-xl border border-white/10 bg-white/[0.03] p-4">
+    <div className="edit-video-mod-card">
       {canRemove ? (
         <button
           type="button"
           onClick={() => onRemove(instruction.id)}
-          className="absolute right-3 top-3 rounded-lg p-1.5 text-gray-400 transition hover:bg-white/10 hover:text-gray-200"
+          className="edit-video-mod-remove"
           aria-label={`Supprimer la modification ${index + 1}`}
         >
           <X className="h-4 w-4" aria-hidden />
         </button>
       ) : null}
 
-      <div className="flex flex-col gap-3 pr-8">
+      <p className="edit-video-field-label mb-2">
+        Modification {index + 1}
+      </p>
+
+      <div className="edit-video-mod-grid pr-6">
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-400" htmlFor={`what-${instruction.id}`}>
+          <label className="edit-video-field-label" htmlFor={`what-${instruction.id}`}>
             Quoi
           </label>
           <input
@@ -1167,68 +1108,50 @@ function InstructionCard({ instruction, index, canRemove, onChange, onRemove, on
             type="text"
             value={instruction.what}
             onChange={(e) => onChange(instruction.id, { what: e.target.value })}
-            placeholder='ex: "Ajouter une table en marbre", "Peindre les murs en blanc cassé"'
-            className={INPUT_CLASS}
+            placeholder='ex. « Ajouter une table en marbre »'
+            className="edit-video-field"
           />
         </div>
 
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-400" htmlFor={`where-${instruction.id}`}>
-            Où dans la vidéo
+          <label className="edit-video-field-label" htmlFor={`when-${instruction.id}`}>
+            Quand
           </label>
           <input
-            id={`where-${instruction.id}`}
+            id={`when-${instruction.id}`}
             type="text"
             value={instruction.where}
             onChange={(e) => onChange(instruction.id, { where: e.target.value })}
-            placeholder='ex: "dans le salon", "sur le mur du fond", "au centre de la pièce"'
-            className={INPUT_CLASS}
+            placeholder='ex. « au début », « quand on entre dans le salon »'
+            className="edit-video-field"
           />
-          <p className="mt-1 text-[11px] text-gray-500">
-            Le système détecte automatiquement le bon moment dans ta vidéo
+          <p className="edit-video-meta mt-1">
+            Moment ou zone de la scène — l&apos;IA adapte le timing
           </p>
         </div>
+      </div>
 
-        <div>
-          <span className="mb-1 block text-xs font-medium text-gray-400">Asset de référence (optionnel)</span>
-          {instruction.assetDataUrl ? (
-            <div className="flex items-center gap-3">
-              <img
-                src={instruction.assetDataUrl}
-                alt=""
-                className="h-16 w-16 shrink-0 rounded-lg border border-white/10 object-cover"
-              />
-              <button
-                type="button"
-                onClick={() => onAssetChange(instruction.id, null)}
-                className="text-xs text-gray-400 hover:text-gray-200"
-              >
-                Retirer
-              </button>
-            </div>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={() => assetInputRef.current?.click()}
-                className="flex w-full flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-white/20 px-3 py-4 text-[11px] text-gray-500 transition hover:border-cyan-500/30 hover:text-gray-400"
-              >
-                <Upload className="h-4 w-4" aria-hidden />
-                Photo de l&apos;objet ou du style voulu (optionnel)
-              </button>
-              <input
-                ref={assetInputRef}
-                id={assetInputId}
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                onChange={onAssetFile}
-                className="hidden"
-                aria-hidden
-                tabIndex={-1}
-              />
-            </>
-          )}
-        </div>
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <EditVideoRefSlot
+          className="edit-video-ref-image-slot"
+          label="OBJET"
+          preview={instruction.assetDataUrl}
+          onPick={() => assetInputRef.current?.click()}
+          onClear={() => onAssetChange(instruction.id, null)}
+        />
+        <p className="edit-video-meta min-w-0 flex-1">
+          Photo de l&apos;objet ou du style (optionnel)
+        </p>
+        <input
+          ref={assetInputRef}
+          id={assetInputId}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          onChange={onAssetFile}
+          className="hidden"
+          aria-hidden
+          tabIndex={-1}
+        />
       </div>
     </div>
   );
@@ -1236,6 +1159,7 @@ function InstructionCard({ instruction, index, canRemove, onChange, onRemove, on
 
 export default function EditVideo() {
   const { runWithAuth } = useRequireAuthAction();
+  const { plan, loading: subscriptionLoading } = usePremiumAccess();
   const videoInputRef = useRef(null);
   const trimmedSegmentBlobRef = useRef(null);
   const promptRef = useRef(null);
@@ -1263,7 +1187,7 @@ export default function EditVideo() {
     { id: newInstructionId(), what: "", where: "", assetDataUrl: null },
   ]);
 
-  const [comingSoonOpen, setComingSoonOpen] = useState(false);
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   const [trimStatusMessage, setTrimStatusMessage] = useState(
     "Préparation de l'extrait…",
   );
@@ -1345,6 +1269,11 @@ export default function EditVideo() {
 
   const handleGenerate = useCallback(async () => {
     if (!videoFile || trimming || generating) return;
+    if (subscriptionLoading) return;
+    if (!hasSeedancePlan(plan)) {
+      setShowSubscriptionModal(true);
+      return;
+    }
     setTrimError(null);
     setGenerateError(null);
     setTrimStatusMessage("Préparation de l'extrait…");
@@ -1464,9 +1393,16 @@ export default function EditVideo() {
           })();
         }, 6000);
       } catch (err) {
-        setGenerateError(
-          err instanceof Error ? err.message : "Erreur lors de la génération.",
-        );
+        const message =
+          err instanceof Error ? err.message : "Erreur lors de la génération.";
+        if (
+          message.includes("Abonnement Pro ou Studio requis") ||
+          message.includes("Abonnement requis")
+        ) {
+          setShowSubscriptionModal(true);
+        } else {
+          setGenerateError(message);
+        }
         setGenerating(false);
       }
     } catch (err) {
@@ -1488,6 +1424,8 @@ export default function EditVideo() {
     dialogueEnabled,
     selectedResolution,
     stopKiePolling,
+    plan,
+    subscriptionLoading,
   ]);
 
   const changeVideo = () => {
@@ -1558,207 +1496,215 @@ export default function EditVideo() {
     setRefImageError(error);
   };
 
+  const seedanceMonthlyLimit = getSeedanceMonthlyLimit(plan);
+  const hasPlan = hasSeedancePlan(plan);
+
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 py-4 pb-10 sm:px-6 lg:max-w-4xl lg:gap-6 lg:py-6 lg:pb-12">
-      <PageTitle
-        green="Éditer"
-        white="ma vidéo"
-        subtitle="Ajoute ton avatar, transforme la scène et modifie ta vidéo existante avec l'IA"
-        titleClassName="max-lg:text-[28px]"
-        className="max-lg:mb-2"
-      />
-
-      <SectionCard title="Ta vidéo">
-        <VideoPreviewBlock
-          videoFile={videoFile}
-          previewUrl={videoPreviewUrl}
-          durationSec={videoDurationSec}
-          selectedResolution={selectedResolution}
-          onSelectedResolutionChange={setSelectedResolution}
-          selectionStartSec={selectionStartSec}
-          selectionDurationSec={selectionDurationSec}
-          needsTimeline={needsTimeline}
-          onRangeChange={handleSelectionRangeChange}
-          error={videoError || trimError}
-          onFile={handleVideoFile}
-          onChangeVideo={changeVideo}
-        />
-        <input
-          ref={videoInputRef}
-          type="file"
-          accept="video/mp4,video/quicktime,.mp4,.mov"
-          onChange={onHiddenVideoInput}
-          className="hidden"
-          aria-hidden
-          tabIndex={-1}
-        />
-      </SectionCard>
-
-      <SectionCard title="Avatar IA (optionnel)">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-stretch">
-          {Array.from({ length: AVATAR_SLOT_COUNT }, (_, slotIndex) => (
-            <EditVideoAvatarSlot
-              key={slotIndex}
-              selection={avatars[slotIndex]}
-              isLast={slotIndex === AVATAR_SLOT_COUNT - 1}
-              onChoose={() => openAvatarLibraryForSlot(slotIndex)}
-              onClear={() => clearAvatarSlot(slotIndex)}
-            />
-          ))}
-        </div>
-        <p className="mt-3 text-xs text-gray-500">
-          L&apos;avatar présentera ta vidéo tout au long du clip
+    <div className="edit-video-shell">
+      <header className="edit-video-header">
+        <h1 className="edit-video-title">
+          Éditer <span className="edit-video-title-accent">ma vidéo</span>
+        </h1>
+        <p className="edit-video-subtitle">
+          Importe ton clip, ajoute tes références, décris les changements — l&apos;IA fait le reste.
         </p>
-        {avatars.some((a) => a !== null) ? (
-          <div className="mt-3 flex items-center justify-between gap-4 border border-[#222] rounded-xl bg-[#111] px-4 py-3 min-h-[44px]">
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-gray-200">Ajouter un dialogue</p>
-              <p className="mt-0.5 text-xs text-gray-500">
-                Un dialogue sera généré et synchronisé avec ta vidéo
-              </p>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={dialogueEnabled}
-              onClick={() => setDialogueEnabled((prev) => !prev)}
-              className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors ${
-                dialogueEnabled ? "bg-emerald-500/80" : "bg-white/20"
-              }`}
-            >
-              <span
-                className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
-                  dialogueEnabled ? "translate-x-6" : "translate-x-1"
-                }`}
-              />
-            </button>
-          </div>
-        ) : null}
-      </SectionCard>
-
-      <SectionCard title="Image de référence (optionnel)">
-        <ReferenceImageBlock
-          imageDataUrl={refImageDataUrl}
-          mode={refImageMode}
-          onModeChange={setRefImageMode}
-          onImageChange={handleRefImageChange}
-          onClear={() => {
-            setRefImageDataUrl(null);
-            setRefImageError(null);
-          }}
-        />
-        {refImageError ? (
-          <p className="mt-2 text-xs text-red-400" role="alert">
-            {refImageError}
+        {hasPlan ? (
+          <p className="edit-video-quota-badge">
+            Quota : <strong>{seedanceMonthlyLimit}</strong> éditions / mois
           </p>
         ) : null}
-      </SectionCard>
+      </header>
 
-      <section className="flex flex-col gap-3">
-        <div>
-          <h2 className="text-sm font-semibold text-gray-200">Ce que tu veux modifier ou ajouter</h2>
-          <p className="mt-1 text-xs text-gray-500">
-            Décris chaque modification et indique où elle doit apparaître dans la scène
-          </p>
-        </div>
-
-        <div className="flex flex-col gap-3">
-          {instructions.map((row, index) => (
-            <InstructionCard
-              key={row.id}
-              instruction={row}
-              index={index}
-              canRemove={instructions.length > 1}
-              onChange={updateInstruction}
-              onRemove={removeInstruction}
-              onAssetChange={(id, assetDataUrl) => updateInstruction(id, { assetDataUrl })}
-            />
-          ))}
-        </div>
-
-        {instructions.length < 8 ? (
-          <button
-            type="button"
-            onClick={addInstruction}
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-dashed border-white/20 px-4 py-3 text-sm text-gray-400 transition hover:border-cyan-500/30 hover:text-gray-300"
-          >
-            <Plus className="h-4 w-4" aria-hidden />
-            Ajouter une modification
-          </button>
-        ) : null}
-      </section>
-
-      <button
-        type="button"
-        disabled={!videoFile || trimming || generating}
-        onClick={() => void handleGenerate()}
-        className="btn-vws-primary inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
-      >
-        {trimming ? (
-          <>
-            <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
-            {trimStatusMessage}
-          </>
-        ) : generating ? (
-          <>
-            <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
-            Génération en cours... (peut prendre plusieurs minutes)
-          </>
-        ) : (
-          <>Générer ma vidéo →</>
-        )}
-      </button>
-
-      {generating ? (
-        <div className="flex items-center justify-center gap-2 text-sm text-gray-400">
-          <Loader2 className="h-4 w-4 animate-spin shrink-0" aria-hidden />
-          Génération en cours... (peut prendre plusieurs minutes)
-        </div>
-      ) : null}
-
-      {generateError ? (
-        <div className="flex flex-col gap-3 rounded-xl border border-red-500/20 bg-red-500/5 p-4">
-          <p className="text-sm text-red-400" role="alert">
-            {generateError}
-          </p>
-          <button
-            type="button"
-            onClick={() => setGenerateError(null)}
-            className="inline-flex w-fit items-center justify-center rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-gray-300 transition hover:bg-white/10"
-          >
-            Réessayer
-          </button>
-        </div>
-      ) : null}
-
-      {resultVideoUrl ? (
-        <div className="flex flex-col gap-3">
-          <video
-            src={resultVideoUrl}
-            controls
-            autoPlay
-            className="mt-4 w-full rounded-xl border border-white/10 bg-black"
+      <div className="edit-video-body">
+        <EditVideoSection
+          step="1"
+          title="Vidéo originale"
+          hint="Point de départ — au-delà de 15 s, choisis l'extrait sur la pellicule"
+        >
+          <VideoPreviewBlock
+            videoFile={videoFile}
+            previewUrl={videoPreviewUrl}
+            durationSec={videoDurationSec}
+            selectedResolution={selectedResolution}
+            onSelectedResolutionChange={setSelectedResolution}
+            selectionStartSec={selectionStartSec}
+            selectionDurationSec={selectionDurationSec}
+            needsTimeline={needsTimeline}
+            onRangeChange={handleSelectionRangeChange}
+            error={videoError || trimError}
+            onFile={handleVideoFile}
+            onChangeVideo={changeVideo}
           />
-          <div className="flex flex-wrap gap-2">
-            <a
-              href={resultVideoUrl}
-              download
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center justify-center rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-gray-200 transition hover:bg-white/10"
-            >
-              Télécharger
-            </a>
+          <input
+            ref={videoInputRef}
+            type="file"
+            accept="video/mp4,video/quicktime,.mp4,.mov"
+            onChange={onHiddenVideoInput}
+            className="hidden"
+            aria-hidden
+            tabIndex={-1}
+          />
+        </EditVideoSection>
+
+        <EditVideoSection
+          step="2"
+          title="Avatar IA"
+          hint="Présente ta vidéo à l'écran, tout au long du clip"
+          optional
+        >
+          <div className="edit-video-ref-row">
+            {Array.from({ length: AVATAR_SLOT_COUNT }, (_, slotIndex) => (
+              <EditVideoRefSlot
+                key={slotIndex}
+                label={`AVATAR ${slotIndex + 1}`}
+                preview={avatars[slotIndex]?.url ?? null}
+                onPick={() => openAvatarLibraryForSlot(slotIndex)}
+                onClear={() => clearAvatarSlot(slotIndex)}
+              />
+            ))}
+          </div>
+          {avatars.some((a) => a !== null) ? (
+            <div className="edit-video-toggle-row">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-white/90">Dialogue synchronisé</p>
+                <p className="edit-video-meta mt-0.5">
+                  Voix générée en français, adaptée à la scène
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={dialogueEnabled}
+                onClick={() => setDialogueEnabled((prev) => !prev)}
+                className={`edit-video-toggle-switch ${dialogueEnabled ? "is-on" : ""}`}
+              >
+                <span className="edit-video-toggle-knob" />
+              </button>
+            </div>
+          ) : null}
+        </EditVideoSection>
+
+        <EditVideoSection
+          step="3"
+          title="Image de référence"
+          hint="État final ou inspiration visuelle pour guider la transformation"
+          optional
+        >
+          <ReferenceImageBlock
+            imageDataUrl={refImageDataUrl}
+            mode={refImageMode}
+            onModeChange={setRefImageMode}
+            onImageChange={handleRefImageChange}
+            onClear={() => {
+              setRefImageDataUrl(null);
+              setRefImageError(null);
+            }}
+          />
+          {refImageError ? (
+            <p className="edit-video-error mt-2" role="alert">
+              {refImageError}
+            </p>
+          ) : null}
+        </EditVideoSection>
+
+        <EditVideoSection
+          step="4"
+          title="Modifications"
+          hint="Décris ce que tu veux changer — une ligne par changement"
+          optional
+        >
+          <div className="flex flex-col gap-3">
+            {instructions.map((row, index) => (
+              <InstructionCard
+                key={row.id}
+                instruction={row}
+                index={index}
+                canRemove={instructions.length > 1}
+                onChange={updateInstruction}
+                onRemove={removeInstruction}
+                onAssetChange={(id, assetDataUrl) => updateInstruction(id, { assetDataUrl })}
+              />
+            ))}
+          </div>
+          {instructions.length < 8 ? (
+            <button type="button" onClick={addInstruction} className="edit-video-add-mod mt-3">
+              <Plus className="h-4 w-4" aria-hidden />
+              Ajouter une modification
+            </button>
+          ) : null}
+        </EditVideoSection>
+
+        {resultVideoUrl ? (
+          <div className="edit-video-result">
+            <p className="edit-video-field-label mb-2">Résultat</p>
+            <video
+              src={resultVideoUrl}
+              controls
+              autoPlay
+              className="edit-video-canvas w-full overflow-hidden rounded-lg"
+            />
+            <div className="edit-video-toolbar mt-3">
+              <a
+                href={resultVideoUrl}
+                download
+                target="_blank"
+                rel="noopener noreferrer"
+                className="edit-video-pill"
+              >
+                Télécharger
+              </a>
+              <button
+                type="button"
+                onClick={() => setResultVideoUrl(null)}
+                className="edit-video-pill"
+              >
+                Nouvelle édition
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {generateError ? (
+          <div className="edit-video-error flex flex-col gap-2">
+            <p role="alert">{generateError}</p>
             <button
               type="button"
-              onClick={() => setResultVideoUrl(null)}
-              className="inline-flex items-center justify-center rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-gray-200 transition hover:bg-white/10"
+              onClick={() => setGenerateError(null)}
+              className="edit-video-text-link w-fit"
             >
-              Nouvelle édition
+              Réessayer
             </button>
           </div>
+        ) : null}
+      </div>
+
+      <div className="edit-video-footer">
+        <div className="edit-video-footer-inner">
+          <button
+            type="button"
+            disabled={!videoFile || trimming || generating}
+            onClick={() => void handleGenerate()}
+            className="edit-video-generate-btn btn-vws-primary"
+          >
+            {trimming ? (
+              <>
+                <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+                {trimStatusMessage}
+              </>
+            ) : generating ? (
+              <>
+                <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+                Génération…
+              </>
+            ) : (
+              <>
+                <Wand2 className="h-4 w-4" strokeWidth={2} aria-hidden />
+                Générer ma vidéo
+              </>
+            )}
+          </button>
         </div>
-      ) : null}
+      </div>
 
       <ModalBibliothequeAvatars
         open={avatarLibraryOpen}
@@ -1766,7 +1712,11 @@ export default function EditVideo() {
         onSelect={handleAvatarLibrarySelect}
       />
 
-      <ComingSoonModal open={comingSoonOpen} onClose={() => setComingSoonOpen(false)} />
+      <ModalAbonnementRequis
+        open={showSubscriptionModal}
+        onClose={() => setShowSubscriptionModal(false)}
+        description="L'édition vidéo IA est disponible avec les abonnements ViralWorks Pro ou Studio."
+      />
     </div>
   );
 }

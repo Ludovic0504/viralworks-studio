@@ -3,7 +3,11 @@ import { X } from "lucide-react";
 import Button from "@/composants/interface/Bouton";
 import { useBoutiqueModal } from "@/contexte/ContexteModalBoutique";
 
-export default function ModalAbonnementRequis({ open, onClose }) {
+export default function ModalAbonnementRequis({
+  open,
+  onClose,
+  description = "La génération d'avatars IA est disponible uniquement avec un abonnement.",
+}) {
   const { openBoutiqueModal } = useBoutiqueModal();
 
   useEffect(() => {
@@ -53,9 +57,7 @@ export default function ModalAbonnementRequis({ open, onClose }) {
           Fonctionnalité réservée aux membres
         </h2>
 
-        <p className="mt-3 text-sm leading-relaxed text-gray-400">
-          La génération d&apos;avatars IA est disponible uniquement avec un abonnement.
-        </p>
+        <p className="mt-3 text-sm leading-relaxed text-gray-400">{description}</p>
 
         <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button variant="secondary" onClick={dismiss} className="w-full sm:w-auto">

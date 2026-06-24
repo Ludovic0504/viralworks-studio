@@ -5,6 +5,8 @@ import { Home, Sparkles, X, FileText, Info } from "lucide-react";
 import LienNavSync from "@/composants/disposition/LienNavSync";
 import { MenuNavViralWorksMobile } from "@/composants/disposition/MenuNavViralWorks";
 import { useAuth } from "@/contexte/FournisseurAuth";
+import { usePremiumAccess } from "@/hooks/usePremiumAccess";
+import { hasSeedancePlan } from "@/bibliotheque/supabase/premiumAccess";
 import { isAdmin } from "@/bibliotheque/supabase/credits";
 import {
   clearMobileNavDrawerScrollLock,
@@ -27,14 +29,20 @@ export default function SidebarShell({
   const location = useLocation();
   const previousPathRef = useRef(location.pathname);
   const { session } = useAuth();
+  const { plan } = usePremiumAccess();
   const [showEditVideo, setShowEditVideo] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
 
-    async function checkAdminAccess() {
+    async function checkEditVideoAccess() {
       if (!session?.user?.id) {
         if (!cancelled) setShowEditVideo(false);
+        return;
+      }
+
+      if (hasSeedancePlan(plan)) {
+        if (!cancelled) setShowEditVideo(true);
         return;
       }
 
@@ -42,16 +50,16 @@ export default function SidebarShell({
         const admin = await isAdmin();
         if (!cancelled) setShowEditVideo(admin);
       } catch (err) {
-        console.error("Erreur vérification admin:", err);
+        console.error("Erreur vérification accès Éditer ma vidéo:", err);
         if (!cancelled) setShowEditVideo(false);
       }
     }
 
-    checkAdminAccess();
+    checkEditVideoAccess();
     return () => {
       cancelled = true;
     };
-  }, [session?.user?.id]);
+  }, [session?.user?.id, plan]);
 
   useEffect(() => {
     // Close only after a real route change (not when `open` flips to true).

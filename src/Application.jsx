@@ -241,9 +241,9 @@ const router = createBrowserRouter([
           {
             path: "edit-video",
             element: (
-              <AdminOnlyRoute>
+              <ProtectedRoute>
                 <EditVideo />
-              </AdminOnlyRoute>
+              </ProtectedRoute>
             ),
           },
           {

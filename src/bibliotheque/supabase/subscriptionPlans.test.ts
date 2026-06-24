@@ -10,11 +10,14 @@ import {
   hasAvatarPlan,
   hasFullVideoPlan,
   hasImageStudioPlan,
+  hasSeedancePlan,
   normalizeSubscriptionPlan,
 } from "./premiumAccess";
 import {
   IMAGE_STUDIO_MONTHLY_QUOTA_DEFAULT,
   IMAGE_STUDIO_MONTHLY_QUOTA_IMAGE_9,
+  SEEDANCE_MONTHLY_QUOTA_PREMIUM,
+  SEEDANCE_MONTHLY_QUOTA_PRO,
 } from "./planQuotas";
 
 describe("subscriptionPlans — upgrade / downgrade", () => {
@@ -86,25 +89,30 @@ describe("inferSubscriptionPlanFromCycle", () => {
 });
 
 describe("premiumAccess — quotas par plan", () => {
-  it("image_9 a Image Studio mais pas vidéo complète ni avatar", () => {
+  it("image_9 a Image Studio mais pas vidéo complète ni avatar ni seedance", () => {
     const plan = normalizeSubscriptionPlan("image_9");
     expect(hasImageStudioPlan(plan)).toBe(true);
     expect(hasFullVideoPlan(plan)).toBe(false);
     expect(hasAvatarPlan(plan)).toBe(false);
+    expect(hasSeedancePlan(plan)).toBe(false);
     expect(IMAGE_STUDIO_MONTHLY_QUOTA_IMAGE_9).toBe(150);
   });
 
-  it("pro_59 a image + vidéo + avatar", () => {
+  it("pro_59 a image + vidéo + avatar + seedance", () => {
     const plan = normalizeSubscriptionPlan("pro_59");
     expect(hasImageStudioPlan(plan)).toBe(true);
     expect(hasFullVideoPlan(plan)).toBe(true);
     expect(hasAvatarPlan(plan)).toBe(true);
+    expect(hasSeedancePlan(plan)).toBe(true);
+    expect(SEEDANCE_MONTHLY_QUOTA_PRO).toBe(5);
     expect(IMAGE_STUDIO_MONTHLY_QUOTA_DEFAULT).toBe(200);
   });
 
-  it("premium_129 a les mêmes accès que pro pour vidéo/avatar", () => {
+  it("premium_129 a les mêmes accès que pro pour vidéo/avatar/seedance", () => {
     const plan = normalizeSubscriptionPlan("premium_129");
     expect(hasFullVideoPlan(plan)).toBe(true);
     expect(hasAvatarPlan(plan)).toBe(true);
+    expect(hasSeedancePlan(plan)).toBe(true);
+    expect(SEEDANCE_MONTHLY_QUOTA_PREMIUM).toBe(15);
   });
 });

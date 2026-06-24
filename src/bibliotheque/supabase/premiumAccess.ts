@@ -25,7 +25,7 @@ export function hasImageStudioPlan(plan: UserPlan): boolean {
 }
 
 export function hasSeedancePlan(plan: UserPlan): boolean {
-  return false;
+  return plan === "pro_59" || plan === "premium_129";
 }
 
 export function hasAvatarPlan(plan: UserPlan): boolean {

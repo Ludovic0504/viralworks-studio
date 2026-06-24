@@ -4,7 +4,10 @@
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { userHasPremiumAccess } from "../_shared/premium-access.ts";
+import {
+  planAllowsSeedance,
+  resolveUserPlan,
+} from "../_shared/plan-access.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -82,9 +85,9 @@ serve(async (req) => {
       return jsonError(400, "BAD_REQUEST", "taskId est requis.");
     }
 
-    const hasAccess = await userHasPremiumAccess(supabase, user.id);
-    if (!hasAccess) {
-      return jsonError(403, "SUBSCRIPTION_REQUIRED", "Abonnement requis");
+    const userPlan = await resolveUserPlan(supabase, user.id);
+    if (!planAllowsSeedance(userPlan)) {
+      return jsonError(403, "SUBSCRIPTION_REQUIRED", "Abonnement Pro ou Studio requis");
     }
 
     const kieApiKey =

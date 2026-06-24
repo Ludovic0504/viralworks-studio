@@ -77,6 +77,7 @@ const SUBSCRIPTION_PLANS = [
     features: [
       "Image Studio — 200 générations NanaBanana Pro / mois",
       "Génération vidéo IA complète — 10 / mois",
+      "Édition vidéo IA — 5 / mois",
       "Avatars IA — 5 / mois",
       "Scripts Gagnant inclus",
       "Visuels d'accroche inclus",
@@ -92,6 +93,7 @@ const SUBSCRIPTION_PLANS = [
     popular: true,
     features: [
       "Génération vidéo IA complète — 30 / mois",
+      "Édition vidéo IA — 15 / mois",
       "Image Studio — 200 générations NanaBanana Pro / mois",
       "Avatars IA — 5 / mois",
       "Scripts Gagnant inclus",

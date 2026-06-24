@@ -4,12 +4,11 @@ import { ChevronDown, Image, Video } from "lucide-react";
 import LienNavSync from "@/composants/disposition/LienNavSync";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { prefetchPremiumAccess } from "@/hooks/usePremiumAccess";
-import { prefetchAdminAccess } from "@/bibliotheque/supabase/credits";
 import { prefetchImageStudioHistory } from "@/bibliotheque/imageStudio/imageStudioHistoryCache";
 
 const VIDEO_ITEMS = [
   { to: "/viralworks", label: "Créer ma vidéo", matchCreator: true },
-  { to: "/edit-video", label: "Éditer ma vidéo", matchEditVideo: true, adminOnly: true },
+  { to: "/edit-video", label: "Éditer ma vidéo", matchEditVideo: true, requiresSeedance: true },
 ];
 
 const IMAGE_ITEMS = [
@@ -18,7 +17,7 @@ const IMAGE_ITEMS = [
 ];
 
 function visibleVideoItems(showEditVideo) {
-  return VIDEO_ITEMS.filter((item) => showEditVideo || !item.adminOnly);
+  return VIDEO_ITEMS.filter((item) => !item.requiresSeedance || showEditVideo);
 }
 
 function useViralWorksNavState() {
@@ -71,7 +70,7 @@ function prefetchNavTarget(to, userId) {
     prefetchPremiumAccess(userId);
     prefetchImageStudioHistory(userId);
   }
-  if (to === "/edit-video") prefetchAdminAccess(userId);
+  if (to === "/edit-video") prefetchPremiumAccess(userId);
 }
 
 function MenuLink({ to, label, active, onNavigate, showNew = false }) {
@@ -166,7 +165,7 @@ export function MenuNavViralWorksDesktop({ showEditVideo = false }) {
     useViralWorksNavState();
   const videoItems = visibleVideoItems(showEditVideo);
   const prefetchEditVideo = () => {
-    if (showEditVideo) prefetchAdminAccess(session?.user?.id);
+    if (showEditVideo) prefetchPremiumAccess(session?.user?.id);
   };
   const prefetchImageStudio = () => {
     prefetchPremiumAccess(session?.user?.id);
@@ -268,7 +267,7 @@ export function MenuNavViralWorksMobile({ onNavigate, showEditVideo = false }) {
     useViralWorksNavState();
   const videoItems = visibleVideoItems(showEditVideo);
   const prefetchEditVideo = () => {
-    if (showEditVideo) prefetchAdminAccess(session?.user?.id);
+    if (showEditVideo) prefetchPremiumAccess(session?.user?.id);
   };
   const prefetchImageStudio = () => {
     prefetchPremiumAccess(session?.user?.id);

@@ -5,9 +5,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
+  getSeedanceMonthlyLimit,
   planAllowsSeedance,
   resolveUserPlan,
-  SEEDANCE_MONTHLY_LIMIT,
 } from "../_shared/plan-access.ts";
 
 const corsHeaders = {
@@ -218,6 +218,8 @@ serve(async (req) => {
       );
     }
 
+    const seedanceLimit = getSeedanceMonthlyLimit(hasAccessPlan);
+
     const serviceRoleKey =
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim() ||
       Deno.env.get("SERVICE_ROLE_KEY")?.trim();
@@ -238,11 +240,11 @@ serve(async (req) => {
     }
     const seedanceCount =
       typeof currentSeedanceCount === "number" ? currentSeedanceCount : 0;
-    if (seedanceCount >= SEEDANCE_MONTHLY_LIMIT) {
+    if (seedanceCount >= seedanceLimit) {
       return jsonError(
         429,
         "SEEDANCE_QUOTA_EXCEEDED",
-        `Quota mensuel Seedance atteint (${SEEDANCE_MONTHLY_LIMIT} éditions). Réessayez le mois prochain.`,
+        `Quota mensuel Seedance atteint (${seedanceLimit} éditions). Réessayez le mois prochain.`,
       );
     }
 
@@ -296,13 +298,13 @@ serve(async (req) => {
 
       const { error: incrementError } = await supabaseAdmin.rpc(
         "increment_seedance_count",
-        { p_user_id: user.id },
+        { p_user_id: user.id, p_limit: seedanceLimit },
       );
       if (incrementError?.message?.includes("SEEDANCE_QUOTA_EXCEEDED")) {
         return jsonError(
           429,
           "SEEDANCE_QUOTA_EXCEEDED",
-          `Quota mensuel Seedance atteint (${SEEDANCE_MONTHLY_LIMIT} éditions). Réessayez le mois prochain.`,
+          `Quota mensuel Seedance atteint (${seedanceLimit} éditions). Réessayez le mois prochain.`,
         );
       }
 

@@ -2,7 +2,10 @@ import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 export type UserPlan = "free" | "image_9" | "pro_59" | "premium_129";
 
-export const SEEDANCE_MONTHLY_LIMIT = 15;
+export const SEEDANCE_MONTHLY_LIMIT_PRO = 5;
+export const SEEDANCE_MONTHLY_LIMIT_PREMIUM = 15;
+/** @deprecated Préférer getSeedanceMonthlyLimit(plan) */
+export const SEEDANCE_MONTHLY_LIMIT = SEEDANCE_MONTHLY_LIMIT_PREMIUM;
 export const AVATAR_STUDIO_MONTHLY_LIMIT = 5;
 export const IMAGE_STUDIO_MONTHLY_LIMIT_DEFAULT = 200;
 export const IMAGE_STUDIO_MONTHLY_LIMIT_IMAGE_9 = 150;
@@ -72,8 +75,14 @@ export async function resolveUserPlan(
   return plan;
 }
 
-export function planAllowsSeedance(_plan: UserPlan): boolean {
-  return false;
+export function getSeedanceMonthlyLimit(plan: UserPlan): number {
+  if (plan === "pro_59") return SEEDANCE_MONTHLY_LIMIT_PRO;
+  if (plan === "premium_129") return SEEDANCE_MONTHLY_LIMIT_PREMIUM;
+  return 0;
+}
+
+export function planAllowsSeedance(plan: UserPlan): boolean {
+  return getSeedanceMonthlyLimit(plan) > 0;
 }
 
 export function planAllowsAvatar(plan: UserPlan): boolean {
