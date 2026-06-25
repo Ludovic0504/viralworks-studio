@@ -37,6 +37,12 @@ import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { useProfilStudio } from "@/contexte/FournisseurProfilStudio";
 import { useStudioLayoutOptions } from "@/contexte/StudioLayoutOptionsContext";
 import { usePremiumAccess } from "@/hooks/usePremiumAccess";
+import {
+  getUserWorkflowVideoWallet,
+  USER_CREDITS_UPDATED_EVENT,
+} from "@/bibliotheque/supabase/credits";
+import { WORKFLOW_QUOTA_UPDATED_EVENT } from "@/bibliotheque/workflowQuota";
+import BadgeQuotaVideo from "@/composants/video/BadgeQuotaVideo";
 import { useBoutiqueModal } from "@/contexte/ContexteModalBoutique";
 import { capturePostHog, trackPostHogError } from "@/bibliotheque/posthog/client";
 import {
@@ -864,13 +870,49 @@ export default function ViralWorks() {
   const { setStudioLayout } = useStudioLayoutOptions();
   const [showScriptQuotaModal, setShowScriptQuotaModal] = useState(false);
   const [scriptQuotaModalMessage, setScriptQuotaModalMessage] = useState(SCRIPT_STEP_VIDEO_QUOTA_MSG);
-  const { hasAccess } = usePremiumAccess();
+  const { hasAccess, loading: subscriptionLoading } = usePremiumAccess();
   const { openBoutiqueModal } = useBoutiqueModal();
+  const [videoWallet, setVideoWallet] = useState({
+    balance: 0,
+    cap: 0,
+    loading: true,
+  });
   /** idle | running | error — après succès on repasse à idle (navigation auto vers le Visuel). */
   const [scriptGenStatus, setScriptGenStatus] = useState("idle");
   const scriptGenInFlightRef = useRef(false);
   const lastBrainSnapshotRef = useRef(null);
   const sectorPrefillAppliedRef = useRef(false);
+
+  const refreshVideoWallet = useCallback(async () => {
+    const userId = session?.user?.id;
+    if (!userId || !hasAccess) {
+      setVideoWallet({ balance: 0, cap: 0, loading: false });
+      return;
+    }
+    const wallet = await getUserWorkflowVideoWallet(userId);
+    setVideoWallet({
+      balance: Math.max(0, wallet.balance),
+      cap: Math.max(1, wallet.cap),
+      loading: false,
+    });
+  }, [session?.user?.id, hasAccess]);
+
+  useEffect(() => {
+    if (subscriptionLoading) return;
+    void refreshVideoWallet();
+  }, [subscriptionLoading, refreshVideoWallet]);
+
+  useEffect(() => {
+    const onWalletUpdate = () => {
+      void refreshVideoWallet();
+    };
+    window.addEventListener(USER_CREDITS_UPDATED_EVENT, onWalletUpdate);
+    window.addEventListener(WORKFLOW_QUOTA_UPDATED_EVENT, onWalletUpdate);
+    return () => {
+      window.removeEventListener(USER_CREDITS_UPDATED_EVENT, onWalletUpdate);
+      window.removeEventListener(WORKFLOW_QUOTA_UPDATED_EVENT, onWalletUpdate);
+    };
+  }, [refreshVideoWallet]);
 
   const [currentStep, setCurrentStep] = useState(() => {
     const fromWorkflow = Number(workflowInitial?.currentStep);
@@ -1614,12 +1656,21 @@ export default function ViralWorks() {
           openBoutiqueModal(hasAccess ? "packs-videos" : "subscription");
         }}
       />
-      <div className="max-[640px]:shrink-0">
+      <div className="vws-page-head-with-badge max-[640px]:shrink-0">
         <PageTitle
           green="ViralWorks"
           white="Studio"
           subtitle="Un seul flux pour orchestrer ta campagne vidéo : cerveau VWS, visuel d'accroche et vidéo virale."
+          className="mb-0"
         />
+        {hasAccess ? (
+          <BadgeQuotaVideo
+            remaining={videoWallet.balance}
+            limit={videoWallet.cap}
+            loading={videoWallet.loading || subscriptionLoading}
+            title="Vidéos workflow restantes ce mois-ci"
+          />
+        ) : null}
       </div>
 
       <div className="space-y-6 max-[640px]:space-y-3">
