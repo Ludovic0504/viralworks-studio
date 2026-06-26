@@ -1346,11 +1346,11 @@ export default function ImageStudio() {
                     className="image-studio-setting-pill image-studio-prompts-btn shrink-0"
                     onClick={() => setPromptsModalOpen(true)}
                     disabled={generating}
-                    aria-label="Voir des idées de prompts pour ChatGPT, Claude ou Gemini"
-                    title="Idées de prompts (ChatGPT, Claude, Gemini…)"
+                    aria-label="Ouvrir les guides prompt par type d'image"
+                    title="Guides prompt — remplissage automatique"
                   >
                     <BookOpen className="image-studio-setting-pill-icon" strokeWidth={2} aria-hidden />
-                    <span className="image-studio-setting-pill-label">Prompts</span>
+                    <span className="image-studio-setting-pill-label">Guides</span>
                   </button>
                 </div>
 
@@ -1436,6 +1436,7 @@ export default function ImageStudio() {
       <ModalPromptsImageStudio
         open={promptsModalOpen}
         onClose={() => setPromptsModalOpen(false)}
+        onApplyPrompt={setPrompt}
       />
 
       <ModalImageStudioPreview

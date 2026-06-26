@@ -1955,8 +1955,8 @@
 
   .image-studio-prompts-modal {
     position: relative;
-    width: min(100%, 34rem);
-    max-height: min(88vh, 44rem);
+    width: min(100%, 44rem);
+    max-height: min(88vh, 40rem);
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -1971,6 +1971,11 @@
       inset 0 1px 0 rgba(255, 255, 255, 0.05);
   }
 
+  .image-studio-prompts-modal:not(.image-studio-prompts-modal--chat) {
+    width: min(100%, 44rem);
+    max-height: min(88vh, 40rem);
+  }
+
   .image-studio-prompts-list {
     display: flex;
     flex-direction: column;
@@ -1979,6 +1984,94 @@
     min-height: 0;
     flex: 1;
     padding-right: 0.15rem;
+  }
+
+  .image-studio-prompt-templates-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.85rem 0.65rem;
+    align-items: start;
+    justify-items: center;
+    padding: 0.15rem 0.1rem 0.25rem;
+  }
+
+  @media (max-width: 519px) {
+    .image-studio-prompt-templates-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.75rem 0.5rem;
+    }
+  }
+
+  .image-studio-prompt-template-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.45rem;
+    width: 100%;
+    max-width: 12.25rem;
+    margin: 0 auto;
+    padding: 0;
+    border: none;
+    background: transparent;
+    text-align: center;
+    cursor: pointer;
+    transition: transform 0.15s ease;
+  }
+
+  .image-studio-prompt-template-tile:hover {
+    transform: translateY(-2px);
+  }
+
+  .image-studio-prompt-template-tile:focus-visible {
+    outline: 2px solid rgba(42, 245, 152, 0.45);
+    outline-offset: 3px;
+    border-radius: 0.35rem;
+  }
+
+  .image-studio-prompt-template-tile-img {
+    display: block;
+    width: auto;
+    max-width: 100%;
+    height: auto;
+    max-height: clamp(10.5rem, 30vw, 13.25rem);
+    object-fit: contain;
+    object-position: center;
+    border-radius: 0.35rem;
+    transition: filter 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .image-studio-prompt-template-tile:hover .image-studio-prompt-template-tile-img {
+    filter: brightness(1.06);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  }
+
+  .image-studio-prompt-template-tile-label {
+    display: block;
+    width: 100%;
+    margin: 0;
+    font-size: 0.625rem;
+    line-height: 1.25;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.68);
+    transition: color 0.15s ease;
+  }
+
+  .image-studio-prompt-template-tile:hover .image-studio-prompt-template-tile-label {
+    color: rgba(255, 255, 255, 0.95);
+  }
+
+  @media (min-width: 520px) {
+    .image-studio-prompt-template-tile {
+      max-width: 11.25rem;
+    }
+
+    .image-studio-prompt-template-tile-img {
+      max-height: clamp(10rem, 19vw, 12rem);
+    }
+
+    .image-studio-prompt-template-tile-label {
+      font-size: 0.6rem;
+    }
   }
 
   .image-studio-prompt-card {
@@ -2083,7 +2176,266 @@
     font-size: 0.75rem;
     line-height: 1.45;
     color: rgba(255, 255, 255, 0.38);
-    text-align: center;
+  }
+
+  .image-studio-prompts-modal--chat {
+    width: min(100%, 36rem);
+    max-height: min(90vh, 40rem);
+    padding: 0;
+  }
+
+  .image-studio-prompt-guide-hub-sub {
+    margin: -0.25rem 0 0.85rem;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    color: rgba(255, 255, 255, 0.45);
+  }
+
+  .image-studio-prompt-guide-chat {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    height: min(90vh, 40rem);
+  }
+
+  .image-studio-prompt-guide-chat-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.85rem 0.9rem 0.65rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .image-studio-prompt-guide-back {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.55rem;
+    color: rgba(255, 255, 255, 0.55);
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .image-studio-prompt-guide-back:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.9);
+  }
+
+  .image-studio-prompt-guide-chat-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .image-studio-prompt-guide-chat-icon {
+    width: 1.1rem;
+    height: 1.1rem;
+    color: var(--is-accent);
+    flex-shrink: 0;
+  }
+
+  .image-studio-prompt-guide-chat-title {
+    margin: 0;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.92);
+  }
+
+  .image-studio-prompt-guide-chat-sub {
+    margin: 0.1rem 0 0;
+    font-size: 0.6875rem;
+    color: rgba(255, 255, 255, 0.38);
+  }
+
+  .image-studio-prompt-guide-messages {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0.85rem 0.9rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+  }
+
+  .image-studio-prompt-guide-bubble {
+    max-width: 92%;
+    border-radius: 0.85rem;
+    padding: 0.55rem 0.7rem;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+  }
+
+  .image-studio-prompt-guide-bubble--bot {
+    align-self: flex-start;
+    border: 1px solid rgba(42, 245, 152, 0.14);
+    background: rgba(42, 245, 152, 0.07);
+    color: rgba(255, 255, 255, 0.88);
+  }
+
+  .image-studio-prompt-guide-bubble--user {
+    align-self: flex-end;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.82);
+  }
+
+  .image-studio-prompt-guide-bubble-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-bottom: 0.25rem;
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--is-accent);
+  }
+
+  .image-studio-prompt-guide-bubble-text {
+    margin: 0;
+    white-space: pre-wrap;
+  }
+
+  .image-studio-prompt-guide-result {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    margin-top: 0.15rem;
+  }
+
+  .image-studio-prompt-guide-preview-toggle,
+  .image-studio-prompt-guide-adjust-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    width: 100%;
+    border-radius: 0.65rem;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(0, 0, 0, 0.22);
+    color: rgba(255, 255, 255, 0.72);
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.45rem 0.6rem;
+    transition: border-color 0.15s, background 0.15s;
+  }
+
+  .image-studio-prompt-guide-preview-toggle:hover,
+  .image-studio-prompt-guide-adjust-toggle:hover {
+    border-color: rgba(42, 245, 152, 0.25);
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .image-studio-prompt-guide-preview-body {
+    max-height: 14rem;
+    margin: 0;
+  }
+
+  .image-studio-prompt-guide-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+
+  .image-studio-prompt-guide-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.55);
+  }
+
+  .image-studio-prompt-guide-field input {
+    border-radius: 0.55rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.25);
+    color: rgba(255, 255, 255, 0.88);
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 0.45rem 0.55rem;
+  }
+
+  .image-studio-prompt-guide-field input:focus {
+    outline: none;
+    border-color: rgba(42, 245, 152, 0.35);
+  }
+
+  .image-studio-prompt-guide-footer {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    padding: 0.65rem 0.9rem 0.85rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(0, 0, 0, 0.18);
+  }
+
+  .image-studio-prompt-guide-pref {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.6875rem;
+    color: rgba(255, 255, 255, 0.42);
+    user-select: none;
+  }
+
+  .image-studio-prompt-guide-pref input {
+    accent-color: var(--is-accent);
+  }
+
+  .image-studio-prompt-guide-apply {
+    width: 100%;
+    min-height: 2.5rem;
+    border-radius: 0.65rem;
+    font-size: 0.8125rem;
+    font-weight: 700;
+  }
+
+  .image-studio-prompt-guide-compose {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+  }
+
+  .image-studio-prompt-guide-input {
+    flex: 1;
+    min-width: 0;
+    border-radius: 9999px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 0.8125rem;
+    padding: 0.55rem 0.85rem;
+  }
+
+  .image-studio-prompt-guide-input:focus {
+    outline: none;
+    border-color: rgba(42, 245, 152, 0.35);
+  }
+
+  .image-studio-prompt-guide-send {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.35rem;
+    height: 2.35rem;
+    border-radius: 9999px;
+    background: var(--is-accent);
+    color: #0d1117;
+    flex-shrink: 0;
+    transition: filter 0.15s, opacity 0.15s;
+  }
+
+  .image-studio-prompt-guide-send:hover:not(:disabled) {
+    filter: brightness(1.05);
+  }
+
+  .image-studio-prompt-guide-send:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 
   /* Sheet réglages mobile */
