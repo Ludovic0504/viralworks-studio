@@ -851,7 +851,9 @@ export default function ImageStudio() {
   const quotaReached = hasImagePlan && quotaCount >= quotaLimit;
   const quotaHeadroom = hasImagePlan ? Math.max(0, quotaLimit - quotaCount) : 4;
   const maxGenerationCount = Math.min(4, Math.max(quotaHeadroom, 1));
-  const modelAvailable = modelsAvailability[model];
+  const modelAvailable = session
+    ? Boolean(modelsAvailability[model])
+    : true;
   const canGenerate =
     Boolean(prompt.trim()) &&
     !generating &&
