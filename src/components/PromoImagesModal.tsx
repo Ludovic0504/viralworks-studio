@@ -143,11 +143,13 @@ export default function PromoImagesModal() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [isModalOpen, closeModal, manualOpen, variant]);
 
-  /** Après connexion : réinitialiser pour relancer le timer conversion (1 s). */
+  /** Après connexion : réinitialiser l’auto-modale (timer conversion 1 s). */
   useEffect(() => {
     setVisible(false);
-    setManualOpen(null);
     clearTimer();
+    if (session?.user?.id) {
+      setManualOpen(null);
+    }
   }, [session?.user?.id, clearTimer]);
 
   /** Masquer immédiatement sur les routes auth (ex. lien email de confirmation). */

@@ -29,14 +29,6 @@ export function requestPromoModalOpen(variant?: PromoModalVariant): void {
   );
 }
 
-function hadAccountOnDevice(): boolean {
-  try {
-    return localStorage.getItem(HAD_ACCOUNT_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
 export function markHadAccountOnDevice(): void {
   try {
     localStorage.setItem(HAD_ACCOUNT_KEY, "1");
@@ -85,9 +77,6 @@ export function isPromoModalSuppressed(pathname: string): boolean {
 export function hasSeenPromoVariant(
   variant: keyof typeof PROMO_SEEN_KEYS,
 ): boolean {
-  if (variant === "acquisition" && hadAccountOnDevice()) {
-    return true;
-  }
   try {
     return sessionStorage.getItem(PROMO_SEEN_KEYS[variant]) === "1";
   } catch {
