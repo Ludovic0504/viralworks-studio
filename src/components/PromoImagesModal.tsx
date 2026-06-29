@@ -57,7 +57,6 @@ export default function PromoImagesModal() {
 
   const [visible, setVisible] = useState(false);
   const [manualOpen, setManualOpen] = useState<Variant | null>(null);
-  const pendingManualRef = useRef<Variant | null>(null);
   const [, setLogoutSuppressTick] = useState(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -76,7 +75,6 @@ export default function PromoImagesModal() {
       setLogoutSuppressTick((n) => n + 1);
       setVisible(false);
       setManualOpen(null);
-      pendingManualRef.current = null;
       clearTimer();
     };
     window.addEventListener(PROMO_LOGOUT_SUPPRESS_EVENT, onLogoutSuppress);
@@ -92,22 +90,12 @@ export default function PromoImagesModal() {
         detail?.variant ?? (session ? "conversion" : "acquisition");
       clearTimer();
       setVisible(false);
-      if (isResolving) {
-        pendingManualRef.current = requested;
-        return;
-      }
       setManualOpen(requested);
     };
     window.addEventListener(PROMO_OPEN_REQUEST_EVENT, onOpenRequest);
     return () =>
       window.removeEventListener(PROMO_OPEN_REQUEST_EVENT, onOpenRequest);
-  }, [clearTimer, isResolving, session]);
-
-  useEffect(() => {
-    if (!pendingManualRef.current || isResolving) return;
-    setManualOpen(pendingManualRef.current);
-    pendingManualRef.current = null;
-  }, [isResolving]);
+  }, [clearTimer, session]);
 
   const closeModal = useCallback(
     (variantToMark: Variant, opts?: { manual?: boolean }) => {
@@ -141,7 +129,7 @@ export default function PromoImagesModal() {
     !hasSeenVariant(variant) &&
     visible;
 
-  const showManualModal = manualOpen !== null && !isResolving;
+  const showManualModal = manualOpen !== null;
   const isModalOpen = showAutoModal || showManualModal;
 
   useEffect(() => {
@@ -159,7 +147,6 @@ export default function PromoImagesModal() {
   useEffect(() => {
     setVisible(false);
     setManualOpen(null);
-    pendingManualRef.current = null;
     clearTimer();
   }, [session?.user?.id, clearTimer]);
 
@@ -199,7 +186,11 @@ export default function PromoImagesModal() {
     session?.user?.id,
   ]);
 
-  if ((!showAutoModal && !showManualModal) || isResolving || (hasAccess && !manualOpen)) {
+  if (
+    (!showAutoModal && !showManualModal) ||
+    (isResolving && !manualOpen) ||
+    (hasAccess && !manualOpen)
+  ) {
     return null;
   }
   if (typeof document === "undefined") return null;

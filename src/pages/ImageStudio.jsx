@@ -885,22 +885,13 @@ export default function ImageStudio() {
   }, []);
 
   const openPromptImport = useCallback(() => {
-    void runWithAuth(() => {
-      promptImportInputRef.current?.click();
-      return true;
-    });
-  }, [runWithAuth]);
+    promptImportInputRef.current?.click();
+  }, []);
 
   const handlePromptImportChange = useCallback((e) => {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file || !file.type.startsWith("image/")) return;
-
-    const userId = session?.user?.id;
-    if (!userId) {
-      setError("Connexion requise pour importer une image de référence.");
-      return;
-    }
 
     const reader = new FileReader();
     reader.onload = () => {
@@ -908,6 +899,15 @@ export default function ImageStudio() {
         try {
           const dataUrl = String(reader.result || "");
           if (!dataUrl) return;
+
+          const userId = session?.user?.id;
+          if (!userId) {
+            setImportedRefImage(dataUrl);
+            setImportedRefPreview(dataUrl);
+            setError(null);
+            return;
+          }
+
           const publicUrl = await uploadImageStudioReferenceUrl(userId, dataUrl);
           setImportedRefImage(publicUrl);
           setImportedRefPreview(publicUrl);
