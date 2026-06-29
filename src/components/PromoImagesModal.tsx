@@ -11,9 +11,11 @@ import {
   isPromoModalSuppressed,
   markPromoVariantSeen,
   PROMO_LOGOUT_SUPPRESS_EVENT,
+  PROMO_OPEN_REQUEST_EVENT,
+  type PromoModalVariant,
 } from "@/bibliotheque/promo/promoModalGate";
 
-type Variant = "acquisition" | "conversion";
+type Variant = PromoModalVariant;
 
 const DELAY_MS = 1000;
 
@@ -54,6 +56,8 @@ export default function PromoImagesModal() {
   const variant: Variant = session ? "conversion" : "acquisition";
 
   const [visible, setVisible] = useState(false);
+  const [manualOpen, setManualOpen] = useState<Variant | null>(null);
+  const pendingManualRef = useRef<Variant | null>(null);
   const [, setLogoutSuppressTick] = useState(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -71,6 +75,8 @@ export default function PromoImagesModal() {
     const onLogoutSuppress = () => {
       setLogoutSuppressTick((n) => n + 1);
       setVisible(false);
+      setManualOpen(null);
+      pendingManualRef.current = null;
       clearTimer();
     };
     window.addEventListener(PROMO_LOGOUT_SUPPRESS_EVENT, onLogoutSuppress);
@@ -78,26 +84,82 @@ export default function PromoImagesModal() {
       window.removeEventListener(PROMO_LOGOUT_SUPPRESS_EVENT, onLogoutSuppress);
   }, [clearTimer]);
 
+  /** Ouverture explicite (bouton Générer Image Studio) — ignore les blocages « déjà vu ». */
+  useEffect(() => {
+    const onOpenRequest = (event: Event) => {
+      const detail = (event as CustomEvent<{ variant?: Variant }>).detail;
+      const requested =
+        detail?.variant ?? (session ? "conversion" : "acquisition");
+      clearTimer();
+      setVisible(false);
+      if (isResolving) {
+        pendingManualRef.current = requested;
+        return;
+      }
+      setManualOpen(requested);
+    };
+    window.addEventListener(PROMO_OPEN_REQUEST_EVENT, onOpenRequest);
+    return () =>
+      window.removeEventListener(PROMO_OPEN_REQUEST_EVENT, onOpenRequest);
+  }, [clearTimer, isResolving, session]);
+
+  useEffect(() => {
+    if (!pendingManualRef.current || isResolving) return;
+    setManualOpen(pendingManualRef.current);
+    pendingManualRef.current = null;
+  }, [isResolving]);
+
   const closeModal = useCallback(
-    (variantToMark: Variant) => {
+    (variantToMark: Variant, opts?: { manual?: boolean }) => {
+      const isManual = opts?.manual ?? manualOpen !== null;
+      if (isManual) {
+        setManualOpen(null);
+        return;
+      }
       markVariantSeen(variantToMark);
       setVisible(false);
       clearTimer();
     },
-    [clearTimer],
+    [clearTimer, manualOpen],
   );
 
   const goToImageStudio = useCallback(
-    (variantToMark: Variant) => {
-      closeModal(variantToMark);
-      navigate("/image-studio");
+    (variantToMark: Variant, isManual: boolean) => {
+      closeModal(variantToMark, { manual: isManual });
+      if (location.pathname !== "/image-studio") {
+        navigate("/image-studio");
+      }
     },
-    [closeModal, navigate],
+    [closeModal, navigate, location.pathname],
   );
+
+  const showAutoModal =
+    !manualOpen &&
+    !promoSuppressed &&
+    !isResolving &&
+    !hasAccess &&
+    !hasSeenVariant(variant) &&
+    visible;
+
+  const showManualModal = manualOpen !== null && !isResolving;
+  const isModalOpen = showAutoModal || showManualModal;
+
+  useEffect(() => {
+    if (!isModalOpen) return undefined;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeModal(manualOpen ?? variant, { manual: manualOpen !== null });
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isModalOpen, closeModal, manualOpen, variant]);
 
   /** Après connexion : réinitialiser pour relancer le timer conversion (1 s). */
   useEffect(() => {
     setVisible(false);
+    setManualOpen(null);
+    pendingManualRef.current = null;
     clearTimer();
   }, [session?.user?.id, clearTimer]);
 
@@ -109,7 +171,7 @@ export default function PromoImagesModal() {
   }, [promoSuppressed, clearTimer]);
 
   useEffect(() => {
-    if (promoSuppressed || isResolving || hasAccess || hasSeenVariant(variant)) {
+    if (manualOpen || promoSuppressed || isResolving || hasAccess || hasSeenVariant(variant)) {
       return;
     }
 
@@ -125,6 +187,7 @@ export default function PromoImagesModal() {
 
     return clearTimer;
   }, [
+    manualOpen,
     promoSuppressed,
     isResolving,
     hasAccess,
@@ -136,37 +199,34 @@ export default function PromoImagesModal() {
     session?.user?.id,
   ]);
 
-  useEffect(() => {
-    if (!visible) return undefined;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeModal(variant);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [visible, closeModal, variant]);
-
-  if (promoSuppressed || isResolving || hasAccess || !visible) return null;
+  if ((!showAutoModal && !showManualModal) || isResolving || (hasAccess && !manualOpen)) {
+    return null;
+  }
   if (typeof document === "undefined") return null;
 
-  const { title, subtitle, cta, dismiss: dismissLabel } = CONTENT[variant];
-  const isAcquisition = variant === "acquisition";
+  const displayVariant = manualOpen ?? variant;
+  const isAcquisition = displayVariant === "acquisition";
+  const { title, subtitle, cta, dismiss: dismissLabel } = CONTENT[displayVariant];
 
   const handleCta = () => {
-    if (variant === "acquisition") {
-      markVariantSeen("acquisition");
+    if (displayVariant === "acquisition") {
+      if (!manualOpen) markVariantSeen("acquisition");
+      setManualOpen(null);
       setVisible(false);
       clearTimer();
       openAuthModal();
       return;
     }
-    closeModal("conversion");
+    closeModal("conversion", { manual: manualOpen !== null });
     openBoutiqueModal("subscription");
   };
+
+  const handleClose = () => closeModal(displayVariant, { manual: manualOpen !== null });
 
   return createPortal(
     <div
       className="fixed inset-0 z-[115] flex items-center justify-center bg-black/70 px-4 py-6"
-      onClick={() => closeModal(variant)}
+      onClick={handleClose}
       role="presentation"
     >
       <div
@@ -222,7 +282,7 @@ export default function PromoImagesModal() {
           </button>
           <button
             type="button"
-            onClick={() => goToImageStudio(variant)}
+            onClick={() => goToImageStudio(displayVariant, manualOpen !== null)}
             className="text-sm text-white/40 transition-colors hover:text-white/60"
           >
             {dismissLabel}

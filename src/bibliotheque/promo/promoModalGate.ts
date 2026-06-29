@@ -15,6 +15,20 @@ export const PROMO_SEEN_KEYS = {
 
 export const PROMO_LOGOUT_SUPPRESS_EVENT = "vw:promo-logout-suppress";
 
+export type PromoModalVariant = keyof typeof PROMO_SEEN_KEYS;
+
+export const PROMO_OPEN_REQUEST_EVENT = "vw:promo-open-request";
+
+/** Ouvre la modale promo immédiatement (ex. bouton Générer sans compte / sans abonnement). */
+export function requestPromoModalOpen(variant?: PromoModalVariant): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent<{ variant?: PromoModalVariant }>(PROMO_OPEN_REQUEST_EVENT, {
+      detail: { variant },
+    }),
+  );
+}
+
 function hadAccountOnDevice(): boolean {
   try {
     return localStorage.getItem(HAD_ACCOUNT_KEY) === "1";

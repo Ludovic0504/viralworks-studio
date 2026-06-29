@@ -73,6 +73,7 @@ import { uploadImageStudioReferenceUrl } from "@/bibliotheque/imageStudio/upload
 import ModalBibliothequeAvatars from "@/composants/studio/avatar/ModalBibliothequeAvatars";
 import ModalBibliothequeProduits from "@/composants/studio/product/ModalBibliothequeProduits";
 import { capturePostHog, trackPostHogError } from "@/bibliotheque/posthog/client";
+import { requestPromoModalOpen } from "@/bibliotheque/promo/promoModalGate";
 
 const ASPECT_RATIOS = ["1:1", "9:16", "16:9"];
 const GENERATION_COUNTS = [1, 2, 3, 4];
@@ -1207,15 +1208,19 @@ export default function ImageStudio() {
   );
 
   const requestGenerate = () => {
-    void runWithAuth(async () => {
-      if (accessLoading) return false;
-      if (!hasImageStudioPlan(plan)) {
-        setSubscribeModalOpen(true);
-        return false;
-      }
-      await handleGenerate();
-      return true;
-    });
+    if (!canGenerate || accessLoading) return;
+
+    if (!session) {
+      requestPromoModalOpen("acquisition");
+      return;
+    }
+
+    if (!hasImageStudioPlan(plan)) {
+      requestPromoModalOpen("conversion");
+      return;
+    }
+
+    void handleGenerate();
   };
 
   return (
