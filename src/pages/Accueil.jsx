@@ -225,7 +225,7 @@ export default function Accueil() {
       </div>
 
       <section
-        className="relative z-[1] py-12 sm:py-14"
+        className="accueil-image-promo-section relative z-[1] py-12 sm:py-14"
         aria-labelledby="accueil-image-promo-title"
       >
         <div className="accueil-inner relative z-10 mx-auto flex min-h-0 w-full min-w-0 max-w-[1100px] flex-1 flex-col px-6 sm:px-8 md:justify-center md:gap-3 md:px-12 xl:px-16">
@@ -377,6 +377,15 @@ export default function Accueil() {
           }
           .accueil-videos-frame {
             height: clamp(280px, min(50lvh, 520px), 560px);
+          }
+          .accueil-image-promo-section {
+            padding-top: 0.5rem;
+          }
+          .accueil-promo-images-slot {
+            margin-top: -2.75rem;
+          }
+          .accueil-promo-images-shift {
+            transform: translateY(-4.25rem);
           }
           .accueil-vcard-l {
             transform: rotate(-5deg) scale(0.87) translateX(-2px);
