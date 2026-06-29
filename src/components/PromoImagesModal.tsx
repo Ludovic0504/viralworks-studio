@@ -6,12 +6,7 @@ import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { useBoutiqueModal } from "@/contexte/ContexteModalBoutique";
 import { usePremiumAccess } from "@/hooks/usePremiumAccess";
 import { PROMO_ACQUISITION_IMAGES } from "@/bibliotheque/promo/imagesPromo";
-import {
-  clearEmailJustConfirmed,
-  EMAIL_CONFIRMED_EVENT,
-  hasEmailJustConfirmed,
-  isPromoModalSuppressed,
-} from "@/bibliotheque/promo/promoModalGate";
+import { isPromoModalSuppressed } from "@/bibliotheque/promo/promoModalGate";
 
 type Variant = "acquisition" | "conversion";
 
@@ -58,8 +53,7 @@ const CONTENT = {
 export default function PromoImagesModal() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [emailConfirmed, setEmailConfirmed] = useState(hasEmailJustConfirmed);
-  const promoSuppressed = isPromoModalSuppressed(location.pathname, emailConfirmed);
+  const promoSuppressed = isPromoModalSuppressed(location.pathname);
   const { session, loading: authLoading } = useAuth();
   const { hasAccess, loading: premiumLoading } = usePremiumAccess();
   const { openAuthModal, isAuthModalOpen } = useRequireAuthAction();
@@ -72,13 +66,6 @@ export default function PromoImagesModal() {
 
   const isResolving = authLoading || (Boolean(session) && premiumLoading);
 
-  /** Réagir dès que la confirmation email réussit (même page, avant redirection). */
-  useEffect(() => {
-    const sync = () => setEmailConfirmed(hasEmailJustConfirmed());
-    window.addEventListener(EMAIL_CONFIRMED_EVENT, sync);
-    return () => window.removeEventListener(EMAIL_CONFIRMED_EVENT, sync);
-  }, []);
-
   const clearTimer = useCallback(() => {
     if (timerRef.current) {
       clearTimeout(timerRef.current);
@@ -89,8 +76,6 @@ export default function PromoImagesModal() {
   const dismiss = useCallback(
     (variantToMark: Variant) => {
       markVariantSeen(variantToMark);
-      clearEmailJustConfirmed();
-      setEmailConfirmed(false);
       setVisible(false);
       clearTimer();
       navigate("/image-studio");
