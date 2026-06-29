@@ -6,31 +6,23 @@ import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { useBoutiqueModal } from "@/contexte/ContexteModalBoutique";
 import { usePremiumAccess } from "@/hooks/usePremiumAccess";
 import { PROMO_ACQUISITION_IMAGES } from "@/bibliotheque/promo/imagesPromo";
-import { isPromoModalSuppressed } from "@/bibliotheque/promo/promoModalGate";
+import {
+  hasSeenPromoVariant,
+  isPromoModalSuppressed,
+  markPromoVariantSeen,
+  PROMO_LOGOUT_SUPPRESS_EVENT,
+} from "@/bibliotheque/promo/promoModalGate";
 
 type Variant = "acquisition" | "conversion";
-
-const STORAGE_KEYS: Record<Variant, string> = {
-  acquisition: "vw_images_promo_seen_acquisition",
-  conversion: "vw_images_promo_seen_conversion",
-};
 
 const DELAY_MS = 1000;
 
 function hasSeenVariant(variant: Variant): boolean {
-  try {
-    return sessionStorage.getItem(STORAGE_KEYS[variant]) === "1";
-  } catch {
-    return false;
-  }
+  return hasSeenPromoVariant(variant);
 }
 
 function markVariantSeen(variant: Variant): void {
-  try {
-    sessionStorage.setItem(STORAGE_KEYS[variant], "1");
-  } catch {
-    // no-op
-  }
+  markPromoVariantSeen(variant);
 }
 
 const CONTENT = {
@@ -62,6 +54,7 @@ export default function PromoImagesModal() {
   const variant: Variant = session ? "conversion" : "acquisition";
 
   const [visible, setVisible] = useState(false);
+  const [, setLogoutSuppressTick] = useState(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isResolving = authLoading || (Boolean(session) && premiumLoading);
@@ -73,14 +66,33 @@ export default function PromoImagesModal() {
     }
   }, []);
 
-  const dismiss = useCallback(
+  /** Réagir immédiatement à la déconnexion (avant le prochain cycle du timer). */
+  useEffect(() => {
+    const onLogoutSuppress = () => {
+      setLogoutSuppressTick((n) => n + 1);
+      setVisible(false);
+      clearTimer();
+    };
+    window.addEventListener(PROMO_LOGOUT_SUPPRESS_EVENT, onLogoutSuppress);
+    return () =>
+      window.removeEventListener(PROMO_LOGOUT_SUPPRESS_EVENT, onLogoutSuppress);
+  }, [clearTimer]);
+
+  const closeModal = useCallback(
     (variantToMark: Variant) => {
       markVariantSeen(variantToMark);
       setVisible(false);
       clearTimer();
+    },
+    [clearTimer],
+  );
+
+  const goToImageStudio = useCallback(
+    (variantToMark: Variant) => {
+      closeModal(variantToMark);
       navigate("/image-studio");
     },
-    [clearTimer, navigate],
+    [closeModal, navigate],
   );
 
   /** Après connexion : réinitialiser pour relancer le timer conversion (1 s). */
@@ -127,11 +139,11 @@ export default function PromoImagesModal() {
   useEffect(() => {
     if (!visible) return undefined;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") dismiss(variant);
+      if (event.key === "Escape") closeModal(variant);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [visible, dismiss, variant]);
+  }, [visible, closeModal, variant]);
 
   if (promoSuppressed || isResolving || hasAccess || !visible) return null;
   if (typeof document === "undefined") return null;
@@ -147,14 +159,14 @@ export default function PromoImagesModal() {
       openAuthModal();
       return;
     }
-    dismiss("conversion");
+    closeModal("conversion");
     openBoutiqueModal("subscription");
   };
 
   return createPortal(
     <div
       className="fixed inset-0 z-[115] flex items-center justify-center bg-black/70 px-4 py-6"
-      onClick={() => dismiss(variant)}
+      onClick={() => closeModal(variant)}
       role="presentation"
     >
       <div
@@ -210,7 +222,7 @@ export default function PromoImagesModal() {
           </button>
           <button
             type="button"
-            onClick={() => dismiss(variant)}
+            onClick={() => goToImageStudio(variant)}
             className="text-sm text-white/40 transition-colors hover:text-white/60"
           >
             {dismissLabel}

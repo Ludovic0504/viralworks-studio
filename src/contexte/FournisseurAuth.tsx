@@ -18,6 +18,7 @@ import {
   resetPostHogUser,
   syncPostHogUserFromSession,
 } from "@/bibliotheque/posthog/client";
+import { clearPromoLogoutSuppression, markPromoSuppressedOnLogout } from "@/bibliotheque/promo/promoModalGate";
 
 type AuthCtx = {
   session: Session | null;
@@ -112,6 +113,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         applySession(s ?? null);
 
         if (event === "SIGNED_IN" && s?.user?.id) {
+          clearPromoLogoutSuppression();
           try {
             localStorage.removeItem("onetool_oauth_remember");
             updateLastActivity();
@@ -152,6 +154,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         if (event === "SIGNED_OUT") {
+          markPromoSuppressedOnLogout();
           try {
             invalidateAuthUserIdCache();
             resetSessionBootstrap();
@@ -211,6 +214,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signOut = useCallback(async () => {
     const signedOutUserId = previousUserIdRef.current ?? session?.user?.id ?? null;
     try {
+      markPromoSuppressedOnLogout();
       resetPostHogUser();
       await supabase.auth.signOut();
       setSession(null);
