@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import LienNavSync from "@/composants/disposition/LienNavSync";
+import { PROMO_ACQUISITION_IMAGES } from "@/bibliotheque/promo/imagesPromo";
 
 function subscribeMobileMax767(cb) {
   const mq = window.matchMedia("(max-width: 767px)");
@@ -57,6 +58,21 @@ function AccueilDemoVideo({ src, preload, label, className }) {
   );
 }
 
+function AccueilPromoImageCard({ src, alt, className }) {
+  return (
+    <div className={className}>
+      <img
+        src={src}
+        alt={alt}
+        className="accueil-vcard-media h-full w-full object-cover"
+        loading="lazy"
+        decoding="async"
+        draggable={false}
+      />
+    </div>
+  );
+}
+
 export default function Accueil() {
   const { session } = useAuth();
   const navigate = useNavigate();
@@ -94,23 +110,10 @@ export default function Accueil() {
     });
   };
 
-  useEffect(() => {
-    const html = document.documentElement;
-    const body = document.body;
-    const prevHtmlOverflow = html.style.overflow;
-    const prevBodyOverflow = body.style.overflow;
-    html.style.overflow = "hidden";
-    body.style.overflow = "hidden";
-    return () => {
-      html.style.overflow = prevHtmlOverflow;
-      body.style.overflow = prevBodyOverflow;
-    };
-  }, []);
-
   return (
-    <div className="relative flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
-      <div className="relative z-[1] flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
-        <section className="accueil-section relative flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden max-md:pt-[calc(var(--promo-images-banner-height,0px)+2.75rem)] md:justify-center md:pt-[var(--promo-images-banner-height,0px)]">
+    <div className="relative flex w-full min-w-0 flex-col">
+      <div className="relative z-[1] flex w-full min-w-0 flex-col">
+        <section className="accueil-section relative flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden max-md:pt-[calc(var(--promo-images-banner-height,0px)+2.75rem)] md:justify-center md:pt-[var(--promo-images-banner-height,0px)] pb-12 max-md:pb-10 md:pb-16">
           <div className="accueil-inner relative z-10 mx-auto flex min-h-0 w-full min-w-0 max-w-[1100px] flex-1 flex-col px-6 sm:px-8 md:justify-center md:gap-3 md:px-12 xl:px-16">
             <div className="flex min-h-0 w-full min-w-0 flex-col md:flex-1 md:flex-row md:items-center md:gap-10 md:py-2">
               <div className="relative z-20 w-full min-w-0 shrink-0 text-left max-[580px]:text-center md:flex-[1.1] md:pr-2 xl:pr-6">
@@ -171,6 +174,7 @@ export default function Accueil() {
                 className="accueil-videos-slot accueil-fade-up accueil-fade-up-d5 pointer-events-none flex w-full min-h-0 min-w-0 max-md:-mt-28 max-md:shrink-0 max-md:items-center max-md:justify-center max-md:overflow-hidden md:mt-0 md:flex-1 md:items-center md:justify-end"
                 onContextMenu={blockMediaSave}
               >
+                <div className="accueil-hero-videos-shift w-full">
                 <div className="accueil-videos-frame relative mx-auto aspect-[260/340] w-auto max-w-full shrink-0 overflow-hidden md:h-[clamp(200px,min(34dvh,38vh),440px)] md:max-w-[min(96vw,400px)] md:overflow-visible">
                   <div
                     className="pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 rounded-full bg-[rgba(33,243,185,0.08)] blur-[clamp(18px,4vw,28px)] max-md:blur-[14px]"
@@ -206,11 +210,86 @@ export default function Accueil() {
                     />
                   ) : null}
                 </div>
+                </div>
               </div>
             </div>
           </div>
         </section>
       </div>
+
+      <div
+        className="relative z-[1] px-6 sm:px-8 md:px-12 xl:px-16"
+        aria-hidden
+      >
+        <div className="mx-auto h-px w-full max-w-[1100px] bg-white/[0.08]" />
+      </div>
+
+      <section
+        className="relative z-[1] py-12 sm:py-14"
+        aria-labelledby="accueil-image-promo-title"
+      >
+        <div className="accueil-inner relative z-10 mx-auto flex min-h-0 w-full min-w-0 max-w-[1100px] flex-1 flex-col px-6 sm:px-8 md:justify-center md:gap-3 md:px-12 xl:px-16">
+          <div className="accueil-promo-grid flex min-h-0 w-full min-w-0 flex-col gap-8 sm:gap-10 md:py-2">
+            <div className="accueil-fade-up accueil-fade-up-d3 accueil-promo-images-slot pointer-events-none flex w-full min-h-0 min-w-0 shrink-0 max-md:items-center max-md:justify-center max-md:overflow-hidden md:items-center md:justify-start">
+              <div className="accueil-promo-images-shift w-full">
+              <div className="accueil-videos-frame relative mx-auto aspect-[260/340] w-auto max-w-full shrink-0 overflow-hidden md:mx-0 md:h-[clamp(200px,min(34dvh,38vh),440px)] md:max-w-[min(96vw,400px)] md:overflow-visible">
+                <div
+                  className="pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 rounded-full bg-[rgba(33,243,185,0.08)] blur-[clamp(18px,4vw,28px)] max-md:blur-[14px]"
+                  style={{
+                    bottom: "-2.35%",
+                    width: "50%",
+                    height: "64.7%",
+                  }}
+                  aria-hidden
+                />
+                {PROMO_ACQUISITION_IMAGES[0] ? (
+                  <AccueilPromoImageCard
+                    src={PROMO_ACQUISITION_IMAGES[0].src}
+                    alt={PROMO_ACQUISITION_IMAGES[0].alt}
+                    className="accueil-vcard accueil-vcard-l group absolute z-[1] h-[45.882%] w-[33.846%] overflow-hidden rounded-2xl border border-white/10 shadow-[0_18px_50px_rgba(0,0,0,0.65)]"
+                  />
+                ) : null}
+                {PROMO_ACQUISITION_IMAGES[1] ? (
+                  <AccueilPromoImageCard
+                    src={PROMO_ACQUISITION_IMAGES[1].src}
+                    alt={PROMO_ACQUISITION_IMAGES[1].alt}
+                    className="accueil-vcard accueil-vcard-c group absolute bottom-0 z-[3] h-[57.647%] w-[42.308%] overflow-hidden rounded-2xl border border-[rgba(33,243,185,0.13)] shadow-[0_24px_65px_rgba(0,0,0,0.75)]"
+                  />
+                ) : null}
+                {PROMO_ACQUISITION_IMAGES[2] ? (
+                  <AccueilPromoImageCard
+                    src={PROMO_ACQUISITION_IMAGES[2].src}
+                    alt={PROMO_ACQUISITION_IMAGES[2].alt}
+                    className="accueil-vcard accueil-vcard-r group absolute z-[1] h-[45.882%] w-[33.846%] overflow-hidden rounded-2xl border border-white/10 shadow-[0_18px_50px_rgba(0,0,0,0.65)]"
+                  />
+                ) : null}
+              </div>
+              </div>
+            </div>
+
+            <div className="flex w-full min-w-0 flex-col justify-center self-center text-left">
+              <h2
+                id="accueil-image-promo-title"
+                className="accueil-fade-up accueil-fade-up-d1 mb-3 text-left font-black tracking-tight text-white/[0.93] text-[clamp(22px,4.5vw,36px)] leading-[1.05] md:mb-4"
+              >
+                Génère des visuels produits avec NanaBanana Pro
+              </h2>
+              <p className="accueil-fade-up accueil-fade-up-d2 mb-8 max-w-[560px] text-left text-sm leading-relaxed text-white/[0.36] sm:mb-10 sm:text-[15px] md:mb-8">
+                150 images 2K par mois — e-commerce, UGC, artisans — à partir de 9€/mois
+              </p>
+
+              <div className="accueil-fade-up accueil-fade-up-d4 flex justify-start">
+                <LienNavSync
+                  to="/image-studio"
+                  className="group inline-flex items-center gap-2 rounded-[11px] bg-[#21f3b9] px-5 py-3 text-sm font-extrabold text-[#07090f] shadow-[0_0_28px_rgba(33,243,185,0.26)] transition-all duration-200 hover:-translate-y-px hover:shadow-[0_0_44px_rgba(33,243,185,0.42)] max-md:px-4 max-md:py-2.5 max-md:text-[13px]"
+                >
+                  <span>Essayer Image Studio →</span>
+                </LienNavSync>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <style>{`
         @keyframes accueilFadeUp {
@@ -247,6 +326,15 @@ export default function Accueil() {
           user-select: none;
           pointer-events: none;
         }
+        .accueil-vcard-media {
+          display: block;
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          -webkit-user-drag: none;
+          user-select: none;
+          pointer-events: none;
+        }
         .accueil-vcard-l {
           bottom: 8.235%;
           left: 1.538%;
@@ -270,6 +358,18 @@ export default function Accueil() {
         }
         .accueil-vcard-r:hover {
           transform: rotate(3deg) scale(0.9) translateX(6px);
+        }
+        @media (min-width: 768px) {
+          .accueil-promo-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4rem;
+            align-items: center;
+          }
+          .accueil-hero-videos-shift,
+          .accueil-promo-images-shift {
+            transform: translateY(-5rem);
+          }
         }
         @media (max-width: 767px) {
           .accueil-videos-slot {

@@ -13,12 +13,12 @@ const DEFAULT_PADDING =
 export const PAGE_SHELL_INNER_CLASS =
   "relative mx-auto w-full min-w-0 max-w-7xl px-4 sm:px-6 lg:px-8";
 
-/** Accueil — plein écran, sans scroll document. */
+/** Accueil — hero plein écran + section sous le fold scrollable. */
 const ACCUEIL = {
-  shellLayoutClass: "h-dvh overflow-hidden",
-  contentAreaFlexClass: "min-h-0 flex-1",
-  sidebarMainClassName: "flex-1 min-h-0 overflow-hidden",
-  mainWrapperClass: "min-h-0 flex-1 overflow-hidden",
+  shellLayoutClass: "min-h-dvh",
+  contentAreaFlexClass: "flex-none",
+  sidebarMainClassName: "flex-none",
+  mainWrapperClass: "flex-none",
   mainShellTopPadding: ACCUEIL_PADDING,
   compactFooter: true,
 };

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
-import { X } from "lucide-react";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { useBoutiqueModal } from "@/contexte/ContexteModalBoutique";
@@ -39,7 +38,7 @@ const CONTENT = {
     subtitle:
       "Accède à Nanobanana Pro inclus dans ViralWorks Images — à partir de 9€/mois",
     cta: "Créer mon compte gratuitement",
-    dismiss: "Continuer sur le site",
+    dismiss: "Explorer Image Studio d'abord",
   },
   conversion: {
     title: "ViralWorks Images est disponible",
@@ -76,9 +75,7 @@ export default function PromoImagesModal() {
       markVariantSeen(variantToMark);
       setVisible(false);
       clearTimer();
-      if (variantToMark === "conversion") {
-        navigate("/image-studio");
-      }
+      navigate("/image-studio");
     },
     [clearTimer, navigate],
   );
@@ -159,17 +156,6 @@ export default function PromoImagesModal() {
         aria-labelledby="promo-images-title"
       >
         {isAcquisition ? (
-          <button
-            type="button"
-            onClick={() => dismiss(variant)}
-            className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-lg text-white/50 transition-colors hover:bg-white/10 hover:text-white"
-            aria-label="Fermer et continuer sur le site"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        ) : null}
-
-        {isAcquisition ? (
           <div className="mb-5 grid grid-cols-3 gap-2">
             {PROMO_ACQUISITION_IMAGES.map((image) => (
               <div
@@ -188,13 +174,15 @@ export default function PromoImagesModal() {
           </div>
         ) : null}
 
-        <span className="mb-4 inline-block rounded bg-[#2af598] px-2 py-0.5 text-xs font-semibold text-black">
-          Nouveau
-        </span>
+        {!isAcquisition ? (
+          <span className="mb-4 inline-block rounded bg-[#2af598] px-2 py-0.5 text-xs font-semibold text-black">
+            Nouveau
+          </span>
+        ) : null}
 
         <h2
           id="promo-images-title"
-          className="mb-3 pr-8 text-xl font-bold text-white"
+          className="mb-3 text-xl font-bold text-white"
         >
           {title}
         </h2>
