@@ -6,6 +6,7 @@ const PROMO_SUPPRESSED_PATHS = new Set([
 ]);
 
 const AFTER_LOGOUT_KEY = "vw_promo_suppress_after_logout";
+const HAD_ACCOUNT_KEY = "vw_promo_had_account";
 
 export const PROMO_SEEN_KEYS = {
   acquisition: "vw_images_promo_seen_acquisition",
@@ -14,12 +15,27 @@ export const PROMO_SEEN_KEYS = {
 
 export const PROMO_LOGOUT_SUPPRESS_EVENT = "vw:promo-logout-suppress";
 
-/** Après déconnexion : plus de modale promo (session en cours + acquisition déjà vue). */
+function hadAccountOnDevice(): boolean {
+  try {
+    return localStorage.getItem(HAD_ACCOUNT_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function markHadAccountOnDevice(): void {
+  try {
+    localStorage.setItem(HAD_ACCOUNT_KEY, "1");
+  } catch {
+    // no-op
+  }
+}
+
+/** Après déconnexion : pas de modale promo pour la session anonyme en cours. */
 export function markPromoSuppressedOnLogout(): void {
   try {
     sessionStorage.setItem(AFTER_LOGOUT_KEY, "1");
-    sessionStorage.setItem(PROMO_SEEN_KEYS.acquisition, "1");
-    localStorage.setItem(PROMO_SEEN_KEYS.acquisition, "1");
+    localStorage.setItem(HAD_ACCOUNT_KEY, "1");
   } catch {
     // no-op
   }
@@ -44,7 +60,7 @@ export function isPromoSuppressedAfterLogout(): boolean {
   }
 }
 
-/** Jamais de modale promo sur les pages de flux auth ni après déconnexion. */
+/** Jamais de modale promo sur les pages de flux auth ni après déconnexion (session). */
 export function isPromoModalSuppressed(pathname: string): boolean {
   if (isPromoSuppressedAfterLogout()) {
     return true;
@@ -55,11 +71,11 @@ export function isPromoModalSuppressed(pathname: string): boolean {
 export function hasSeenPromoVariant(
   variant: keyof typeof PROMO_SEEN_KEYS,
 ): boolean {
+  if (variant === "acquisition" && hadAccountOnDevice()) {
+    return true;
+  }
   try {
-    const key = PROMO_SEEN_KEYS[variant];
-    return (
-      sessionStorage.getItem(key) === "1" || localStorage.getItem(key) === "1"
-    );
+    return sessionStorage.getItem(PROMO_SEEN_KEYS[variant]) === "1";
   } catch {
     return false;
   }

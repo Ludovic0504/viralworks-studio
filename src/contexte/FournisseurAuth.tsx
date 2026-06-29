@@ -18,7 +18,7 @@ import {
   resetPostHogUser,
   syncPostHogUserFromSession,
 } from "@/bibliotheque/posthog/client";
-import { clearPromoLogoutSuppression, markPromoSuppressedOnLogout } from "@/bibliotheque/promo/promoModalGate";
+import { clearPromoLogoutSuppression, markHadAccountOnDevice, markPromoSuppressedOnLogout } from "@/bibliotheque/promo/promoModalGate";
 
 type AuthCtx = {
   session: Session | null;
@@ -114,6 +114,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (event === "SIGNED_IN" && s?.user?.id) {
           clearPromoLogoutSuppression();
+          markHadAccountOnDevice();
           try {
             localStorage.removeItem("onetool_oauth_remember");
             updateLastActivity();
@@ -142,6 +143,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         if (event === "INITIAL_SESSION" && s?.user?.id) {
+          markHadAccountOnDevice();
           void syncPostHogUserFromSession({
             id: s.user.id,
             email: s.user.email,
