@@ -851,16 +851,17 @@ export default function ImageStudio() {
   const quotaReached = hasImagePlan && quotaCount >= quotaLimit;
   const quotaHeadroom = hasImagePlan ? Math.max(0, quotaLimit - quotaCount) : 4;
   const maxGenerationCount = Math.min(4, Math.max(quotaHeadroom, 1));
-  const modelAvailable = session
-    ? Boolean(modelsAvailability[model])
-    : true;
-  const canGenerate =
+  const canRunGeneration =
     Boolean(prompt.trim()) &&
     !generating &&
     !quotaReached &&
     generationCount <= quotaHeadroom &&
-    modelAvailable &&
-    !accessLoading;
+    Boolean(modelsAvailability[model]) &&
+    !accessLoading &&
+    !authLoading;
+  const canClickGenerate = hasImagePlan
+    ? canRunGeneration
+    : !generating && !accessLoading;
 
   useEffect(() => {
     if (generationCount > maxGenerationCount) {
@@ -1057,7 +1058,7 @@ export default function ImageStudio() {
   );
 
   const handleGenerate = async () => {
-    if (!hasImagePlan || !canGenerate) return;
+    if (!hasImagePlan || !canRunGeneration) return;
     setError(null);
 
     const trimmedPrompt = prompt.trim();
@@ -1210,7 +1211,7 @@ export default function ImageStudio() {
   );
 
   const requestGenerate = () => {
-    if (!canGenerate || accessLoading) return;
+    if (!canClickGenerate) return;
 
     if (!session) {
       requestPromoModalOpen("acquisition");
@@ -1221,6 +1222,8 @@ export default function ImageStudio() {
       requestPromoModalOpen("conversion");
       return;
     }
+
+    if (!canRunGeneration) return;
 
     void handleGenerate();
   };
@@ -1396,7 +1399,7 @@ export default function ImageStudio() {
                 <button
                   type="button"
                   onClick={requestGenerate}
-                  disabled={!canGenerate}
+                  disabled={!canClickGenerate}
                   className="image-studio-generate-btn btn-vws-primary"
                 >
                   {generating ? (
