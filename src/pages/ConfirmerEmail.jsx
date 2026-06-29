@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { CheckCircle2, MailCheck, ShieldCheck, XCircle, RefreshCw } from "lucide-react";
 import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
 import { track } from "@/bibliotheque/meta/pixel";
+import { markEmailJustConfirmed } from "@/bibliotheque/promo/promoModalGate";
 import FondApp from "@/composants/disposition/FondApp";
 
 /**
@@ -67,6 +68,7 @@ export default function ConfirmerEmail() {
       }
 
       setStatus("success");
+      markEmailJustConfirmed();
       track("CompleteRegistration");
       setTimeout(() => {
         navigate("/login?confirmed=1", { replace: true });

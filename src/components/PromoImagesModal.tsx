@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { useBoutiqueModal } from "@/contexte/ContexteModalBoutique";
 import { usePremiumAccess } from "@/hooks/usePremiumAccess";
 import { PROMO_ACQUISITION_IMAGES } from "@/bibliotheque/promo/imagesPromo";
+import {
+  clearEmailJustConfirmed,
+  EMAIL_CONFIRMED_EVENT,
+  hasEmailJustConfirmed,
+  isPromoModalSuppressed,
+} from "@/bibliotheque/promo/promoModalGate";
 
 type Variant = "acquisition" | "conversion";
 
@@ -51,6 +57,9 @@ const CONTENT = {
 
 export default function PromoImagesModal() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [emailConfirmed, setEmailConfirmed] = useState(hasEmailJustConfirmed);
+  const promoSuppressed = isPromoModalSuppressed(location.pathname, emailConfirmed);
   const { session, loading: authLoading } = useAuth();
   const { hasAccess, loading: premiumLoading } = usePremiumAccess();
   const { openAuthModal, isAuthModalOpen } = useRequireAuthAction();
@@ -63,6 +72,13 @@ export default function PromoImagesModal() {
 
   const isResolving = authLoading || (Boolean(session) && premiumLoading);
 
+  /** Réagir dès que la confirmation email réussit (même page, avant redirection). */
+  useEffect(() => {
+    const sync = () => setEmailConfirmed(hasEmailJustConfirmed());
+    window.addEventListener(EMAIL_CONFIRMED_EVENT, sync);
+    return () => window.removeEventListener(EMAIL_CONFIRMED_EVENT, sync);
+  }, []);
+
   const clearTimer = useCallback(() => {
     if (timerRef.current) {
       clearTimeout(timerRef.current);
@@ -73,6 +89,8 @@ export default function PromoImagesModal() {
   const dismiss = useCallback(
     (variantToMark: Variant) => {
       markVariantSeen(variantToMark);
+      clearEmailJustConfirmed();
+      setEmailConfirmed(false);
       setVisible(false);
       clearTimer();
       navigate("/image-studio");
@@ -86,8 +104,15 @@ export default function PromoImagesModal() {
     clearTimer();
   }, [session?.user?.id, clearTimer]);
 
+  /** Masquer immédiatement sur les routes auth (ex. lien email de confirmation). */
   useEffect(() => {
-    if (isResolving || hasAccess || hasSeenVariant(variant)) {
+    if (!promoSuppressed) return;
+    setVisible(false);
+    clearTimer();
+  }, [promoSuppressed, clearTimer]);
+
+  useEffect(() => {
+    if (promoSuppressed || isResolving || hasAccess || hasSeenVariant(variant)) {
       return;
     }
 
@@ -103,6 +128,7 @@ export default function PromoImagesModal() {
 
     return clearTimer;
   }, [
+    promoSuppressed,
     isResolving,
     hasAccess,
     variant,
@@ -122,7 +148,7 @@ export default function PromoImagesModal() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [visible, dismiss, variant]);
 
-  if (isResolving || hasAccess || !visible) return null;
+  if (promoSuppressed || isResolving || hasAccess || !visible) return null;
   if (typeof document === "undefined") return null;
 
   const { title, subtitle, cta, dismiss: dismissLabel } = CONTENT[variant];
