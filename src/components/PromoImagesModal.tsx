@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useNavigate } from "react-router-dom";
 import { X } from "lucide-react";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
@@ -45,11 +46,12 @@ const CONTENT = {
     subtitle:
       "Génère des visuels produits illimités avec Nanobanana Pro — 9€/mois",
     cta: "Découvrir l'offre",
-    dismiss: "Plus tard",
+    dismiss: "Explorer Image Studio d'abord",
   },
 } as const;
 
 export default function PromoImagesModal() {
+  const navigate = useNavigate();
   const { session, loading: authLoading } = useAuth();
   const { hasAccess, loading: premiumLoading } = usePremiumAccess();
   const { openAuthModal, isAuthModalOpen } = useRequireAuthAction();
@@ -74,8 +76,11 @@ export default function PromoImagesModal() {
       markVariantSeen(variantToMark);
       setVisible(false);
       clearTimer();
+      if (variantToMark === "conversion") {
+        navigate("/image-studio");
+      }
     },
-    [clearTimer],
+    [clearTimer, navigate],
   );
 
   /** Après connexion : réinitialiser pour relancer le timer conversion (1 s). */
@@ -153,14 +158,16 @@ export default function PromoImagesModal() {
         aria-modal="true"
         aria-labelledby="promo-images-title"
       >
-        <button
-          type="button"
-          onClick={() => dismiss(variant)}
-          className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-lg text-white/50 transition-colors hover:bg-white/10 hover:text-white"
-          aria-label="Fermer et continuer sur le site"
-        >
-          <X className="h-4 w-4" />
-        </button>
+        {isAcquisition ? (
+          <button
+            type="button"
+            onClick={() => dismiss(variant)}
+            className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-lg text-white/50 transition-colors hover:bg-white/10 hover:text-white"
+            aria-label="Fermer et continuer sur le site"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        ) : null}
 
         {isAcquisition ? (
           <div className="mb-5 grid grid-cols-3 gap-2">
