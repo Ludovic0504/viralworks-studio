@@ -2334,6 +2334,39 @@
     margin: 0;
   }
 
+  .image-studio-prompt-guide-preview-body--full {
+    max-height: 18rem;
+    border-radius: 0.65rem;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(0, 0, 0, 0.22);
+    padding: 0.65rem 0.75rem;
+  }
+
+  .image-studio-prompt-guide-choices {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    margin-top: 0.15rem;
+  }
+
+  .image-studio-prompt-guide-choice {
+    width: 100%;
+    border-radius: 0.65rem;
+    border: 1px solid rgba(42, 245, 152, 0.22);
+    background: rgba(42, 245, 152, 0.06);
+    color: rgba(255, 255, 255, 0.88);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-align: left;
+    padding: 0.55rem 0.7rem;
+    transition: border-color 0.15s, background 0.15s;
+  }
+
+  .image-studio-prompt-guide-choice:hover {
+    border-color: rgba(42, 245, 152, 0.45);
+    background: rgba(42, 245, 152, 0.1);
+  }
+
   .image-studio-prompt-guide-fields {
     display: flex;
     flex-direction: column;

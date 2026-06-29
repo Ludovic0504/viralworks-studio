@@ -11,36 +11,22 @@ import {
 } from "lucide-react";
 import {
   assemblePromptFromTemplate,
+  buildCustomFlavorElements,
+  extractBeverageSlotsFromFirstMessage,
+  extractDrinkSlotsFromMessage,
   extractSlotsFromMessage,
   fillTemplateSlotDefaults,
+  isBeverageGuideReady,
   isWeakRequiredSlot,
   mergeTemplateSlots,
-  summarizeFilledSlots,
+  parseElementsModeChoice,
+  resolveReferenceFlavorElements,
 } from "@/bibliotheque/imageStudio/promptTemplateEngine";
 import { IMAGE_STUDIO_PROMPT_TEMPLATES } from "@/bibliotheque/imageStudio/promptTemplates";
 
-const PREVIEW_PREF_KEY = "image_studio_prompt_guide_preview";
+/** @typedef {'drink' | 'elements_mode' | 'custom_elements' | 'ready'} BeverageGuideStep */
 
 /** @typedef {{ id: string, role: 'bot' | 'user', text: string }} ChatMessage */
-
-function readPreviewPreference() {
-  if (typeof window === "undefined") return true;
-  try {
-    const raw = window.localStorage.getItem(PREVIEW_PREF_KEY);
-    if (raw === "0") return false;
-    return true;
-  } catch {
-    return true;
-  }
-}
-
-function writePreviewPreference(show) {
-  try {
-    window.localStorage.setItem(PREVIEW_PREF_KEY, show ? "1" : "0");
-  } catch {
-    // ignore
-  }
-}
 
 function nextMessageId() {
   return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -61,15 +47,18 @@ function PromptTemplateChat({
 }) {
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+  const isBeverageGuide = template.extractorId === "beverage-hero";
+
   const [messages, setMessages] = useState(() => [
     { id: nextMessageId(), role: "bot", text: template.botIntro },
   ]);
   const [slots, setSlots] = useState({});
   const [draft, setDraft] = useState("");
   const [ready, setReady] = useState(false);
-  const [previewOpen, setPreviewOpen] = useState(() => readPreviewPreference());
   const [adjustOpen, setAdjustOpen] = useState(false);
-  const [showPreviewPref, setShowPreviewPref] = useState(() => readPreviewPreference());
+  const [guideStep, setGuideStep] = useState(
+    /** @type {BeverageGuideStep} */ ("drink"),
+  );
 
   const filledSlots = useMemo(
     () => fillTemplateSlotDefaults(template, slots),
@@ -81,26 +70,96 @@ function PromptTemplateChat({
     [ready, template, slots],
   );
 
+  const inputPlaceholder = useMemo(() => {
+    if (!isBeverageGuide) return "Décrivez le produit…";
+    if (guideStep === "drink") return "Ex. Monster Energy ou Monster Energy avec des citrons verts…";
+    if (guideStep === "elements_mode") return "Ou choisissez une option ci-dessus…";
+    if (guideStep === "custom_elements") return "Décrivez les éléments autour et la saveur…";
+    return "Décrivez la boisson…";
+  }, [guideStep, isBeverageGuide]);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages, ready, previewOpen, adjustOpen]);
+  }, [messages, ready, adjustOpen]);
 
   useEffect(() => {
     inputRef.current?.focus();
-  }, []);
+  }, [guideStep]);
 
   const pushMessage = useCallback((role, text) => {
     setMessages((prev) => [...prev, { id: nextMessageId(), role, text }]);
   }, []);
 
-  const processUserMessage = useCallback(
-    (rawMessage) => {
-      const text = rawMessage.trim();
-      if (!text) return;
+  const finalizeGuide = useCallback(
+    (nextSlots) => {
+      setSlots(nextSlots);
+      setReady(true);
+      setGuideStep("ready");
+      pushMessage("bot", template.botReady);
+    },
+    [pushMessage, template.botReady],
+  );
 
-      pushMessage("user", text);
-      setDraft("");
+  const processBeverageMessage = useCallback(
+    (text) => {
+      if (guideStep === "drink") {
+        const merged = mergeTemplateSlots(slots, extractBeverageSlotsFromFirstMessage(text, template));
 
+        if (isWeakRequiredSlot(template, merged)) {
+          setReady(false);
+          pushMessage("bot", template.botAskRequired);
+          return;
+        }
+
+        if (isBeverageGuideReady(template, merged)) {
+          finalizeGuide(merged);
+          return;
+        }
+
+        setSlots(merged);
+        setGuideStep("elements_mode");
+        pushMessage("bot", template.botAskElementsMode ?? "");
+        return;
+      }
+
+      if (guideStep === "elements_mode") {
+        const mode = parseElementsModeChoice(text);
+        if (!mode) {
+          pushMessage(
+            "bot",
+            "Choisissez une option : « Éléments de référence » ou « Choisir moi-même », ou utilisez les boutons ci-dessus.",
+          );
+          return;
+        }
+
+        if (mode === "reference") {
+          const flavorElements = resolveReferenceFlavorElements(slots, template);
+          const merged = mergeTemplateSlots(slots, { flavorElements });
+          finalizeGuide(merged);
+          return;
+        }
+
+        setGuideStep("custom_elements");
+        pushMessage("bot", template.botAskCustomElements ?? "");
+        return;
+      }
+
+      if (guideStep === "custom_elements") {
+        const flavorElements = buildCustomFlavorElements(text);
+        if (!flavorElements) {
+          pushMessage("bot", template.botAskCustomElements ?? "");
+          return;
+        }
+
+        const merged = mergeTemplateSlots(slots, { flavorElements });
+        finalizeGuide(merged);
+      }
+    },
+    [finalizeGuide, guideStep, pushMessage, slots, template],
+  );
+
+  const processGenericMessage = useCallback(
+    (text) => {
       const extracted = extractSlotsFromMessage(text, template);
       const merged = mergeTemplateSlots(slots, extracted);
       setSlots(merged);
@@ -111,11 +170,38 @@ function PromptTemplateChat({
         return;
       }
 
-      setReady(true);
-      const summary = summarizeFilledSlots(template, merged);
-      pushMessage("bot", `${template.botReady}\n\n${summary}`);
+      finalizeGuide(merged);
     },
-    [pushMessage, slots, template],
+    [finalizeGuide, pushMessage, slots, template],
+  );
+
+  const processUserMessage = useCallback(
+    (rawMessage) => {
+      const text = rawMessage.trim();
+      if (!text) return;
+
+      pushMessage("user", text);
+      setDraft("");
+
+      if (isBeverageGuide) {
+        processBeverageMessage(text);
+        return;
+      }
+
+      processGenericMessage(text);
+    },
+    [isBeverageGuide, processBeverageMessage, processGenericMessage, pushMessage],
+  );
+
+  const handleElementsModeChoice = useCallback(
+    (mode) => {
+      const label =
+        mode === "reference"
+          ? "Éléments de référence de la marque"
+          : "Choisir moi-même les éléments";
+      processUserMessage(label);
+    },
+    [processUserMessage],
   );
 
   const handleSubmit = useCallback(
@@ -126,28 +212,22 @@ function PromptTemplateChat({
     [draft, processUserMessage],
   );
 
-  const handleSlotChange = useCallback((key, value) => {
-    setSlots((prev) => {
-      const next = { ...prev, [key]: value };
-      setReady(!isWeakRequiredSlot(template, next));
-      return next;
-    });
-  }, []);
+  const handleSlotChange = useCallback(
+    (key, value) => {
+      setSlots((prev) => {
+        const next = { ...prev, [key]: value };
+        setReady(isBeverageGuideReady(template, next));
+        return next;
+      });
+    },
+    [template],
+  );
 
   const handleApply = useCallback(() => {
     if (!assembledPrompt) return;
     onApplyPrompt(assembledPrompt);
     onClose();
   }, [assembledPrompt, onApplyPrompt, onClose]);
-
-  const togglePreviewPref = useCallback(() => {
-    setShowPreviewPref((current) => {
-      const next = !current;
-      writePreviewPreference(next);
-      setPreviewOpen(next);
-      return next;
-    });
-  }, []);
 
   return (
     <div className="image-studio-prompt-guide-chat">
@@ -193,26 +273,30 @@ function PromptTemplateChat({
           </div>
         ))}
 
-        {ready ? (
-          <div className="image-studio-prompt-guide-result">
+        {guideStep === "elements_mode" ? (
+          <div className="image-studio-prompt-guide-choices" role="group" aria-label="Mode des éléments">
             <button
               type="button"
-              className="image-studio-prompt-guide-preview-toggle"
-              onClick={() => setPreviewOpen((open) => !open)}
-              aria-expanded={previewOpen}
+              className="image-studio-prompt-guide-choice"
+              onClick={() => handleElementsModeChoice("reference")}
             >
-              <span>Aperçu du prompt complet</span>
-              {previewOpen ? (
-                <ChevronUp className="h-3.5 w-3.5 shrink-0" strokeWidth={2.25} />
-              ) : (
-                <ChevronDown className="h-3.5 w-3.5 shrink-0" strokeWidth={2.25} />
-              )}
+              Éléments de référence de la marque
             </button>
-            {previewOpen ? (
-              <pre className="image-studio-prompt-card-body image-studio-prompt-guide-preview-body">
-                {assembledPrompt}
-              </pre>
-            ) : null}
+            <button
+              type="button"
+              className="image-studio-prompt-guide-choice"
+              onClick={() => handleElementsModeChoice("custom")}
+            >
+              Choisir moi-même les éléments
+            </button>
+          </div>
+        ) : null}
+
+        {ready ? (
+          <div className="image-studio-prompt-guide-result">
+            <pre className="image-studio-prompt-card-body image-studio-prompt-guide-preview-body image-studio-prompt-guide-preview-body--full">
+              {assembledPrompt}
+            </pre>
 
             <button
               type="button"
@@ -250,15 +334,6 @@ function PromptTemplateChat({
       </div>
 
       <div className="image-studio-prompt-guide-footer">
-        <label className="image-studio-prompt-guide-pref">
-          <input
-            type="checkbox"
-            checked={showPreviewPref}
-            onChange={togglePreviewPref}
-          />
-          Toujours montrer l&apos;aperçu avant application
-        </label>
-
         {ready ? (
           <button
             type="button"
@@ -269,25 +344,27 @@ function PromptTemplateChat({
           </button>
         ) : null}
 
-        <form className="image-studio-prompt-guide-compose" onSubmit={handleSubmit}>
-          <input
-            ref={inputRef}
-            type="text"
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            placeholder="Décrivez la boisson…"
-            className="image-studio-prompt-guide-input"
-            aria-label="Votre message"
-          />
-          <button
-            type="submit"
-            className="image-studio-prompt-guide-send"
-            disabled={!draft.trim()}
-            aria-label="Envoyer"
-          >
-            <SendHorizontal className="h-4 w-4" strokeWidth={2.25} />
-          </button>
-        </form>
+        {guideStep !== "ready" && !ready ? (
+          <form className="image-studio-prompt-guide-compose" onSubmit={handleSubmit}>
+            <input
+              ref={inputRef}
+              type="text"
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              placeholder={inputPlaceholder}
+              className="image-studio-prompt-guide-input"
+              aria-label="Votre message"
+            />
+            <button
+              type="submit"
+              className="image-studio-prompt-guide-send"
+              disabled={!draft.trim()}
+              aria-label="Envoyer"
+            >
+              <SendHorizontal className="h-4 w-4" strokeWidth={2.25} />
+            </button>
+          </form>
+        ) : null}
       </div>
     </div>
   );

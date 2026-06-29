@@ -94,6 +94,59 @@ function buildFlavorElementsFromPhrase(phrase: string): string {
   return `Fresh ${cleaned} — whole and sliced, cut surfaces facing camera revealing their interior, all suspended mid-air in a dynamic circular orbital arrangement around the container — some tumbling, some whole, scattered at various distances and angles creating depth and energy.`;
 }
 
+export function buildCustomFlavorElements(description: string): string {
+  const cleaned = description.trim();
+  if (!cleaned) return "";
+  if (cleaned.length > 60 || /[.;]/.test(cleaned)) {
+    return cleaned;
+  }
+  return buildFlavorElementsFromPhrase(cleaned);
+}
+
+export type ElementsMode = "reference" | "custom";
+
+export function parseElementsModeChoice(text: string): ElementsMode | null {
+  const normalized = text.trim().toLowerCase();
+  if (!normalized) return null;
+  if (
+    /^(2|choisir|personnalis|moi.?même|moi meme|décrire|decrire|custom|manuel)/i.test(
+      normalized,
+    ) ||
+    /choisir\s+moi/i.test(normalized)
+  ) {
+    return "custom";
+  }
+  if (
+    /^(1|référence|reference|marque|défaut|defaut|typique)/i.test(normalized) ||
+    /éléments?\s+de\s+référence|elements?\s+de\s+reference/i.test(normalized)
+  ) {
+    return "reference";
+  }
+  return null;
+}
+
+function findBrandFlavorElements(drink: string): string | null {
+  const value = drink.trim();
+  if (!value) return null;
+  for (const brand of KNOWN_BEVERAGE_BRANDS) {
+    if (brand.pattern.test(value) && brand.flavorElements) {
+      return brand.flavorElements;
+    }
+  }
+  return null;
+}
+
+export function resolveReferenceFlavorElements(
+  slots: TemplateSlotValues,
+  template: PromptTemplateDefinition,
+): string {
+  const fromBrand = findBrandFlavorElements(slots.drink ?? "");
+  if (fromBrand) return fromBrand;
+
+  const flavorVariable = template.variables.find((variable) => variable.key === "flavorElements");
+  return flavorVariable?.defaultValue ?? "";
+}
+
 function extractPackaging(message: string): string | null {
   if (/\bcanette|\bcan\b/i.test(message)) {
     return "in its iconic aluminum can format";
@@ -107,10 +160,14 @@ function extractPackaging(message: string): string | null {
   return null;
 }
 
-function extractBeverageSlots(message: string): Partial<TemplateSlotValues> {
+function extractBeverageSlots(
+  message: string,
+  options?: { skipFlavor?: boolean },
+): Partial<TemplateSlotValues> {
   const raw = message.trim();
   if (!raw) return {};
 
+  const skipFlavor = options?.skipFlavor === true;
   const slots: Partial<TemplateSlotValues> = {};
 
   for (const brand of KNOWN_BEVERAGE_BRANDS) {
@@ -118,22 +175,24 @@ function extractBeverageSlots(message: string): Partial<TemplateSlotValues> {
       slots.drink = brand.drink;
       slots.brandBackdrop = brand.brandBackdrop;
       slots.brandPalette = brand.brandPalette;
-      if (brand.flavorElements) slots.flavorElements = brand.flavorElements;
+      if (!skipFlavor && brand.flavorElements) slots.flavorElements = brand.flavorElements;
       break;
     }
   }
 
-  const avecMatch = raw.match(/\bavec\s+(.+)$/i);
-  if (avecMatch?.[1]) {
-    const flavorPhrase = avecMatch[1].trim();
-    const built = buildFlavorElementsFromPhrase(flavorPhrase);
-    if (built) slots.flavorElements = built;
-  }
+  if (!skipFlavor) {
+    const avecMatch = raw.match(/\bavec\s+(.+)$/i);
+    if (avecMatch?.[1]) {
+      const flavorPhrase = avecMatch[1].trim();
+      const built = buildFlavorElementsFromPhrase(flavorPhrase);
+      if (built) slots.flavorElements = built;
+    }
 
-  const saveurMatch = raw.match(/\b(?:saveur|goût|gout)\s+(.+?)(?:\s*,|\s*\.|$)/i);
-  if (saveurMatch?.[1] && !slots.flavorElements) {
-    const built = buildFlavorElementsFromPhrase(saveurMatch[1]);
-    if (built) slots.flavorElements = built;
+    const saveurMatch = raw.match(/\b(?:saveur|goût|gout)\s+(.+?)(?:\s*,|\s*\.|$)/i);
+    if (saveurMatch?.[1] && !slots.flavorElements) {
+      const built = buildFlavorElementsFromPhrase(saveurMatch[1]);
+      if (built) slots.flavorElements = built;
+    }
   }
 
   const packaging = extractPackaging(raw);
@@ -141,6 +200,7 @@ function extractBeverageSlots(message: string): Partial<TemplateSlotValues> {
 
   if (!slots.drink) {
     let drinkCandidate = raw;
+    const avecMatch = skipFlavor ? null : raw.match(/\bavec\s+(.+)$/i);
     if (avecMatch) {
       drinkCandidate = raw.slice(0, avecMatch.index).trim();
     }
@@ -186,6 +246,46 @@ function filterSlotsForTemplate(
   return filtered;
 }
 
+export function hasExplicitFlavorInMessage(message: string): boolean {
+  const raw = message.trim();
+  if (!raw) return false;
+  if (/\bavec\s+\S/i.test(raw)) return true;
+  if (/\b(?:saveur|goût|gout)\s+\S/i.test(raw)) return true;
+  if (/\b(?:autour|ingrédients?|ingredients?|composé|compose)\b/i.test(raw)) return true;
+  return false;
+}
+
+export function extractBeverageSlotsFromFirstMessage(
+  message: string,
+  template: PromptTemplateDefinition,
+): Partial<TemplateSlotValues> {
+  const drinkSlots = extractDrinkSlotsFromMessage(message, template);
+  if (!hasExplicitFlavorInMessage(message)) {
+    return drinkSlots;
+  }
+
+  const fullSlots = extractSlotsFromMessage(message, template);
+  if (fullSlots.flavorElements) {
+    return mergeTemplateSlots(drinkSlots, { flavorElements: fullSlots.flavorElements });
+  }
+
+  return drinkSlots;
+}
+
+export function extractDrinkSlotsFromMessage(
+  message: string,
+  template: PromptTemplateDefinition,
+): Partial<TemplateSlotValues> {
+  const raw = message.trim();
+  if (!raw) return {};
+
+  if (template.extractorId === "beverage-hero") {
+    return filterSlotsForTemplate(extractBeverageSlots(raw, { skipFlavor: true }), template);
+  }
+
+  return filterSlotsForTemplate(extractBeverageSlots(raw), template);
+}
+
 export function extractSlotsFromMessage(
   message: string,
   template: PromptTemplateDefinition,
@@ -206,6 +306,11 @@ export function getRequiredTemplateVariable(
   return template.variables.find((variable) => variable.required);
 }
 
+export function isWeakFlavorElements(value: string | undefined): boolean {
+  const trimmed = (value ?? "").trim();
+  return trimmed.length < 3;
+}
+
 export function isWeakRequiredSlot(
   template: PromptTemplateDefinition,
   slots: TemplateSlotValues,
@@ -218,6 +323,17 @@ export function isWeakRequiredSlot(
   if (STYLE_ONLY_RE.test(value)) return true;
   if (/^(citron|citrons|orange|oranges|lime|limes)\b/i.test(value)) return true;
   return false;
+}
+
+export function isBeverageGuideReady(
+  template: PromptTemplateDefinition,
+  slots: TemplateSlotValues,
+): boolean {
+  if (isWeakRequiredSlot(template, slots)) return false;
+  if (template.extractorId === "beverage-hero" && isWeakFlavorElements(slots.flavorElements)) {
+    return false;
+  }
+  return true;
 }
 
 /** @deprecated Utiliser isWeakRequiredSlot */

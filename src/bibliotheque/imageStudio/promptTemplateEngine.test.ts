@@ -1,10 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
   assemblePromptFromTemplate,
+  buildCustomFlavorElements,
+  extractBeverageSlotsFromFirstMessage,
+  extractDrinkSlotsFromMessage,
   extractSlotsFromMessage,
   fillTemplateSlotDefaults,
+  hasExplicitFlavorInMessage,
+  isBeverageGuideReady,
   isWeakRequiredSlot,
   mergeTemplateSlots,
+  parseElementsModeChoice,
+  resolveReferenceFlavorElements,
 } from "./promptTemplateEngine";
 import { getPromptTemplateById } from "./promptTemplates";
 
@@ -15,7 +22,41 @@ describe("promptTemplateEngine", () => {
     throw new Error("product-photography template missing");
   }
 
-  it("extracts Monster Energy drink and lime flavor from French message", () => {
+  it("detects explicit flavor in user message", () => {
+    expect(hasExplicitFlavorInMessage("Monster Energy avec des citrons verts")).toBe(true);
+    expect(hasExplicitFlavorInMessage("Monster Energy")).toBe(false);
+    expect(hasExplicitFlavorInMessage("Coca-Cola, oranges autour")).toBe(true);
+  });
+
+  it("extracts complete slots from first message when elements are explicit", () => {
+    const slots = extractBeverageSlotsFromFirstMessage(
+      "Monster Energy avec des citrons verts",
+      productTemplate,
+    );
+
+    expect(slots.drink).toMatch(/Monster Energy/i);
+    expect(slots.flavorElements).toMatch(/lime/i);
+  });
+
+  it("skips flavor on first message when elements are not explicit", () => {
+    const slots = extractBeverageSlotsFromFirstMessage("Monster Energy", productTemplate);
+
+    expect(slots.drink).toMatch(/Monster Energy/i);
+    expect(slots.flavorElements).toBeUndefined();
+  });
+
+  it("extracts drink only without flavor when using extractDrinkSlotsFromMessage", () => {
+    const slots = extractDrinkSlotsFromMessage(
+      "Monster Energy avec des citrons verts",
+      productTemplate,
+    );
+
+    expect(slots.drink).toMatch(/Monster Energy/i);
+    expect(slots.flavorElements).toBeUndefined();
+    expect(slots.brandBackdrop).toMatch(/green radial glow/i);
+  });
+
+  it("still extracts flavor with full extractSlotsFromMessage", () => {
     const slots = extractSlotsFromMessage(
       "Monster Energy avec des citrons verts",
       productTemplate,
@@ -23,7 +64,41 @@ describe("promptTemplateEngine", () => {
 
     expect(slots.drink).toMatch(/Monster Energy/i);
     expect(slots.flavorElements).toMatch(/lime/i);
-    expect(slots.brandBackdrop).toMatch(/green radial glow/i);
+  });
+
+  it("parses elements mode choices", () => {
+    expect(parseElementsModeChoice("référence")).toBe("reference");
+    expect(parseElementsModeChoice("Éléments de référence de la marque")).toBe("reference");
+    expect(parseElementsModeChoice("Choisir moi-même")).toBe("custom");
+    expect(parseElementsModeChoice("Choisir moi-même les éléments")).toBe("custom");
+    expect(parseElementsModeChoice("banane")).toBeNull();
+  });
+
+  it("resolves reference flavor from known brand", () => {
+    const flavor = resolveReferenceFlavorElements(
+      { drink: "Monster Energy drink" },
+      productTemplate,
+    );
+
+    expect(flavor).toMatch(/lime/i);
+  });
+
+  it("builds custom flavor elements from user description", () => {
+    const flavor = buildCustomFlavorElements("citrons verts et feuilles de menthe");
+    expect(flavor).toMatch(/green limes/i);
+    expect(flavor).toMatch(/orbital arrangement/i);
+  });
+
+  it("requires flavor elements before beverage guide is ready", () => {
+    expect(
+      isBeverageGuideReady(productTemplate, { drink: "Monster Energy drink" }),
+    ).toBe(false);
+    expect(
+      isBeverageGuideReady(productTemplate, {
+        drink: "Monster Energy drink",
+        flavorElements: "Fresh limes — whole and sliced",
+      }),
+    ).toBe(true);
   });
 
   it("uses defaults for unspecified beverage slots", () => {

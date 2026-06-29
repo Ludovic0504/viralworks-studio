@@ -16,6 +16,8 @@ export type PromptTemplateDefinition = {
   extractorId: "beverage-hero" | "generic-product";
   botIntro: string;
   botAskRequired: string;
+  botAskElementsMode?: string;
+  botAskCustomElements?: string;
   botReady: string;
   variables: PromptTemplateVariable[];
   /** Corps du prompt — placeholders `{{key}}`, sauts de ligne conservés. */
@@ -45,11 +47,15 @@ export const IMAGE_STUDIO_PROMPT_TEMPLATES: PromptTemplateDefinition[] = [
     heroImage: "/image-studio/templates/product-photography-beverage.png",
     extractorId: "beverage-hero",
     botIntro:
-      "Décrivez la boisson à mettre en avant (marque ou nom du produit). Vous pouvez ajouter la saveur ou les ingrédients autour. Exemple : « Monster Energy avec des citrons verts » ou « Coca-Cola avec des tranches d'orange ».",
+      "Quelle boisson souhaitez-vous mettre en avant ? Indiquez la marque ou le nom du produit — vous pouvez aussi préciser les éléments autour dès maintenant (ex. « Monster Energy avec des citrons verts »).",
     botAskRequired:
       "Quelle boisson souhaitez-vous mettre en avant ? (ex. Monster Energy, Coca-Cola, jus de mangue…)",
+    botAskElementsMode:
+      "Comment souhaitez-vous définir les éléments visuels autour de la boisson ?\n\n• Éléments de référence de la marque — ingrédients typiques associés à cette boisson\n• Choisir moi-même — décrire les éléments autour du produit et ceux qui composent la saveur",
+    botAskCustomElements:
+      "Décrivez les éléments à placer autour de la boisson et ceux qui composent sa saveur. Exemple : « citrons verts entiers et en tranches, feuilles de menthe » ou « mangue, fruit de la passion, glaçons ».",
     botReady:
-      "Voici le prompt que je propose. Vérifiez l'aperçu puis appliquez-le à la zone de saisie, ou ajustez les champs si besoin.",
+      "Votre prompt est prêt. Vérifiez-le ci-dessous puis appliquez-le à la zone de saisie, ou ajustez les champs si besoin.",
     variables: [
       {
         key: "drink",
