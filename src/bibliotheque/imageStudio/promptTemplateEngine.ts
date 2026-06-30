@@ -372,11 +372,29 @@ export function fillTemplateSlotDefaults(
 export function assemblePromptFromTemplate(
   template: PromptTemplateDefinition,
   slots: TemplateSlotValues,
+  options?: { shotType?: string; drinkName?: string },
 ): string {
+  if (template.id === "product-photography") {
+    let body = template.body;
+    const drinkName = (options?.drinkName ?? slots.drink ?? "").trim();
+    if (drinkName) {
+      body = body.replaceAll("[NOM DE LA BOISSON]", drinkName);
+    }
+    if (options?.shotType?.trim()) {
+      body = body.replaceAll("[TYPE DE SHOT]", options.shotType.trim());
+    }
+    const tail = template.fixedTail?.trim();
+    if (!tail) return body.trim();
+    return `${body.trim()}\n\n${tail}`;
+  }
+
   const filled = fillTemplateSlotDefaults(template, slots);
   let body = template.body;
   for (const variable of template.variables) {
     body = body.replaceAll(`{{${variable.key}}}`, filled[variable.key] ?? "");
+  }
+  if (options?.shotType?.trim()) {
+    body = body.replaceAll("[TYPE DE SHOT]", options.shotType.trim());
   }
   const tail = template.fixedTail?.trim();
   if (!tail) return body.trim();

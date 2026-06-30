@@ -112,19 +112,24 @@ describe("promptTemplateEngine", () => {
   });
 
   it("assembles the full multi-section beverage prompt", () => {
-    const prompt = assemblePromptFromTemplate(productTemplate, {
-      drink: "Monster Energy drink",
-      packaging: "in its iconic aluminum can format",
-      flavorElements: "Fresh limes — whole and sliced",
-      brandBackdrop: "Deep black studio backdrop with green radial glow",
-      brandPalette: "Neon green and matte black",
-    });
+    const prompt = assemblePromptFromTemplate(
+      productTemplate,
+      { drink: "Monster Energy drink" },
+      {
+        shotType:
+          "centered, slightly low camera angle (worm's eye view), container monumental and imposing",
+        drinkName: "Monster Energy drink",
+      },
+    );
 
     expect(prompt).toMatch(/^Ultra-sharp studio product photography/i);
     expect(prompt).toContain("SUBJECT: Iconic Monster Energy drink");
     expect(prompt).toContain("SURROUNDING ELEMENTS:");
-    expect(prompt).toContain("Portrait orientation 9:16");
+    expect(prompt).toContain("worm's eye view");
     expect(prompt).toContain("Helmut Newton");
+    expect(prompt).not.toContain("[TYPE DE SHOT]");
+    expect(prompt).not.toContain("[NOM DE LA BOISSON]");
+    expect(prompt).not.toContain("Deep black studio backdrop with green radial glow");
   });
 
   it("flags style-only messages as weak required slot", () => {

@@ -6,6 +6,94 @@ export type PromptTemplateVariable = {
   required?: boolean;
 };
 
+export type ProductShotStyle = {
+  id: string;
+  label: string;
+  image: string;
+  promptValue: string;
+};
+
+export const PRODUCT_PHOTOGRAPHY_SHOT_STYLES: ProductShotStyle[] = [
+  {
+    id: "low-angle",
+    label: "Vue basse",
+    image: "/image-studio/templates/shot-vue-basse.jpg",
+    promptValue:
+      "centered, slightly low camera angle (worm's eye view), container monumental and imposing",
+  },
+  {
+    id: "macro-label",
+    label: "Gros plan",
+    image: "/image-studio/templates/shot-gros-plan-label.jpg",
+    promptValue:
+      "extreme close-up on the label and container surface, macro detail, condensation droplets in foreground",
+  },
+  {
+    id: "explosion-wide",
+    label: "Explosion large",
+    image: "/image-studio/templates/shot-explosion-large.jpg",
+    promptValue:
+      "wide shot, container small in frame, ingredients explosion filling 80% of the image",
+  },
+  {
+    id: "freeze-frame",
+    label: "Freeze-frame",
+    image: "/image-studio/templates/shot-freeze-frame.jpg",
+    promptValue:
+      "freeze-frame action shot, container mid-fall, ingredients and ice erupting outward in all directions",
+  },
+  {
+    id: "ground-fog",
+    label: "Brume au sol",
+    image: "/image-studio/templates/shot-brume-sol.jpg",
+    promptValue:
+      "smoke and mist ground effect, container emerging from a low fog layer, moody atmosphere",
+  },
+];
+
+export const PRODUCT_PHOTOGRAPHY_SHOT_STYLES_EXTENDED: ProductShotStyle[] = [
+  {
+    id: "diagonal-45",
+    label: "45° diagonal",
+    image: "/image-studio/templates/shot-45-diagonal.jpg",
+    promptValue:
+      "45-degree angle shot, container slightly tilted, dynamic diagonal composition",
+  },
+  {
+    id: "tight-minimal",
+    label: "Serré minimal",
+    image: "/image-studio/templates/shot-serre-minimal.jpg",
+    promptValue:
+      "tight centered shot, container filling 70% of frame, minimal ingredients, clean and minimal",
+  },
+  {
+    id: "side-left",
+    label: "Côté gauche",
+    image: "/image-studio/templates/shot-cote-gauche.jpg",
+    promptValue:
+      "side profile shot, container facing left, ingredients bursting from the right side",
+  },
+  {
+    id: "underwater",
+    label: "Underwater",
+    image: "/image-studio/templates/shot-underwater.jpg",
+    promptValue:
+      "underwater-style shot, container submerged, bubbles and water distortion around it",
+  },
+  {
+    id: "top-down",
+    label: "Vue du dessus",
+    image: "/image-studio/templates/shot-vue-dessus.jpg",
+    promptValue:
+      "bird's eye view, top-down flat lay, container centered from above, ingredients spread around",
+  },
+];
+
+export const ALL_PRODUCT_PHOTOGRAPHY_SHOT_STYLES: ProductShotStyle[] = [
+  ...PRODUCT_PHOTOGRAPHY_SHOT_STYLES,
+  ...PRODUCT_PHOTOGRAPHY_SHOT_STYLES_EXTENDED,
+];
+
 export type PromptTemplateDefinition = {
   id: string;
   label: string;
@@ -91,19 +179,19 @@ export const IMAGE_STUDIO_PROMPT_TEMPLATES: PromptTemplateDefinition[] = [
     ],
     body: `Ultra-sharp studio product photography, 50mm lens f/8, centered composition.
 
-SUBJECT: Iconic {{drink}} {{packaging}}, floating slightly above center frame, condensation water droplets visible on the cold surface, brand label clearly legible. Bottom of the container dripping water onto the surface below.
+SUBJECT: Iconic [NOM DE LA BOISSON], floating slightly above center frame, condensation water droplets visible on the cold surface, brand label clearly legible. Bottom of the container dripping water onto the surface below.
 
-SURROUNDING ELEMENTS: {{flavorElements}}
+SURROUNDING ELEMENTS: ${BEVERAGE_FLAVOR_DEFAULT}
 
 BASE: Dramatic frozen water splash with individual suspended water droplets in mid-air, small crushed ice shards scattered on the surface catching light.
 
-BACKGROUND: {{brandBackdrop}}
+BACKGROUND: ${BEVERAGE_BRAND_BACKDROP_DEFAULT}
 
 LIGHTING: Three-point studio setup — main large softbox upper-left at 5500K casting clean cool-white light; rim light from right edge creating container separation and material glow; subtle fill light to soften hard shadows. Individual water droplets catch bright specular highlights. Slight backlight halo outlining the container silhouette.
 
-COLOR PALETTE: {{brandPalette}}
+COLOR PALETTE: ${BEVERAGE_BRAND_PALETTE_DEFAULT}
 
-COMPOSITION: Portrait orientation 9:16, subject centered slightly below the geometric center, slightly low camera angle (worm's eye view) to give the container a monumental, imposing presence. Ingredients and flavor elements fill the upper and peripheral frame space dynamically.
+COMPOSITION: Portrait orientation 9:16, subject centered slightly below the geometric center, [TYPE DE SHOT]. Ingredients and flavor elements fill the upper and peripheral frame space dynamically.
 
 STYLE: High-end commercial product photography, photorealistic, ultra-sharp foreground with slight background blur (bokeh on distant elements), consistent cinematic color grading, 4K resolution. Reference: iconic brand advertising campaigns, Helmut Newton product photography discipline.`,
   },
