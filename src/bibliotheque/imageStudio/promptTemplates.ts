@@ -300,7 +300,7 @@ color grading, soft contrast, 4K resolution. Reference: outdoor brand
 campaigns, Apple lifestyle photography aesthetic.`;
 
 const LIFESTYLE_SHOT_POV_ASSIS =
-  "First-person POV, product gripped from the top by one hand, fingers spread over the lid in a natural overhead grasp. Strong low-angle view looking down toward the seated body, legs and lower body visible in the lower portion of the frame.";
+  "First-person POV, product held securely in one hand with a natural mid-body grip — fingers wrapped around the middle of the container, palm supporting from behind, thumb on the opposite side, stable grip so the product cannot slip or fall. Strong low-angle view looking down toward the seated body, legs and lower body visible in the lower portion of the frame.";
 
 const LIFESTYLE_SHOT_POV_DEBOUT =
   "First-person POV, arm extended forward holding the product at shoulder height while walking, product slightly motion-blurred at the edges to suggest movement, ground or path visible in the lower portion of the frame beneath the extended arm.";

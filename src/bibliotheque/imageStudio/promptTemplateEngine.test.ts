@@ -409,7 +409,7 @@ describe("lifestyle product photography", () => {
     expect(prompt).toContain("HOLY Hydration Strawberry Kiwi");
     expect(prompt).toContain("salle de sport moderne");
     expect(prompt).toContain(
-      "First-person POV, product gripped from the top by one hand, fingers spread over the lid in a natural overhead grasp. Strong low-angle view looking down toward the seated body, legs and lower body visible in the lower portion of the frame.",
+      "First-person POV, product held securely in one hand with a natural mid-body grip — fingers wrapped around the middle of the container, palm supporting from behind, thumb on the opposite side, stable grip so the product cannot slip or fall. Strong low-angle view looking down toward the seated body, legs and lower body visible in the lower portion of the frame.",
     );
     expect(prompt).not.toContain("[NOM DU PRODUIT]");
     expect(prompt).not.toContain("[TYPE DE SHOT]");
