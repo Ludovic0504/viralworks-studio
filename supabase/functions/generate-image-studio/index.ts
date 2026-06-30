@@ -184,6 +184,59 @@ function base64ToUint8Array(b64: string): Uint8Array {
   return bytes;
 }
 
+const SUPPORTED_REF_MIMES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/webp",
+]);
+
+const REF_FORMAT_MESSAGE =
+  "Format d'image non supporté. Importe une image JPG, PNG ou WebP (max 10 Mo).";
+
+const REF_TOO_LARGE_MESSAGE =
+  "L'image de référence est trop lourde ou vide. Utilise une photo JPG/PNG de moins de 10 Mo.";
+
+const REF_UNREADABLE_MESSAGE =
+  "Impossible de lire l'image de référence (@Image1). Réimporte-la en JPG ou PNG.";
+
+class ImageStudioUserError extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ImageStudioUserError";
+  }
+}
+
+function isImageStudioUserError(err: unknown): err is ImageStudioUserError {
+  return err instanceof ImageStudioUserError;
+}
+
+function extFromMime(mime: string): string {
+  if (mime.includes("jpeg") || mime.includes("jpg")) return "jpg";
+  if (mime.includes("webp")) return "webp";
+  return "png";
+}
+
+function inferMimeFromUrl(url: string): string | null {
+  if (/\.jpe?g(\?|$)/i.test(url)) return "image/jpeg";
+  if (/\.webp(\?|$)/i.test(url)) return "image/webp";
+  if (/\.png(\?|$)/i.test(url)) return "image/png";
+  return null;
+}
+
+function normalizeRefMime(raw: string, sourceUrl?: string): string {
+  const mime = raw.split(";")[0].trim().toLowerCase();
+  if (SUPPORTED_REF_MIMES.has(mime)) return mime;
+  if (sourceUrl) {
+    const inferred = inferMimeFromUrl(sourceUrl);
+    if (inferred) return inferred;
+  }
+  throw new ImageStudioUserError("INVALID_REF_FORMAT", REF_FORMAT_MESSAGE);
+}
+
 function parsePhotoDataUrl(dataUrl: string): {
   bytes: Uint8Array;
   mime: string;
@@ -193,21 +246,62 @@ function parsePhotoDataUrl(dataUrl: string): {
   const match = trimmed.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
   if (!match) return null;
   const mime = match[1].toLowerCase();
-  if (!["image/png", "image/jpeg", "image/jpg", "image/webp"].includes(mime)) {
+  if (!SUPPORTED_REF_MIMES.has(mime)) {
     return null;
   }
   try {
     const bytes = base64ToUint8Array(match[2]);
     if (bytes.length === 0 || bytes.length > MAX_REF_IMAGE_BYTES) return null;
-    const ext = mime.includes("jpeg") || mime.includes("jpg")
-      ? "jpg"
-      : mime.includes("webp")
-      ? "webp"
-      : "png";
-    return { bytes, mime, fileName: `reference.${ext}` };
+    return {
+      bytes,
+      mime,
+      fileName: `reference.${extFromMime(mime)}`,
+    };
   } catch {
     return null;
   }
+}
+
+async function resolveReferencePhotoInput(
+  input: string,
+): Promise<{ bytes: Uint8Array; mime: string; fileName: string }> {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    throw new ImageStudioUserError("INVALID_REF_IMAGE", REF_UNREADABLE_MESSAGE);
+  }
+
+  if (trimmed.startsWith("data:")) {
+    const parsed = parsePhotoDataUrl(trimmed);
+    if (!parsed) {
+      throw new ImageStudioUserError("INVALID_REF_FORMAT", REF_FORMAT_MESSAGE);
+    }
+    return parsed;
+  }
+
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    const fetchUrl = trimmed.startsWith("http://")
+      ? trimmed.replace("http://", "https://")
+      : trimmed;
+    const res = await fetch(fetchUrl);
+    if (!res.ok) {
+      throw new ImageStudioUserError("INVALID_REF_IMAGE", REF_UNREADABLE_MESSAGE);
+    }
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    if (bytes.length === 0 || bytes.length > MAX_REF_IMAGE_BYTES) {
+      throw new ImageStudioUserError("REF_IMAGE_TOO_LARGE", REF_TOO_LARGE_MESSAGE);
+    }
+    const mime = normalizeRefMime(
+      res.headers.get("content-type") || "image/png",
+      fetchUrl,
+    );
+    return {
+      bytes,
+      mime,
+      fileName: `reference.${extFromMime(mime)}`,
+    };
+  }
+
+  throw new ImageStudioUserError("INVALID_REF_IMAGE", REF_UNREADABLE_MESSAGE);
 }
 
 async function uploadReferenceToStorage(
@@ -631,8 +725,7 @@ async function generateGptImage2(
   const quality = resolveGptImageQuality();
 
   if (referenceInput) {
-    const photo = parsePhotoDataUrl(referenceInput);
-    if (!photo) throw new Error("Image de référence invalide.");
+    const photo = await resolveReferencePhotoInput(referenceInput);
     const form = new FormData();
     form.append("model", "gpt-image-2");
     form.append("prompt", prompt);
@@ -706,7 +799,6 @@ async function assertQuotaAndGenerate(
   }
 
   const primaryReferenceUrl = referenceUrls[0] ?? null;
-  const primaryReferenceInput = referenceImages[0] ?? null;
 
   let url: string;
   let provider: string;
@@ -718,7 +810,7 @@ async function assertQuotaAndGenerate(
     url = await generateHailuoImage(prompt, aspectRatio, primaryReferenceUrl);
     provider = "hailuo";
   } else {
-    url = await generateGptImage2(prompt, aspectRatio, primaryReferenceInput);
+    url = await generateGptImage2(prompt, aspectRatio, primaryReferenceUrl);
     provider = "openai";
   }
 
@@ -892,6 +984,9 @@ serve(async (req) => {
         limit: imageStudioLimit,
       });
     } catch (genErr) {
+      if (isImageStudioUserError(genErr)) {
+        return jsonError(400, genErr.code, genErr.message);
+      }
       const msg = genErr instanceof Error ? genErr.message : String(genErr);
       if (msg.startsWith("QUOTA:")) {
         const limit = msg.split(":")[1] || String(imageStudioLimit);

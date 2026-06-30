@@ -37,6 +37,15 @@ const QUOTA_MESSAGE =
 const KIE_CREDITS_MESSAGE =
   "Crédits Kie AI insuffisants. Recharge ton compte Kie puis réessaie.";
 
+export const IMAGE_STUDIO_REF_FORMAT_MESSAGE =
+  "Format d'image non supporté. Importe une image JPG, PNG ou WebP (max 10 Mo).";
+
+const REF_ERROR_CODES = new Set([
+  "INVALID_REF_FORMAT",
+  "INVALID_REF_IMAGE",
+  "REF_IMAGE_TOO_LARGE",
+]);
+
 export type { ImageStudioAspectRatio };
 
 export { IMAGE_STUDIO_PROMPT_MAX_LENGTH };
@@ -56,6 +65,12 @@ function pickUserFacingMessage(
   if (code.startsWith("KIE_")) return IMAGE_STUDIO_BUSY_MESSAGE;
   if (code === "PROMPT_TOO_LONG") {
     return data?.userMessage || "Le prompt est trop long.";
+  }
+  if (REF_ERROR_CODES.has(code)) {
+    return data?.userMessage || data?.error || IMAGE_STUDIO_REF_FORMAT_MESSAGE;
+  }
+  if (code === "GENERATION_FAILED" && data?.userMessage) {
+    return data.userMessage;
   }
 
   if (data?.userMessage) {

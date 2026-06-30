@@ -2,6 +2,22 @@ import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
 
 const MAX_REF_BYTES = 10 * 1024 * 1024;
 
+export const IMAGE_STUDIO_SUPPORTED_REF_MIMES = [
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/webp",
+] as const;
+
+export const IMAGE_STUDIO_REF_IMPORT_MESSAGE =
+  "Format non supporté. Importe une image JPG, PNG ou WebP (max 10 Mo).";
+
+export function isSupportedImageStudioReferenceMime(mime: string): boolean {
+  return IMAGE_STUDIO_SUPPORTED_REF_MIMES.includes(
+    mime.toLowerCase() as (typeof IMAGE_STUDIO_SUPPORTED_REF_MIMES)[number],
+  );
+}
+
 function parseImageDataUrl(
   dataUrl: string,
 ): { bytes: Uint8Array; mime: string; ext: string } | null {
@@ -65,7 +81,7 @@ export async function uploadImageStudioReferenceUrl(
 
   const parsed = parseImageDataUrl(trimmed);
   if (!parsed) {
-    throw new Error("Image de référence invalide ou trop lourde (max 10 Mo).");
+    throw new Error(IMAGE_STUDIO_REF_IMPORT_MESSAGE);
   }
 
   const supabase = getBrowserSupabase();

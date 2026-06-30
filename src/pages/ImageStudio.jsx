@@ -69,7 +69,11 @@ import {
   saveImageStudioHistoryCache,
 } from "@/bibliotheque/imageStudio/imageStudioHistoryCache";
 import { resolvePromptMentions, IMAGE_STUDIO_PROMPT_MAX_LENGTH, getImageStudioUserPrompt } from "@/bibliotheque/imageStudio/promptMentions";
-import { uploadImageStudioReferenceUrl } from "@/bibliotheque/imageStudio/uploadImageStudioReference";
+import {
+  uploadImageStudioReferenceUrl,
+  isSupportedImageStudioReferenceMime,
+  IMAGE_STUDIO_REF_IMPORT_MESSAGE,
+} from "@/bibliotheque/imageStudio/uploadImageStudioReference";
 import ModalBibliothequeAvatars from "@/composants/studio/avatar/ModalBibliothequeAvatars";
 import ModalBibliothequeProduits from "@/composants/studio/product/ModalBibliothequeProduits";
 import { capturePostHog, trackPostHogError } from "@/bibliotheque/posthog/client";
@@ -894,7 +898,12 @@ export default function ImageStudio() {
   const handlePromptImportChange = useCallback((e) => {
     const file = e.target.files?.[0];
     e.target.value = "";
-    if (!file || !file.type.startsWith("image/")) return;
+    if (!file) return;
+
+    if (!isSupportedImageStudioReferenceMime(file.type)) {
+      setError(IMAGE_STUDIO_REF_IMPORT_MESSAGE);
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = () => {
@@ -1307,7 +1316,7 @@ export default function ImageStudio() {
                 <input
                   ref={promptImportInputRef}
                   type="file"
-                  accept="image/*"
+                  accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
                   onChange={handlePromptImportChange}
                   className="hidden"
                   aria-hidden
