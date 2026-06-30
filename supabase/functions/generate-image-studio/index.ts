@@ -610,6 +610,14 @@ function parseOpenAiB64(text: string, res: Response): string {
   return b64;
 }
 
+function resolveGptImageQuality(): "low" | "medium" | "high" | "auto" {
+  const raw = Deno.env.get("IMAGE_STUDIO_GPT_QUALITY")?.trim().toLowerCase();
+  if (raw === "low" || raw === "medium" || raw === "high" || raw === "auto") {
+    return raw;
+  }
+  return "medium";
+}
+
 async function generateGptImage2(
   prompt: string,
   aspectRatio: string,
@@ -620,6 +628,8 @@ async function generateGptImage2(
 
   const size = openAiSizeForRatio(aspectRatio);
 
+  const quality = resolveGptImageQuality();
+
   if (referenceInput) {
     const photo = parsePhotoDataUrl(referenceInput);
     if (!photo) throw new Error("Image de référence invalide.");
@@ -628,6 +638,9 @@ async function generateGptImage2(
     form.append("prompt", prompt);
     form.append("n", "1");
     form.append("size", size);
+    if (quality !== "auto") {
+      form.append("quality", quality);
+    }
     form.append(
       "image[]",
       new Blob([photo.bytes], { type: photo.mime }),
@@ -654,7 +667,7 @@ async function generateGptImage2(
       prompt,
       n: 1,
       size,
-      quality: "low",
+      ...(quality === "auto" ? {} : { quality }),
     }),
   });
   const text = await res.text();

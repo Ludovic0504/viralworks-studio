@@ -220,11 +220,12 @@ export function resolvePromptMentions(
   const mentionKinds = parseMentionKindsInOrder(trimmed);
 
   if (mentionKinds.length === 0) {
+    const image1Url = getAssetUrl("Image1", assets);
     return {
       userPrompt: trimmed,
       generationPrompt: trimmed,
       prompt: trimmed,
-      referenceImages: [],
+      referenceImages: image1Url ? [image1Url] : [],
       mentionKinds: [],
     };
   }

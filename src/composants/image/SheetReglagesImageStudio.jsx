@@ -173,7 +173,7 @@ export default function SheetReglagesImageStudio({
             onClick={onOpenPrompts}
           >
             <BookOpen className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
-            Guides prompt
+            Prompt
           </button>
         </div>
       </div>

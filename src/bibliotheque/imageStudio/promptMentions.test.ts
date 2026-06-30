@@ -136,4 +136,18 @@ describe("promptMentions", () => {
     expect(result.userPrompt).toBe("A simple scene");
     expect(result.generationPrompt).toBe("A simple scene");
   });
+
+  it("sends imported image without @Image1 and without composition instructions", () => {
+    const userText = "Ultra-realistic lifestyle product photography";
+    const result = resolvePromptMentions(userText, {
+      avatarUrl: null,
+      productUrl: null,
+      image1Url: "https://cdn/imported-ref.png",
+    });
+
+    expect(result.referenceImages).toEqual(["https://cdn/imported-ref.png"]);
+    expect(result.userPrompt).toBe(userText);
+    expect(result.generationPrompt).toBe(userText);
+    expect(result.generationPrompt).not.toContain("[Refs]");
+  });
 });

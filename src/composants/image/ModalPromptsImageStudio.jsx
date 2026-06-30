@@ -15,21 +15,32 @@ import {
   extractBeverageSlotsFromFirstMessage,
   extractDrinkSlotsFromMessage,
   extractSlotsFromMessage,
+  extractVerbatimSlot,
   fillTemplateSlotDefaults,
   isBeverageGuideReady,
+  isLifestyleGuideReady,
+  isPackagingResolved,
   isWeakRequiredSlot,
   mergeTemplateSlots,
   parseElementsModeChoice,
+  parsePackagingChoice,
   resolveReferenceFlavorElements,
 } from "@/bibliotheque/imageStudio/promptTemplateEngine";
 import {
+  ALL_LIFESTYLE_SHOT_STYLES,
   ALL_PRODUCT_PHOTOGRAPHY_SHOT_STYLES,
   IMAGE_STUDIO_PROMPT_TEMPLATES,
+  isLifestyleProductGuideTemplate,
+  isShotStyleGuideTemplate,
+  isStudioProductGuideTemplate,
+  LIFESTYLE_SHOT_STYLES,
+  LIFESTYLE_SHOT_STYLES_EXTENDED,
   PRODUCT_PHOTOGRAPHY_SHOT_STYLES,
   PRODUCT_PHOTOGRAPHY_SHOT_STYLES_EXTENDED,
 } from "@/bibliotheque/imageStudio/promptTemplates";
 
-/** @typedef {'drink' | 'elements_mode' | 'custom_elements' | 'ready'} BeverageGuideStep */
+/** @typedef {'drink' | 'packaging_mode' | 'elements_mode' | 'custom_elements' | 'ready'} BeverageGuideStep */
+/** @typedef {'product' | 'environment' | 'ready'} LifestyleGuideStep */
 
 /** @typedef {{ id: string, role: 'bot' | 'user', text: string }} ChatMessage */
 
@@ -175,36 +186,48 @@ function PromptTemplateChat({
 }) {
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+  const isStudioGuide = isStudioProductGuideTemplate(template);
+  const isLifestyleGuide = isLifestyleProductGuideTemplate(template);
   const isBeverageGuide = template.extractorId === "beverage-hero";
-  const showShotStylePicker = template.id === "product-photography";
+  const showShotStylePicker = isShotStyleGuideTemplate(template);
+
+  const primaryShotStyles = isLifestyleGuide
+    ? LIFESTYLE_SHOT_STYLES
+    : PRODUCT_PHOTOGRAPHY_SHOT_STYLES;
+  const extendedShotStyles = isLifestyleGuide
+    ? LIFESTYLE_SHOT_STYLES_EXTENDED
+    : PRODUCT_PHOTOGRAPHY_SHOT_STYLES_EXTENDED;
+  const allShotStyles = isLifestyleGuide
+    ? ALL_LIFESTYLE_SHOT_STYLES
+    : ALL_PRODUCT_PHOTOGRAPHY_SHOT_STYLES;
 
   const [messages, setMessages] = useState(() =>
-    template.id === "product-photography"
-      ? []
-      : [{ id: nextMessageId(), role: "bot", text: template.botIntro }],
+    showShotStylePicker ? [] : [{ id: nextMessageId(), role: "bot", text: template.botIntro }],
   );
   const [slots, setSlots] = useState({});
   const [draft, setDraft] = useState("");
   const [ready, setReady] = useState(false);
   const [adjustOpen, setAdjustOpen] = useState(false);
-  const [guideStep, setGuideStep] = useState(
-    /** @type {BeverageGuideStep} */ ("drink"),
+  const [guideStep, setGuideStep] = useState(() =>
+    isLifestyleGuide ? /** @type {LifestyleGuideStep} */ ("product") : /** @type {BeverageGuideStep} */ ("drink"),
   );
   const [selectedShotId, setSelectedShotId] = useState(null);
   const [selectedFromExtended, setSelectedFromExtended] = useState(false);
-  const [moreStylesExpanded, setMoreStylesExpanded] = useState(false);
-  const [moreStylesDismissed, setMoreStylesDismissed] = useState(false);
+  /** @type {[null | 'yes' | 'no', import('react').Dispatch<import('react').SetStateAction<null | 'yes' | 'no'>>]} */
+  const [moreStylesChoice, setMoreStylesChoice] = useState(null);
+  const [packagingWasAsked, setPackagingWasAsked] = useState(false);
   const [shotStyleError, setShotStyleError] = useState(false);
 
   const selectedShot = useMemo(
-    () => ALL_PRODUCT_PHOTOGRAPHY_SHOT_STYLES.find((style) => style.id === selectedShotId) ?? null,
-    [selectedShotId],
+    () => allShotStyles.find((style) => style.id === selectedShotId) ?? null,
+    [allShotStyles, selectedShotId],
   );
 
-  const showPrimaryShotGrid =
-    !selectedShotId || selectedFromExtended;
-  const showExtendedShotGrid = moreStylesExpanded && (!selectedShotId || selectedFromExtended);
-  const showMoreStylesPrompt = !selectedShotId && !moreStylesDismissed;
+  const showPrimaryShotGrid = !selectedShotId || selectedFromExtended;
+  const showExtendedShotGrid =
+    moreStylesChoice === "yes" && (!selectedShotId || selectedFromExtended);
+  const showMoreStylesBubble = !selectedShotId;
+  const showMoreStylesButtons = moreStylesChoice === null;
   const shotGridsLocked = Boolean(selectedShotId && selectedFromExtended);
 
   const filledSlots = useMemo(
@@ -215,30 +238,39 @@ function PromptTemplateChat({
   const assembledPrompt = useMemo(
     () => {
       if (!ready) return "";
-      if (showShotStylePicker) {
-        return assemblePromptFromTemplate(
-          template,
-          { drink: slots.drink ?? "" },
-          {
-            shotType: selectedShot?.promptValue,
-            drinkName: slots.drink ?? "",
-          },
-        );
+      if (isLifestyleGuide) {
+        return assemblePromptFromTemplate(template, slots, {
+          shotId: selectedShotId ?? undefined,
+        });
+      }
+      if (isStudioGuide) {
+        return assemblePromptFromTemplate(template, slots, {
+          shotType: selectedShot?.promptValue,
+          drinkName: slots.drink ?? "",
+          shotId: selectedShotId ?? undefined,
+        });
       }
       return assemblePromptFromTemplate(template, slots, {
         shotType: selectedShot?.promptValue,
+        shotId: selectedShotId ?? undefined,
       });
     },
-    [ready, showShotStylePicker, template, slots, selectedShot],
+    [isLifestyleGuide, isStudioGuide, ready, template, slots, selectedShot, selectedShotId],
   );
 
   const inputPlaceholder = useMemo(() => {
+    if (isLifestyleGuide) {
+      if (guideStep === "product") return "Ex. HOLY Hydration Strawberry Kiwi…";
+      if (guideStep === "environment") return "Ex. salle de sport moderne, terrain de tennis…";
+      return "Votre réponse…";
+    }
     if (!isBeverageGuide) return "Décrivez le produit…";
     if (guideStep === "drink") return "Ex. Monster Energy ou Monster Energy avec des citrons verts…";
+    if (guideStep === "packaging_mode") return "Ou choisissez une option ci-dessus…";
     if (guideStep === "elements_mode") return "Ou choisissez une option ci-dessus…";
     if (guideStep === "custom_elements") return "Décrivez les éléments autour et la saveur…";
     return "Décrivez la boisson…";
-  }, [guideStep, isBeverageGuide]);
+  }, [guideStep, isBeverageGuide, isLifestyleGuide]);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -261,13 +293,46 @@ function PromptTemplateChat({
   const processBeverageMessage = useCallback(
     (text) => {
       if (guideStep === "drink") {
-        const merged = mergeTemplateSlots(slots, extractBeverageSlotsFromFirstMessage(text, template));
+        const extracted = isStudioGuide
+          ? extractDrinkSlotsFromMessage(text, template)
+          : extractBeverageSlotsFromFirstMessage(text, template);
+        const merged = mergeTemplateSlots(slots, extracted);
 
         if (isWeakRequiredSlot(template, merged)) {
           setReady(false);
           pushMessage("bot", template.botAskRequired);
           return;
         }
+
+        if (isStudioGuide && !isPackagingResolved(merged, template)) {
+          setSlots(merged);
+          setPackagingWasAsked(true);
+          setGuideStep("packaging_mode");
+          return;
+        }
+
+        if (isBeverageGuideReady(template, merged)) {
+          finalizeGuide(merged);
+          return;
+        }
+
+        setSlots(merged);
+        setGuideStep("elements_mode");
+        pushMessage("bot", template.botAskElementsMode ?? "");
+        return;
+      }
+
+      if (guideStep === "packaging_mode") {
+        const choice = parsePackagingChoice(text);
+        if (!choice) {
+          pushMessage(
+            "bot",
+            "Choisissez « Canette » ou « Bouteille », ou utilisez les boutons ci-dessus.",
+          );
+          return;
+        }
+
+        const merged = mergeTemplateSlots(slots, { packaging: choice });
 
         if (isBeverageGuideReady(template, merged)) {
           finalizeGuide(merged);
@@ -313,6 +378,37 @@ function PromptTemplateChat({
         finalizeGuide(merged);
       }
     },
+    [finalizeGuide, guideStep, isStudioGuide, pushMessage, slots, template],
+  );
+
+  const processLifestyleMessage = useCallback(
+    (text) => {
+      if (guideStep === "product") {
+        const product = extractVerbatimSlot(text);
+        if (product.length < 2) {
+          setReady(false);
+          pushMessage("bot", template.botAskRequired);
+          return;
+        }
+
+        const merged = mergeTemplateSlots(slots, { product });
+        setSlots(merged);
+        setGuideStep("environment");
+        pushMessage("bot", template.botAskEnvironment ?? "Dans quel environnement ?");
+        return;
+      }
+
+      if (guideStep === "environment") {
+        const environment = extractVerbatimSlot(text);
+        if (environment.length < 2) {
+          setReady(false);
+          pushMessage("bot", template.botAskEnvironment ?? "Dans quel environnement ?");
+          return;
+        }
+
+        finalizeGuide(mergeTemplateSlots(slots, { environment }));
+      }
+    },
     [finalizeGuide, guideStep, pushMessage, slots, template],
   );
 
@@ -341,6 +437,11 @@ function PromptTemplateChat({
       pushMessage("user", text);
       setDraft("");
 
+      if (isLifestyleGuide) {
+        processLifestyleMessage(text);
+        return;
+      }
+
       if (isBeverageGuide) {
         processBeverageMessage(text);
         return;
@@ -348,7 +449,7 @@ function PromptTemplateChat({
 
       processGenericMessage(text);
     },
-    [isBeverageGuide, processBeverageMessage, processGenericMessage, pushMessage],
+    [isBeverageGuide, isLifestyleGuide, processBeverageMessage, processGenericMessage, processLifestyleMessage, pushMessage],
   );
 
   const handleElementsModeChoice = useCallback(
@@ -358,6 +459,13 @@ function PromptTemplateChat({
           ? "Éléments de référence de la marque"
           : "Choisir moi-même les éléments";
       processUserMessage(label);
+    },
+    [processUserMessage],
+  );
+
+  const handlePackagingChoice = useCallback(
+    (choice) => {
+      processUserMessage(choice === "can" ? "Canette" : "Bouteille");
     },
     [processUserMessage],
   );
@@ -374,27 +482,29 @@ function PromptTemplateChat({
     (key, value) => {
       setSlots((prev) => {
         const next = { ...prev, [key]: value };
-        setReady(isBeverageGuideReady(template, next));
+        if (isLifestyleGuide) {
+          setReady(isLifestyleGuideReady(template, next));
+        } else {
+          setReady(isBeverageGuideReady(template, next));
+        }
         return next;
       });
     },
-    [template],
+    [isLifestyleGuide, template],
   );
 
   const handleShotSelect = useCallback((shotId, fromExtended = false) => {
     setSelectedShotId(shotId);
     setSelectedFromExtended(fromExtended);
-    setMoreStylesDismissed(true);
     setShotStyleError(false);
   }, []);
 
   const handleMoreStylesYes = useCallback(() => {
-    setMoreStylesExpanded(true);
-    setMoreStylesDismissed(true);
+    setMoreStylesChoice("yes");
   }, []);
 
   const handleMoreStylesNo = useCallback(() => {
-    setMoreStylesDismissed(true);
+    setMoreStylesChoice("no");
   }, []);
 
   const handleApply = useCallback(() => {
@@ -408,7 +518,11 @@ function PromptTemplateChat({
   }, [assembledPrompt, onApplyPrompt, onClose, selectedShotId, showShotStylePicker]);
 
   const composeForm =
-    guideStep !== "ready" && !ready ? (
+    guideStep !== "ready" && !ready && (
+      isLifestyleGuide
+        ? guideStep === "product" || guideStep === "environment"
+        : guideStep !== "packaging_mode" && guideStep !== "elements_mode"
+    ) ? (
       <form className="image-studio-prompt-guide-compose" onSubmit={handleSubmit}>
         <input
           ref={inputRef}
@@ -435,12 +549,47 @@ function PromptTemplateChat({
     [messages],
   );
 
+  const elementsUserMessageIndex = packagingWasAsked ? 2 : 1;
+  const customUserMessageIndex = packagingWasAsked ? 3 : 2;
+
+  const showPackagingBot = isStudioGuide && packagingWasAsked && selectedShotId;
+
   const showElementsBot =
+    isStudioGuide &&
     selectedShotId &&
-    userMessages.length >= 1 &&
+    !["drink", "packaging_mode"].includes(guideStep) &&
+    userMessages.length >= (packagingWasAsked ? 2 : 1) &&
     (guideStep === "elements_mode" ||
       guideStep === "custom_elements" ||
-      (ready && userMessages.length >= 2));
+      ready);
+
+  const showEnvironmentBot =
+    isLifestyleGuide &&
+    selectedShotId &&
+    userMessages.length >= 1 &&
+    (guideStep === "environment" || ready);
+
+  const productValidationBotMessage = useMemo(
+    () =>
+      messages.find(
+        (message) =>
+          message.role === "bot" &&
+          message.text === template.botAskRequired &&
+          guideStep === "product",
+      ) ?? null,
+    [guideStep, messages, template.botAskRequired],
+  );
+
+  const environmentValidationBotMessage = useMemo(
+    () =>
+      messages.find(
+        (message) =>
+          message.role === "bot" &&
+          message.text === template.botAskEnvironment &&
+          guideStep === "environment",
+      ) ?? null,
+    [guideStep, messages, template.botAskEnvironment],
+  );
 
   const drinkValidationBotMessage = useMemo(
     () =>
@@ -464,6 +613,17 @@ function PromptTemplateChat({
     [guideStep, messages],
   );
 
+  const packagingValidationBotMessage = useMemo(
+    () =>
+      messages.find(
+        (message) =>
+          message.role === "bot" &&
+          message.text.startsWith("Choisissez « Canette »") &&
+          guideStep === "packaging_mode",
+      ) ?? null,
+    [guideStep, messages],
+  );
+
   const customValidationBotMessages = useMemo(
     () =>
       messages
@@ -479,13 +639,28 @@ function PromptTemplateChat({
   const botTurnKeys = useMemo(() => {
     if (!showShotStylePicker) return [];
 
+    if (isLifestyleGuide) {
+      const keys = ["shot"];
+      if (showMoreStylesBubble) keys.push("more-styles");
+      if (moreStylesChoice === "yes") keys.push("extended-shots");
+      if (selectedShotId) keys.push("product");
+      if (productValidationBotMessage) keys.push("product-validation");
+      if (showEnvironmentBot) keys.push("environment");
+      if (environmentValidationBotMessage) keys.push("environment-validation");
+      if (ready) keys.push("result");
+      return keys;
+    }
+
     const keys = ["shot"];
-    if (showMoreStylesPrompt) keys.push("more-styles");
+    if (showMoreStylesBubble) keys.push("more-styles");
+    if (moreStylesChoice === "yes") keys.push("extended-shots");
     if (selectedShotId) keys.push("drink");
     if (drinkValidationBotMessage) keys.push("drink-validation");
+    if (showPackagingBot) keys.push("packaging");
+    if (packagingValidationBotMessage) keys.push("packaging-validation");
     if (showElementsBot) keys.push("elements");
     if (elementsValidationBotMessage) keys.push("elements-validation");
-    if (guideStep === "custom_elements" || userMessages[2]) keys.push("custom");
+    if (guideStep === "custom_elements" || userMessages[customUserMessageIndex]) keys.push("custom");
     customValidationBotMessages.forEach((message) => {
       keys.push(`custom-validation-${message.id}`);
     });
@@ -493,13 +668,21 @@ function PromptTemplateChat({
     return keys;
   }, [
     customValidationBotMessages,
+    customUserMessageIndex,
     drinkValidationBotMessage,
     elementsValidationBotMessage,
+    environmentValidationBotMessage,
     guideStep,
+    isLifestyleGuide,
+    moreStylesChoice,
+    packagingValidationBotMessage,
+    productValidationBotMessage,
     ready,
     selectedShotId,
     showElementsBot,
-    showMoreStylesPrompt,
+    showEnvironmentBot,
+    showMoreStylesBubble,
+    showPackagingBot,
     showShotStylePicker,
     userMessages,
   ]);
@@ -518,8 +701,7 @@ function PromptTemplateChat({
     ready,
     selectedShotId,
     showShotStylePicker,
-    moreStylesExpanded,
-    moreStylesDismissed,
+    moreStylesChoice,
   ]);
 
   const elementsChoiceButtons = (
@@ -543,6 +725,31 @@ function PromptTemplateChat({
         onClick={() => handleElementsModeChoice("custom")}
       >
         Choisir moi-même les éléments
+      </button>
+    </div>
+  );
+
+  const packagingChoiceButtons = (
+    <div
+      className="image-studio-prompt-guide-elements-actions image-studio-prompt-guide-bubble-actions"
+      role="group"
+      aria-label="Format emballage"
+    >
+      <button
+        type="button"
+        className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
+        disabled={guideStep !== "packaging_mode"}
+        onClick={() => handlePackagingChoice("can")}
+      >
+        Canette
+      </button>
+      <button
+        type="button"
+        className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
+        disabled={guideStep !== "packaging_mode"}
+        onClick={() => handlePackagingChoice("bottle")}
+      >
+        Bouteille
       </button>
     </div>
   );
@@ -648,18 +855,10 @@ function PromptTemplateChat({
             <p className="image-studio-prompt-guide-bubble-text">Quel style de shot ?</p>
             {showPrimaryShotGrid ? (
               <ProductShotStyleGrid
-                styles={PRODUCT_PHOTOGRAPHY_SHOT_STYLES}
+                styles={primaryShotStyles}
                 selectedId={selectedShotId}
                 locked={shotGridsLocked}
                 onSelect={(shotId) => handleShotSelect(shotId, false)}
-              />
-            ) : null}
-            {showExtendedShotGrid ? (
-              <ProductShotStyleGrid
-                styles={PRODUCT_PHOTOGRAPHY_SHOT_STYLES_EXTENDED}
-                selectedId={selectedShotId}
-                locked={shotGridsLocked}
-                onSelect={(shotId) => handleShotSelect(shotId, true)}
               />
             ) : null}
             {!selectedShotId && shotStyleError ? (
@@ -669,29 +868,51 @@ function PromptTemplateChat({
             ) : null}
           </ConversationBubble>
 
-          {showMoreStylesPrompt ? (
+          {showMoreStylesBubble ? (
             <ConversationBubble role="bot" visible={isBotVisible("more-styles")}>
               <p className="image-studio-prompt-guide-bubble-text">Voir plus de styles ?</p>
-              <div
-                className="image-studio-prompt-guide-elements-actions image-studio-prompt-guide-bubble-actions image-studio-prompt-guide-more-styles-actions"
-                role="group"
-                aria-label="Voir plus de styles"
-              >
-                <button
-                  type="button"
-                  className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
-                  onClick={handleMoreStylesYes}
+              {showMoreStylesButtons ? (
+                <div
+                  className="image-studio-prompt-guide-elements-actions image-studio-prompt-guide-bubble-actions image-studio-prompt-guide-more-styles-actions"
+                  role="group"
+                  aria-label="Voir plus de styles"
                 >
-                  Oui
-                </button>
-                <button
-                  type="button"
-                  className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
-                  onClick={handleMoreStylesNo}
-                >
-                  Non
-                </button>
-              </div>
+                  <button
+                    type="button"
+                    className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
+                    onClick={handleMoreStylesYes}
+                  >
+                    Oui
+                  </button>
+                  <button
+                    type="button"
+                    className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
+                    onClick={handleMoreStylesNo}
+                  >
+                    Non
+                  </button>
+                </div>
+              ) : null}
+            </ConversationBubble>
+          ) : null}
+
+          {moreStylesChoice === "yes" || moreStylesChoice === "no" ? (
+            <ConversationBubble role="user">
+              <p className="image-studio-prompt-guide-bubble-text">
+                {moreStylesChoice === "yes" ? "Oui" : "Non"}
+              </p>
+            </ConversationBubble>
+          ) : null}
+
+          {showExtendedShotGrid ? (
+            <ConversationBubble role="bot" wide visible={isBotVisible("extended-shots")}>
+              <p className="image-studio-prompt-guide-bubble-text">Voici d&apos;autres styles :</p>
+              <ProductShotStyleGrid
+                styles={extendedShotStyles}
+                selectedId={selectedShotId}
+                locked={shotGridsLocked}
+                onSelect={(shotId) => handleShotSelect(shotId, true)}
+              />
             </ConversationBubble>
           ) : null}
 
@@ -702,9 +923,11 @@ function PromptTemplateChat({
           ) : null}
 
           {selectedShotId ? (
-            <ConversationBubble role="bot" visible={isBotVisible("drink")}>
-              <p className="image-studio-prompt-guide-bubble-text">Quelle boisson ?</p>
-              {guideStep === "drink" ? (
+            <ConversationBubble role="bot" visible={isBotVisible("drink") || isBotVisible("product")}>
+              <p className="image-studio-prompt-guide-bubble-text">
+                {isLifestyleGuide ? template.botIntro : "Quelle boisson ?"}
+              </p>
+              {(isLifestyleGuide ? guideStep === "product" : guideStep === "drink") ? (
                 <div className="image-studio-prompt-guide-bubble-compose">{composeForm}</div>
               ) : null}
             </ConversationBubble>
@@ -716,11 +939,62 @@ function PromptTemplateChat({
             </ConversationBubble>
           ) : null}
 
-          {drinkValidationBotMessage ? (
-            <ConversationBubble role="bot" visible={isBotVisible("drink-validation")}>
+          {(drinkValidationBotMessage || productValidationBotMessage) ? (
+            <ConversationBubble
+              role="bot"
+              visible={isBotVisible("drink-validation") || isBotVisible("product-validation")}
+            >
               <p className="image-studio-prompt-guide-bubble-text">
-                {drinkValidationBotMessage.text}
+                {(drinkValidationBotMessage ?? productValidationBotMessage).text}
               </p>
+            </ConversationBubble>
+          ) : null}
+
+          {showEnvironmentBot ? (
+            <ConversationBubble role="bot" visible={isBotVisible("environment")}>
+              <p className="image-studio-prompt-guide-bubble-text">
+                {template.botAskEnvironment}
+              </p>
+              {guideStep === "environment" ? (
+                <div className="image-studio-prompt-guide-bubble-compose">{composeForm}</div>
+              ) : null}
+            </ConversationBubble>
+          ) : null}
+
+          {isLifestyleGuide && userMessages[1] ? (
+            <ConversationBubble role="user">
+              <p className="image-studio-prompt-guide-bubble-text">{userMessages[1].text}</p>
+            </ConversationBubble>
+          ) : null}
+
+          {environmentValidationBotMessage ? (
+            <ConversationBubble role="bot" visible={isBotVisible("environment-validation")}>
+              <p className="image-studio-prompt-guide-bubble-text">
+                {environmentValidationBotMessage.text}
+              </p>
+            </ConversationBubble>
+          ) : null}
+
+          {showPackagingBot ? (
+            <ConversationBubble role="bot" visible={isBotVisible("packaging")}>
+              <p className="image-studio-prompt-guide-bubble-text">
+                {template.botAskPackagingMode}
+              </p>
+              {packagingChoiceButtons}
+            </ConversationBubble>
+          ) : null}
+
+          {packagingValidationBotMessage ? (
+            <ConversationBubble role="bot" visible={isBotVisible("packaging-validation")}>
+              <p className="image-studio-prompt-guide-bubble-text">
+                {packagingValidationBotMessage.text}
+              </p>
+            </ConversationBubble>
+          ) : null}
+
+          {packagingWasAsked && userMessages[1] ? (
+            <ConversationBubble role="user">
+              <p className="image-studio-prompt-guide-bubble-text">{userMessages[1].text}</p>
             </ConversationBubble>
           ) : null}
 
@@ -738,13 +1012,15 @@ function PromptTemplateChat({
             </ConversationBubble>
           ) : null}
 
-          {userMessages[1] ? (
+          {userMessages[elementsUserMessageIndex] ? (
             <ConversationBubble role="user">
-              <p className="image-studio-prompt-guide-bubble-text">{userMessages[1].text}</p>
+              <p className="image-studio-prompt-guide-bubble-text">
+                {userMessages[elementsUserMessageIndex].text}
+              </p>
             </ConversationBubble>
           ) : null}
 
-          {guideStep === "custom_elements" || userMessages[2] ? (
+          {guideStep === "custom_elements" || userMessages[customUserMessageIndex] ? (
             <ConversationBubble role="bot" visible={isBotVisible("custom")}>
               <p className="image-studio-prompt-guide-bubble-text">
                 {template.botAskCustomElements}
@@ -755,9 +1031,11 @@ function PromptTemplateChat({
             </ConversationBubble>
           ) : null}
 
-          {userMessages[2] ? (
+          {userMessages[customUserMessageIndex] ? (
             <ConversationBubble role="user">
-              <p className="image-studio-prompt-guide-bubble-text">{userMessages[2].text}</p>
+              <p className="image-studio-prompt-guide-bubble-text">
+                {userMessages[customUserMessageIndex].text}
+              </p>
             </ConversationBubble>
           ) : null}
 

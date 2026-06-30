@@ -1,4 +1,19 @@
 import type { PromptTemplateDefinition } from "./promptTemplates";
+import {
+  getLifestyleShotStyleById,
+  getProductShotStyleById,
+  isLifestyleProductGuideTemplate,
+  isStudioProductGuideTemplate,
+  LIFESTYLE_PLACEHOLDERS,
+  LIFESTYLE_TEMPLATE_BODY_CONTINUITY,
+  LIFESTYLE_TEMPLATE_BODY_STANDALONE,
+  PRODUCT_PHOTOGRAPHY_DEFAULT_BASE_SECTION,
+  PRODUCT_PHOTOGRAPHY_DEFAULT_LIGHTING_SECTION,
+  PRODUCT_PHOTOGRAPHY_DEFAULT_SCENE_INTRO,
+  PRODUCT_PHOTOGRAPHY_DEFAULT_STYLE_SECTION,
+  PRODUCT_PHOTOGRAPHY_DEFAULT_SUBJECT_DETAIL,
+  PRODUCT_PHOTOGRAPHY_PLACEHOLDERS,
+} from "./promptTemplates";
 
 export type TemplateSlotValues = Record<string, string>;
 
@@ -147,18 +162,155 @@ export function resolveReferenceFlavorElements(
   return flavorVariable?.defaultValue ?? "";
 }
 
-function extractPackaging(message: string): string | null {
-  if (/\bcanette|\bcan\b/i.test(message)) {
-    return "in its iconic aluminum can format";
+function extractDrinkLabelFromMessage(message: string): string {
+  const raw = message.trim();
+  if (!raw) return "";
+
+  let candidate = raw;
+  const avecMatch = raw.match(/\bavec\s+(.+)$/i);
+  if (avecMatch?.index != null) {
+    candidate = raw.slice(0, avecMatch.index).trim();
   }
-  if (/\bbouteille|\bbottle\b/i.test(message)) {
-    return "in its iconic glass or PET bottle format";
+
+  candidate = candidate
+    .replace(/\b(?:canette|bouteille|brick|carton|bottle|can)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const cleaned = cleanPhrase(candidate);
+  return cleaned || raw;
+}
+
+export function isPackagingSpecifiedInMessage(message: string): boolean {
+  return extractPackaging(message) !== null;
+}
+
+export function isPackagingResolved(
+  slots: TemplateSlotValues,
+  template: PromptTemplateDefinition,
+): boolean {
+  const packaging = slots.packaging?.trim();
+  if (!packaging) return false;
+  const defaultPackaging =
+    template.variables.find((variable) => variable.key === "packaging")?.defaultValue ??
+    "can, bottle, carton or other";
+  return packaging !== defaultPackaging;
+}
+
+export type PackagingChoice = "can" | "bottle";
+
+export function parsePackagingChoice(text: string): PackagingChoice | null {
+  const normalized = text.trim().toLowerCase();
+  if (!normalized) return null;
+  if (
+    /^(1|canette|can)\b/i.test(normalized) ||
+    /\bcanette\b/i.test(normalized) ||
+    normalized === "can"
+  ) {
+    return "can";
   }
-  if (/\bbrick|carton|brique\b/i.test(message)) {
-    return "in its original carton packaging format";
+  if (
+    /^(2|bouteille|bottle)\b/i.test(normalized) ||
+    /\bbouteille\b/i.test(normalized) ||
+    normalized === "bottle"
+  ) {
+    return "bottle";
   }
   return null;
 }
+
+function findKnownBrandMetadata(
+  message: string,
+  options?: { skipFlavor?: boolean },
+): Partial<TemplateSlotValues> {
+  const raw = message.trim();
+  if (!raw) return {};
+
+  const skipFlavor = options?.skipFlavor === true;
+  for (const brand of KNOWN_BEVERAGE_BRANDS) {
+    if (!brand.pattern.test(raw)) continue;
+    const metadata: Partial<TemplateSlotValues> = {
+      brandBackdrop: brand.brandBackdrop,
+      brandPalette: brand.brandPalette,
+    };
+    if (!skipFlavor && brand.flavorElements) {
+      metadata.flavorElements = brand.flavorElements;
+    }
+    return metadata;
+  }
+  return {};
+}
+
+function extractPackaging(message: string): string | null {
+  if (/\bcanette|\bcan\b/i.test(message)) {
+    return "can";
+  }
+  if (/\bbouteille|\bbottle\b/i.test(message)) {
+    return "bottle";
+  }
+  if (/\bbrick|carton|brique\b/i.test(message)) {
+    return "carton";
+  }
+  return null;
+}
+
+function resolvePackagingFormat(
+  slots: TemplateSlotValues,
+  template: PromptTemplateDefinition,
+): string {
+  const packaging = fillTemplateSlotDefaults(template, slots).packaging?.trim() ?? "";
+  const defaultPackaging =
+    template.variables.find((variable) => variable.key === "packaging")?.defaultValue ??
+    "can, bottle, carton or other";
+
+  if (!packaging || packaging === defaultPackaging) {
+    return defaultPackaging;
+  }
+  if (/^(can|bottle|carton)$/i.test(packaging)) {
+    return packaging.toLowerCase();
+  }
+  if (/\bbottle\b|glass or PET/i.test(packaging)) return "bottle";
+  if (/\bcarton\b/i.test(packaging)) return "carton";
+  if (/\bcan\b|aluminum can/i.test(packaging)) return "can";
+  return packaging;
+}
+
+function adaptFlavorElementsForShot(flavorElements: string, shotId: string | null | undefined): string {
+  if (shotId === "underwater") {
+    let adapted = flavorElements
+      .replace(/suspended mid-air/gi, "suspended in the water at varied depths")
+      .replace(/\bmid-air\b/gi, "in the water");
+    if (!/\bice\b/i.test(adapted)) {
+      adapted = adapted.replace(
+        /around the container/i,
+        "around the container, with clear ice cubes and fresh green mint leaves at varied depths",
+      );
+    }
+    return adapted.replace(
+      /scattered at various distances and angles creating depth and energy/i,
+      "scattered at naturally uneven distances and angles with organic tumble and depth — not a perfectly symmetrical layout",
+    );
+  }
+  if (shotId === "top-down") {
+    return flavorElements
+      .replace(/suspended mid-air/gi, "arranged on the surface around the container")
+      .replace(/\bmid-air\b/gi, "on the surface");
+  }
+  return flavorElements;
+}
+
+function adaptBrandBackdropForShot(backdrop: string, shotId: string | null | undefined): string {
+  if (shotId !== "underwater") return backdrop;
+  return backdrop
+    .replace(/\bstudio backdrop\b/gi, "underwater environment")
+    .replace(/toward the corners/gi, "into the deep water");
+}
+
+export type AssemblePromptOptions = {
+  shotType?: string;
+  drinkName?: string;
+  shotId?: string;
+};
 
 function extractBeverageSlots(
   message: string,
@@ -170,15 +322,12 @@ function extractBeverageSlots(
   const skipFlavor = options?.skipFlavor === true;
   const slots: Partial<TemplateSlotValues> = {};
 
-  for (const brand of KNOWN_BEVERAGE_BRANDS) {
-    if (brand.pattern.test(raw)) {
-      slots.drink = brand.drink;
-      slots.brandBackdrop = brand.brandBackdrop;
-      slots.brandPalette = brand.brandPalette;
-      if (!skipFlavor && brand.flavorElements) slots.flavorElements = brand.flavorElements;
-      break;
-    }
+  const drinkLabel = extractDrinkLabelFromMessage(raw);
+  if (drinkLabel && !STYLE_ONLY_RE.test(drinkLabel)) {
+    slots.drink = drinkLabel;
   }
+
+  Object.assign(slots, findKnownBrandMetadata(raw, { skipFlavor }));
 
   if (!skipFlavor) {
     const avecMatch = raw.match(/\bavec\s+(.+)$/i);
@@ -197,37 +346,6 @@ function extractBeverageSlots(
 
   const packaging = extractPackaging(raw);
   if (packaging) slots.packaging = packaging;
-
-  if (!slots.drink) {
-    let drinkCandidate = raw;
-    const avecMatch = skipFlavor ? null : raw.match(/\bavec\s+(.+)$/i);
-    if (avecMatch) {
-      drinkCandidate = raw.slice(0, avecMatch.index).trim();
-    }
-    drinkCandidate = drinkCandidate
-      .replace(/\b(?:canette|bouteille|brick|carton)\b/gi, "")
-      .replace(/\s+/g, " ")
-      .trim();
-
-    const clauses = splitClauses(drinkCandidate);
-    const drinkClause =
-      clauses.find((clause) => {
-        const cleaned = cleanPhrase(clause);
-        if (!cleaned || cleaned.length < 2) return false;
-        if (STYLE_ONLY_RE.test(cleaned)) return false;
-        if (/^(citron|citrons|orange|oranges|lime|limes|fraise|mangue)\b/i.test(cleaned)) return false;
-        return true;
-      }) ?? clauses[0];
-
-    if (drinkClause) {
-      const drink = cleanPhrase(drinkClause);
-      if (drink && !STYLE_ONLY_RE.test(drink)) {
-        slots.drink = /drink|boisson|energy|cola|jus|soda|beer|bière/i.test(drink)
-          ? drink
-          : `${drink} drink`;
-      }
-    }
-  }
 
   return slots;
 }
@@ -369,19 +487,90 @@ export function fillTemplateSlotDefaults(
   return filled;
 }
 
+export function extractVerbatimSlot(message: string): string {
+  return message.trim();
+}
+
+export function isLifestyleGuideReady(
+  template: PromptTemplateDefinition,
+  slots: TemplateSlotValues,
+): boolean {
+  if (!isLifestyleProductGuideTemplate(template)) return false;
+  const product = (slots.product ?? "").trim();
+  const environment = (slots.environment ?? "").trim();
+  return product.length >= 2 && environment.length >= 2;
+}
+
+export function assembleLifestylePrompt(
+  shotId: string | null | undefined,
+  slots: TemplateSlotValues,
+): string {
+  const shot = getLifestyleShotStyleById(shotId);
+  if (!shot) return "";
+
+  const templateBody =
+    shot.templateVariant === "body-continuity"
+      ? LIFESTYLE_TEMPLATE_BODY_CONTINUITY
+      : LIFESTYLE_TEMPLATE_BODY_STANDALONE;
+
+  const productName = (slots.product ?? "").trim();
+  const environment = (slots.environment ?? "").trim();
+
+  return templateBody
+    .replaceAll(LIFESTYLE_PLACEHOLDERS.productName, productName)
+    .replaceAll(LIFESTYLE_PLACEHOLDERS.shotType, shot.promptValue)
+    .replaceAll(LIFESTYLE_PLACEHOLDERS.environment, environment)
+    .trim();
+}
+
 export function assemblePromptFromTemplate(
   template: PromptTemplateDefinition,
   slots: TemplateSlotValues,
-  options?: { shotType?: string; drinkName?: string },
+  options?: AssemblePromptOptions,
 ): string {
-  if (template.id === "product-photography") {
+  if (isLifestyleProductGuideTemplate(template)) {
+    return assembleLifestylePrompt(options?.shotId, slots);
+  }
+
+  if (isStudioProductGuideTemplate(template)) {
+    const filled = fillTemplateSlotDefaults(template, slots);
+    const shot = getProductShotStyleById(options?.shotId);
+    const subjectDetail = shot?.subjectDetail ?? PRODUCT_PHOTOGRAPHY_DEFAULT_SUBJECT_DETAIL;
+    const baseSection = shot?.baseSection ?? PRODUCT_PHOTOGRAPHY_DEFAULT_BASE_SECTION;
+    const sceneIntro = shot?.sceneIntro ?? PRODUCT_PHOTOGRAPHY_DEFAULT_SCENE_INTRO;
+    const lightingSection = shot?.lightingSection ?? PRODUCT_PHOTOGRAPHY_DEFAULT_LIGHTING_SECTION;
+    const styleSection = shot?.styleSection ?? PRODUCT_PHOTOGRAPHY_DEFAULT_STYLE_SECTION;
+    const flavorElements = adaptFlavorElementsForShot(
+      filled.flavorElements ?? "",
+      options?.shotId,
+    );
+    const brandBackdrop = adaptBrandBackdropForShot(
+      filled.brandBackdrop ?? "",
+      options?.shotId,
+    );
+
     let body = template.body;
     const drinkName = (options?.drinkName ?? slots.drink ?? "").trim();
     if (drinkName) {
-      body = body.replaceAll("[NOM DE LA BOISSON]", drinkName);
+      body = body.replaceAll(PRODUCT_PHOTOGRAPHY_PLACEHOLDERS.drinkName, drinkName);
     }
+    body = body.replaceAll(
+      PRODUCT_PHOTOGRAPHY_PLACEHOLDERS.formatPackaging,
+      resolvePackagingFormat(slots, template),
+    );
+    body = body.replaceAll(PRODUCT_PHOTOGRAPHY_PLACEHOLDERS.subjectDetail, subjectDetail);
+    body = body.replaceAll(PRODUCT_PHOTOGRAPHY_PLACEHOLDERS.flavorElements, flavorElements);
+    body = body.replaceAll(PRODUCT_PHOTOGRAPHY_PLACEHOLDERS.baseSection, baseSection);
+    body = body.replaceAll(PRODUCT_PHOTOGRAPHY_PLACEHOLDERS.brandBackdrop, brandBackdrop);
+    body = body.replaceAll(
+      PRODUCT_PHOTOGRAPHY_PLACEHOLDERS.brandPalette,
+      filled.brandPalette ?? "",
+    );
+    body = body.replaceAll(PRODUCT_PHOTOGRAPHY_PLACEHOLDERS.sceneIntro, sceneIntro);
+    body = body.replaceAll(PRODUCT_PHOTOGRAPHY_PLACEHOLDERS.lightingSection, lightingSection);
+    body = body.replaceAll(PRODUCT_PHOTOGRAPHY_PLACEHOLDERS.styleSection, styleSection);
     if (options?.shotType?.trim()) {
-      body = body.replaceAll("[TYPE DE SHOT]", options.shotType.trim());
+      body = body.replaceAll(PRODUCT_PHOTOGRAPHY_PLACEHOLDERS.shotType, options.shotType.trim());
     }
     const tail = template.fixedTail?.trim();
     if (!tail) return body.trim();
@@ -394,7 +583,7 @@ export function assemblePromptFromTemplate(
     body = body.replaceAll(`{{${variable.key}}}`, filled[variable.key] ?? "");
   }
   if (options?.shotType?.trim()) {
-    body = body.replaceAll("[TYPE DE SHOT]", options.shotType.trim());
+    body = body.replaceAll(PRODUCT_PHOTOGRAPHY_PLACEHOLDERS.shotType, options.shotType.trim());
   }
   const tail = template.fixedTail?.trim();
   if (!tail) return body.trim();

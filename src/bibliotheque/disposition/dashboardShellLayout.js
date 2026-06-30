@@ -23,12 +23,12 @@ const ACCUEIL = {
   compactFooter: true,
 };
 
-/** Image Studio — sans scroll page sur mobile uniquement. */
+/** Image Studio — canva à hauteur fixe ; scroll interne au feed (mobile + desktop). */
 const IMAGE_STUDIO = {
-  shellLayoutClass: "min-h-dvh max-md:h-dvh max-md:overflow-hidden",
-  contentAreaFlexClass: "max-md:min-h-0 max-md:flex-1 flex-none",
-  sidebarMainClassName: "max-md:flex-1 max-md:min-h-0 max-md:overflow-hidden flex-none",
-  mainWrapperClass: "max-md:min-h-0 max-md:flex-1 max-md:overflow-hidden flex-none",
+  shellLayoutClass: "min-h-dvh h-dvh overflow-hidden",
+  contentAreaFlexClass: "min-h-0 flex-1",
+  sidebarMainClassName: "flex-1 min-h-0 overflow-hidden",
+  mainWrapperClass: "min-h-0 flex-1 overflow-hidden",
   mainShellTopPadding: DEFAULT_PADDING,
   compactFooter: true,
 };
