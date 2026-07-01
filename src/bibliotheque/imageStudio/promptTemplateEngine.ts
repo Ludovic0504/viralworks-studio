@@ -4,6 +4,7 @@ import {
   getProductShotStyleById,
   isLifestyleProductGuideTemplate,
   isStudioProductGuideTemplate,
+  isUgcSelfieGuideTemplate,
   LIFESTYLE_PLACEHOLDERS,
   LIFESTYLE_TEMPLATE_BODY_CONTINUITY,
   LIFESTYLE_TEMPLATE_BODY_STANDALONE,
@@ -13,7 +14,16 @@ import {
   PRODUCT_PHOTOGRAPHY_DEFAULT_STYLE_SECTION,
   PRODUCT_PHOTOGRAPHY_DEFAULT_SUBJECT_DETAIL,
   PRODUCT_PHOTOGRAPHY_PLACEHOLDERS,
+  UGC_SELFIE_PLACEHOLDERS,
+  UGC_SELFIE_TEMPLATE_BODY,
 } from "./promptTemplates";
+import {
+  getUgcSelfieProfileById,
+  UGC_SELFIE_IMPROVISED_PHYSICAL,
+  type UgcSelfieGender,
+  type UgcSelfiePhysicalResolveMode,
+  type UgcSelfieProfileId,
+} from "./ugcSelfieProfiles";
 
 export type TemplateSlotValues = Record<string, string>;
 
@@ -501,6 +511,125 @@ export function isLifestyleGuideReady(
   return product.length >= 2 && environment.length >= 2;
 }
 
+export type UgcSelfiePhysicalOverrides = {
+  skinTone?: string;
+  hair?: string;
+  outfit?: string;
+};
+
+export type UgcSelfieAssemblyInput = {
+  profileId: UgcSelfieProfileId | string;
+  productName: string;
+  location: string;
+  physicalOverrides?: UgcSelfiePhysicalOverrides | null;
+  physicalMode?: UgcSelfiePhysicalResolveMode;
+};
+
+function resolveUgcSelfiePronouns(gender: UgcSelfieGender): {
+  pronounSubject: string;
+  pronounPossessive: string;
+} {
+  if (gender === "homme") {
+    return { pronounSubject: "He", pronounPossessive: "his" };
+  }
+  return { pronounSubject: "She", pronounPossessive: "her" };
+}
+
+/** Complète les champs manquants — depuis la photo ou par improvisation générique. */
+export function resolveUgcSelfiePhysicalSlots(
+  profileId: string,
+  partial: UgcSelfiePhysicalOverrides = {},
+  mode: UgcSelfiePhysicalResolveMode = "improvise",
+): { skinTone: string; hair: string; outfit: string } | null {
+  const profile = getUgcSelfieProfileById(profileId);
+  if (!profile) return null;
+
+  const fallbacks =
+    mode === "photo"
+      ? {
+          skinTone: profile.skinTone,
+          hair: profile.hair,
+          outfit: profile.outfit,
+        }
+      : UGC_SELFIE_IMPROVISED_PHYSICAL;
+
+  return {
+    skinTone: partial.skinTone?.trim() || fallbacks.skinTone,
+    hair: partial.hair?.trim() || fallbacks.hair,
+    outfit: partial.outfit?.trim() || fallbacks.outfit,
+  };
+}
+
+export function assembleUgcSelfiePrompt(input: UgcSelfieAssemblyInput): string {
+  const profile = getUgcSelfieProfileById(input.profileId);
+  if (!profile) return "";
+
+  const productName = input.productName;
+  const location = input.location;
+  const resolvedPhysical =
+    resolveUgcSelfiePhysicalSlots(
+      input.profileId,
+      input.physicalOverrides ?? {},
+      input.physicalMode ?? "improvise",
+    ) ?? resolveUgcSelfiePhysicalSlots(input.profileId, {}, input.physicalMode ?? "improvise");
+  if (!resolvedPhysical) return "";
+
+  const { skinTone, hair, outfit } = resolvedPhysical;
+  const { pronounSubject, pronounPossessive } = resolveUgcSelfiePronouns(profile.gender);
+
+  return UGC_SELFIE_TEMPLATE_BODY.replaceAll(UGC_SELFIE_PLACEHOLDERS.age, String(profile.age))
+    .replaceAll(UGC_SELFIE_PLACEHOLDERS.sex, profile.sexEn)
+    .replaceAll(UGC_SELFIE_PLACEHOLDERS.physicalDescription, profile.physicalDescription)
+    .replaceAll(UGC_SELFIE_PLACEHOLDERS.skinTone, skinTone)
+    .replaceAll(UGC_SELFIE_PLACEHOLDERS.hair, hair)
+    .replaceAll(UGC_SELFIE_PLACEHOLDERS.pronounSubject, pronounSubject)
+    .replaceAll(UGC_SELFIE_PLACEHOLDERS.productName, productName)
+    .replaceAll(UGC_SELFIE_PLACEHOLDERS.pronounPossessive, pronounPossessive)
+    .replaceAll(UGC_SELFIE_PLACEHOLDERS.outfit, outfit)
+    .replaceAll(UGC_SELFIE_PLACEHOLDERS.location, location)
+    .trim();
+}
+
+export function isUgcSelfieGuideReady(
+  template: PromptTemplateDefinition,
+  slots: TemplateSlotValues,
+): boolean {
+  if (!isUgcSelfieGuideTemplate(template)) return false;
+  const profileId = (slots.profileId ?? "").trim();
+  const productName = (slots.productName ?? "").trim();
+  const location = (slots.location ?? "").trim();
+  return Boolean(profileId) && productName.length >= 2 && location.length >= 2;
+}
+
+export function assembleUgcSelfiePromptFromSlots(slots: TemplateSlotValues): string {
+  const profileId = (slots.profileId ?? "").trim();
+  const productName = (slots.productName ?? "").trim();
+  const location = (slots.location ?? "").trim();
+  if (!profileId || !productName || !location) return "";
+
+  const physicalMode =
+    slots.physicalMode === "photo" ? "photo" : ("improvise" as UgcSelfiePhysicalResolveMode);
+
+  const resolvedPhysical = resolveUgcSelfiePhysicalSlots(
+    profileId,
+    {
+      skinTone: slots.skinTone,
+      hair: slots.hair,
+      outfit: slots.outfit,
+    },
+    physicalMode,
+  );
+  if (!resolvedPhysical) return "";
+
+  return assembleUgcSelfiePrompt({
+    profileId,
+    productName,
+    location,
+    physicalOverrides: resolvedPhysical,
+    physicalMode,
+  });
+}
+
 export function assembleLifestylePrompt(
   shotId: string | null | undefined,
   slots: TemplateSlotValues,
@@ -528,6 +657,10 @@ export function assemblePromptFromTemplate(
   slots: TemplateSlotValues,
   options?: AssemblePromptOptions,
 ): string {
+  if (isUgcSelfieGuideTemplate(template)) {
+    return assembleUgcSelfiePromptFromSlots(slots);
+  }
+
   if (isLifestyleProductGuideTemplate(template)) {
     return assembleLifestylePrompt(options?.shotId, slots);
   }

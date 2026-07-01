@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   assemblePromptFromTemplate,
+  assembleUgcSelfiePrompt,
   buildCustomFlavorElements,
   extractBeverageSlotsFromFirstMessage,
   extractDrinkSlotsFromMessage,
@@ -11,11 +12,13 @@ import {
   isBeverageGuideReady,
   isLifestyleGuideReady,
   isPackagingResolved,
+  isUgcSelfieGuideReady,
   isWeakRequiredSlot,
   mergeTemplateSlots,
   parseElementsModeChoice,
   parsePackagingChoice,
   resolveReferenceFlavorElements,
+  resolveUgcSelfiePhysicalSlots,
 } from "./promptTemplateEngine";
 import {
   ALL_PRODUCT_PHOTOGRAPHY_SHOT_STYLES,
@@ -23,6 +26,8 @@ import {
   PRODUCT_PHOTOGRAPHY_PLACEHOLDERS,
   PRODUCT_PHOTOGRAPHY_SHOT_STYLES,
   PRODUCT_PHOTOGRAPHY_SHOT_STYLES_EXTENDED,
+  UGC_SELFIE_PLACEHOLDERS,
+  UGC_SELFIE_TEMPLATE_BODY,
 } from "./promptTemplates";
 
 const productTemplate = getPromptTemplateById("product-photography");
@@ -499,5 +504,130 @@ describe("lifestyle product photography", () => {
     );
     expect(isLifestyleGuideReady(lifestyleTemplate, { product: "HOLY" })).toBe(false);
     expect(isLifestyleGuideReady(lifestyleTemplate, { environment: "gym" })).toBe(false);
+  });
+});
+
+describe("ugc selfie produit prompt template", () => {
+  const ugcTemplate = getPromptTemplateById("ugc-selfie-produit");
+
+  it("keeps the canonical bracket template unchanged", () => {
+    expect(UGC_SELFIE_TEMPLATE_BODY).toContain(UGC_SELFIE_PLACEHOLDERS.age);
+    expect(UGC_SELFIE_TEMPLATE_BODY).toContain(UGC_SELFIE_PLACEHOLDERS.sex);
+    expect(UGC_SELFIE_TEMPLATE_BODY).toContain(UGC_SELFIE_PLACEHOLDERS.physicalDescription);
+    expect(UGC_SELFIE_TEMPLATE_BODY).toContain(UGC_SELFIE_PLACEHOLDERS.productName);
+    expect(UGC_SELFIE_TEMPLATE_BODY).toContain(UGC_SELFIE_PLACEHOLDERS.location);
+    expect(UGC_SELFIE_TEMPLATE_BODY).toContain("Shot on iPhone 15 Pro");
+  });
+
+  it("assembles a woman profile with photo defaults when physicalMode is photo", () => {
+    const prompt = assembleUgcSelfiePrompt({
+      profileId: "femme-60",
+      productName: "Chewing-gum Freedent",
+      location: "sunlit swimming pool area",
+      physicalMode: "photo",
+    });
+
+    expect(prompt).toContain("A 60-year-old woman with an elegant, natural face");
+    expect(prompt).toContain("silver-grey wavy hair");
+    expect(prompt).toContain("a light beige linen-textured v-neck top");
+    expect(prompt).toContain("She's holding a small Chewing-gum Freedent close to her chest");
+    expect(prompt).toContain("Background is a blurred sunlit swimming pool area");
+    expect(prompt).not.toContain("[");
+  });
+
+  it("uses masculine pronouns for homme profiles", () => {
+    const prompt = assembleUgcSelfiePrompt({
+      profileId: "homme-20",
+      productName: "premium chocolate truffles",
+      location: "outdoor skatepark",
+    });
+
+    expect(prompt).toContain("A 20-year-old man");
+    expect(prompt).toContain("He's holding a small premium chocolate truffles close to his chest");
+    expect(prompt).toContain("He's wearing");
+  });
+
+  it("applies optional physical overrides", () => {
+    const prompt = assembleUgcSelfiePrompt({
+      profileId: "femme-30",
+      productName: "pink celebration cake",
+      location: "motorcycle workshop garage",
+      physicalOverrides: {
+        skinTone: "fair",
+        hair: "long",
+        outfit: "a crisp blazer over a white button-down shirt",
+      },
+    });
+
+    expect(prompt).toContain("fair skin tone");
+    expect(prompt).toContain("long hair");
+    expect(prompt).toContain("a crisp blazer over a white button-down shirt");
+  });
+
+  it("fills missing physical fields with improvised defaults when only 1–2 overrides are given", () => {
+    const resolved = resolveUgcSelfiePhysicalSlots(
+      "femme-40",
+      {
+        skinTone: "rich dark brown",
+        hair: "medium-length",
+      },
+      "improvise",
+    );
+
+    expect(resolved).toEqual({
+      skinTone: "rich dark brown",
+      hair: "medium-length",
+      outfit: "everyday casual clothing",
+    });
+
+    const prompt = assembleUgcSelfiePrompt({
+      profileId: "femme-40",
+      productName: "mini boxing gloves",
+      location: "upscale office with city skyline windows",
+      physicalOverrides: {
+        skinTone: "rich dark brown",
+        hair: "medium-length",
+      },
+      physicalMode: "improvise",
+    });
+
+    expect(prompt).toContain("rich dark brown skin tone");
+    expect(prompt).toContain("medium-length hair");
+    expect(prompt).toContain("everyday casual clothing");
+    expect(prompt).not.toContain("charcoal grey blazer");
+    expect(prompt).not.toContain("[");
+  });
+
+  it("assembles via assemblePromptFromTemplate with slots", () => {
+    if (!ugcTemplate) throw new Error("ugc-selfie-produit template missing");
+
+    const prompt = assemblePromptFromTemplate(ugcTemplate, {
+      profileId: "homme-40",
+      productName: "SAUVAGE perfume",
+      location: "auto repair shop interior",
+      physicalMode: "photo",
+    });
+
+    expect(prompt).toContain("SAUVAGE perfume");
+    expect(prompt).toContain("auto repair shop interior");
+    expect(prompt).toContain("He's holding");
+  });
+
+  it("isUgcSelfieGuideReady requires profile, product and location", () => {
+    if (!ugcTemplate) throw new Error("ugc-selfie-produit template missing");
+
+    expect(
+      isUgcSelfieGuideReady(ugcTemplate, {
+        profileId: "femme-20",
+        productName: "YSL lipstick",
+        location: "crowded football stadium",
+      }),
+    ).toBe(true);
+    expect(
+      isUgcSelfieGuideReady(ugcTemplate, {
+        profileId: "femme-20",
+        productName: "YSL lipstick",
+      }),
+    ).toBe(false);
   });
 });

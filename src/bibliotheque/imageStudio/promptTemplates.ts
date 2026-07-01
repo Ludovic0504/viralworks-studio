@@ -170,7 +170,11 @@ export type LifestyleShotStyle = {
   templateVariant: "body-continuity" | "standalone";
 };
 
-export type PromptTemplateGuideMode = "studio-product" | "lifestyle-product" | "generic";
+export type PromptTemplateGuideMode =
+  | "studio-product"
+  | "lifestyle-product"
+  | "ugc-selfie"
+  | "generic";
 
 export type PromptTemplateDefinition = {
   id: string;
@@ -231,6 +235,12 @@ export function isLifestyleProductGuideTemplate(
   return template.guideMode === "lifestyle-product";
 }
 
+export function isUgcSelfieGuideTemplate(
+  template: Pick<PromptTemplateDefinition, "guideMode">,
+): boolean {
+  return template.guideMode === "ugc-selfie";
+}
+
 export function isShotStyleGuideTemplate(
   template: Pick<PromptTemplateDefinition, "guideMode">,
 ): boolean {
@@ -242,6 +252,21 @@ export const LIFESTYLE_PLACEHOLDERS = {
   shotType: "[TYPE DE SHOT]",
   environment: "[LIEU]",
 } as const;
+
+export const UGC_SELFIE_PLACEHOLDERS = {
+  age: "[ÂGE]",
+  sex: "[SEXE]",
+  physicalDescription: "[DESCRIPTION PHYSIQUE LIÉE À L'ÂGE ET AU SEXE]",
+  skinTone: "[TEINT DE PEAU]",
+  hair: "[CHEVEUX]",
+  pronounSubject: "[Il/Elle]",
+  productName: "[NOM DU PRODUIT]",
+  pronounPossessive: "[his/her]",
+  outfit: "[TENUE]",
+  location: "[LIEU]",
+} as const;
+
+export const UGC_SELFIE_TEMPLATE_BODY = `Realistic outdoor selfie, arm extended holding the phone slightly above eye level, warm natural daylight with a soft ambient bounce light appropriate to the setting. A ${UGC_SELFIE_PLACEHOLDERS.age}-year-old ${UGC_SELFIE_PLACEHOLDERS.sex} with an elegant, natural face — ${UGC_SELFIE_PLACEHOLDERS.physicalDescription}, warm healthy glow, dewy skin with real texture. ${UGC_SELFIE_PLACEHOLDERS.skinTone} skin tone. ${UGC_SELFIE_PLACEHOLDERS.hair} hair, softly styled, slightly moved by natural movement. ${UGC_SELFIE_PLACEHOLDERS.pronounSubject}'s holding a small ${UGC_SELFIE_PLACEHOLDERS.productName} close to ${UGC_SELFIE_PLACEHOLDERS.pronounPossessive} chest with one hand, presenting it toward the camera with a warm, genuine, closed-lip smile and direct eye contact, calm and confident. ${UGC_SELFIE_PLACEHOLDERS.pronounSubject}'s wearing ${UGC_SELFIE_PLACEHOLDERS.outfit}. Background is a blurred ${UGC_SELFIE_PLACEHOLDERS.location}, softly out of focus. Shot on iPhone 15 Pro, medium close-up framing chest to face, sharp natural phone quality, no over-smoothing, slight natural grain, 9:16 aspect ratio.`;
 
 export const LIFESTYLE_TEMPLATE_BODY_CONTINUITY = `Ultra-realistic lifestyle product photography, POV first-person perspective,
 85mm lens f/2.0, natural light.
@@ -502,6 +527,55 @@ STYLE: ${PRODUCT_PHOTOGRAPHY_PLACEHOLDERS.styleSection}`,
       },
     ],
     body: "",
+  },
+  {
+    id: "ugc-selfie-produit",
+    label: "UGC Selfie Produit",
+    summary:
+      "Selfie UGC réaliste — personne tenant un produit, style smartphone naturel. Choisissez le profil, le produit et le lieu.",
+    icon: "product",
+    heroImage: "/image-studio/templates/ugc-selfie/Selfie_Femme_30ans.png",
+    guideMode: "ugc-selfie",
+    extractorId: "generic-product",
+    botIntro: "Quel sexe ?",
+    botAskRequired: "Quel est le produit ?",
+    botReady:
+      "Votre prompt est prêt. Vérifiez-le ci-dessous puis appliquez-le à la zone de saisie, ou ajustez les champs si besoin.",
+    variables: [
+      {
+        key: "productName",
+        label: "Produit",
+        placeholder: "ex. Chewing-gum Freedent",
+        defaultValue: "",
+        required: true,
+      },
+      {
+        key: "location",
+        label: "Lieu",
+        placeholder: "ex. modern gym interior",
+        defaultValue: "",
+        required: true,
+      },
+      {
+        key: "skinTone",
+        label: "Teint de peau",
+        placeholder: "ex. fair",
+        defaultValue: "",
+      },
+      {
+        key: "hair",
+        label: "Cheveux",
+        placeholder: "ex. short dark",
+        defaultValue: "",
+      },
+      {
+        key: "outfit",
+        label: "Tenue",
+        placeholder: "ex. a casual t-shirt",
+        defaultValue: "",
+      },
+    ],
+    body: UGC_SELFIE_TEMPLATE_BODY,
   },
 ];
 
