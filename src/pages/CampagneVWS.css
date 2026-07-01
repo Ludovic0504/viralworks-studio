@@ -604,10 +604,10 @@
     resize: none;
   }
 
-  /* Grille métier / durée : même taille de police et ellipsis sur le métier */
+  /* Grille métier / durée : ellipsis (font-size géré par la règle anti-zoom iOS ci-dessous) */
   .vws-campagne-form select.vws-campagne-select-grid-mobile,
+  .vws-campagne-form input.vws-campagne-select-grid-mobile,
   .vws-campagne-form .vws-campagne-select-grid-mobile .vws-metier-combobox__input {
-    font-size: 12px !important;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -622,5 +622,14 @@
     background: rgba(15, 20, 32, 0.85);
     padding: 0.5rem 0.5rem 0.5rem;
     border-top: 1px solid rgba(255, 255, 255, 0.1);
+  }
+}
+
+/* iOS Safari — 16px minimum sur les champs éditables (évite le zoom au focus) */
+@media (max-width: 768px) {
+  .vws-campagne-form input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+  .vws-campagne-form textarea,
+  .vws-campagne-form select {
+    font-size: 16px !important;
   }
 }

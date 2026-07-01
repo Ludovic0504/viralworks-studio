@@ -321,7 +321,7 @@ const LIFESTYLE_SHOT_ZOOM_PRODUIT =
   "Extreme close-up macro shot on the product label and surface texture, no hands, shallow depth of field, fine details and material texture sharply visible, background fully blurred.";
 
 const LIFESTYLE_SHOT_DEUX_MAINS =
-  "Two hands visible, one holding the base steady, the other mid-action opening or interacting with the product, slight motion blur on the moving hand, close mid-shot, eye-level angle.";
+  "First-person POV, two hands visible, one holding the base steady, the other mid-action opening or interacting with the product, slight motion blur on the moving hand, close mid-shot, eye-level angle.";
 
 export const LIFESTYLE_SHOT_STYLES: LifestyleShotStyle[] = [
   {
@@ -381,7 +381,7 @@ export const LIFESTYLE_SHOT_STYLES_EXTENDED: LifestyleShotStyle[] = [
     label: "Produit en main, en mouvement",
     image: "/image-studio/templates/lifestyle/shot-deux-mains.jpg",
     promptValue: LIFESTYLE_SHOT_DEUX_MAINS,
-    templateVariant: "standalone",
+    templateVariant: "body-continuity",
   },
 ];
 

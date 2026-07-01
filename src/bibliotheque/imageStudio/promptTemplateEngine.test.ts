@@ -442,6 +442,20 @@ describe("lifestyle product photography", () => {
     );
   });
 
+  it("assembles body-continuity template for produit en main en mouvement with POV", () => {
+    if (!lifestyleTemplate) throw new Error("lifestyle-product-photography template missing");
+
+    const prompt = assemblePromptFromTemplate(lifestyleTemplate, lifestyleSlots, {
+      shotId: "deux-mains",
+    });
+
+    expect(prompt).toContain("POV first-person perspective");
+    expect(prompt).toContain("BODY CONTINUITY:");
+    expect(prompt).toContain(
+      "First-person POV, two hands visible, one holding the base steady, the other mid-action opening or interacting with the product, slight motion blur on the moving hand, close mid-shot, eye-level angle.",
+    );
+  });
+
   it("assembles standalone template for vue du dessus extended shot", () => {
     if (!lifestyleTemplate) throw new Error("lifestyle-product-photography template missing");
 
