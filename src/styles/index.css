@@ -5127,3 +5127,12 @@
   }
 }
 
+/* iOS Safari : évite le zoom auto au focus (seuil 16px) — !important pour passer outre text-sm / classes composants */
+@media (max-width: 768px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+

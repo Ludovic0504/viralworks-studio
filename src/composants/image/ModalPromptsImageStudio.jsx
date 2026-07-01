@@ -394,7 +394,6 @@ function PromptTemplateChat({
         const merged = mergeTemplateSlots(slots, { product });
         setSlots(merged);
         setGuideStep("environment");
-        pushMessage("bot", template.botAskEnvironment ?? "Dans quel environnement ?");
         return;
       }
 
@@ -402,7 +401,6 @@ function PromptTemplateChat({
         const environment = extractVerbatimSlot(text);
         if (environment.length < 2) {
           setReady(false);
-          pushMessage("bot", template.botAskEnvironment ?? "Dans quel environnement ?");
           return;
         }
 
@@ -967,7 +965,7 @@ function PromptTemplateChat({
             </ConversationBubble>
           ) : null}
 
-          {environmentValidationBotMessage ? (
+          {environmentValidationBotMessage && !showEnvironmentBot ? (
             <ConversationBubble role="bot" visible={isBotVisible("environment-validation")}>
               <p className="image-studio-prompt-guide-bubble-text">
                 {environmentValidationBotMessage.text}
@@ -1012,7 +1010,7 @@ function PromptTemplateChat({
             </ConversationBubble>
           ) : null}
 
-          {userMessages[elementsUserMessageIndex] ? (
+          {isStudioGuide && userMessages[elementsUserMessageIndex] ? (
             <ConversationBubble role="user">
               <p className="image-studio-prompt-guide-bubble-text">
                 {userMessages[elementsUserMessageIndex].text}
@@ -1020,7 +1018,8 @@ function PromptTemplateChat({
             </ConversationBubble>
           ) : null}
 
-          {guideStep === "custom_elements" || userMessages[customUserMessageIndex] ? (
+          {isStudioGuide &&
+          (guideStep === "custom_elements" || userMessages[customUserMessageIndex]) ? (
             <ConversationBubble role="bot" visible={isBotVisible("custom")}>
               <p className="image-studio-prompt-guide-bubble-text">
                 {template.botAskCustomElements}
@@ -1031,7 +1030,7 @@ function PromptTemplateChat({
             </ConversationBubble>
           ) : null}
 
-          {userMessages[customUserMessageIndex] ? (
+          {isStudioGuide && userMessages[customUserMessageIndex] ? (
             <ConversationBubble role="user">
               <p className="image-studio-prompt-guide-bubble-text">
                 {userMessages[customUserMessageIndex].text}
@@ -1039,15 +1038,17 @@ function PromptTemplateChat({
             </ConversationBubble>
           ) : null}
 
-          {customValidationBotMessages.map((message) => (
-            <ConversationBubble
-              key={message.id}
-              role="bot"
-              visible={isBotVisible(`custom-validation-${message.id}`)}
-            >
-              <p className="image-studio-prompt-guide-bubble-text">{message.text}</p>
-            </ConversationBubble>
-          ))}
+          {isStudioGuide
+            ? customValidationBotMessages.map((message) => (
+                <ConversationBubble
+                  key={message.id}
+                  role="bot"
+                  visible={isBotVisible(`custom-validation-${message.id}`)}
+                >
+                  <p className="image-studio-prompt-guide-bubble-text">{message.text}</p>
+                </ConversationBubble>
+              ))
+            : null}
 
           {ready ? (
             <ConversationBubble role="bot" wide visible={isBotVisible("result")}>
