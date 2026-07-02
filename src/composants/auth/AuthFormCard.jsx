@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Eye, EyeOff, Lock, LogIn, Mail, UserPlus } from "lucide-react";
+import { Eye, EyeOff, Lock, LogIn, Mail, User, UserPlus } from "lucide-react";
 import {
   getBrowserSupabase,
   getRedirectTo,
   getSupabaseDashboardAuthUrls,
 } from "@/bibliotheque/supabase/client-navigateur";
+import { syncSignupProfileNamesFromMetadata, updateUserProfile } from "@/bibliotheque/supabase/profil";
 import { track } from "@/bibliotheque/meta/pixel";
 import { capturePostHog, trackPostHogError } from "@/bibliotheque/posthog/client";
 
@@ -131,6 +132,8 @@ export default function AuthFormCard({
   const navigate = useNavigate();
   const [mode, setMode] = useState(initialMode === "signup" ? "signup" : "signin");
   const [email, setEmail] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState(false);
@@ -282,6 +285,19 @@ export default function AuthFormCard({
       return;
     }
 
+    if (mode === "signup") {
+      if (!firstName.trim()) {
+        reportAuthError("Veuillez entrer votre prénom.", "validation");
+        setLoading(false);
+        return;
+      }
+      if (!lastName.trim()) {
+        reportAuthError("Veuillez entrer votre nom.", "validation");
+        setLoading(false);
+        return;
+      }
+    }
+
     try {
       const supabase = getBrowserSupabase({ remember });
       const url = import.meta.env.VITE_SUPABASE_URL;
@@ -341,16 +357,28 @@ export default function AuthFormCard({
           return;
         }
 
+        void syncSignupProfileNamesFromMetadata();
         handleSuccess({ next });
         return;
       }
+
+      const trimmedFirstName = firstName.trim();
+      const trimmedLastName = lastName.trim();
+      const signupFullName = `${trimmedFirstName} ${trimmedLastName}`.trim();
 
       capturePostHog("signup_started", { method: "email" });
       track("Lead");
       const signUpResult = await supabase.auth.signUp({
         email: email.trim().toLowerCase(),
         password,
-        options: { emailRedirectTo: redirectTo },
+        options: {
+          emailRedirectTo: redirectTo,
+          data: {
+            first_name: trimmedFirstName,
+            last_name: trimmedLastName,
+            full_name: signupFullName,
+          },
+        },
       });
 
       if (signUpResult.error) {
@@ -367,6 +395,11 @@ export default function AuthFormCard({
 
       if (signUpResult.data?.session) {
         capturePostHog("signup_completed", { method: "email", confirmed: true });
+        await updateUserProfile({
+          first_name: trimmedFirstName,
+          last_name: trimmedLastName,
+          full_name: signupFullName,
+        });
         handleSuccess({ next });
         return;
       }
@@ -375,9 +408,7 @@ export default function AuthFormCard({
       setPendingConfirmEmail(cleanedEmail);
       setResendStatus("idle");
       capturePostHog("signup_completed", { method: "email", confirmed: false });
-      setInfoMsg(
-        "Compte créé ! Vérifie ta boîte mail (et tes spams) et clique sur le lien de confirmation."
-      );
+      setInfoMsg("Compte créé ! Clique sur le lien reçu par email.");
     } catch (err) {
       reportAuthError(
         err?.message || "Erreur inconnue. Vérifiez votre connexion internet et réessayez.",
@@ -386,6 +417,21 @@ export default function AuthFormCard({
     } finally {
       setLoading(false);
     }
+  };
+
+  const switchAuthMode = () => {
+    const nextMode = mode === "signin" ? "signup" : "signin";
+    if (nextMode === "signup") {
+      capturePostHog("signup_started", { method: "toggle" });
+    }
+    setMode(nextMode);
+    setFirstName("");
+    setLastName("");
+    setErrorMsg("");
+    setInfoMsg(null);
+    setRecoveryDashboardUrls(null);
+    setPendingConfirmEmail("");
+    setResendStatus("idle");
   };
 
   const googleSignInButton = (
@@ -444,11 +490,6 @@ export default function AuthFormCard({
           height={36}
           decoding="async"
         />
-        {mode === "signup" ? (
-          <p className="text-sm text-gray-400">
-            Rejoins ViralWorks Studio et commence à créer
-          </p>
-        ) : null}
       </div>
 
       {errorMsg ? (
@@ -511,30 +552,21 @@ export default function AuthFormCard({
         </div>
       ) : null}
 
-      {infoMsg ? (
-        <div className="mb-4 p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-sm space-y-3">
+      {infoMsg && !pendingConfirmEmail ? (
+        <div className="mb-4 p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-sm">
           <p>{infoMsg}</p>
-          {pendingConfirmEmail ? (
-            <div className="pt-2 border-t border-emerald-500/20 text-emerald-200/90 text-xs">
-              <p className="mb-2">Tu n'as rien reçu après quelques minutes ?</p>
-              <button
-                type="button"
-                onClick={handleResendConfirmation}
-                disabled={resendStatus === "sending" || resendStatus === "sent"}
-                className="underline hover:text-emerald-100 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {resendStatus === "sending"
-                  ? "Envoi en cours…"
-                  : resendStatus === "sent"
-                    ? "Email renvoyé ✓"
-                    : "Renvoyer l'email de confirmation"}
-              </button>
-            </div>
-          ) : null}
         </div>
       ) : null}
 
       {googleSignInButton}
+
+      <button
+        type="button"
+        onClick={switchAuthMode}
+        className="mt-2.5 w-full rounded-lg border border-emerald-500/30 bg-emerald-500/5 text-emerald-400 font-medium py-2.5 text-sm hover:bg-emerald-500/10 transition-colors"
+      >
+        {mode === "signin" ? "Créer un compte" : "Déjà inscrit ?"}
+      </button>
 
       <p className="mt-3 text-xs text-center text-gray-400 opacity-60">
         Données protégées
@@ -543,6 +575,42 @@ export default function AuthFormCard({
       {authDivider}
 
       <form onSubmit={onSubmit} className="space-y-4">
+        {mode === "signup" ? (
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="firstName" className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
+                <User className="w-4 h-4 text-gray-400" />
+                Prénom
+              </label>
+              <input
+                id="firstName"
+                type="text"
+                autoComplete="given-name"
+                className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 sm:py-3 text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all"
+                placeholder="Jean"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <label htmlFor="lastName" className="block text-sm font-medium text-gray-300 mb-2">
+                Nom
+              </label>
+              <input
+                id="lastName"
+                type="text"
+                autoComplete="family-name"
+                className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 sm:py-3 text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all"
+                placeholder="Dupont"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                required
+              />
+            </div>
+          </div>
+        ) : null}
+
         <div>
           <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
             <Mail className="w-4 h-4 text-gray-400" />
@@ -614,28 +682,25 @@ export default function AuthFormCard({
             </>
           )}
         </button>
-      </form>
 
-      <div className="flex items-center justify-center gap-2 mt-3 pb-1">
-        <button
-          type="button"
-          onClick={() => {
-            const nextMode = mode === "signin" ? "signup" : "signin";
-            if (nextMode === "signup") {
-              capturePostHog("signup_started", { method: "toggle" });
-            }
-            setMode(nextMode);
-            setErrorMsg("");
-            setInfoMsg(null);
-            setRecoveryDashboardUrls(null);
-            setPendingConfirmEmail("");
-            setResendStatus("idle");
-          }}
-          className="text-sm font-medium text-emerald-400 hover:text-emerald-300 transition-colors underline"
-        >
-          {mode === "signin" ? "Créer un compte" : "Se connecter"}
-        </button>
-      </div>
+        {mode === "signup" && pendingConfirmEmail && infoMsg ? (
+          <div className="text-center text-sm text-emerald-400 space-y-2 pt-1">
+            <p>{infoMsg}</p>
+            <button
+              type="button"
+              onClick={handleResendConfirmation}
+              disabled={resendStatus === "sending" || resendStatus === "sent"}
+              className="underline hover:text-emerald-300 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {resendStatus === "sending"
+                ? "Envoi en cours…"
+                : resendStatus === "sent"
+                  ? "Email renvoyé ✓"
+                  : "Renvoyer l'email de confirmation"}
+            </button>
+          </div>
+        ) : null}
+      </form>
     </div>
   );
 }

@@ -2,6 +2,7 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
+import { syncSignupProfileNamesFromMetadata } from "@/bibliotheque/supabase/profil";
 import FondApp from "@/composants/disposition/FondApp";
 
 export default function AuthCallback() {
@@ -99,6 +100,7 @@ export default function AuthCallback() {
         }
 
         console.log("[AuthCallback] success, redirecting to", next);
+        void syncSignupProfileNamesFromMetadata();
         navigate(next, { replace: true });
       } catch (err) {
         console.error("[AuthCallback] unexpected error:", err);

@@ -186,6 +186,44 @@ export async function updateUserProfile(updates: {
 }
 
 /**
+ * Recopie prénom/nom depuis les métadonnées Auth vers `profiles` si la ligne profil est encore vide.
+ * Utile après confirmation email (inscription sans session immédiate).
+ */
+export async function syncSignupProfileNamesFromMetadata(): Promise<void> {
+  const supabase = getBrowserSupabase();
+  const {
+    data: { user },
+    error: userErr,
+  } = await supabase.auth.getUser();
+  if (userErr || !user) return;
+
+  const existing = await getUserProfile(user.id);
+  const meta = user.user_metadata || {};
+  const metaFirst = typeof meta.first_name === "string" ? meta.first_name.trim() : "";
+  const metaLast = typeof meta.last_name === "string" ? meta.last_name.trim() : "";
+  if (!metaFirst && !metaLast) return;
+
+  const first_name = existing?.first_name?.trim() || metaFirst;
+  const last_name = existing?.last_name?.trim() || metaLast;
+  if (!first_name && !last_name) return;
+
+  if (
+    existing?.first_name?.trim() === first_name &&
+    existing?.last_name?.trim() === last_name &&
+    existing?.full_name?.trim()
+  ) {
+    return;
+  }
+
+  const full_name =
+    existing?.full_name?.trim() ||
+    (typeof meta.full_name === "string" && meta.full_name.trim()) ||
+    `${first_name} ${last_name}`.trim();
+
+  await updateUserProfile({ first_name, last_name, full_name });
+}
+
+/**
  * Upload un avatar vers Supabase Storage
  */
 export async function uploadAvatar(file: File): Promise<{ success: boolean; url?: string; error?: string }> {

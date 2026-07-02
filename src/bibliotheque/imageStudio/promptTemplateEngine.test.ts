@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   assemblePromptFromTemplate,
+  assembleUgcPresentationPrompt,
   assembleUgcSelfiePrompt,
   buildCustomFlavorElements,
   extractBeverageSlotsFromFirstMessage,
@@ -13,6 +14,7 @@ import {
   isLifestyleGuideReady,
   isPackagingResolved,
   isUgcSelfieGuideReady,
+  isUgcPresentationGuideReady,
   isWeakRequiredSlot,
   mergeTemplateSlots,
   parseElementsModeChoice,
@@ -629,5 +631,96 @@ describe("ugc selfie produit prompt template", () => {
         productName: "YSL lipstick",
       }),
     ).toBe(false);
+  });
+});
+
+describe("ugc presentation produit guide", () => {
+  const presentationTemplate = getPromptTemplateById("ugc-presentation-produit");
+
+  it("assembles held-in-hand template with strict placeholder swaps", () => {
+    const prompt = assembleUgcPresentationPrompt({
+      presentationMode: "held",
+      pose: "forward",
+      profileId: "femme-50",
+      productName: "a vibrant red sleeveless draped dress",
+      autreTenue: "",
+      location: "",
+      physicalMode: "default",
+    });
+
+    expect(prompt).toContain("She is holding up a vibrant red sleeveless draped dress");
+    expect(prompt).toContain("leaning slightly forward toward the camera");
+    expect(prompt).toContain("natural, unremarkable build, no specific physical customization");
+    expect(prompt).toContain("a neutral, comfortable base outfit (soft beige or taupe knit cardigan or sweater)");
+    expect(prompt).toContain("luxury walk-in closet");
+    expect(prompt).not.toContain("[PRODUIT]");
+    expect(prompt).not.toContain("[POSE]");
+  });
+
+  it("assembles worn template with body zone framing and footwear lighting", () => {
+    const prompt = assembleUgcPresentationPrompt({
+      presentationMode: "worn",
+      bodyZone: "feet",
+      pose: "default",
+      profileId: "femme-30",
+      productName: "white leather sneakers",
+      autreTenue: "",
+      location: "luxury master bedroom with soft natural light",
+      physicalMode: "default",
+    });
+
+    expect(prompt).toContain("Full body shot, framed from head to feet");
+    expect(prompt).toContain("she is fully wearing white leather sneakers");
+    expect(prompt).toContain("with added highlight and clarity at floor level to emphasize footwear");
+    expect(prompt).toContain("luxury master bedroom with soft natural light");
+  });
+
+  it("skips autre tenue block content for full outfit", () => {
+    const prompt = assembleUgcPresentationPrompt({
+      presentationMode: "worn",
+      bodyZone: "full-outfit",
+      pose: "natural",
+      profileId: "femme-40",
+      productName: "a red evening gown with draped neckline",
+      autreTenue: "",
+      location: "",
+      physicalMode: "default",
+    });
+
+    expect(prompt).toContain("she is fully wearing a red evening gown with draped neckline.");
+    expect(prompt).not.toContain("cardigan or sweater");
+  });
+
+  it("isUgcPresentationGuideReady requires mode, profile, product and location slot", () => {
+    if (!presentationTemplate) throw new Error("ugc-presentation-produit template missing");
+
+    expect(
+      isUgcPresentationGuideReady(presentationTemplate, {
+        presentationMode: "held",
+        profileId: "homme-30",
+        productName: "watch",
+        location: "",
+      }),
+    ).toBe(true);
+
+    expect(
+      isUgcPresentationGuideReady(presentationTemplate, {
+        presentationMode: "worn",
+        profileId: "homme-30",
+        productName: "watch",
+        location: "",
+      }),
+    ).toBe(false);
+
+    expect(
+      assemblePromptFromTemplate(presentationTemplate, {
+        presentationMode: "held",
+        profileId: "homme-30",
+        productName: "luxury watch",
+        location: "",
+        pose: "default",
+        physicalMode: "default",
+      }),
+    ).toContain("He is holding up luxury watch");
   });
 });

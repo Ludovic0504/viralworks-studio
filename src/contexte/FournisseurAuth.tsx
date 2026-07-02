@@ -19,6 +19,7 @@ import {
   syncPostHogUserFromSession,
 } from "@/bibliotheque/posthog/client";
 import { clearPromoLogoutSuppression, markHadAccountOnDevice, markPromoSuppressedOnLogout } from "@/bibliotheque/promo/promoModalGate";
+import { syncSignupProfileNamesFromMetadata } from "@/bibliotheque/supabase/profil";
 
 type AuthCtx = {
   session: Session | null;
@@ -136,6 +137,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               email: s.user.email,
             });
             capturePostHog("login");
+            void syncSignupProfileNamesFromMetadata();
             console.log("[Auth] Utilisateur connecté, activité mise à jour");
           } catch (err) {
             console.warn("[Auth] Erreur lors du nettoyage OAuth:", err);
@@ -144,6 +146,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (event === "INITIAL_SESSION" && s?.user?.id) {
           markHadAccountOnDevice();
+          void syncSignupProfileNamesFromMetadata();
           void syncPostHogUserFromSession({
             id: s.user.id,
             email: s.user.email,
