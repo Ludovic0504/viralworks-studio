@@ -277,6 +277,7 @@ export const UGC_SELFIE_TEMPLATE_BODY = `Realistic outdoor selfie, arm extended 
 
 export const UGC_PRESENTATION_PLACEHOLDERS = {
   cadrageZone: "[CADRAGE_ZONE]",
+  heroFocus: "[HERO_FOCUS]",
   sexeDescription: "[SEXE_DESCRIPTION]",
   age: "[AGE]",
   hairDescription: "[hair description]",
@@ -289,14 +290,17 @@ export const UGC_PRESENTATION_PLACEHOLDERS = {
   autreTenue: "[AUTRE_TENUE]",
   jewelry: "[jewelry appropriate to gender/style]",
   makeupGrooming: "[makeup/grooming]",
-  lieu: "[LIEU]",
+  sceneSetting: "[SCENE_SETTING]",
+  lightingBlock: "[LIGHTING_BLOCK]",
+  environmentBlock: "[ENVIRONMENT_BLOCK]",
+  styleMoodBlock: "[STYLE_MOOD_BLOCK]",
   pronounObject: "[her/him]",
   waistSide: "[waist/side]",
 } as const;
 
-export const UGC_PRESENTATION_HELD_TEMPLATE_BODY = `Photorealistic lifestyle portrait, shot as if taken with a smartphone on a self-timer or by a friend, natural amateur-professional quality. Medium shot, framed from roughly waist up, product held at chest height clearly visible in frame. Subject centered in frame, standing in the middle of a luxury walk-in closet, symmetrical composition with matching wooden shelving units on both sides.
+export const UGC_PRESENTATION_HELD_TEMPLATE_BODY = `Photorealistic lifestyle portrait, shot as if taken with a smartphone on a self-timer or by a friend, natural amateur-professional quality. Medium shot, framed from roughly waist up, product held at chest height clearly visible in frame. ${UGC_PRESENTATION_PLACEHOLDERS.sceneSetting}
 
-Subject: ${UGC_PRESENTATION_PLACEHOLDERS.sexeDescription} a ${UGC_PRESENTATION_PLACEHOLDERS.age}-year-old [confident/warm] smile, ${UGC_PRESENTATION_PLACEHOLDERS.hairDescription}. ${UGC_PRESENTATION_PLACEHOLDERS.pose}. ${UGC_PRESENTATION_PLACEHOLDERS.pronounSubjectCap} is holding up ${UGC_PRESENTATION_PLACEHOLDERS.produit} in front of ${UGC_PRESENTATION_PLACEHOLDERS.pronounPossessive} body with both hands at chest height, arms slightly bent, presenting the product toward the camera.
+Subject: ${UGC_PRESENTATION_PLACEHOLDERS.sexeDescription} a ${UGC_PRESENTATION_PLACEHOLDERS.age}-year-old [confident/warm] smile, ${UGC_PRESENTATION_PLACEHOLDERS.hairDescription}. ${UGC_PRESENTATION_PLACEHOLDERS.pose}
 
 Physical: ${UGC_PRESENTATION_PLACEHOLDERS.physique}
 
@@ -304,19 +308,21 @@ Outfit: ${UGC_PRESENTATION_PLACEHOLDERS.pronounSubjectLower} is wearing ${UGC_PR
 
 Skin and makeup: natural, soft skin texture appropriate for ${UGC_PRESENTATION_PLACEHOLDERS.pronounPossessive} age, subtle warm-toned ${UGC_PRESENTATION_PLACEHOLDERS.makeupGrooming}, soft glowing complexion, no over-smoothing.
 
-Lighting: warm, soft ambient lighting from recessed ceiling spotlights and warm LED shelf lighting inside the closet cabinets, creating a cozy golden-toned glow (around 3000-3200K), gentle even illumination on the face and body, soft shadows, flattering catchlights in the eyes.
+Lighting: ${UGC_PRESENTATION_PLACEHOLDERS.lightingBlock}.
 
-Environment: high-end walk-in closet / dressing room, custom wood-toned cabinetry (walnut or oak finish) on both sides filled with neatly organized designer handbags, folded clothing, and shoe displays lit with warm under-shelf LED strips, a large mirror centered in the background, a wood-paneled kitchen-island-style storage unit with a light marble/quartz top behind ${UGC_PRESENTATION_PLACEHOLDERS.pronounObject}, hanging garment racks with clothes visible at the edges of the frame. ${UGC_PRESENTATION_PLACEHOLDERS.lieu}
+Environment: ${UGC_PRESENTATION_PLACEHOLDERS.environmentBlock}
 
 Composition: subject centered, camera at chest height, shallow depth of field keeping ${UGC_PRESENTATION_PLACEHOLDERS.pronounObject} and the product sharp while the background stays gently detailed, portrait orientation (9:16).
 
-Style and mood: warm, aspirational, "boutique closet reveal" aesthetic, intimate yet polished, luxury lifestyle content style similar to closet-tour or outfit-reveal social media photos.
+Style and mood: ${UGC_PRESENTATION_PLACEHOLDERS.styleMoodBlock}.
 
 Photorealistic quality, high detail, natural skin texture, 4K, soft cinematic color grading, warm tones, slight natural grain, vertical 9:16 aspect ratio.`;
 
-export const UGC_PRESENTATION_WORN_TEMPLATE_BODY = `Photorealistic lifestyle portrait, shot as if taken with a smartphone on a self-timer or by a friend, natural amateur-professional quality. ${UGC_PRESENTATION_PLACEHOLDERS.cadrageZone}. Subject centered in frame, standing in the middle of a luxury walk-in closet, symmetrical composition with matching wooden shelving units on both sides.
+export const UGC_PRESENTATION_WORN_TEMPLATE_BODY = `Photorealistic lifestyle portrait, shot as if taken with a smartphone on a self-timer or by a friend, natural amateur-professional quality. ${UGC_PRESENTATION_PLACEHOLDERS.cadrageZone}. ${UGC_PRESENTATION_PLACEHOLDERS.sceneSetting}
 
 Subject: ${UGC_PRESENTATION_PLACEHOLDERS.sexeDescription} a ${UGC_PRESENTATION_PLACEHOLDERS.age}-year-old [confident/warm] smile, ${UGC_PRESENTATION_PLACEHOLDERS.hairDescription}. ${UGC_PRESENTATION_PLACEHOLDERS.pose}. Her/His hands are relaxed, one resting near ${UGC_PRESENTATION_PLACEHOLDERS.waistSide} and the other loosely at ${UGC_PRESENTATION_PLACEHOLDERS.pronounPossessive} side, not holding anything.
+
+Hero focus: ${UGC_PRESENTATION_PLACEHOLDERS.heroFocus}
 
 Physical: ${UGC_PRESENTATION_PLACEHOLDERS.physique}
 
@@ -324,13 +330,13 @@ Outfit: ${UGC_PRESENTATION_PLACEHOLDERS.pronounSubjectLower} is fully wearing ${
 
 Skin and makeup: natural, soft skin texture appropriate for ${UGC_PRESENTATION_PLACEHOLDERS.pronounPossessive} age, subtle warm-toned ${UGC_PRESENTATION_PLACEHOLDERS.makeupGrooming}, soft glowing complexion, no over-smoothing.
 
-Lighting: warm, soft ambient lighting from recessed ceiling spotlights and warm LED shelf lighting inside the closet cabinets, creating a cozy golden-toned glow (around 3000-3200K), gentle even illumination on the face and body, soft shadows, flattering catchlights in the eyes[FOOTWEAR_LIGHTING_SUFFIX]
+Lighting: ${UGC_PRESENTATION_PLACEHOLDERS.lightingBlock}[FOOTWEAR_LIGHTING_SUFFIX]
 
-Environment: high-end walk-in closet / dressing room, custom wood-toned cabinetry (walnut or oak finish) on both sides filled with neatly organized designer handbags, folded clothing, and shoe displays lit with warm under-shelf LED strips, a large mirror centered in the background, a wood-paneled kitchen-island-style storage unit with a light marble/quartz top behind ${UGC_PRESENTATION_PLACEHOLDERS.pronounObject}, hanging garment racks with clothes visible at the edges of the frame. ${UGC_PRESENTATION_PLACEHOLDERS.lieu}
+Environment: ${UGC_PRESENTATION_PLACEHOLDERS.environmentBlock}
 
 Composition: subject centered, camera positioned to match ${UGC_PRESENTATION_PLACEHOLDERS.cadrageZone} framing, shallow depth of field keeping ${UGC_PRESENTATION_PLACEHOLDERS.pronounObject} sharp while the background stays gently detailed, portrait orientation (9:16).
 
-Style and mood: warm, aspirational, "boutique closet reveal" aesthetic, intimate yet polished, luxury lifestyle content style similar to closet-tour or outfit-reveal social media photos.
+Style and mood: ${UGC_PRESENTATION_PLACEHOLDERS.styleMoodBlock}.
 
 Photorealistic quality, high detail, natural skin texture, 4K, soft cinematic color grading, warm tones, slight natural grain, vertical 9:16 aspect ratio.`;
 

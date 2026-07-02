@@ -23,14 +23,21 @@ import {
 } from "./promptTemplates";
 import {
   getUgcPresentationBodyZoneOption,
+  getUgcPresentationHeroFocus,
   needsFootwearLightingHighlight,
+  resolveUgcPresentationLocationBlocks,
   UGC_PRESENTATION_DEFAULT_AUTRE_TENUE,
-  UGC_PRESENTATION_DEFAULT_PHYSIQUE,
-  UGC_PRESENTATION_POSE_VALUES,
+  UGC_PRESENTATION_HELD_POSE_VALUES,
+  UGC_PRESENTATION_WORN_POSE_VALUES,
   type UgcPresentationBodyZone,
   type UgcPresentationMode,
   type UgcPresentationPose,
 } from "./ugcPresentationConfig";
+import {
+  drawUgcPresentationPhysicalCustom,
+  drawUgcPresentationPhysicalDefaults,
+  isUgcPresentationProfileId,
+} from "./ugcPresentationPhysicalPools";
 import {
   getUgcSelfieProfileById,
   UGC_SELFIE_IMPROVISED_PHYSICAL,
@@ -655,6 +662,8 @@ export type UgcPresentationAssemblyInput = {
   physicalMode?: "default" | "custom";
   skinTone?: string;
   hair?: string;
+  physique?: string;
+  hairDescription?: string;
 };
 
 function resolveUgcPresentationPronouns(gender: UgcSelfieGender): {
@@ -692,42 +701,45 @@ function resolveUgcPresentationPronouns(gender: UgcSelfieGender): {
 }
 
 function resolveUgcPresentationHairDescription(
-  profileId: string,
+  hairDescription?: string,
   hairOverride?: string,
-  physicalMode: "default" | "custom" = "default",
 ): string {
-  const profile = getUgcSelfieProfileById(profileId);
-  if (physicalMode === "custom" && hairOverride?.trim()) {
-    return `${hairOverride.trim()} hair`;
+  if (hairDescription?.trim()) {
+    return hairDescription.trim();
   }
-  if (profile?.hair?.trim()) {
-    return `${profile.hair.trim()} hair`;
+  if (hairOverride?.trim()) {
+    return `${hairOverride.trim()} hair`;
   }
   return "natural, softly styled hair";
 }
 
-function resolveUgcPresentationPhysique(
-  physicalMode: "default" | "custom",
-  skinTone?: string,
-): string {
-  if (physicalMode === "default") {
-    return UGC_PRESENTATION_DEFAULT_PHYSIQUE;
-  }
-  const skin = skinTone?.trim();
-  if (skin) {
-    return `natural build with ${skin} skin tone`;
-  }
-  return UGC_PRESENTATION_DEFAULT_PHYSIQUE;
+function resolveUgcPresentationPhysique(physique?: string): string {
+  return physique?.trim() || "natural, unremarkable build, no specific physical customization";
 }
 
-function resolveUgcPresentationPose(
+function resolveUgcPresentationWornPose(
   pose: UgcPresentationPose | string | null | undefined,
   pronounInPose: string,
 ): string {
   const poseKey = (pose ?? "default") as UgcPresentationPose;
   const raw =
-    UGC_PRESENTATION_POSE_VALUES[poseKey] ?? UGC_PRESENTATION_POSE_VALUES.default;
+    UGC_PRESENTATION_WORN_POSE_VALUES[poseKey] ?? UGC_PRESENTATION_WORN_POSE_VALUES.default;
   return raw.replaceAll("she/he", pronounInPose);
+}
+
+function resolveUgcPresentationHeldPose(
+  pose: UgcPresentationPose | string | null | undefined,
+  pronounInPose: string,
+  pronounPossessive: string,
+  productName: string,
+): string {
+  const poseKey = (pose ?? "default") as UgcPresentationPose;
+  const raw =
+    UGC_PRESENTATION_HELD_POSE_VALUES[poseKey] ?? UGC_PRESENTATION_HELD_POSE_VALUES.default;
+  return raw
+    .replaceAll("[PRODUIT]", productName)
+    .replaceAll("she/he", pronounInPose)
+    .replaceAll("her/his", pronounPossessive);
 }
 
 function applyUgcPresentationPlaceholders(
@@ -752,13 +764,15 @@ export function assembleUgcPresentationPrompt(input: UgcPresentationAssemblyInpu
   const pronouns = resolveUgcPresentationPronouns(profile.gender);
   const physicalMode = input.physicalMode ?? "default";
   const hairDescription = resolveUgcPresentationHairDescription(
-    input.profileId,
+    input.hairDescription,
     input.hair,
-    physicalMode,
   );
-  const physique = resolveUgcPresentationPhysique(physicalMode, input.skinTone);
-  const pose = resolveUgcPresentationPose(input.pose, pronouns.pronounInPose);
+  const physique = resolveUgcPresentationPhysique(input.physique);
   const location = (input.location ?? "").trim();
+  const locationBlocks = resolveUgcPresentationLocationBlocks(
+    location,
+    pronouns.pronounObject,
+  );
   const bodyZone = input.bodyZone ?? null;
   const isFullOutfit = bodyZone === "full-outfit";
 
@@ -767,31 +781,46 @@ export function assembleUgcPresentationPrompt(input: UgcPresentationAssemblyInpu
     autreTenue = UGC_PRESENTATION_DEFAULT_AUTRE_TENUE;
   }
 
+  const pose =
+    presentationMode === "held"
+      ? resolveUgcPresentationHeldPose(
+          input.pose,
+          pronouns.pronounInPose,
+          pronouns.pronounPossessive,
+          productName,
+        )
+      : resolveUgcPresentationWornPose(input.pose, pronouns.pronounInPose);
+
   const commonValues: Record<string, string> = {
     [UGC_PRESENTATION_PLACEHOLDERS.sexeDescription]: pronouns.sexeDescription,
     [UGC_PRESENTATION_PLACEHOLDERS.age]: String(profile.age),
     [UGC_PRESENTATION_PLACEHOLDERS.hairDescription]: hairDescription,
     [UGC_PRESENTATION_PLACEHOLDERS.pose]: pose,
-    [UGC_PRESENTATION_PLACEHOLDERS.produit]: productName,
     [UGC_PRESENTATION_PLACEHOLDERS.pronounPossessive]: pronouns.pronounPossessive,
     [UGC_PRESENTATION_PLACEHOLDERS.physique]: physique,
     [UGC_PRESENTATION_PLACEHOLDERS.pronounSubjectLower]: pronouns.pronounSubjectLower,
     [UGC_PRESENTATION_PLACEHOLDERS.autreTenue]: autreTenue,
     [UGC_PRESENTATION_PLACEHOLDERS.jewelry]: pronouns.jewelry,
     [UGC_PRESENTATION_PLACEHOLDERS.makeupGrooming]: pronouns.makeupGrooming,
-    [UGC_PRESENTATION_PLACEHOLDERS.lieu]: location,
+    [UGC_PRESENTATION_PLACEHOLDERS.sceneSetting]: locationBlocks.sceneSetting,
+    [UGC_PRESENTATION_PLACEHOLDERS.lightingBlock]: locationBlocks.lightingBlock,
+    [UGC_PRESENTATION_PLACEHOLDERS.environmentBlock]: locationBlocks.environmentBlock,
+    [UGC_PRESENTATION_PLACEHOLDERS.styleMoodBlock]: locationBlocks.styleMoodBlock,
     [UGC_PRESENTATION_PLACEHOLDERS.pronounObject]: pronouns.pronounObject,
   };
 
   if (presentationMode === "held") {
-    return applyUgcPresentationPlaceholders(UGC_PRESENTATION_HELD_TEMPLATE_BODY, {
-      ...commonValues,
-      [UGC_PRESENTATION_PLACEHOLDERS.pronounSubjectCap]: pronouns.pronounSubjectCap,
-    });
+    return applyUgcPresentationPlaceholders(UGC_PRESENTATION_HELD_TEMPLATE_BODY, commonValues);
   }
+
+  const wornCommonValues = {
+    ...commonValues,
+    [UGC_PRESENTATION_PLACEHOLDERS.produit]: productName,
+  };
 
   const zoneOption = getUgcPresentationBodyZoneOption(bodyZone);
   const cadrageZone = zoneOption?.cadrageZone ?? "";
+  const heroFocus = getUgcPresentationHeroFocus(bodyZone);
   const footwearSuffix = needsFootwearLightingHighlight(bodyZone)
     ? ", with added highlight and clarity at floor level to emphasize footwear"
     : "";
@@ -804,8 +833,9 @@ export function assembleUgcPresentationPrompt(input: UgcPresentationAssemblyInpu
   wornBody = wornBody.replaceAll("Her/His", pronouns.pronounSubjectCap);
 
   let result = applyUgcPresentationPlaceholders(wornBody, {
-    ...commonValues,
+    ...wornCommonValues,
     [UGC_PRESENTATION_PLACEHOLDERS.cadrageZone]: cadrageZone,
+    [UGC_PRESENTATION_PLACEHOLDERS.heroFocus]: heroFocus,
     [UGC_PRESENTATION_PLACEHOLDERS.waistSide]: "waist/side",
   });
 
@@ -839,6 +869,21 @@ export function assembleUgcPresentationPromptFromSlots(slots: TemplateSlotValues
   const physicalMode =
     slots.physicalMode === "custom" ? ("custom" as const) : ("default" as const);
 
+  let physique = slots.physique?.trim();
+  let hairDescription = slots.hairDescription?.trim();
+
+  if ((!physique || !hairDescription) && isUgcPresentationProfileId(profileId)) {
+    const drawn =
+      physicalMode === "custom"
+        ? drawUgcPresentationPhysicalCustom(profileId, {
+            skinTone: slots.skinTone,
+            hairPromptValue: slots.hair,
+          })
+        : drawUgcPresentationPhysicalDefaults(profileId);
+    physique = physique || drawn.physique;
+    hairDescription = hairDescription || drawn.hairDescription;
+  }
+
   return assembleUgcPresentationPrompt({
     presentationMode,
     bodyZone: slots.bodyZone ?? null,
@@ -850,6 +895,8 @@ export function assembleUgcPresentationPromptFromSlots(slots: TemplateSlotValues
     physicalMode,
     skinTone: slots.skinTone,
     hair: slots.hair,
+    physique,
+    hairDescription,
   });
 }
 

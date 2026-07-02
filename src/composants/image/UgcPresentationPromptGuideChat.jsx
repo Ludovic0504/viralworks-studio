@@ -26,6 +26,10 @@ import {
   UGC_PRESENTATION_BODY_ZONE_OPTIONS,
   UGC_PRESENTATION_LOCATION_PRESETS,
 } from "@/bibliotheque/imageStudio/ugcPresentationConfig";
+import {
+  drawUgcPresentationPhysicalCustom,
+  drawUgcPresentationPhysicalDefaults,
+} from "@/bibliotheque/imageStudio/ugcPresentationPhysicalPools";
 
 /** @typedef {'presentationMode' | 'bodyZone' | 'posture' | 'gender' | 'age' | 'physical' | 'product' | 'autreTenue' | 'autreTenueCustom' | 'location' | 'ready'} UgcPresentationGuideStep */
 
@@ -305,7 +309,6 @@ export default function UgcPresentationPromptGuideChat({ template, onBack, onApp
   const [locationPresetId, setLocationPresetId] = useState(null);
   const [locationOtherOpen, setLocationOtherOpen] = useState(false);
   const [productValidationShown, setProductValidationShown] = useState(false);
-  const [autreTenueCustomOpen, setAutreTenueCustomOpen] = useState(false);
 
   const profile = useMemo(() => getUgcSelfieProfileById(profileId), [profileId]);
   const ageProfiles = useMemo(
@@ -323,7 +326,7 @@ export default function UgcPresentationPromptGuideChat({ template, onBack, onApp
 
   useEffect(() => {
     inputRef.current?.focus();
-  }, [guideStep, locationOtherOpen, autreTenueCustomOpen]);
+  }, [guideStep, locationOtherOpen]);
 
   const finalizeGuide = useCallback((nextSlots) => {
     setSlots(nextSlots);
@@ -361,12 +364,6 @@ export default function UgcPresentationPromptGuideChat({ template, onBack, onApp
     setGuideStep("gender");
   }, []);
 
-  const handlePostureDefault = useCallback(() => {
-    setPose("default");
-    setSlots((prev) => ({ ...prev, pose: "default" }));
-    setGuideStep("gender");
-  }, []);
-
   const handleGenderSelect = useCallback((nextGender) => {
     setGender(nextGender);
     setGuideStep("age");
@@ -380,32 +377,40 @@ export default function UgcPresentationPromptGuideChat({ template, onBack, onApp
     setGuideStep("physical");
   }, []);
 
-  const applyPhysicalOverrides = useCallback((skinId, hairId) => {
-    const skin = UGC_SELFIE_SKIN_TONE_OPTIONS.find((option) => option.id === skinId);
-    const hair = UGC_SELFIE_HAIR_OPTIONS.find((option) => option.id === hairId);
-    const patch = { physicalMode: "custom" };
-    if (skin) patch.skinTone = skin.promptValue;
-    if (hair) patch.hair = hair.promptValue;
-    return patch;
-  }, []);
-
   const handlePhysicalDefault = useCallback(() => {
+    if (!profileId) return;
+    const drawn = drawUgcPresentationPhysicalDefaults(profileId);
     setSlots((prev) => ({
       ...prev,
       physicalMode: "default",
+      physique: drawn.physique,
+      hairDescription: drawn.hairDescription,
       skinTone: undefined,
       hair: undefined,
     }));
     setPhysicalSkinId(null);
     setPhysicalHairId(null);
     setGuideStep("product");
-  }, []);
+  }, [profileId]);
 
   const handlePhysicalContinue = useCallback(() => {
-    const patch = applyPhysicalOverrides(physicalSkinId, physicalHairId);
-    setSlots((prev) => ({ ...prev, ...patch }));
+    if (!profileId) return;
+    const skin = UGC_SELFIE_SKIN_TONE_OPTIONS.find((option) => option.id === physicalSkinId);
+    const hair = UGC_SELFIE_HAIR_OPTIONS.find((option) => option.id === physicalHairId);
+    const drawn = drawUgcPresentationPhysicalCustom(profileId, {
+      skinTone: skin?.promptValue,
+      hairPromptValue: hair?.promptValue,
+    });
+    setSlots((prev) => ({
+      ...prev,
+      physicalMode: "custom",
+      physique: drawn.physique,
+      hairDescription: drawn.hairDescription,
+      skinTone: skin?.promptValue,
+      hair: hair?.promptValue,
+    }));
     setGuideStep("product");
-  }, [applyPhysicalOverrides, physicalHairId, physicalSkinId]);
+  }, [physicalHairId, physicalSkinId, profileId]);
 
   const handleProductSubmit = useCallback(
     (raw) => {
@@ -428,13 +433,11 @@ export default function UgcPresentationPromptGuideChat({ template, onBack, onApp
   );
 
   const handleAutreTenueRien = useCallback(() => {
-    setAutreTenueCustomOpen(false);
     setSlots((prev) => ({ ...prev, autreTenue: "" }));
     setGuideStep("location");
   }, []);
 
   const handleAutreTenuePersonnaliser = useCallback(() => {
-    setAutreTenueCustomOpen(true);
     setGuideStep("autreTenueCustom");
   }, []);
 
@@ -443,7 +446,6 @@ export default function UgcPresentationPromptGuideChat({ template, onBack, onApp
     if (autreTenue.length < 2) return;
     setSlots((prev) => ({ ...prev, autreTenue }));
     setDraft("");
-    setAutreTenueCustomOpen(false);
     setGuideStep("location");
   }, []);
 
@@ -574,7 +576,6 @@ export default function UgcPresentationPromptGuideChat({ template, onBack, onApp
     if (!pose) return null;
     if (pose === "forward") return "Penchée vers l'avant";
     if (pose === "natural") return "Debout, posture naturelle";
-    if (pose === "default") return "Laisser le chatbot choisir";
     return null;
   }, [pose]);
 
@@ -632,7 +633,12 @@ export default function UgcPresentationPromptGuideChat({ template, onBack, onApp
     if (profileId) keys.push("physical");
     if (guideStep === "product" || productName) keys.push("product");
     if (productValidationShown) keys.push("product-validation");
-    if (!isFullOutfit && (guideStep === "autreTenue" || autreTenueLabel)) keys.push("autreTenue");
+    if (!isFullOutfit && guideStep === "autreTenue") {
+      keys.push("autreTenue");
+    }
+    if (!isFullOutfit && guideStep === "autreTenueCustom") {
+      keys.push("autreTenueCustom");
+    }
     if (guideStep === "location" || ready) keys.push("location");
     if (ready) keys.push("result");
     return keys;
@@ -656,7 +662,6 @@ export default function UgcPresentationPromptGuideChat({ template, onBack, onApp
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [
     adjustOpen,
-    autreTenueCustomOpen,
     botTurnKeys.length,
     guideStep,
     isTyping,
@@ -823,13 +828,6 @@ export default function UgcPresentationPromptGuideChat({ template, onBack, onApp
                 >
                   Debout, posture naturelle
                 </button>
-                <button
-                  type="button"
-                  className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
-                  onClick={handlePostureDefault}
-                >
-                  Laisser le chatbot choisir
-                </button>
               </div>
             ) : null}
           </ConversationBubble>
@@ -965,38 +963,44 @@ export default function UgcPresentationPromptGuideChat({ template, onBack, onApp
           </ConversationBubble>
         ) : null}
 
-        {!isFullOutfit && (guideStep === "autreTenue" || autreTenueLabel) ? (
+        {!isFullOutfit && guideStep === "autreTenue" ? (
           <ConversationBubble role="bot" visible={isBotVisible("autreTenue")}>
             <p className="image-studio-prompt-guide-bubble-text">
               Que porte-t{gender === "homme" ? "-il" : "-elle"} d&apos;autre ?
             </p>
-            {guideStep === "autreTenue" ? (
-              <>
-                <div
-                  className="image-studio-prompt-guide-elements-actions image-studio-prompt-guide-bubble-actions"
-                  role="group"
-                  aria-label="Reste de la tenue"
-                >
-                  <button
-                    type="button"
-                    className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
-                    onClick={handleAutreTenueRien}
-                  >
-                    Rien
-                  </button>
-                  <button
-                    type="button"
-                    className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
-                    onClick={handleAutreTenuePersonnaliser}
-                  >
-                    Personnaliser
-                  </button>
-                </div>
-                {autreTenueCustomOpen ? (
-                  <div className="image-studio-prompt-guide-bubble-compose">{composeForm}</div>
-                ) : null}
-              </>
-            ) : null}
+            <div
+              className="image-studio-prompt-guide-elements-actions image-studio-prompt-guide-bubble-actions"
+              role="group"
+              aria-label="Reste de la tenue"
+            >
+              <button
+                type="button"
+                className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
+                onClick={handleAutreTenueRien}
+              >
+                Rien
+              </button>
+              <button
+                type="button"
+                className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
+                onClick={handleAutreTenuePersonnaliser}
+              >
+                Personnaliser
+              </button>
+            </div>
+          </ConversationBubble>
+        ) : null}
+
+        {guideStep === "autreTenueCustom" ? (
+          <ConversationBubble role="user">
+            <p className="image-studio-prompt-guide-bubble-text">Personnaliser</p>
+          </ConversationBubble>
+        ) : null}
+
+        {!isFullOutfit && guideStep === "autreTenueCustom" ? (
+          <ConversationBubble role="bot" visible={isBotVisible("autreTenueCustom")}>
+            <p className="image-studio-prompt-guide-bubble-text">Décrivez le reste de la tenue</p>
+            <div className="image-studio-prompt-guide-bubble-compose">{composeForm}</div>
           </ConversationBubble>
         ) : null}
 

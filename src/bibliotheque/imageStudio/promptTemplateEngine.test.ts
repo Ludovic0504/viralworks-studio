@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   assemblePromptFromTemplate,
   assembleUgcPresentationPrompt,
+  assembleUgcPresentationPromptFromSlots,
   assembleUgcSelfiePrompt,
   buildCustomFlavorElements,
   extractBeverageSlotsFromFirstMessage,
@@ -31,6 +32,12 @@ import {
   UGC_SELFIE_PLACEHOLDERS,
   UGC_SELFIE_TEMPLATE_BODY,
 } from "./promptTemplates";
+import {
+  drawUgcPresentationPhysicalCustom,
+  drawUgcPresentationPhysicalDefaults,
+  UGC_PRESENTATION_PHYSIQUE_POOLS,
+} from "./ugcPresentationPhysicalPools";
+import { getUgcSelfieProfileById } from "./ugcSelfieProfiles";
 
 const productTemplate = getPromptTemplateById("product-photography");
 
@@ -638,6 +645,7 @@ describe("ugc presentation produit guide", () => {
   const presentationTemplate = getPromptTemplateById("ugc-presentation-produit");
 
   it("assembles held-in-hand template with strict placeholder swaps", () => {
+    const drawn = drawUgcPresentationPhysicalDefaults("femme-50", () => 0);
     const prompt = assembleUgcPresentationPrompt({
       presentationMode: "held",
       pose: "forward",
@@ -646,13 +654,43 @@ describe("ugc presentation produit guide", () => {
       autreTenue: "",
       location: "",
       physicalMode: "default",
+      physique: drawn.physique,
+      hairDescription: drawn.hairDescription,
     });
 
-    expect(prompt).toContain("She is holding up a vibrant red sleeveless draped dress");
-    expect(prompt).toContain("leaning slightly forward toward the camera");
-    expect(prompt).toContain("natural, unremarkable build, no specific physical customization");
+    expect(prompt).toContain("a natural unguarded transitional moment");
+    expect(prompt).toContain(
+      "a vibrant red sleeveless draped dress is held close to or against her face or body",
+    );
+    expect(prompt).toContain(drawn.physique);
+    expect(prompt).toContain(drawn.hairDescription);
+    expect(prompt).not.toContain("extending it toward the camera at arm's length");
+    expect(prompt).not.toContain("natural, unremarkable build, no specific physical customization");
     expect(prompt).toContain("a neutral, comfortable base outfit (soft beige or taupe knit cardigan or sweater)");
     expect(prompt).toContain("luxury walk-in closet");
+    expect(prompt).not.toContain("[PRODUIT]");
+    expect(prompt).not.toContain("[POSE]");
+  });
+
+  it("assembles held natural pose with active product presentation", () => {
+    const drawn = drawUgcPresentationPhysicalDefaults("femme-30", () => 0);
+    const prompt = assembleUgcPresentationPrompt({
+      presentationMode: "held",
+      pose: "natural",
+      profileId: "femme-30",
+      productName: "a luxury handbag",
+      autreTenue: "",
+      location: "",
+      physicalMode: "default",
+      physique: drawn.physique,
+      hairDescription: drawn.hairDescription,
+    });
+
+    expect(prompt).toContain(
+      "holding up a luxury handbag and extending it toward the camera at arm's length",
+    );
+    expect(prompt).toContain("item positioned slightly closer to the lens than the face");
+    expect(prompt).toContain("presenting the product clearly toward the camera");
     expect(prompt).not.toContain("[PRODUIT]");
     expect(prompt).not.toContain("[POSE]");
   });
@@ -673,6 +711,64 @@ describe("ugc presentation produit guide", () => {
     expect(prompt).toContain("she is fully wearing white leather sneakers");
     expect(prompt).toContain("with added highlight and clarity at floor level to emphasize footwear");
     expect(prompt).toContain("luxury master bedroom with soft natural light");
+    expect(prompt).not.toContain("walk-in closet");
+    expect(prompt).not.toContain("boutique closet reveal");
+  });
+
+  it("injects HERO_FOCUS and updated CADRAGE_ZONE for worn body zones", () => {
+    const headPrompt = assembleUgcPresentationPrompt({
+      presentationMode: "worn",
+      bodyZone: "head",
+      pose: "natural",
+      profileId: "femme-30",
+      productName: "sunglasses",
+      autreTenue: "",
+      location: "",
+      physicalMode: "default",
+    });
+
+    expect(headPrompt).toContain(
+      "Extreme close-up to close-up shot, face and shoulders filling most of the frame",
+    );
+    expect(headPrompt).toContain("Hero focus: both hands raised near the face");
+    expect(headPrompt).not.toContain("[HERO_FOCUS]");
+    expect(headPrompt).not.toContain("[CADRAGE_ZONE]");
+
+    const lowerPrompt = assembleUgcPresentationPrompt({
+      presentationMode: "worn",
+      bodyZone: "lower",
+      pose: "natural",
+      profileId: "homme-30",
+      productName: "linen trousers",
+      autreTenue: "",
+      location: "",
+      physicalMode: "default",
+    });
+
+    expect(lowerPrompt).toContain(
+      "Full body shot, framed from head to feet, entire outfit visible in frame",
+    );
+    expect(lowerPrompt).toContain("Hero focus: one hand resting lightly at the hip or waistband");
+    expect(lowerPrompt).not.toContain("[HERO_FOCUS]");
+    expect(lowerPrompt).not.toContain("[CADRAGE_ZONE]");
+  });
+
+  it("replaces closet blocks entirely when a custom location is provided", () => {
+    const prompt = assembleUgcPresentationPrompt({
+      presentationMode: "worn",
+      bodyZone: "shoulder",
+      pose: "natural",
+      profileId: "femme-40",
+      productName: "sac a main",
+      autreTenue: "",
+      location: "Au bord d'une piscine",
+      physicalMode: "default",
+    });
+
+    expect(prompt).toContain("Environment: Au bord d'une piscine");
+    expect(prompt).not.toContain("walk-in closet");
+    expect(prompt).not.toContain("LED shelf lighting inside the closet cabinets");
+    expect(prompt).not.toContain("boutique closet reveal");
   });
 
   it("skips autre tenue block content for full outfit", () => {
@@ -689,6 +785,78 @@ describe("ugc presentation produit guide", () => {
 
     expect(prompt).toContain("she is fully wearing a red evening gown with draped neckline.");
     expect(prompt).not.toContain("cardigan or sweater");
+  });
+
+  it("draws varied physique defaults per profile", () => {
+    const first = drawUgcPresentationPhysicalDefaults("homme-60", () => 0);
+    const second = drawUgcPresentationPhysicalDefaults("homme-60", () => 0.99);
+
+    expect(first.physique).toBe(UGC_PRESENTATION_PHYSIQUE_POOLS["homme-60"][0].full);
+    expect(first.physique).not.toBe(second.physique);
+    expect(first.hairDescription).not.toBe(second.hairDescription);
+  });
+
+  it("does not fall back to profile.hair when hairDescription is provided in slots", () => {
+    const profile = getUgcSelfieProfileById("femme-50");
+    if (!profile) throw new Error("profile missing");
+
+    const prompt = assembleUgcPresentationPrompt({
+      presentationMode: "held",
+      pose: "natural",
+      profileId: "femme-50",
+      productName: "handbag",
+      autreTenue: "",
+      location: "",
+      physique: "custom physique marker abc",
+      hairDescription: "custom hair marker xyz hair",
+    });
+
+    expect(prompt).toContain("custom hair marker xyz hair");
+    expect(prompt).not.toContain(`${profile.hair} hair`);
+  });
+
+  it("keeps explicit hair choice and randomizes only unspecified physique details", () => {
+    const drawn = drawUgcPresentationPhysicalCustom(
+      "homme-60",
+      { hairPromptValue: "short" },
+      () => 0,
+    );
+
+    expect(drawn.hairDescription).toBe("short hair");
+    expect(drawn.physique).toBe(UGC_PRESENTATION_PHYSIQUE_POOLS["homme-60"][0].full);
+  });
+
+  it("merges explicit skin tone with randomized build and face traits", () => {
+    const drawn = drawUgcPresentationPhysicalCustom(
+      "homme-60",
+      { skinTone: "light fair" },
+      () => 0,
+    );
+
+    expect(drawn.physique).toBe(
+      `${UGC_PRESENTATION_PHYSIQUE_POOLS["homme-60"][0].buildFace}, light fair skin tone`,
+    );
+  });
+
+  it("keeps drawn physique and hair stable across prompt re-assembly from slots", () => {
+    const drawn = drawUgcPresentationPhysicalDefaults("femme-40", () => 0.25);
+    const slots = {
+      presentationMode: "held",
+      profileId: "femme-40",
+      productName: "silk scarf",
+      location: "",
+      pose: "natural",
+      physicalMode: "default",
+      physique: drawn.physique,
+      hairDescription: drawn.hairDescription,
+    };
+
+    const first = assembleUgcPresentationPromptFromSlots(slots);
+    const second = assembleUgcPresentationPromptFromSlots(slots);
+
+    expect(first).toBe(second);
+    expect(first).toContain(drawn.physique);
+    expect(first).toContain(drawn.hairDescription);
   });
 
   it("isUgcPresentationGuideReady requires mode, profile, product and location slot", () => {
@@ -720,7 +888,9 @@ describe("ugc presentation produit guide", () => {
         location: "",
         pose: "default",
         physicalMode: "default",
+        physique: drawUgcPresentationPhysicalDefaults("homme-30", () => 0).physique,
+        hairDescription: drawUgcPresentationPhysicalDefaults("homme-30", () => 0).hairDescription,
       }),
-    ).toContain("He is holding up luxury watch");
+    ).toContain("holding luxury watch visibly in front of his body");
   });
 });
