@@ -1365,11 +1365,11 @@ export default function ImageStudio() {
                     className="image-studio-setting-pill image-studio-prompts-btn shrink-0"
                     onClick={() => setPromptsModalOpen(true)}
                     disabled={generating}
-                    aria-label="Ouvrir les prompts par type d'image"
-                    title="Prompt — remplissage automatique"
+                    aria-label="Ouvrir l'assistant prompt par type d'image"
+                    title="Assistant Prompt — remplissage automatique"
                   >
                     <BookOpen className="image-studio-setting-pill-icon" strokeWidth={2} aria-hidden />
-                    <span className="image-studio-setting-pill-label">Prompt</span>
+                    <span className="image-studio-setting-pill-label">Assistant Prompt</span>
                   </button>
                 </div>
 
