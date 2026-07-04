@@ -6,6 +6,7 @@ import {
   isStudioProductGuideTemplate,
   isUgcSelfieGuideTemplate,
   isUgcPresentationGuideTemplate,
+  isBrandCampaignShootGuideTemplate,
   LIFESTYLE_PLACEHOLDERS,
   LIFESTYLE_TEMPLATE_BODY_CONTINUITY,
   LIFESTYLE_TEMPLATE_BODY_STANDALONE,
@@ -45,6 +46,7 @@ import {
   type UgcSelfiePhysicalResolveMode,
   type UgcSelfieProfileId,
 } from "./ugcSelfieProfiles";
+import { assembleBrandCampaignShootPromptFromSlots } from "./brandCampaignShootAssembly";
 
 export type TemplateSlotValues = Record<string, string>;
 
@@ -933,6 +935,10 @@ export function assemblePromptFromTemplate(
 
   if (isUgcPresentationGuideTemplate(template)) {
     return assembleUgcPresentationPromptFromSlots(slots);
+  }
+
+  if (isBrandCampaignShootGuideTemplate(template)) {
+    return assembleBrandCampaignShootPromptFromSlots(slots);
   }
 
   if (isLifestyleProductGuideTemplate(template)) {

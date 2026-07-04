@@ -175,6 +175,7 @@ export type PromptTemplateGuideMode =
   | "lifestyle-product"
   | "ugc-selfie"
   | "ugc-presentation"
+  | "brand-campaign-shoot"
   | "generic";
 
 export type PromptTemplateDefinition = {
@@ -246,6 +247,12 @@ export function isUgcPresentationGuideTemplate(
   template: Pick<PromptTemplateDefinition, "guideMode">,
 ): boolean {
   return template.guideMode === "ugc-presentation";
+}
+
+export function isBrandCampaignShootGuideTemplate(
+  template: Pick<PromptTemplateDefinition, "guideMode">,
+): boolean {
+  return template.guideMode === "brand-campaign-shoot";
 }
 
 export function isShotStyleGuideTemplate(
@@ -696,6 +703,48 @@ STYLE: ${PRODUCT_PHOTOGRAPHY_PLACEHOLDERS.styleSection}`,
       },
     ],
     body: UGC_PRESENTATION_HELD_TEMPLATE_BODY,
+  },
+  {
+    id: "brand-campaign-shoot",
+    label: "Brand Campaign Shoot",
+    summary:
+      "Shooting éditorial haut de gamme — mannequin en action, environnement narratif, contrôle caméra et regard. Style campagne premium.",
+    icon: "product",
+    heroImage: "/image-studio/templates/brand-campaign/brand-campaign-shoot.png",
+    guideMode: "brand-campaign-shoot",
+    extractorId: "generic-product",
+    botIntro: "Qui présente le produit ?",
+    botAskRequired: "Décris la tenue ou le produit à mettre en avant",
+    botReady:
+      "Votre prompt est prêt. Vérifiez-le ci-dessous puis appliquez-le à la zone de saisie, ou ajustez les champs si besoin.",
+    variables: [
+      {
+        key: "productOutfit",
+        label: "Tenue / produit",
+        placeholder: "ex. navy Lacoste polo with yellow shoulder stripes",
+        defaultValue: "",
+        required: true,
+      },
+      {
+        key: "ambiancePrompt",
+        label: "Ambiance",
+        placeholder: "ex. sporty-luxe",
+        defaultValue: "",
+      },
+      {
+        key: "physique",
+        label: "Physique",
+        placeholder: "ex. A 30-year-old athletic man…",
+        defaultValue: "",
+      },
+      {
+        key: "environment",
+        label: "Environnement",
+        placeholder: "ex. golf course green with ocean behind",
+        defaultValue: "",
+      },
+    ],
+    body: "",
   },
 ];
 
