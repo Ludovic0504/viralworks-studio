@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router-dom";
 import PageTitle from "@/composants/interface/TitrePage";
-import { MessageCircle, Users, Send, Paperclip, Plus, X, MoreVertical, Languages } from "lucide-react";
+import { MessageCircle, Users, Send, Paperclip, Plus, X, MoreVertical, Languages, BellOff } from "lucide-react";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { useCommunauteVWSNotif } from "@/contexte/FournisseurCommunauteVWSNotif.jsx";
@@ -19,12 +19,15 @@ import {
   listPrivateMessages,
   listPublicMessages,
   listCommunityUsers,
-  markAllPrivateConversationsRead,
   markConversationRead,
+  mergeInboxMetaIntoConversations,
+  getPrivateInboxMeta,
+  setConversationNotificationsMuted,
   sendPrivateMessage,
   submitOnboardingQuickReply,
   sendPublicMessage,
   startPrivateConversation,
+  isCommunitySupportAccount,
   COMMUNITY_LOCALES,
   getProfilePreferredLocale,
   updateProfilePreferredLocale,
@@ -36,13 +39,47 @@ import QuickReplyButtons, {
 } from "@/composants/communaute/QuickReplyButtons";
 import {
   enrichCommunityMessage,
-  buildMessageFromUnreadPreview,
+  buildConversationFromUnreadPreview,
   resolveQuickReplyOptions,
+  resolveOnboardingStep,
+  buildOptimisticOnboardingFollowUp,
+  mergePrivateMessagesWithServer,
+  isOptimisticOnboardingMessageId,
+  hydratePrivateMessagesFromUnreadPreview,
 } from "@/bibliotheque/community/onboarding";
+import {
+  getRememberedOnboardingPrivateMessages,
+  rememberOnboardingPrivateMessages,
+} from "@/bibliotheque/community/onboardingProgressCache";
+import {
+  sortActivePrivateConversations,
+  shouldShowInActivePrivateConversations,
+} from "@/bibliotheque/community/conversationSort";
 import {
   getCachedPrivateMessages,
   rememberPrivateMessages,
 } from "@/bibliotheque/community/privateMessagesCache";
+import {
+  getRememberedSupportConversation,
+  rememberSupportConversation,
+  mergeConversationLists,
+  mergeConversationRecords,
+  upsertConversationInList,
+} from "@/bibliotheque/community/privateConversationsCache";
+
+function deriveSupportActivityFromMessages(messages, viewerUserId) {
+  if (!Array.isArray(messages) || !messages.length) return null;
+  const last = messages[messages.length - 1];
+  const viewerId = String(viewerUserId || "");
+  const lastOutgoing = [...messages].reverse().find((message) => String(message?.userId || "") === viewerId);
+  return {
+    lastMessage: String(last?.content || ""),
+    lastMessageAt: String(last?.createdAt || ""),
+    updatedAt: String(last?.createdAt || ""),
+    hasIncomingFromSupport: messages.some((message) => message?.isSupport),
+    lastOutgoingAt: lastOutgoing?.createdAt ? String(lastOutgoing.createdAt) : null,
+  };
+}
 
 function formatDate(iso) {
   if (!iso) return "";
@@ -195,9 +232,11 @@ function MessageItem({
   showQuickReplies = false,
   quickRepliesDisabled = false,
   onQuickReply,
+  allowDelete = true,
 }) {
+  const canManage = mine && allowDelete;
   const anchorRef = useRef(null);
-  const { top, left } = useFloatingMenuCoords(menuOpen && mine, anchorRef);
+  const { top, left } = useFloatingMenuCoords(menuOpen && canManage, anchorRef);
   const [showOriginal, setShowOriginal] = useState(false);
 
   const shouldAutoTranslate = preferredLocale !== "fr";
@@ -223,7 +262,7 @@ function MessageItem({
         </span>
         <div className="flex items-center gap-1.5 shrink-0">
           <span>{formatDate(msg.createdAt)}</span>
-          {mine ? (
+          {canManage ? (
             <>
               <button
                 ref={anchorRef}
@@ -320,10 +359,22 @@ function MessageItem({
   );
 }
 
-function PrivateConversationRow({ conversation: c, isActive, onSelect, menuOpen, onToggleMenu, onRemoveForMe }) {
+function PrivateConversationRow({
+  conversation: c,
+  isActive,
+  onSelect,
+  menuOpen,
+  onToggleMenu,
+  onRemoveForMe,
+  onToggleMute,
+  muteBusy = false,
+}) {
   const anchorRef = useRef(null);
   const { top, left } = useFloatingMenuCoords(menuOpen, anchorRef);
   const timeLabel = formatConversationTime(c.lastMessageAt || c.updatedAt);
+  const unreadCount = Number(c.unreadCount || 0);
+  const isMuted = Boolean(c.notificationsMuted);
+  const showUnreadBadge = unreadCount > 0;
 
   return (
     <div
@@ -345,8 +396,22 @@ function PrivateConversationRow({ conversation: c, isActive, onSelect, menuOpen,
                     Support officiel
                   </span>
                 ) : null}
+                {isMuted ? (
+                  <BellOff className="h-3.5 w-3.5 shrink-0 text-gray-500" aria-label="Notifications en sourdine" />
+                ) : null}
               </p>
-              {timeLabel ? <span className="shrink-0 text-[10px] text-gray-500">{timeLabel}</span> : null}
+              <div className="flex shrink-0 items-center gap-1.5">
+                {showUnreadBadge ? (
+                  <span
+                    className={`min-w-[1.15rem] rounded-full px-1.5 py-0.5 text-[10px] font-semibold leading-none ${
+                      isMuted ? "bg-gray-600/80 text-gray-200" : "bg-[#BA7517] text-white"
+                    }`}
+                  >
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                ) : null}
+                {timeLabel ? <span className="text-[10px] text-gray-500">{timeLabel}</span> : null}
+              </div>
             </div>
             <p className="mt-0.5 text-xs text-gray-500 truncate">
               {c.lastMessage ? c.lastMessage : "Aucun message — conversation prête"}
@@ -355,7 +420,6 @@ function PrivateConversationRow({ conversation: c, isActive, onSelect, menuOpen,
         </div>
       </button>
       <div className="flex shrink-0 items-start pt-1.5 pr-1.5">
-        {c.isSupport ? null : (
         <button
           ref={anchorRef}
           type="button"
@@ -371,7 +435,6 @@ function PrivateConversationRow({ conversation: c, isActive, onSelect, menuOpen,
         >
           <MoreVertical className="w-4 h-4" />
         </button>
-        )}
         {menuOpen
           ? createPortal(
               <div
@@ -390,11 +453,23 @@ function PrivateConversationRow({ conversation: c, isActive, onSelect, menuOpen,
                 <button
                   type="button"
                   role="menuitem"
-                  className="flex w-full items-center px-3 py-2.5 text-left text-xs text-red-300 hover:bg-white/5"
-                  onClick={() => onRemoveForMe(c.id)}
+                  disabled={muteBusy}
+                  className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs text-gray-200 hover:bg-white/5 disabled:cursor-wait disabled:opacity-50"
+                  onClick={() => onToggleMute(c.id, !isMuted)}
                 >
-                  Supprimer
+                  <BellOff className="h-3.5 w-3.5 shrink-0" />
+                  {isMuted ? "Réactiver les notifications" : "Mettre en sourdine"}
                 </button>
+                {c.isSupport ? null : (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="flex w-full items-center px-3 py-2.5 text-left text-xs text-red-300 hover:bg-white/5"
+                    onClick={() => onRemoveForMe(c.id)}
+                  >
+                    Supprimer
+                  </button>
+                )}
               </div>,
               document.body
             )
@@ -416,8 +491,13 @@ export default function CommunauteVWS() {
     markPublicTabVisited,
     latestUnreadPrivatePreviewRaw,
     prefetchPrivateMessagesForConversation,
+    setPrivateMessagesViewActive,
+    setCommunityPageActive,
+    privateInboxMeta,
+    patchPrivateInboxMeta,
   } = useCommunauteVWSNotif();
   const myUserId = session?.user?.id || "";
+  const isSupportViewer = isCommunitySupportAccount(session?.user?.email);
   const initialPrivateConversationId = useMemo(() => {
     const sp = new URLSearchParams(window.location.search);
     return sp.get("conversation") || "";
@@ -429,7 +509,10 @@ export default function CommunauteVWS() {
   const tabQueryHandledRef = useRef(false);
   const [publicMessages, setPublicMessages] = useState([]);
   const [privateConversations, setPrivateConversations] = useState([]);
-  const [activeConversationId, setActiveConversationId] = useState(initialPrivateConversationId);
+  const [activeConversationId, setActiveConversationId] = useState(() => {
+    const sp = new URLSearchParams(window.location.search);
+    return sp.get("conversation") || "";
+  });
   const [privateMessages, setPrivateMessages] = useState([]);
   const [publicInput, setPublicInput] = useState("");
   const [privateInput, setPrivateInput] = useState("");
@@ -441,6 +524,8 @@ export default function CommunauteVWS() {
   const [searchUser, setSearchUser] = useState("");
   const [msgMenuId, setMsgMenuId] = useState(null);
   const [convMenuId, setConvMenuId] = useState(null);
+  const [muteOverrides, setMuteOverrides] = useState({});
+  const [muteBusyConversationId, setMuteBusyConversationId] = useState("");
   const [userSearchOpen, setUserSearchOpen] = useState(false);
   const [localeMenuOpen, setLocaleMenuOpen] = useState(false);
   const [preferredLocale, setPreferredLocale] = useState("fr");
@@ -509,14 +594,27 @@ export default function CommunauteVWS() {
   }, [tab, privateMessages, activeConversationId, preferredLocale]);
 
   useEffect(() => {
+    setCommunityPageActive(true);
+    return () => setCommunityPageActive(false);
+  }, [setCommunityPageActive]);
+
+  useEffect(() => {
+    setPrivateMessagesViewActive(tab === "private");
+    return () => setPrivateMessagesViewActive(false);
+  }, [tab, setPrivateMessagesViewActive]);
+
+  useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
   }, [activeConversationId]);
 
   useLayoutEffect(() => {
+    if (isSupportViewer) return;
+
     const convFromUrl = searchParams.get("conversation") || initialPrivateConversationId;
     const convId =
       convFromUrl ||
       latestUnreadPrivatePreviewRaw?.conversationId ||
+      getRememberedSupportConversation()?.id ||
       "";
     if (!convId) return;
 
@@ -524,39 +622,178 @@ export default function CommunauteVWS() {
     setActiveConversationId(convId);
     activeConversationIdRef.current = convId;
 
+    const previewStub =
+      latestUnreadPrivatePreviewRaw?.conversationId === convId
+        ? buildConversationFromUnreadPreview(latestUnreadPrivatePreviewRaw)
+        : null;
+    const remembered = getRememberedSupportConversation();
+    const stub = previewStub || (remembered?.id === convId ? remembered : null);
+    if (stub) {
+      rememberSupportConversation(stub);
+      setPrivateConversations((prev) => upsertConversationInList(prev, stub));
+    }
+
     const cached = getCachedPrivateMessages(convId);
-    if (cached?.length) {
-      setPrivateMessages(cached);
+    const rememberedOnboarding = getRememberedOnboardingPrivateMessages(convId);
+    const instant =
+      cached?.length && rememberedOnboarding?.length
+        ? mergePrivateMessagesWithServer(rememberedOnboarding, cached)
+        : rememberedOnboarding?.length
+          ? rememberedOnboarding
+          : cached?.length
+            ? cached
+            : null;
+
+    if (instant?.length) {
+      const hydrated = instant.map(enrichCommunityMessage);
+      setPrivateMessages(hydrated);
+      rememberOnboardingPrivateMessages(convId, hydrated);
       return;
     }
 
     if (latestUnreadPrivatePreviewRaw?.conversationId === convId) {
-      setPrivateMessages([
-        enrichCommunityMessage(buildMessageFromUnreadPreview(latestUnreadPrivatePreviewRaw)),
-      ]);
+      const hydrated = hydratePrivateMessagesFromUnreadPreview(
+        convId,
+        latestUnreadPrivatePreviewRaw,
+        rememberedOnboarding,
+      );
+      setPrivateMessages(hydrated);
+      rememberOnboardingPrivateMessages(convId, hydrated);
     }
   }, [
     searchParams,
     initialPrivateConversationId,
     latestUnreadPrivatePreviewRaw?.conversationId,
     latestUnreadPrivatePreviewRaw?.messageId,
+    isSupportViewer,
   ]);
 
-  const activeConversation = useMemo(
-    () => privateConversations.find((c) => c.id === activeConversationId) || null,
-    [privateConversations, activeConversationId]
-  );
+  useLayoutEffect(() => {
+    if (tab !== "private" || isSupportViewer) return;
+
+    const previewStub = latestUnreadPrivatePreviewRaw?.conversationId
+      ? buildConversationFromUnreadPreview(latestUnreadPrivatePreviewRaw)
+      : null;
+    const remembered = getRememberedSupportConversation();
+    const stub = previewStub || remembered;
+    if (!stub?.id) return;
+
+    rememberSupportConversation(stub);
+    setPrivateConversations((prev) => upsertConversationInList(prev, stub));
+
+    if (!activeConversationIdRef.current && !isAdminUser) {
+      setActiveConversationId(stub.id);
+      activeConversationIdRef.current = stub.id;
+    }
+  }, [
+    tab,
+    isAdminUser,
+    isSupportViewer,
+    latestUnreadPrivatePreviewRaw?.conversationId,
+    latestUnreadPrivatePreviewRaw?.messageId,
+  ]);
+
+  const activeConversation = useMemo(() => {
+    if (!activeConversationId) return null;
+    const fromList = privateConversations.find((c) => c.id === activeConversationId);
+    if (fromList) return fromList;
+
+    const remembered = getRememberedSupportConversation();
+    if (remembered?.id === activeConversationId) return remembered;
+
+    if (latestUnreadPrivatePreviewRaw?.conversationId === activeConversationId) {
+      return buildConversationFromUnreadPreview(latestUnreadPrivatePreviewRaw);
+    }
+
+    return null;
+  }, [
+    privateConversations,
+    activeConversationId,
+    latestUnreadPrivatePreviewRaw?.conversationId,
+    latestUnreadPrivatePreviewRaw?.messageId,
+  ]);
 
   const activeConversations = useMemo(() => {
-    const hasActivity = (c) =>
-      c.isSupport || Boolean(c.lastMessageAt) || Boolean(String(c.lastMessage || "").trim());
-    if (isAdminUser) {
-      return privateConversations.filter(hasActivity);
+    if (isSupportViewer) {
+      return privateConversations
+        .filter((c) => !c.isSupport && c.otherUserId !== myUserId)
+        .sort((a, b) => String(b.updatedAt || b.lastMessageAt).localeCompare(String(a.updatedAt || a.lastMessageAt)));
     }
-    return privateConversations.filter((c) => c.isSupport || Boolean(c.lastMessageAt));
-  }, [privateConversations, isAdminUser]);
+
+    const remembered = getRememberedSupportConversation();
+    const previewStub =
+      latestUnreadPrivatePreviewRaw?.conversationId && latestUnreadPrivatePreviewRaw?.isSupport
+        ? {
+            ...buildConversationFromUnreadPreview(latestUnreadPrivatePreviewRaw),
+            hasIncomingFromSupport: true,
+          }
+        : null;
+    const seeded = sortActivePrivateConversations(
+      mergeConversationLists(privateConversations, [previewStub, remembered].filter(Boolean)),
+    );
+
+    return seeded.filter((conversation) =>
+      shouldShowInActivePrivateConversations(conversation, {
+        activeConversationId,
+        isAdminUser,
+      }),
+    );
+  }, [
+    privateConversations,
+    isAdminUser,
+    isSupportViewer,
+    myUserId,
+    activeConversationId,
+    latestUnreadPrivatePreviewRaw?.conversationId,
+    latestUnreadPrivatePreviewRaw?.messageId,
+  ]);
+
+  const conversationsForSidebar = useMemo(
+    () => mergeInboxMetaIntoConversations(activeConversations, privateInboxMeta, muteOverrides),
+    [activeConversations, privateInboxMeta, muteOverrides],
+  );
+
+  useEffect(() => {
+    if (!privateInboxMeta.length) return;
+    setMuteOverrides((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const [conversationId, muted] of Object.entries(prev)) {
+        const server = privateInboxMeta.find((row) => row.conversationId === conversationId);
+        if (server && server.notificationsMuted === muted) {
+          delete next[conversationId];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [privateInboxMeta]);
+
+  const privateTabUnreadCount = useMemo(() => {
+    return conversationsForSidebar.reduce((sum, conversation) => {
+      if (conversation.id === activeConversationId) return sum;
+      return sum + Number(conversation.unreadCount || 0);
+    }, 0);
+  }, [conversationsForSidebar, activeConversationId]);
 
   const accessToken = session?.access_token || "";
+
+  const markConversationAsViewed = async (conversationId) => {
+    const id = String(conversationId || "").trim();
+    if (!id) return;
+    try {
+      await markConversationRead(id);
+      patchPrivateInboxMeta(id, { unreadCount: 0 });
+      await refreshUnreadPrivate();
+      setPrivateConversations((prev) =>
+        prev.map((conversation) =>
+          conversation.id === id ? { ...conversation, unreadCount: 0 } : conversation,
+        ),
+      );
+    } catch {
+      /* non-bloquant */
+    }
+  };
 
   const refreshPublic = async () => {
     if (!accessToken) return;
@@ -571,8 +808,25 @@ export default function CommunauteVWS() {
   const refreshConversations = async (forceActiveId, forceOtherUserId) => {
     if (!accessToken) return "";
     try {
-      const list = await listPrivateConversations(accessToken);
-      setPrivateConversations(list);
+      const [list, inboxMeta] = await Promise.all([
+        listPrivateConversations(accessToken),
+        getPrivateInboxMeta().catch(() => null),
+      ]);
+      let merged = list;
+      if (!isSupportViewer) {
+        const remembered = getRememberedSupportConversation();
+        const previewStub =
+          latestUnreadPrivatePreviewRaw?.conversationId && latestUnreadPrivatePreviewRaw?.isSupport
+            ? buildConversationFromUnreadPreview(latestUnreadPrivatePreviewRaw)
+            : null;
+        merged = mergeConversationLists(list, [remembered, previewStub].filter(Boolean));
+      }
+      if (inboxMeta) {
+        merged = mergeInboxMetaIntoConversations(merged, inboxMeta, muteOverrides);
+      }
+      const support = merged.find((c) => c.isSupport);
+      if (support && !isSupportViewer) rememberSupportConversation(support);
+      setPrivateConversations(merged);
       setError("");
       let resolvedId = "";
       setActiveConversationId((prev) => {
@@ -580,24 +834,31 @@ export default function CommunauteVWS() {
           forceActiveId !== undefined &&
           forceActiveId !== null &&
           forceActiveId !== "" &&
-          list.some((c) => c.id === forceActiveId)
+          merged.some((c) => c.id === forceActiveId)
         ) {
           resolvedId = forceActiveId;
           return forceActiveId;
         }
         if (forceOtherUserId) {
-          const match = list.find((c) => c.otherUserId === forceOtherUserId);
+          const match = merged.find((c) => c.otherUserId === forceOtherUserId);
           if (match) {
             resolvedId = match.id;
             return match.id;
           }
         }
-        if (prev && list.some((c) => c.id === prev)) {
+        if (prev && merged.some((c) => c.id === prev)) {
           resolvedId = prev;
           return prev;
         }
-        const supportConv = list.find((c) => c.isSupport);
-        const withMessages = list.filter((c) => Boolean(c.lastMessageAt));
+        if (isSupportViewer) {
+          const memberConv = merged.find(
+            (c) => !c.isSupport && String(c.otherUserId) !== myUserId,
+          );
+          resolvedId = memberConv?.id || "";
+          return resolvedId;
+        }
+        const supportConv = merged.find((c) => c.isSupport);
+        const withMessages = merged.filter((c) => Boolean(c.lastMessageAt));
         resolvedId = isAdminUser ? withMessages[0]?.id || "" : supportConv?.id || "";
         return resolvedId;
       });
@@ -609,13 +870,32 @@ export default function CommunauteVWS() {
   };
 
   const ensureSupportConversation = async () => {
+    if (isSupportViewer) return "";
     try {
       const support = await getCommunitySupportUser();
-      if (!support?.userId) return;
-      await startPrivateConversation(support.userId);
+      if (!support?.userId) return "";
+      const convId = await startPrivateConversation(support.userId);
+      const remembered = getRememberedSupportConversation();
+      const stub = {
+        id: convId,
+        otherUserId: support.userId,
+        otherUsername: support.username || "Support officiel",
+        updatedAt: remembered?.updatedAt || new Date().toISOString(),
+        lastMessage: remembered?.lastMessage || "",
+        lastMessageAt: remembered?.lastMessageAt || "",
+        isSupport: true,
+      };
+      rememberSupportConversation(stub);
+      setPrivateConversations((prev) => upsertConversationInList(prev, stub));
+      if (!activeConversationIdRef.current && !isAdminUser) {
+        setActiveConversationId(convId);
+        activeConversationIdRef.current = convId;
+      }
+      return convId;
     } catch (e) {
       // Non-bloquant: la page doit rester utilisable même si la création auto échoue.
       console.warn("Support conversation bootstrap failed:", e);
+      return "";
     }
   };
 
@@ -627,10 +907,55 @@ export default function CommunauteVWS() {
     if (!accessToken) return [];
     try {
       const messages = (await listPrivateMessages(conversationId, accessToken)).map(enrichCommunityMessage);
-      rememberPrivateMessages(conversationId, messages);
       if (activeConversationIdRef.current !== conversationId) return messages;
-      setPrivateMessages((prev) => (messagesAreSame(prev, messages) ? prev : messages));
+      setPrivateMessages((prev) => {
+        const merged = mergePrivateMessagesWithServer(prev, messages);
+        const next = messagesAreSame(prev, merged) ? prev : merged;
+        rememberPrivateMessages(conversationId, next);
+        rememberOnboardingPrivateMessages(conversationId, next);
+        return next;
+      });
+      setPrivateConversations((prev) => {
+        const activity = deriveSupportActivityFromMessages(messages, myUserId);
+        if (!activity?.hasIncomingFromSupport && !activity?.lastOutgoingAt) return prev;
+
+        let conv = prev.find((row) => row.id === conversationId);
+        if (!conv) {
+          const remembered = getRememberedSupportConversation();
+          if (remembered?.id === conversationId) conv = remembered;
+        }
+        if (!conv?.isSupport && !activity.hasIncomingFromSupport) return prev;
+
+        const base =
+          conv ||
+          ({
+            id: conversationId,
+            otherUserId: "",
+            otherUsername: "Support officiel",
+            updatedAt: activity.updatedAt,
+            lastMessage: "",
+            lastMessageAt: "",
+            isSupport: true,
+          });
+        const enriched = mergeConversationRecords(base, { ...base, ...activity });
+        const existing = prev.find((row) => row.id === conversationId);
+        if (
+          existing &&
+          existing.hasIncomingFromSupport === enriched.hasIncomingFromSupport &&
+          String(existing.lastOutgoingAt || "") === String(enriched.lastOutgoingAt || "") &&
+          String(existing.lastMessageAt || "") === String(enriched.lastMessageAt || "") &&
+          String(existing.lastMessage || "") === String(enriched.lastMessage || "")
+        ) {
+          return prev;
+        }
+        const next = upsertConversationInList(prev, enriched);
+        rememberSupportConversation(enriched);
+        return next;
+      });
       setError("");
+      if (activeConversationIdRef.current === conversationId) {
+        void markConversationAsViewed(conversationId);
+      }
       return messages;
     } catch (e) {
       if (activeConversationIdRef.current !== conversationId) return [];
@@ -663,8 +988,8 @@ export default function CommunauteVWS() {
       }
 
       await Promise.all([
-        ensureSupportConversation(),
-        ensureWelcomePrivateMessage().catch(() => {}),
+        isSupportViewer ? Promise.resolve() : ensureSupportConversation(),
+        isSupportViewer ? Promise.resolve() : ensureWelcomePrivateMessage().catch(() => {}),
       ]);
       await Promise.all([refreshPublic(), refreshUsers()]);
       const conversationId = await refreshConversations(
@@ -688,9 +1013,10 @@ export default function CommunauteVWS() {
   ]);
 
   useEffect(() => {
-    if (tab !== "private" || !session?.user?.id) return;
+    if (tab !== "private" || !session?.user?.id || !accessToken || isSupportViewer) return;
+    void ensureSupportConversation();
     void ensureWelcomePrivateMessage().catch(() => {});
-  }, [tab, session?.user?.id]);
+  }, [tab, session?.user?.id, accessToken, isSupportViewer]);
 
   useEffect(() => {
     if (!activeConversationId) {
@@ -702,12 +1028,13 @@ export default function CommunauteVWS() {
       const messages = await refreshPrivateMessages(activeConversationId);
       if (cancelled || messages.length > 0) return;
 
-      const supportConversation =
-        activeConversation?.isSupport ||
-        privateConversations.find((c) => c.id === activeConversationId)?.isSupport;
+      const remembered = getRememberedSupportConversation();
+      const supportConversation = Boolean(
+        remembered?.id === activeConversationId && remembered?.isSupport,
+      );
       const shouldPoll =
         supportConversation ||
-        Boolean(activeConversation?.lastMessageAt) ||
+        Boolean(remembered?.id === activeConversationId && remembered?.lastMessageAt) ||
         unreadPrivateCount > 0;
       if (!shouldPoll) return;
 
@@ -732,13 +1059,7 @@ export default function CommunauteVWS() {
     return () => {
       cancelled = true;
     };
-  }, [
-    activeConversationId,
-    activeConversation?.isSupport,
-    activeConversation?.lastMessageAt,
-    unreadPrivateCount,
-    privateConversations,
-  ]);
+  }, [activeConversationId]);
 
   useEffect(() => {
     setMessageTranslations({});
@@ -840,36 +1161,9 @@ export default function CommunauteVWS() {
   }, [tab, session?.user?.id, markPublicTabVisited]);
 
   useEffect(() => {
-    if (tab !== "private" || !session?.user?.id) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        await markAllPrivateConversationsRead();
-        if (!cancelled) await refreshUnreadPrivate();
-      } catch {
-        /* ignore */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [tab, session?.user?.id, refreshUnreadPrivate]);
-
-  useEffect(() => {
     if (tab !== "private" || !session?.user?.id || !activeConversationId) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        await markConversationRead(activeConversationId);
-        if (!cancelled) await refreshUnreadPrivate();
-      } catch {
-        /* ignore */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [tab, activeConversationId, session?.user?.id, refreshUnreadPrivate]);
+    void markConversationAsViewed(activeConversationId);
+  }, [tab, activeConversationId, session?.user?.id]);
 
   const sendToPublic = async () => {
     const text = publicInput.trim();
@@ -907,29 +1201,51 @@ export default function CommunauteVWS() {
 
   const refreshPrivateAfterSend = async (conversationId, options = {}) => {
     const waitForFollowup = options.waitForFollowup === true;
-    const delays = waitForFollowup ? [0, 500, 1000, 1600, 2400, 3200] : [0];
+    const expectOnboardingStep = Number(options.expectOnboardingStep || 0) || null;
+    const delays = waitForFollowup ? [0, 250, 500, 900, 1400] : [0];
     let messages = [];
 
     for (const delay of delays) {
       if (delay > 0) {
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
-      messages = await listPrivateMessages(conversationId, accessToken);
+      const fetched = await listPrivateMessages(conversationId, accessToken);
+      setPrivateMessages((prev) => {
+        const merged = mergePrivateMessagesWithServer(prev, fetched);
+        rememberPrivateMessages(conversationId, merged);
+        rememberOnboardingPrivateMessages(conversationId, merged);
+        return merged;
+      });
+      messages = fetched;
+
+      if (
+        waitForFollowup &&
+        expectOnboardingStep &&
+        fetched.some((message) => message.onboardingStep === expectOnboardingStep)
+      ) {
+        break;
+      }
     }
 
-    setPrivateMessages(messages);
     const latest = messages[messages.length - 1];
     if (latest) {
       setPrivateConversations((prev) =>
-        prev.map((c) =>
-          c.id === conversationId
-            ? {
-                ...c,
-                lastMessage: latest.content,
-                lastMessageAt: latest.createdAt,
-                updatedAt: latest.createdAt,
-              }
-            : c,
+        sortActivePrivateConversations(
+          prev.map((conversation) => {
+            if (conversation.id !== conversationId) return conversation;
+            const patch = {
+              ...conversation,
+              lastMessage: latest.content,
+              lastMessageAt: latest.createdAt,
+            };
+            if (latest.userId === myUserId) {
+              patch.lastOutgoingAt = latest.createdAt;
+              patch.updatedAt = latest.createdAt;
+            } else if (latest.isSupport) {
+              patch.hasIncomingFromSupport = true;
+            }
+            return patch;
+          }),
         ),
       );
     }
@@ -945,13 +1261,14 @@ export default function CommunauteVWS() {
     if (!text && !file) return;
 
     const tempId = `temp-private-${Date.now()}`;
+    const sentAt = new Date().toISOString();
     const optimistic = {
       id: tempId,
       conversationId: activeConversationId,
       userId: myUserId,
       username: session?.user?.email?.split("@")[0] || "Moi",
       content: text ? censorMessageText(text) : "",
-      createdAt: new Date().toISOString(),
+      createdAt: sentAt,
       attachment: null,
       responseMethod: "text",
     };
@@ -960,6 +1277,21 @@ export default function CommunauteVWS() {
       setBusy(true);
       setError("");
       setPrivateMessages((prev) => [...prev, optimistic]);
+      setPrivateConversations((prev) =>
+        sortActivePrivateConversations(
+          prev.map((conversation) =>
+            conversation.id === activeConversationId
+              ? {
+                  ...conversation,
+                  lastOutgoingAt: sentAt,
+                  updatedAt: sentAt,
+                  lastMessage: optimistic.content || conversation.lastMessage,
+                  lastMessageAt: sentAt,
+                }
+              : conversation,
+          ),
+        ),
+      );
       setPrivateInput("");
       setPrivateFile(null);
       if (privateFileRef.current) privateFileRef.current.value = "";
@@ -986,17 +1318,45 @@ export default function CommunauteVWS() {
     if (!activeConversationId || !label?.trim() || quickReplyBusyMessageId) return;
 
     const text = label.trim();
+    const sourceMessage = privateMessages.find((message) => message.id === sourceMessageId);
+    const answeredStep = sourceMessage ? resolveOnboardingStep(sourceMessage) : null;
+    const supportUserId = activeConversation?.isSupport ? activeConversation.otherUserId : "";
 
     try {
       setQuickReplyBusyMessageId(sourceMessageId);
       setError("");
-      setPrivateMessages((prev) =>
-        prev.map((message) =>
+      setPrivateMessages((prev) => {
+        const next = prev.map((message) =>
           message.id === sourceMessageId
             ? { ...message, quickReplySelected: text }
             : message,
-        ),
-      );
+        );
+
+        let result = next;
+        if (
+          (answeredStep === 1 || answeredStep === 2) &&
+          supportUserId &&
+          !next.some(
+            (message) =>
+              message.onboardingStep === answeredStep + 1 &&
+              !isOptimisticOnboardingMessageId(message.id),
+          )
+        ) {
+          const followUp = buildOptimisticOnboardingFollowUp({
+            answeredStep,
+            conversationId: activeConversationId,
+            supportUserId,
+          });
+          if (!next.some((message) => message.onboardingStep === followUp.onboardingStep)) {
+            result = [...next, followUp];
+          }
+        }
+
+        const hydrated = result.map(enrichCommunityMessage);
+        rememberPrivateMessages(activeConversationId, hydrated);
+        rememberOnboardingPrivateMessages(activeConversationId, hydrated);
+        return hydrated;
+      });
 
       await submitOnboardingQuickReply({
         conversationId: activeConversationId,
@@ -1004,14 +1364,25 @@ export default function CommunauteVWS() {
         label: text,
       });
 
-      await refreshPrivateAfterSend(activeConversationId, { waitForFollowup: true });
+      setQuickReplyBusyMessageId("");
+      void refreshPrivateAfterSend(activeConversationId, {
+        waitForFollowup: true,
+        expectOnboardingStep: answeredStep === 1 ? 2 : answeredStep === 2 ? 3 : null,
+      });
     } catch (e) {
       setPrivateMessages((prev) =>
-        prev.map((message) =>
-          message.id === sourceMessageId
-            ? { ...message, quickReplySelected: null }
-            : message,
-        ),
+        prev
+          .filter((message) => {
+            if (!isOptimisticOnboardingMessageId(message.id)) return true;
+            if (answeredStep === 1) return message.onboardingStep !== 2;
+            if (answeredStep === 2) return message.onboardingStep !== 3;
+            return true;
+          })
+          .map((message) =>
+            message.id === sourceMessageId
+              ? { ...message, quickReplySelected: null }
+              : message,
+          ),
       );
       setError(e?.message || "Impossible d'envoyer la réponse rapide.");
     } finally {
@@ -1038,6 +1409,52 @@ export default function CommunauteVWS() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const toggleConversationMute = async (conversationId, muted) => {
+    const id = String(conversationId || "").trim();
+    if (!id || muteBusyConversationId === id) return;
+
+    setConvMenuId(null);
+    setError("");
+    setMuteBusyConversationId(id);
+    setMuteOverrides((prev) => ({ ...prev, [id]: muted === true }));
+    patchPrivateInboxMeta(id, { notificationsMuted: muted === true });
+
+    try {
+      const savedMuted = await setConversationNotificationsMuted(id, muted);
+      setMuteOverrides((prev) => {
+        const next = { ...prev };
+        if (next[id] === savedMuted) {
+          delete next[id];
+        } else {
+          next[id] = savedMuted;
+        }
+        return next;
+      });
+      patchPrivateInboxMeta(id, { notificationsMuted: savedMuted });
+      await refreshUnreadPrivate();
+    } catch (e) {
+      setMuteOverrides((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      const previous = privateInboxMeta.find((row) => row.conversationId === id);
+      patchPrivateInboxMeta(id, {
+        notificationsMuted: previous?.notificationsMuted === true,
+      });
+      setError(e?.message || "Impossible de modifier la sourdine.");
+    } finally {
+      setMuteBusyConversationId("");
+    }
+  };
+
+  const selectPrivateConversation = (conversationId) => {
+    setActiveConversationId(conversationId);
+    activeConversationIdRef.current = conversationId;
+    setConvMenuId(null);
+    void markConversationAsViewed(conversationId);
   };
 
   const removePrivateConversationForMe = async (conversationId) => {
@@ -1089,9 +1506,9 @@ export default function CommunauteVWS() {
             <span className="inline-flex items-center gap-1.5">
               <Users className="w-4 h-4 shrink-0" />
               <span>Conversations privées</span>
-              {unreadPrivateCount > 0 ? (
+              {privateTabUnreadCount > 0 ? (
                 <span className="min-w-[1.25rem] rounded-full bg-[#BA7517] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
-                  {unreadPrivateCount > 99 ? "99+" : unreadPrivateCount}
+                  {privateTabUnreadCount > 99 ? "99+" : privateTabUnreadCount}
                 </span>
               ) : null}
             </span>
@@ -1207,18 +1624,19 @@ export default function CommunauteVWS() {
               </p>
               <div className={SIDEBAR_SCROLL_FRAME_CLASS}>
                 {activeConversations.length > 0 ? (
-                  activeConversations.map((c) => (
+                  conversationsForSidebar.map((c) => (
                   <PrivateConversationRow
                     key={c.id}
                     conversation={c}
                     isActive={activeConversationId === c.id}
                     menuOpen={convMenuId === c.id}
-                    onSelect={() => {
-                      setActiveConversationId(c.id);
-                      setConvMenuId(null);
-                    }}
+                    muteBusy={muteBusyConversationId === c.id}
+                    onSelect={() => selectPrivateConversation(c.id)}
                     onToggleMenu={() => setConvMenuId((prev) => (prev === c.id ? null : c.id))}
                     onRemoveForMe={removePrivateConversationForMe}
+                    onToggleMute={(conversationId, nextMuted) => {
+                      void toggleConversationMute(conversationId, nextMuted);
+                    }}
                   />
                   ))
                 ) : (
@@ -1315,6 +1733,14 @@ export default function CommunauteVWS() {
             </>
           ) : (
             <>
+              {activeConversation ? (
+                <div className="mb-3 shrink-0 border-b border-white/10 pb-2">
+                  <p className="text-sm font-medium text-gray-200">{activeConversation.otherUsername}</p>
+                  {isSupportViewer ? (
+                    <p className="text-[11px] text-gray-500">Onboarding et messagerie privée</p>
+                  ) : null}
+                </div>
+              ) : null}
               <div className={CHAT_MESSAGES_FRAME_CLASS}>
                 {privateMessages.length > 0 ? (
                   privateMessages.map((msg) => (
@@ -1326,8 +1752,11 @@ export default function CommunauteVWS() {
                       translatedText={messageTranslations[msg.id] || ""}
                       menuOpen={msgMenuId === msg.id}
                       onMenuToggle={() => setMsgMenuId((p) => (p === msg.id ? null : msg.id))}
-                      showQuickReplies={shouldShowMessageQuickReplies(msg, privateMessages, myUserId)}
-                      quickRepliesDisabled={Boolean(quickReplyBusyMessageId) || busy}
+                      allowDelete={!msg.isOnboardingAnswer}
+                      showQuickReplies={shouldShowMessageQuickReplies(msg, privateMessages, myUserId, {
+                        viewerIsSupport: isSupportViewer,
+                      })}
+                      quickRepliesDisabled={quickReplyBusyMessageId === msg.id || busy}
                       onQuickReply={(label, sourceMessageId) => {
                         void runWithAuth(() => sendPrivateQuickReply(label, sourceMessageId));
                       }}
@@ -1348,10 +1777,10 @@ export default function CommunauteVWS() {
                 ) : (
                   <p className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-4 text-xs text-gray-500 text-center">
                     {activeConversation
-                      ? activeConversation.isSupport
-                        ? "Chargement du message de bienvenue…"
-                        : `Conversation avec ${activeConversation.otherUsername} — aucun message pour l'instant.`
-                      : "Choisis une conversation dans la liste ou via la recherche."}
+                      ? `Conversation avec ${activeConversation.otherUsername} — aucun message pour l'instant.`
+                      : isSupportViewer
+                        ? "Sélectionne une conversation dans la liste."
+                        : "Choisis une conversation dans la liste ou via la recherche."}
                   </p>
                 )}
                 <div ref={privateEndRef} />

@@ -44,7 +44,7 @@ export default function Header({ onOpenMenu }) {
   const { openAuthModal } = useRequireAuthAction();
   const hasSession = Boolean(session?.user?.id);
   const {
-    unreadPrivateCount,
+    headerUnreadPrivateCount,
     latestUnreadPrivatePreview,
     hasNewPublicSinceLastVisit,
     dismissPrivateMessagePreview,
@@ -52,9 +52,6 @@ export default function Header({ onOpenMenu }) {
   } = useCommunauteVWSNotif();
   const location = useLocation();
   const navigate = useNavigate();
-  const isOnPrivateMessages =
-    location.pathname === "/communaute-vws" &&
-    new URLSearchParams(location.search).get("tab") === "private";
 
   const [adminBar, setAdminBar] = useState({
     isAdmin: false,
@@ -127,15 +124,6 @@ export default function Header({ onOpenMenu }) {
       wasConnectedRef.current = false;
     }
   }, [hasSession, loading, signingOut]);
-
-  useEffect(() => {
-    if (!latestUnreadPrivatePreview || !isOnPrivateMessages) return;
-    dismissPrivateMessagePreview(latestUnreadPrivatePreview.messageId);
-  }, [
-    latestUnreadPrivatePreview,
-    isOnPrivateMessages,
-    dismissPrivateMessagePreview,
-  ]);
 
   async function handleLogout() {
     try {
@@ -270,22 +258,22 @@ export default function Header({ onOpenMenu }) {
                   to="/communaute-vws?tab=private"
                   className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-300 transition-colors hover:bg-white/10 hover:text-white"
                   aria-label={
-                    unreadPrivateCount > 0
-                      ? `Messages privés, ${unreadPrivateCount} non lus`
+                    headerUnreadPrivateCount > 0
+                      ? `Messages privés, ${headerUnreadPrivateCount} non lus`
                       : "Messages privés"
                   }
                 >
                   <MessageBubbleIcon className="text-gray-300" />
-                  {unreadPrivateCount > 0 ? (
+                  {headerUnreadPrivateCount > 0 ? (
                     <span className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-semibold leading-none text-white animate-pulse">
-                      {unreadPrivateCount > 99 ? "99+" : unreadPrivateCount}
+                      {headerUnreadPrivateCount > 99 ? "99+" : headerUnreadPrivateCount}
                     </span>
                   ) : null}
                   {hasNewPublicSinceLastVisit ? (
                     <span className="absolute -left-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-yellow-400" aria-hidden />
                   ) : null}
                 </LienNavSync>
-                {latestUnreadPrivatePreview && !isOnPrivateMessages ? (
+                {latestUnreadPrivatePreview ? (
                   <PrivateMessagePreviewBubble
                     senderName={latestUnreadPrivatePreview.senderName}
                     preview={latestUnreadPrivatePreview.contentPreview}

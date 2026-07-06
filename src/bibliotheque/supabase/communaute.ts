@@ -33,6 +33,7 @@ export type CommunityMessage = {
   quickReplySelected?: string | null;
   responseMethod?: "button" | "text" | null;
   onboardingStep?: number | null;
+  isOnboardingAnswer?: boolean;
 };
 
 export type CommunityConversation = {
@@ -43,6 +44,17 @@ export type CommunityConversation = {
   lastMessage: string;
   lastMessageAt: string;
   isSupport?: boolean;
+  hasOnboardingAnswers?: boolean;
+  unreadCount?: number;
+  notificationsMuted?: boolean;
+  lastOutgoingAt?: string | null;
+  hasIncomingFromSupport?: boolean;
+};
+
+export type ConversationInboxMeta = {
+  conversationId: string;
+  unreadCount: number;
+  notificationsMuted: boolean;
 };
 
 export type CommunityMessageScope = "public" | "private";
@@ -72,6 +84,10 @@ export const COMMUNITY_LOCALES: { code: CommunityLocale; label: string }[] = [
 
 const COMMUNITY_MEDIA_BUCKET = "community-media";
 const SUPPORT_EMAIL = "jean.limonta06@gmail.com";
+
+export function isCommunitySupportAccount(email: string | null | undefined): boolean {
+  return String(email || "").toLowerCase() === SUPPORT_EMAIL;
+}
 const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const ALLOWED_VIDEO_TYPES = new Set(["video/mp4", "video/webm", "video/quicktime"]);
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
@@ -692,7 +708,7 @@ export async function sendPrivateMessage(input: {
 }
 
 export async function deletePrivateMessage(messageId: string): Promise<void> {
-  if (messageId.startsWith("temp-")) return;
+  if (messageId.startsWith("temp-") || messageId.startsWith("onboarding-answer-")) return;
   const { supabase } = await ensureAuthUser();
   const { data, error } = await supabase.rpc("community_delete_own_private_message", {
     p_message_id: messageId,
@@ -723,7 +739,7 @@ function parseUnreadPreview(raw: unknown): UnreadPrivatePreview | null {
   };
 }
 
-/** Compteur + aperçu du dernier message privé non lu (header / toast). */
+/** Compteur + aperçu du dernier message privé non lu (header / toast). Exclut les conversations en mute. */
 export async function getPrivateUnreadStatus(): Promise<PrivateUnreadStatus> {
   const { supabase } = await ensureAuthUser();
   const { data, error } = await supabase.rpc("community_private_unread_status");
@@ -756,6 +772,94 @@ export async function getPrivateUnreadStatus(): Promise<PrivateUnreadStatus> {
   };
 }
 
+function parseInboxMetaRow(raw: unknown): ConversationInboxMeta | null {
+  if (!raw || typeof raw !== "object") return null;
+  const row = raw as Record<string, unknown>;
+  const conversationId = String(row.conversation_id || "").trim();
+  if (!conversationId) return null;
+  const unreadRaw = row.unread_count;
+  const unreadCount =
+    typeof unreadRaw === "number" ? unreadRaw : Number(unreadRaw ?? 0);
+  return {
+    conversationId,
+    unreadCount: Number.isFinite(unreadCount) ? Math.max(0, unreadCount) : 0,
+    notificationsMuted: row.notifications_muted === true,
+  };
+}
+
+function normalizeInboxMetaPayload(data: unknown): unknown[] {
+  if (Array.isArray(data)) return data;
+  if (typeof data === "string") {
+    try {
+      const parsed = JSON.parse(data) as unknown;
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+/** Non-lus et mute par conversation (badges dans la liste). */
+export async function getPrivateInboxMeta(): Promise<ConversationInboxMeta[]> {
+  const { supabase } = await ensureAuthUser();
+  const { data, error } = await supabase.rpc("community_private_inbox_meta");
+  if (error) throw new Error(error.message);
+  return normalizeInboxMetaPayload(data)
+    .map(parseInboxMetaRow)
+    .filter((row): row is ConversationInboxMeta => Boolean(row));
+}
+
+export function mergeInboxMetaIntoConversations(
+  conversations: CommunityConversation[],
+  inboxMeta: ConversationInboxMeta[],
+  muteOverrides: Record<string, boolean> = {},
+): CommunityConversation[] {
+  const metaById = new Map(inboxMeta.map((row) => [row.conversationId, row]));
+  return conversations.map((conversation) => {
+    const meta = metaById.get(conversation.id);
+    const hasOverride = Object.prototype.hasOwnProperty.call(muteOverrides, conversation.id);
+    const notificationsMuted = hasOverride
+      ? muteOverrides[conversation.id] === true
+      : meta !== undefined
+        ? meta.notificationsMuted
+        : Boolean(conversation.notificationsMuted);
+    const unreadCount =
+      meta !== undefined ? meta.unreadCount : Number(conversation.unreadCount || 0);
+
+    if (!meta && !hasOverride && conversation.unreadCount == null && !conversation.notificationsMuted) {
+      return conversation;
+    }
+
+    return {
+      ...conversation,
+      unreadCount,
+      notificationsMuted,
+    };
+  });
+}
+
+export async function setConversationNotificationsMuted(
+  conversationId: string,
+  muted: boolean,
+): Promise<boolean> {
+  const { supabase, user } = await ensureAuthUser();
+  const id = String(conversationId || "").trim();
+  if (!id) throw new Error("Conversation introuvable.");
+  const { data, error } = await supabase
+    .from("community_private_participants")
+    .update({ notifications_muted: muted === true })
+    .eq("conversation_id", id)
+    .eq("user_id", user.id)
+    .select("notifications_muted")
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) {
+    throw new Error("Conversation introuvable ou accès refusé.");
+  }
+  return data.notifications_muted === true;
+}
+
 /** Déclenche le message de bienvenue support si pas encore envoyé (idempotent, côté client après connexion). */
 export async function ensureWelcomePrivateMessage(): Promise<void> {
   const auth = await ensureAuthSession();
@@ -779,7 +883,7 @@ export async function markConversationRead(conversationId: string): Promise<void
   if (error) throw new Error(error.message);
 }
 
-/** Marque toutes les conversations privées comme lues (onglet privé ouvert). */
+/** Marque toutes les conversations privées comme lues (legacy — éviter pour l’UX inbox). */
 export async function markAllPrivateConversationsRead(): Promise<void> {
   const { supabase, user } = await ensureAuthUser();
   const now = new Date().toISOString();

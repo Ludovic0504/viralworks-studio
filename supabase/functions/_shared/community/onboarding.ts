@@ -30,3 +30,6 @@ export const ONBOARDING_STEP3_CONTENT = `Merci pour tes réponses !
 Bonne découverte de ViralWorks Studio.
 
 Si tu as besoin d'une info, n'hésite pas à l'écrire ici — je te répondrai le plus rapidement possible.`;
+
+/** Pas d'onboarding rétroactif pour les comptes créés avant ce déploiement. */
+export const ONBOARDING_ROLLOUT_AT = "2026-07-06T17:00:00.000Z";

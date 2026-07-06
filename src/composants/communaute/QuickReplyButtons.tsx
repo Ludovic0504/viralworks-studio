@@ -53,12 +53,16 @@ export function shouldShowMessageQuickReplies(
     quickReplySelected?: string | null;
     onboardingStep?: number | null;
     isSupport?: boolean;
+    isOnboardingAnswer?: boolean;
   },
   messages: Array<{ id: string; userId: string }>,
   myUserId: string,
+  viewerOptions?: { viewerIsSupport?: boolean },
 ): boolean {
-  const options = resolveQuickReplyOptions(msg);
-  if (!options?.length) return false;
+  if (viewerOptions?.viewerIsSupport) return false;
+  if (msg.isOnboardingAnswer) return false;
+  const quickOptions = resolveQuickReplyOptions(msg);
+  if (!quickOptions?.length) return false;
   if (msg.userId === myUserId) return false;
   if (msg.quickReplySelected) return true;
   if (msg.quickRepliesClosedAt) return false;

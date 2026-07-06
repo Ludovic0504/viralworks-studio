@@ -8,6 +8,15 @@ import {
   mapMessageRow,
   type MessageRow,
 } from "../_shared/community/helpers.ts";
+import {
+  buildOnboardingRecap,
+  enrichPrivateMessagesForSupportInbox,
+  getViewerSupportProfile,
+  isSupportProfile,
+  loadWelcomeFlowsByConversations,
+  resolveConversationMemberId,
+} from "../_shared/community/supportInbox.ts";
+import { sortActivePrivateConversations } from "../_shared/community/conversationSort.ts";
 
 type RequestBody = (
   | { action: "listPublic"; limit?: number }
@@ -68,6 +77,8 @@ serve(async (req) => {
     }
 
     const { userId, adminClient } = await getAuthedClients(req, body.accessToken);
+    const viewerProfile = await getViewerSupportProfile(adminClient, userId);
+    const viewerIsSupport = viewerProfile?.isSupport === true;
 
     if (body.action === "listPublic") {
       const limit = Math.min(Math.max(Number(body.limit) || 300, 1), 500);
@@ -105,6 +116,12 @@ serve(async (req) => {
       const accessError = await assertPrivateParticipant(adminClient, userId, conversationId);
       if (accessError) return accessError;
 
+      const { data: conv } = await adminClient
+        .from("community_private_conversations")
+        .select("id, user_a, user_b")
+        .eq("id", conversationId)
+        .maybeSingle();
+
       const { data, error } = await adminClient
         .from("community_private_messages")
         .select("*")
@@ -114,12 +131,31 @@ serve(async (req) => {
       if (error) return jsonResponse({ error: error.message }, 500);
 
       const rows = (data || []) as MessageRow[];
-      const userIds = [...new Set(rows.map((m) => String(m.user_id)).filter(Boolean))];
-      const profiles = await loadProfilesMap(adminClient, userIds);
+      const participantIds = [
+        String(conv?.user_a || ""),
+        String(conv?.user_b || ""),
+        ...rows.map((m) => String(m.user_id || "")),
+      ].filter(Boolean);
+      const profiles = await loadProfilesMap(adminClient, [...new Set(participantIds)]);
 
-      const messages = rows.map((row) =>
+      let messages = rows.map((row) =>
         mapMessageRow(row, profiles, censorMessageText(String(row.content || "")))
       );
+
+      if (viewerIsSupport && conv?.id) {
+        const memberUserId = resolveConversationMemberId(
+          userId,
+          String(conv.user_a || ""),
+          String(conv.user_b || ""),
+          profiles,
+        );
+        const flows = await loadWelcomeFlowsByConversations(adminClient, [conversationId]);
+        messages = enrichPrivateMessagesForSupportInbox(rows, messages, {
+          flow: flows.get(conversationId) ?? null,
+          memberUserId,
+          memberProfile: profiles.get(memberUserId),
+        });
+      }
 
       return jsonResponse({ messages });
     }
@@ -152,6 +188,7 @@ serve(async (req) => {
         ),
       ];
       const profiles = await loadProfilesMap(adminClient, userIds);
+      const welcomeFlows = await loadWelcomeFlowsByConversations(adminClient, ids);
 
       const { data: msgRows, error: msgErr } = await adminClient.rpc(
         "community_last_private_messages_by_conversations",
@@ -159,6 +196,26 @@ serve(async (req) => {
       );
 
       if (msgErr) return jsonResponse({ error: msgErr.message }, 500);
+
+      const { data: activityRows, error: activityErr } = await adminClient.rpc(
+        "community_private_conversation_activity_meta",
+        { p_ids: ids },
+      );
+
+      if (activityErr) return jsonResponse({ error: activityErr.message }, 500);
+
+      const activityByConv = new Map<
+        string,
+        { lastOutgoingAt: string | null; hasIncomingFromSupport: boolean }
+      >();
+      for (const row of activityRows || []) {
+        const id = String(row.conversation_id || "");
+        if (!id) continue;
+        activityByConv.set(id, {
+          lastOutgoingAt: row.last_outgoing_at ? String(row.last_outgoing_at) : null,
+          hasIncomingFromSupport: row.has_incoming_from_support === true,
+        });
+      }
 
       const lastByConv = new Map<string, { content: string; createdAt: string }>();
       for (const row of msgRows || []) {
@@ -173,38 +230,66 @@ serve(async (req) => {
         }
       }
 
-      const rows = visibleConvs.map((conv) => {
-        const convId = String(conv.id);
-        const userA = String(conv.user_a || "");
-        const userB = String(conv.user_b || "");
-        const otherId = userA === userId ? userB : userA;
-        const other = profiles.get(otherId);
-        const last = lastByConv.get(convId);
-        return {
-          id: convId,
-          otherUserId: otherId,
-          otherUsername: other?.username || "Utilisateur",
-          updatedAt: String(conv.updated_at || ""),
-          lastMessage: last?.content || "",
-          lastMessageAt: last?.createdAt || String(conv.updated_at || ""),
-          isSupport: other?.isSupport === true,
-        };
-      });
+      const viewerIsSupport = isSupportProfile(profiles.get(userId));
+
+      const rows = visibleConvs
+        .map((conv) => {
+          const convId = String(conv.id);
+          const userA = String(conv.user_a || "");
+          const userB = String(conv.user_b || "");
+          const otherId = resolveConversationMemberId(userId, userA, userB, profiles);
+          const other = profiles.get(otherId);
+          if (!otherId || otherId === userId) {
+            return null;
+          }
+
+          const isSupport = isSupportProfile(other);
+          if (isSupport && viewerIsSupport) {
+            return null;
+          }
+
+          const flow = welcomeFlows.get(convId);
+          const recap = buildOnboardingRecap(flow);
+          const last = lastByConv.get(convId);
+          const activity = activityByConv.get(convId);
+          const lastMessage = recap
+            ? `Réponses : ${recap}`
+            : last?.content || "";
+          const lastMessageAt = last?.createdAt || String(conv.updated_at || "");
+
+          return {
+            id: convId,
+            otherUserId: otherId,
+            otherUsername: isSupport
+              ? "Support officiel"
+              : other?.username || "Utilisateur",
+            updatedAt: String(conv.updated_at || ""),
+            lastMessage,
+            lastMessageAt,
+            isSupport,
+            hasOnboardingAnswers: Boolean(recap),
+            lastOutgoingAt: activity?.lastOutgoingAt ?? null,
+            hasIncomingFromSupport: activity?.hasIncomingFromSupport ?? false,
+          };
+        })
+        .filter((row): row is NonNullable<typeof row> => Boolean(row));
 
       const dedupByOther = new Map<string, typeof rows[number]>();
       for (const row of rows) {
         const key = String(row.otherUserId || "");
         const existing = dedupByOther.get(key);
-        if (!existing || String(row.updatedAt).localeCompare(String(existing.updatedAt)) > 0) {
+        if (!existing) {
+          dedupByOther.set(key, row);
+          continue;
+        }
+        const existingOutgoing = String(existing.lastOutgoingAt || "");
+        const rowOutgoing = String(row.lastOutgoingAt || "");
+        if (rowOutgoing.localeCompare(existingOutgoing) > 0) {
           dedupByOther.set(key, row);
         }
       }
 
-      const conversations = [...dedupByOther.values()].sort((a, b) => {
-        if (a.isSupport && !b.isSupport) return -1;
-        if (!a.isSupport && b.isSupport) return 1;
-        return String(b.updatedAt).localeCompare(String(a.updatedAt));
-      });
+      const conversations = sortActivePrivateConversations([...dedupByOther.values()]);
 
       return jsonResponse({ conversations });
     }

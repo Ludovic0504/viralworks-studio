@@ -6,6 +6,7 @@ import {
   ONBOARDING_STEP2_CONTENT,
   ONBOARDING_STEP2_QUICK_REPLIES,
   ONBOARDING_STEP3_CONTENT,
+  ONBOARDING_ROLLOUT_AT,
 } from "./onboarding.ts";
 
 export type WelcomeFlowRow = {
@@ -46,17 +47,17 @@ export async function getSupportUserId(adminClient: SupabaseClient): Promise<str
   return userId || null;
 }
 
-export async function findOrCreateDirectConversation(
+export async function findExistingDirectConversation(
   adminClient: SupabaseClient,
   supportUserId: string,
-  newUserId: string,
-): Promise<string> {
+  otherUserId: string,
+): Promise<string | null> {
   const { data: rowAb } = await adminClient
     .from("community_private_conversations")
     .select("id")
     .eq("kind", "direct")
     .eq("user_a", supportUserId)
-    .eq("user_b", newUserId)
+    .eq("user_b", otherUserId)
     .limit(1)
     .maybeSingle();
 
@@ -64,12 +65,22 @@ export async function findOrCreateDirectConversation(
     .from("community_private_conversations")
     .select("id")
     .eq("kind", "direct")
-    .eq("user_a", newUserId)
+    .eq("user_a", otherUserId)
     .eq("user_b", supportUserId)
     .limit(1)
     .maybeSingle();
 
-  const existingId = rowAb?.id ? String(rowAb.id) : rowBa?.id ? String(rowBa.id) : null;
+  if (rowAb?.id) return String(rowAb.id);
+  if (rowBa?.id) return String(rowBa.id);
+  return null;
+}
+
+export async function findOrCreateDirectConversation(
+  adminClient: SupabaseClient,
+  supportUserId: string,
+  newUserId: string,
+): Promise<string> {
+  const existingId = await findExistingDirectConversation(adminClient, supportUserId, newUserId);
   if (existingId) return existingId;
 
   const now = new Date().toISOString();
@@ -233,6 +244,83 @@ async function sendStep3(
   return step3MessageId;
 }
 
+async function markWelcomeOnboardingSkipped(
+  adminClient: SupabaseClient,
+  userId: string,
+  conversationId: string,
+): Promise<void> {
+  const { error } = await adminClient.from("community_welcome_flow").upsert(
+    {
+      user_id: userId,
+      conversation_id: conversationId,
+      completed_at: new Date().toISOString(),
+    },
+    { onConflict: "user_id" },
+  );
+  if (error) throw new Error(error.message);
+}
+
+async function isAccountEligibleForWelcomeOnboarding(
+  adminClient: SupabaseClient,
+  userId: string,
+): Promise<{ eligible: boolean; reason?: string }> {
+  const { data: authData, error: authError } = await adminClient.auth.admin.getUserById(userId);
+  if (authError) {
+    console.error("[welcome-flow] auth user lookup failed:", authError);
+  }
+
+  const authCreatedAt = String(authData?.user?.created_at || "");
+  if (authCreatedAt && authCreatedAt.localeCompare(ONBOARDING_ROLLOUT_AT) < 0) {
+    return { eligible: false, reason: "account_before_onboarding_rollout" };
+  }
+
+  const { data: profile } = await adminClient
+    .from("profiles")
+    .select("created_at")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  const profileCreatedAt = String(profile?.created_at || "");
+  if (profileCreatedAt && profileCreatedAt.localeCompare(ONBOARDING_ROLLOUT_AT) < 0) {
+    return { eligible: false, reason: "profile_before_onboarding_rollout" };
+  }
+
+  return { eligible: true };
+}
+
+async function hasPriorManualSupportConversation(
+  adminClient: SupabaseClient,
+  conversationId: string,
+  supportUserId: string,
+  userId: string,
+): Promise<{ skip: boolean; reason?: string }> {
+  const { count: manualSupportCount, error: supportErr } = await adminClient
+    .from("community_private_messages")
+    .select("id", { count: "exact", head: true })
+    .eq("conversation_id", conversationId)
+    .eq("user_id", supportUserId)
+    .is("onboarding_step", null);
+
+  if (supportErr) throw new Error(supportErr.message);
+  if ((manualSupportCount ?? 0) > 0) {
+    return { skip: true, reason: "prior_support_manual_message" };
+  }
+
+  const { count: userMessageCount, error: userErr } = await adminClient
+    .from("community_private_messages")
+    .select("id", { count: "exact", head: true })
+    .eq("conversation_id", conversationId)
+    .eq("user_id", userId)
+    .is("onboarding_step", null);
+
+  if (userErr) throw new Error(userErr.message);
+  if ((userMessageCount ?? 0) > 0) {
+    return { skip: true, reason: "prior_user_message" };
+  }
+
+  return { skip: false };
+}
+
 export async function sendWelcomeOnboardingStep1(
   adminClient: SupabaseClient,
   newUserId: string,
@@ -255,7 +343,31 @@ export async function sendWelcomeOnboardingStep1(
     return { ok: true, skipped: true, reason: "is_support_account" };
   }
 
+  const eligibility = await isAccountEligibleForWelcomeOnboarding(adminClient, userId);
+  if (!eligibility.eligible) {
+    const existingConversationId = await findExistingDirectConversation(
+      adminClient,
+      supportUserId,
+      userId,
+    );
+    if (existingConversationId) {
+      await markWelcomeOnboardingSkipped(adminClient, userId, existingConversationId);
+    }
+    return { ok: true, skipped: true, reason: eligibility.reason };
+  }
+
   const conversationId = await findOrCreateDirectConversation(adminClient, supportUserId, userId);
+
+  const priorConversation = await hasPriorManualSupportConversation(
+    adminClient,
+    conversationId,
+    supportUserId,
+    userId,
+  );
+  if (priorConversation.skip) {
+    await markWelcomeOnboardingSkipped(adminClient, userId, conversationId);
+    return { ok: true, skipped: true, reason: priorConversation.reason };
+  }
 
   const { data: existingStep1 } = await adminClient
     .from("community_private_messages")
@@ -340,6 +452,10 @@ export async function handleOnboardingQuickReply(
     return { ok: true, skipped: true, reason: "not_welcome_conversation" };
   }
 
+  if (flow.completed_at) {
+    return { ok: true, skipped: true, reason: "onboarding_skipped" };
+  }
+
   const { data: message } = await adminClient
     .from("community_private_messages")
     .select("id, onboarding_step, quick_reply_selected")
@@ -416,8 +532,8 @@ export async function handleOnboardingUserReply(
     return { ok: true, skipped: true, reason: "not_welcome_conversation" };
   }
 
-  if (flow.completed_at && flow.step3_message_id) {
-    return { ok: true, skipped: true, reason: "already_completed" };
+  if (flow.completed_at) {
+    return { ok: true, skipped: true, reason: "onboarding_skipped" };
   }
 
   const { data: userReply } = await adminClient

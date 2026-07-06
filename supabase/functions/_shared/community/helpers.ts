@@ -183,6 +183,7 @@ export type CommunityMessageDto = {
   quickReplySelected?: string | null;
   responseMethod?: "button" | "text" | null;
   onboardingStep?: number | null;
+  isOnboardingAnswer?: boolean;
 };
 
 export function toAttachment(row: MessageRow): CommunityMessageDto["attachment"] {

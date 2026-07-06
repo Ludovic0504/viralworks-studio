@@ -11,10 +11,18 @@ import { useAuth } from "@/contexte/FournisseurAuth";
 import {
   ensureWelcomePrivateMessage,
   getPrivateUnreadStatus,
+  getPrivateInboxMeta,
   hasNewPublicMessageSince,
   prefetchPrivateMessagesForConversation,
 } from "@/bibliotheque/supabase/communaute";
 import { censorMessageText } from "@/bibliotheque/moderation/messageCensor";
+import { buildConversationFromUnreadPreview, hydratePrivateMessagesFromUnreadPreview } from "@/bibliotheque/community/onboarding";
+import {
+  getRememberedOnboardingPrivateMessages,
+  rememberOnboardingPrivateMessages,
+  mergeRememberedOnboardingPrivateMessages,
+} from "@/bibliotheque/community/onboardingProgressCache";
+import { rememberSupportConversation } from "@/bibliotheque/community/privateConversationsCache";
 
 export const VWS_PUBLIC_LAST_SEEN_KEY = "vws_public_last_seen";
 const DISMISSED_PREVIEW_KEY = "vws_dismissed_private_preview_id";
@@ -51,23 +59,63 @@ export function FournisseurCommunauteVWSNotif({ children }) {
   const [dismissedPreviewMessageId, setDismissedPreviewMessageId] = useState(readDismissedPreviewId);
   const [hasNewPublicSinceLastVisit, setHasNewPublicSinceLastVisit] = useState(false);
   const [previewBubbleDelayReady, setPreviewBubbleDelayReady] = useState(false);
+  const [isViewingPrivateMessages, setIsViewingPrivateMessages] = useState(false);
+  const [isViewingCommunityPage, setIsViewingCommunityPage] = useState(false);
+  const [privateInboxMeta, setPrivateInboxMeta] = useState([]);
   const sessionStartedAtRef = useRef(0);
+
+  const setPrivateMessagesViewActive = useCallback((active) => {
+    setIsViewingPrivateMessages(active === true);
+  }, []);
+
+  const setCommunityPageActive = useCallback((active) => {
+    setIsViewingCommunityPage(active === true);
+  }, []);
 
   const refreshUnreadPrivate = useCallback(async () => {
     if (!uid) {
       setUnreadPrivateCount(0);
       setLatestUnreadPrivatePreview(null);
+      setPrivateInboxMeta([]);
       return;
     }
     try {
       const status = await getPrivateUnreadStatus();
       setUnreadPrivateCount(status.count);
       setLatestUnreadPrivatePreview(enrichPreview(status.preview));
+
+      try {
+        const inboxMeta = await getPrivateInboxMeta();
+        setPrivateInboxMeta(inboxMeta);
+      } catch {
+        /* conserve l’inbox précédente si le rafraîchissement échoue */
+      }
     } catch {
       setUnreadPrivateCount(0);
       setLatestUnreadPrivatePreview(null);
     }
   }, [uid]);
+
+  const patchPrivateInboxMeta = useCallback((conversationId, patch) => {
+    const id = String(conversationId || "").trim();
+    if (!id) return;
+    setPrivateInboxMeta((prev) => {
+      const index = prev.findIndex((row) => row.conversationId === id);
+      if (index >= 0) {
+        const next = [...prev];
+        next[index] = { ...next[index], ...patch };
+        return next;
+      }
+      return [
+        ...prev,
+        {
+          conversationId: id,
+          unreadCount: Number(patch.unreadCount || 0),
+          notificationsMuted: patch.notificationsMuted === true,
+        },
+      ];
+    });
+  }, []);
 
   const refreshPublicIndicator = useCallback(async () => {
     if (!uid) {
@@ -203,17 +251,39 @@ export function FournisseurCommunauteVWSNotif({ children }) {
 
   useEffect(() => {
     const conversationId = String(latestUnreadPrivatePreview?.conversationId || "").trim();
-    if (!conversationId || unreadPrivateCount <= 0) return;
-    void prefetchPrivateMessagesForConversation(conversationId).catch(() => {});
+    if (!conversationId || unreadPrivateCount <= 0 || !latestUnreadPrivatePreview?.isSupport) return;
+    rememberSupportConversation(buildConversationFromUnreadPreview(latestUnreadPrivatePreview));
+    const remembered = getRememberedOnboardingPrivateMessages(conversationId);
+    const hydrated = hydratePrivateMessagesFromUnreadPreview(
+      conversationId,
+      latestUnreadPrivatePreview,
+      remembered,
+    );
+    rememberOnboardingPrivateMessages(conversationId, hydrated);
+    void prefetchPrivateMessagesForConversation(conversationId)
+      .then((messages) => mergeRememberedOnboardingPrivateMessages(conversationId, messages))
+      .catch(() => {});
   }, [
     latestUnreadPrivatePreview?.conversationId,
     latestUnreadPrivatePreview?.messageId,
+    latestUnreadPrivatePreview?.isSupport,
     unreadPrivateCount,
   ]);
 
+  useEffect(() => {
+    if (!isViewingPrivateMessages || !latestUnreadPrivatePreview?.messageId) return;
+    dismissPrivateMessagePreview(latestUnreadPrivatePreview.messageId);
+  }, [
+    isViewingPrivateMessages,
+    latestUnreadPrivatePreview?.messageId,
+    dismissPrivateMessagePreview,
+  ]);
+
   const visibleUnreadPrivatePreview = useMemo(() => {
+    if (isViewingPrivateMessages) return null;
     if (!previewBubbleDelayReady) return null;
     if (!latestUnreadPrivatePreview || unreadPrivateCount <= 0) return null;
+    if (!latestUnreadPrivatePreview.isSupport) return null;
     if (latestUnreadPrivatePreview.messageId === dismissedPreviewMessageId) return null;
     return latestUnreadPrivatePreview;
   }, [
@@ -221,11 +291,19 @@ export function FournisseurCommunauteVWSNotif({ children }) {
     unreadPrivateCount,
     dismissedPreviewMessageId,
     previewBubbleDelayReady,
+    isViewingPrivateMessages,
   ]);
+
+  const headerUnreadPrivateCount = useMemo(() => {
+    if (isViewingCommunityPage) return 0;
+    return unreadPrivateCount;
+  }, [isViewingCommunityPage, unreadPrivateCount]);
 
   const value = useMemo(
     () => ({
       unreadPrivateCount,
+      headerUnreadPrivateCount,
+      privateInboxMeta,
       latestUnreadPrivatePreview: visibleUnreadPrivatePreview,
       latestUnreadPrivatePreviewRaw: latestUnreadPrivatePreview,
       hasNewPublicSinceLastVisit,
@@ -234,9 +312,14 @@ export function FournisseurCommunauteVWSNotif({ children }) {
       markPublicTabVisited,
       dismissPrivateMessagePreview,
       prefetchPrivateMessagesForConversation,
+      setPrivateMessagesViewActive,
+      setCommunityPageActive,
+      patchPrivateInboxMeta,
     }),
     [
       unreadPrivateCount,
+      headerUnreadPrivateCount,
+      privateInboxMeta,
       visibleUnreadPrivatePreview,
       latestUnreadPrivatePreview,
       hasNewPublicSinceLastVisit,
@@ -244,6 +327,9 @@ export function FournisseurCommunauteVWSNotif({ children }) {
       refreshPublicIndicator,
       markPublicTabVisited,
       dismissPrivateMessagePreview,
+      setPrivateMessagesViewActive,
+      setCommunityPageActive,
+      patchPrivateInboxMeta,
     ],
   );
 
@@ -257,6 +343,8 @@ export function useCommunauteVWSNotif() {
   if (!ctx) {
     return {
       unreadPrivateCount: 0,
+      headerUnreadPrivateCount: 0,
+      privateInboxMeta: [],
       latestUnreadPrivatePreview: null,
       latestUnreadPrivatePreviewRaw: null,
       hasNewPublicSinceLastVisit: false,
@@ -265,6 +353,9 @@ export function useCommunauteVWSNotif() {
       markPublicTabVisited: () => {},
       dismissPrivateMessagePreview: () => {},
       prefetchPrivateMessagesForConversation: async () => [],
+      setPrivateMessagesViewActive: () => {},
+      setCommunityPageActive: () => {},
+      patchPrivateInboxMeta: () => {},
     };
   }
   return ctx;
