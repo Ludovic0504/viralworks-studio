@@ -7,6 +7,7 @@ import {
   getSupabaseDashboardAuthUrls,
 } from "@/bibliotheque/supabase/client-navigateur";
 import { syncSignupProfileNamesFromMetadata, updateUserProfile } from "@/bibliotheque/supabase/profil";
+import { validateDisplayNamesRemote, isBlockedDisplayNameError, BLOCKED_DISPLAY_NAME_MESSAGE, inferBlockedNameFieldFromMessage, blockedDisplayNameMessage } from "@/bibliotheque/moderation/displayName";
 import { track } from "@/bibliotheque/meta/pixel";
 import { capturePostHog, trackPostHogError } from "@/bibliotheque/posthog/client";
 
@@ -61,6 +62,25 @@ function analyzeRecoveryEmailError(error) {
  */
 function analyzeConfirmationEmailError(error) {
   const raw = (error?.message || "").toLowerCase();
+    raw.includes("hook requires authorization token") ||
+    raw.includes("invalid payload sent to hook") ||
+    raw.includes("invalid hook signature") ||
+    (Number(error?.status) === 500 &&
+      error?.code === "unexpected_failure" &&
+      !raw.includes("error sending confirmation email") &&
+      !raw.includes("error sending email"));
+
+  if (hookAuthFailure) {
+    return {
+      showDashboardHelp: true,
+      message:
+        "Impossible de finaliser l'inscription : le hook Auth « before-user-created » n'a pas pu s'authentifier. " +
+        "Dans Supabase → Authentication → Hooks, copie le secret du hook et définis-le comme secret Edge Function " +
+        "BEFORE_USER_CREATED_HOOK_SECRET (ou AUTH_HOOK_SECRET), puis redéploie auth-before-user-created. " +
+        "Le secret doit commencer par v1,whsec_ et correspondre exactement à celui du dashboard.",
+    };
+  }
+
   const notAuthorized =
     raw.includes("email address not authorized") ||
     raw.includes("address not authorized") ||
@@ -139,6 +159,8 @@ export default function AuthFormCard({
   const [oauthLoading, setOauthLoading] = useState(false);
   const [infoMsg, setInfoMsg] = useState(null);
   const [errorMsg, setErrorMsg] = useState(initialError || "");
+  /** Erreur inline prénom/nom (liste noire) — message + champ(s) concernés. */
+  const [nameFieldError, setNameFieldError] = useState(null);
   /** Liens dashboard affichés seulement après échec « mot de passe oublié » côté Supabase. */
   const [recoveryDashboardUrls, setRecoveryDashboardUrls] = useState(null);
   const [showPwd, setShowPwd] = useState(false);
@@ -168,6 +190,26 @@ export default function AuthFormCard({
     setErrorMsg(message);
     trackPostHogError(message, "/auth", hint);
   };
+
+  const reportNameFieldError = (message = BLOCKED_DISPLAY_NAME_MESSAGE, field = "both") => {
+    setNameFieldError({ message, field });
+    setErrorMsg("");
+    trackPostHogError(message, "/auth", "validation_name");
+  };
+
+  const clearNameFieldError = () => {
+    if (nameFieldError) setNameFieldError(null);
+  };
+
+  const firstNameHasError =
+    nameFieldError?.field === "firstName" || nameFieldError?.field === "both";
+  const lastNameHasError =
+    nameFieldError?.field === "lastName" || nameFieldError?.field === "both";
+
+  const nameInputClassName = (hasError) =>
+    hasError
+      ? "w-full bg-white/5 border border-red-500 rounded-lg px-4 py-2.5 sm:py-3 text-red-300 placeholder-red-400/60 focus:outline-none focus:ring-2 focus:ring-red-500/50 focus:border-red-500 transition-all"
+      : "w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 sm:py-3 text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all";
 
   const handleResendConfirmation = async () => {
     if (!pendingConfirmEmail || resendStatus === "sending") return;
@@ -270,6 +312,7 @@ export default function AuthFormCard({
     e.preventDefault();
     setLoading(true);
     setErrorMsg("");
+    setNameFieldError(null);
     setInfoMsg(null);
     setRecoveryDashboardUrls(null);
 
@@ -364,6 +407,14 @@ export default function AuthFormCard({
 
       const trimmedFirstName = firstName.trim();
       const trimmedLastName = lastName.trim();
+
+      const nameCheck = await validateDisplayNamesRemote(trimmedFirstName, trimmedLastName);
+      if (!nameCheck.ok) {
+        reportNameFieldError(nameCheck.error, nameCheck.field);
+        setLoading(false);
+        return;
+      }
+
       const signupFullName = `${trimmedFirstName} ${trimmedLastName}`.trim();
 
       capturePostHog("signup_started", { method: "email" });
@@ -387,8 +438,16 @@ export default function AuthFormCard({
         if (message.includes("User already registered")) {
           message = "Cet email est déjà utilisé. Essayez de vous connecter ou utilisez 'Mot de passe oublié'.";
         }
-        reportAuthError(message, "auth");
-        setRecoveryDashboardUrls(a.showDashboardHelp ? getSupabaseDashboardAuthUrls() : null);
+        if (isBlockedDisplayNameError(message) || isBlockedDisplayNameError(signUpResult.error.message)) {
+          const blockedMessage = isBlockedDisplayNameError(message)
+            ? message
+            : signUpResult.error.message;
+          const blockedField = inferBlockedNameFieldFromMessage(blockedMessage);
+          reportNameFieldError(blockedDisplayNameMessage(blockedField), blockedField);
+        } else {
+          reportAuthError(message, "auth");
+          setRecoveryDashboardUrls(a.showDashboardHelp ? getSupabaseDashboardAuthUrls() : null);
+        }
         setLoading(false);
         return;
       }
@@ -428,6 +487,7 @@ export default function AuthFormCard({
     setFirstName("");
     setLastName("");
     setErrorMsg("");
+    setNameFieldError(null);
     setInfoMsg(null);
     setRecoveryDashboardUrls(null);
     setPendingConfirmEmail("");
@@ -576,38 +636,55 @@ export default function AuthFormCard({
 
       <form onSubmit={onSubmit} className="space-y-4">
         {mode === "signup" ? (
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label htmlFor="firstName" className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
-                <User className="w-4 h-4 text-gray-400" />
-                Prénom
-              </label>
-              <input
-                id="firstName"
-                type="text"
-                autoComplete="given-name"
-                className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 sm:py-3 text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all"
-                placeholder="Jean"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                required
-              />
+          <div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="firstName" className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
+                  <User className="w-4 h-4 text-gray-400" />
+                  Prénom
+                </label>
+                <input
+                  id="firstName"
+                  type="text"
+                  autoComplete="given-name"
+                  aria-invalid={firstNameHasError ? "true" : undefined}
+                  aria-describedby={nameFieldError ? "signup-name-error" : undefined}
+                  className={nameInputClassName(firstNameHasError)}
+                  placeholder="Jean"
+                  value={firstName}
+                  onChange={(e) => {
+                    setFirstName(e.target.value);
+                    clearNameFieldError();
+                  }}
+                  required
+                />
+              </div>
+              <div>
+                <label htmlFor="lastName" className="block text-sm font-medium text-gray-300 mb-2">
+                  Nom
+                </label>
+                <input
+                  id="lastName"
+                  type="text"
+                  autoComplete="family-name"
+                  aria-invalid={lastNameHasError ? "true" : undefined}
+                  aria-describedby={nameFieldError ? "signup-name-error" : undefined}
+                  className={nameInputClassName(lastNameHasError)}
+                  placeholder="Dupont"
+                  value={lastName}
+                  onChange={(e) => {
+                    setLastName(e.target.value);
+                    clearNameFieldError();
+                  }}
+                  required
+                />
+              </div>
             </div>
-            <div>
-              <label htmlFor="lastName" className="block text-sm font-medium text-gray-300 mb-2">
-                Nom
-              </label>
-              <input
-                id="lastName"
-                type="text"
-                autoComplete="family-name"
-                className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 sm:py-3 text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all"
-                placeholder="Dupont"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                required
-              />
-            </div>
+            {nameFieldError?.message ? (
+              <p id="signup-name-error" className="mt-1.5 text-sm text-red-500">
+                {nameFieldError.message}
+              </p>
+            ) : null}
           </div>
         ) : null}
 

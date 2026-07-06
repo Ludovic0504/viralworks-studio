@@ -166,19 +166,21 @@ export async function updateUserProfile(updates: {
     return { success: false, error: "Non autorisé" };
   }
 
-  const row: Record<string, unknown> = {
-    ...updates,
-    updated_at: new Date().toISOString(),
-  };
-  for (const key of Object.keys(row)) {
-    if (row[key] === undefined) delete row[key];
-  }
-
-  const { error } = await supabase.from("profiles").update(row).eq("user_id", user.id);
+  const { data, error } = await supabase.functions.invoke("update-user-profile", {
+    body: updates,
+  });
 
   if (error) {
     console.error("Erreur mise à jour profil:", error);
     return { success: false, error: error.message };
+  }
+
+  if (data?.error) {
+    return { success: false, error: String(data.error) };
+  }
+
+  if (data?.success !== true) {
+    return { success: false, error: "Erreur lors de la mise à jour du profil" };
   }
 
   invalidateUserProfileCache(user.id);

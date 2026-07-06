@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Menu, Bell, UserPlus, BarChart3 } from "lucide-react";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { useCommunauteVWSNotif } from "@/contexte/FournisseurCommunauteVWSNotif.jsx";
@@ -7,6 +7,7 @@ import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import LienNavSync from "@/composants/disposition/LienNavSync";
 import MenuProfilConnecte from "@/composants/disposition/MenuProfilConnecte";
 import { MenuNavViralWorksDesktop } from "@/composants/disposition/MenuNavViralWorks";
+import PrivateMessagePreviewBubble from "@/composants/communaute/PrivateMessagePreviewBubble";
 import { isAdmin } from "@/bibliotheque/supabase/credits";
 import { hasSeedancePlan } from "@/bibliotheque/supabase/premiumAccess";
 import { usePremiumAccess } from "@/hooks/usePremiumAccess";
@@ -42,8 +43,18 @@ export default function Header({ onOpenMenu }) {
   const { plan } = usePremiumAccess();
   const { openAuthModal } = useRequireAuthAction();
   const hasSession = Boolean(session?.user?.id);
-  const { unreadPrivateCount, hasNewPublicSinceLastVisit } = useCommunauteVWSNotif();
+  const {
+    unreadPrivateCount,
+    latestUnreadPrivatePreview,
+    hasNewPublicSinceLastVisit,
+    dismissPrivateMessagePreview,
+    prefetchPrivateMessagesForConversation,
+  } = useCommunauteVWSNotif();
   const location = useLocation();
+  const navigate = useNavigate();
+  const isOnPrivateMessages =
+    location.pathname === "/communaute-vws" &&
+    new URLSearchParams(location.search).get("tab") === "private";
 
   const [adminBar, setAdminBar] = useState({
     isAdmin: false,
@@ -116,6 +127,16 @@ export default function Header({ onOpenMenu }) {
       wasConnectedRef.current = false;
     }
   }, [hasSession, loading, signingOut]);
+
+  useEffect(() => {
+    if (!latestUnreadPrivatePreview || !isOnPrivateMessages) return;
+    dismissPrivateMessagePreview(latestUnreadPrivatePreview.messageId);
+  }, [
+    latestUnreadPrivatePreview,
+    isOnPrivateMessages,
+    dismissPrivateMessagePreview,
+  ]);
+
   async function handleLogout() {
     try {
       setSigningOut(true);
@@ -244,25 +265,43 @@ export default function Header({ onOpenMenu }) {
               </>
             ) : null}
             {hasSession ? (
-              <LienNavSync
-                to="/communaute-vws?tab=private"
-                className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-300 transition-colors hover:bg-white/10 hover:text-white"
-                aria-label={
-                  unreadPrivateCount > 0
-                    ? `Messages privés, ${unreadPrivateCount} non lus`
-                    : "Messages privés"
-                }
-              >
-                <MessageBubbleIcon className="text-gray-300" />
-                {unreadPrivateCount > 0 ? (
-                  <span className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-semibold leading-none text-white">
-                    {unreadPrivateCount > 99 ? "99+" : unreadPrivateCount}
-                  </span>
+              <div className="relative">
+                <LienNavSync
+                  to="/communaute-vws?tab=private"
+                  className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-300 transition-colors hover:bg-white/10 hover:text-white"
+                  aria-label={
+                    unreadPrivateCount > 0
+                      ? `Messages privés, ${unreadPrivateCount} non lus`
+                      : "Messages privés"
+                  }
+                >
+                  <MessageBubbleIcon className="text-gray-300" />
+                  {unreadPrivateCount > 0 ? (
+                    <span className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-semibold leading-none text-white animate-pulse">
+                      {unreadPrivateCount > 99 ? "99+" : unreadPrivateCount}
+                    </span>
+                  ) : null}
+                  {hasNewPublicSinceLastVisit ? (
+                    <span className="absolute -left-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-yellow-400" aria-hidden />
+                  ) : null}
+                </LienNavSync>
+                {latestUnreadPrivatePreview && !isOnPrivateMessages ? (
+                  <PrivateMessagePreviewBubble
+                    senderName={latestUnreadPrivatePreview.senderName}
+                    preview={latestUnreadPrivatePreview.contentPreview}
+                    isSupport={latestUnreadPrivatePreview.isSupport}
+                    onOpen={() => {
+                      const preview = latestUnreadPrivatePreview;
+                      if (!preview?.conversationId) return;
+                      dismissPrivateMessagePreview(preview.messageId);
+                      void prefetchPrivateMessagesForConversation(preview.conversationId);
+                      navigate(
+                        `/communaute-vws?tab=private&conversation=${encodeURIComponent(preview.conversationId)}`,
+                      );
+                    }}
+                  />
                 ) : null}
-                {hasNewPublicSinceLastVisit ? (
-                  <span className="absolute -left-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-yellow-400" aria-hidden />
-                ) : null}
-              </LienNavSync>
+              </div>
             ) : null}
             {authSlot}
           </div>

@@ -8,9 +8,11 @@ import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { useCommunauteVWSNotif } from "@/contexte/FournisseurCommunauteVWSNotif.jsx";
 import { useAdminAccess } from "@/hooks/useAdminAccess";
 import { PAGE_SHELL_INNER_CLASS } from "@/bibliotheque/disposition/dashboardShellLayout";
+import { censorMessageText } from "@/bibliotheque/moderation/messageCensor";
 import {
   deletePrivateMessage,
   deletePublicMessage,
+  ensureWelcomePrivateMessage,
   getCommunitySupportUser,
   hideConversationForMe,
   listPrivateConversations,
@@ -20,6 +22,7 @@ import {
   markAllPrivateConversationsRead,
   markConversationRead,
   sendPrivateMessage,
+  submitOnboardingQuickReply,
   sendPublicMessage,
   startPrivateConversation,
   COMMUNITY_LOCALES,
@@ -28,6 +31,18 @@ import {
   resolveCommunityMessageTranslations,
   getMemoryCachedTranslation,
 } from "@/bibliotheque/supabase/communaute";
+import QuickReplyButtons, {
+  shouldShowMessageQuickReplies,
+} from "@/composants/communaute/QuickReplyButtons";
+import {
+  enrichCommunityMessage,
+  buildMessageFromUnreadPreview,
+  resolveQuickReplyOptions,
+} from "@/bibliotheque/community/onboarding";
+import {
+  getCachedPrivateMessages,
+  rememberPrivateMessages,
+} from "@/bibliotheque/community/privateMessagesCache";
 
 function formatDate(iso) {
   if (!iso) return "";
@@ -161,7 +176,11 @@ function messagesAreSame(prev, next) {
     (message, index) =>
       message.id === next[index]?.id &&
       message.content === next[index]?.content &&
-      message.createdAt === next[index]?.createdAt
+      message.createdAt === next[index]?.createdAt &&
+      message.quickRepliesClosedAt === next[index]?.quickRepliesClosedAt &&
+      message.quickReplySelected === next[index]?.quickReplySelected &&
+      JSON.stringify(message.quickReplyOptions || []) ===
+        JSON.stringify(next[index]?.quickReplyOptions || [])
   );
 }
 
@@ -173,6 +192,9 @@ function MessageItem({
   onMenuToggle,
   preferredLocale,
   translatedText = "",
+  showQuickReplies = false,
+  quickRepliesDisabled = false,
+  onQuickReply,
 }) {
   const anchorRef = useRef(null);
   const { top, left } = useFloatingMenuCoords(menuOpen && mine, anchorRef);
@@ -186,6 +208,7 @@ function MessageItem({
 
   const displayedText =
     shouldAutoTranslate && translatedText && !showOriginal ? translatedText : msg.content || "";
+  const quickReplyOptions = resolveQuickReplyOptions(msg) || [];
 
   return (
     <div className={`rounded-xl border px-3 py-2 ${mine ? "border-cyan-500/40 bg-cyan-500/10" : "border-white/10 bg-white/[0.03]"}`}>
@@ -285,6 +308,14 @@ function MessageItem({
           </p>
         </div>
       ) : null}
+      {showQuickReplies && quickReplyOptions.length ? (
+        <QuickReplyButtons
+          options={quickReplyOptions}
+          disabled={quickRepliesDisabled}
+          selectedLabel={msg.quickReplySelected || null}
+          onSelect={(label) => onQuickReply?.(label, msg.id)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -374,8 +405,8 @@ function PrivateConversationRow({ conversation: c, isActive, onSelect, menuOpen,
 }
 
 export default function CommunauteVWS() {
-  const { session } = useAuth();
-  const { isAdmin: isAdminUser } = useAdminAccess();
+  const { session, loading } = useAuth();
+  const { isAdmin: isAdminUser, loading: adminAccessLoading } = useAdminAccess();
   const { runWithAuth, openAuthModal } = useRequireAuthAction();
   const [searchParams, setSearchParams] = useSearchParams();
   const {
@@ -383,15 +414,22 @@ export default function CommunauteVWS() {
     hasNewPublicSinceLastVisit,
     refreshUnreadPrivate,
     markPublicTabVisited,
+    latestUnreadPrivatePreviewRaw,
+    prefetchPrivateMessagesForConversation,
   } = useCommunauteVWSNotif();
   const myUserId = session?.user?.id || "";
-  const [tab, setTab] = useState(() =>
-    new URLSearchParams(window.location.search).get("tab") === "private" ? "private" : "public"
-  );
+  const initialPrivateConversationId = useMemo(() => {
+    const sp = new URLSearchParams(window.location.search);
+    return sp.get("conversation") || "";
+  }, []);
+  const [tab, setTab] = useState(() => {
+    const sp = new URLSearchParams(window.location.search);
+    return sp.get("tab") === "private" || sp.get("conversation") ? "private" : "public";
+  });
   const tabQueryHandledRef = useRef(false);
   const [publicMessages, setPublicMessages] = useState([]);
   const [privateConversations, setPrivateConversations] = useState([]);
-  const [activeConversationId, setActiveConversationId] = useState("");
+  const [activeConversationId, setActiveConversationId] = useState(initialPrivateConversationId);
   const [privateMessages, setPrivateMessages] = useState([]);
   const [publicInput, setPublicInput] = useState("");
   const [privateInput, setPrivateInput] = useState("");
@@ -407,6 +445,7 @@ export default function CommunauteVWS() {
   const [localeMenuOpen, setLocaleMenuOpen] = useState(false);
   const [preferredLocale, setPreferredLocale] = useState("fr");
   const [messageTranslations, setMessageTranslations] = useState({});
+  const [quickReplyBusyMessageId, setQuickReplyBusyMessageId] = useState("");
 
   const publicEndRef = useRef(null);
   const userSearchRef = useRef(null);
@@ -416,6 +455,10 @@ export default function CommunauteVWS() {
   const privateFileRef = useRef(null);
   const activeConversationIdRef = useRef(activeConversationId);
   const translationRequestRef = useRef(0);
+
+  useEffect(() => {
+    censorMessageText("");
+  }, []);
 
   useEffect(() => {
     if (!session?.user?.id) return;
@@ -469,19 +512,56 @@ export default function CommunauteVWS() {
     activeConversationIdRef.current = activeConversationId;
   }, [activeConversationId]);
 
+  useLayoutEffect(() => {
+    const convFromUrl = searchParams.get("conversation") || initialPrivateConversationId;
+    const convId =
+      convFromUrl ||
+      latestUnreadPrivatePreviewRaw?.conversationId ||
+      "";
+    if (!convId) return;
+
+    setTab("private");
+    setActiveConversationId(convId);
+    activeConversationIdRef.current = convId;
+
+    const cached = getCachedPrivateMessages(convId);
+    if (cached?.length) {
+      setPrivateMessages(cached);
+      return;
+    }
+
+    if (latestUnreadPrivatePreviewRaw?.conversationId === convId) {
+      setPrivateMessages([
+        enrichCommunityMessage(buildMessageFromUnreadPreview(latestUnreadPrivatePreviewRaw)),
+      ]);
+    }
+  }, [
+    searchParams,
+    initialPrivateConversationId,
+    latestUnreadPrivatePreviewRaw?.conversationId,
+    latestUnreadPrivatePreviewRaw?.messageId,
+  ]);
+
   const activeConversation = useMemo(
     () => privateConversations.find((c) => c.id === activeConversationId) || null,
     [privateConversations, activeConversationId]
   );
 
-  const activeConversations = useMemo(
-    () => privateConversations.filter((c) => c.isSupport || Boolean(c.lastMessageAt)),
-    [privateConversations]
-  );
+  const activeConversations = useMemo(() => {
+    const hasActivity = (c) =>
+      c.isSupport || Boolean(c.lastMessageAt) || Boolean(String(c.lastMessage || "").trim());
+    if (isAdminUser) {
+      return privateConversations.filter(hasActivity);
+    }
+    return privateConversations.filter((c) => c.isSupport || Boolean(c.lastMessageAt));
+  }, [privateConversations, isAdminUser]);
+
+  const accessToken = session?.access_token || "";
 
   const refreshPublic = async () => {
+    if (!accessToken) return;
     try {
-      const messages = await listPublicMessages();
+      const messages = await listPublicMessages(300, accessToken);
       setPublicMessages((prev) => (messagesAreSame(prev, messages) ? prev : messages));
     } catch (e) {
       setError(e?.message || "Erreur chargement discussion publique.");
@@ -489,9 +569,11 @@ export default function CommunauteVWS() {
   };
 
   const refreshConversations = async (forceActiveId, forceOtherUserId) => {
+    if (!accessToken) return "";
     try {
-      const list = await listPrivateConversations();
+      const list = await listPrivateConversations(accessToken);
       setPrivateConversations(list);
+      setError("");
       let resolvedId = "";
       setActiveConversationId((prev) => {
         if (
@@ -540,15 +622,20 @@ export default function CommunauteVWS() {
   const refreshPrivateMessages = async (conversationId) => {
     if (!conversationId) {
       setPrivateMessages([]);
-      return;
+      return [];
     }
+    if (!accessToken) return [];
     try {
-      const messages = await listPrivateMessages(conversationId);
-      if (activeConversationIdRef.current !== conversationId) return;
+      const messages = (await listPrivateMessages(conversationId, accessToken)).map(enrichCommunityMessage);
+      rememberPrivateMessages(conversationId, messages);
+      if (activeConversationIdRef.current !== conversationId) return messages;
       setPrivateMessages((prev) => (messagesAreSame(prev, messages) ? prev : messages));
+      setError("");
+      return messages;
     } catch (e) {
-      if (activeConversationIdRef.current !== conversationId) return;
+      if (activeConversationIdRef.current !== conversationId) return [];
       setError(e?.message || "Erreur chargement messages privés.");
+      return [];
     }
   };
 
@@ -561,39 +648,126 @@ export default function CommunauteVWS() {
   };
 
   useEffect(() => {
-    if (!session?.user?.id) return;
+    if (loading || adminAccessLoading || !session?.user?.id || !accessToken) return;
     const bootstrap = async () => {
+      setError("");
+      const knownConversationId =
+        activeConversationIdRef.current ||
+        latestUnreadPrivatePreviewRaw?.conversationId ||
+        initialPrivateConversationId ||
+        "";
+
+      if (knownConversationId) {
+        void prefetchPrivateMessagesForConversation(knownConversationId, accessToken);
+        void refreshPrivateMessages(knownConversationId);
+      }
+
       await Promise.all([
         ensureSupportConversation(),
-        refreshPublic(),
-        refreshConversations(),
-        refreshUsers(),
+        ensureWelcomePrivateMessage().catch(() => {}),
       ]);
+      await Promise.all([refreshPublic(), refreshUsers()]);
+      const conversationId = await refreshConversations(
+        knownConversationId || undefined,
+        undefined,
+      );
+      const targetId = conversationId || knownConversationId;
+      if (targetId) {
+        await refreshPrivateMessages(targetId);
+      }
     };
     void bootstrap();
-  }, [session?.user?.id]);
+  }, [
+    loading,
+    adminAccessLoading,
+    session?.user?.id,
+    accessToken,
+    isAdminUser,
+    initialPrivateConversationId,
+    latestUnreadPrivatePreviewRaw?.conversationId,
+  ]);
+
+  useEffect(() => {
+    if (tab !== "private" || !session?.user?.id) return;
+    void ensureWelcomePrivateMessage().catch(() => {});
+  }, [tab, session?.user?.id]);
 
   useEffect(() => {
     if (!activeConversationId) {
       setPrivateMessages([]);
       return;
     }
-    setPrivateMessages([]);
+    let cancelled = false;
+    void (async () => {
+      const messages = await refreshPrivateMessages(activeConversationId);
+      if (cancelled || messages.length > 0) return;
+
+      const supportConversation =
+        activeConversation?.isSupport ||
+        privateConversations.find((c) => c.id === activeConversationId)?.isSupport;
+      const shouldPoll =
+        supportConversation ||
+        Boolean(activeConversation?.lastMessageAt) ||
+        unreadPrivateCount > 0;
+      if (!shouldPoll) return;
+
+      if (supportConversation) {
+        try {
+          await ensureWelcomePrivateMessage();
+        } catch {
+          /* non-bloquant */
+        }
+        if (cancelled || activeConversationIdRef.current !== activeConversationId) return;
+        const afterEnsure = await refreshPrivateMessages(activeConversationId);
+        if (cancelled || afterEnsure.length > 0) return;
+      }
+
+      for (let attempt = 0; attempt < 24; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, attempt === 0 ? 0 : 200));
+        if (cancelled || activeConversationIdRef.current !== activeConversationId) return;
+        const nextMessages = await refreshPrivateMessages(activeConversationId);
+        if (nextMessages.length > 0) return;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeConversationId,
+    activeConversation?.isSupport,
+    activeConversation?.lastMessageAt,
+    unreadPrivateCount,
+    privateConversations,
+  ]);
+
+  useEffect(() => {
     setMessageTranslations({});
-    void refreshPrivateMessages(activeConversationId);
   }, [activeConversationId]);
 
   useEffect(() => {
-    if (!session?.user?.id) return;
+    if (loading || !session?.user?.id || !accessToken) return;
+    const waitingSupportWelcome =
+      tab === "private" &&
+      Boolean(activeConversation?.isSupport) &&
+      privateMessages.length === 0;
+    const pollMs = waitingSupportWelcome ? 1200 : 5000;
     const id = setInterval(() => {
       if (tab === "public") void refreshPublic();
       if (tab === "private") {
         void refreshConversations();
         void refreshPrivateMessages(activeConversationId);
       }
-    }, 5000);
+    }, pollMs);
     return () => clearInterval(id);
-  }, [tab, activeConversationId, session?.user?.id]);
+  }, [
+    tab,
+    activeConversationId,
+    activeConversation?.isSupport,
+    privateMessages.length,
+    loading,
+    session?.user?.id,
+    accessToken,
+  ]);
 
   useEffect(() => {
     publicEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -641,13 +815,16 @@ export default function CommunauteVWS() {
 
   useEffect(() => {
     if (tabQueryHandledRef.current) return;
-    if (searchParams.get("tab") !== "private") return;
+    const tabParam = searchParams.get("tab");
+    const convParam = searchParams.get("conversation");
+    if (tabParam !== "private" && !convParam) return;
     tabQueryHandledRef.current = true;
     setTab("private");
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
         next.delete("tab");
+        next.delete("conversation");
         return next;
       },
       { replace: true }
@@ -695,41 +872,150 @@ export default function CommunauteVWS() {
   }, [tab, activeConversationId, session?.user?.id, refreshUnreadPrivate]);
 
   const sendToPublic = async () => {
+    const text = publicInput.trim();
+    const file = publicFile;
+    if (!text && !file) return;
+
+    const tempId = `temp-public-${Date.now()}`;
+    const optimistic = {
+      id: tempId,
+      userId: myUserId,
+      username: session?.user?.email?.split("@")[0] || "Moi",
+      content: text ? censorMessageText(text) : "",
+      createdAt: new Date().toISOString(),
+      attachment: null,
+    };
+
     try {
       setBusy(true);
       setError("");
-      await sendPublicMessage({ content: publicInput, file: publicFile });
+      setPublicMessages((prev) => [...prev, optimistic]);
       setPublicInput("");
       setPublicFile(null);
       if (publicFileRef.current) publicFileRef.current.value = "";
+
+      await sendPublicMessage({ content: text, file });
       await refreshPublic();
       markPublicTabVisited();
     } catch (e) {
+      setPublicMessages((prev) => prev.filter((m) => m.id !== tempId));
       setError(e?.message || "Impossible d'envoyer le message public.");
     } finally {
       setBusy(false);
     }
   };
 
+  const refreshPrivateAfterSend = async (conversationId, options = {}) => {
+    const waitForFollowup = options.waitForFollowup === true;
+    const delays = waitForFollowup ? [0, 500, 1000, 1600, 2400, 3200] : [0];
+    let messages = [];
+
+    for (const delay of delays) {
+      if (delay > 0) {
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+      messages = await listPrivateMessages(conversationId, accessToken);
+    }
+
+    setPrivateMessages(messages);
+    const latest = messages[messages.length - 1];
+    if (latest) {
+      setPrivateConversations((prev) =>
+        prev.map((c) =>
+          c.id === conversationId
+            ? {
+                ...c,
+                lastMessage: latest.content,
+                lastMessageAt: latest.createdAt,
+                updatedAt: latest.createdAt,
+              }
+            : c,
+        ),
+      );
+    }
+    void refreshConversations().catch(() => {});
+    void refreshUnreadPrivate().catch(() => {});
+    return messages;
+  };
+
   const sendToPrivate = async () => {
     if (!activeConversationId) return;
+    const text = privateInput.trim();
+    const file = privateFile;
+    if (!text && !file) return;
+
+    const tempId = `temp-private-${Date.now()}`;
+    const optimistic = {
+      id: tempId,
+      conversationId: activeConversationId,
+      userId: myUserId,
+      username: session?.user?.email?.split("@")[0] || "Moi",
+      content: text ? censorMessageText(text) : "",
+      createdAt: new Date().toISOString(),
+      attachment: null,
+      responseMethod: "text",
+    };
+
     try {
       setBusy(true);
       setError("");
-      await sendPrivateMessage({
-        conversationId: activeConversationId,
-        content: privateInput,
-        file: privateFile,
-      });
+      setPrivateMessages((prev) => [...prev, optimistic]);
       setPrivateInput("");
       setPrivateFile(null);
       if (privateFileRef.current) privateFileRef.current.value = "";
-      await refreshConversations();
-      await refreshPrivateMessages(activeConversationId);
+
+      await sendPrivateMessage({
+        conversationId: activeConversationId,
+        content: text,
+        file,
+        responseMethod: activeConversation?.isSupport ? "text" : undefined,
+      });
+
+      await refreshPrivateAfterSend(activeConversationId, {
+        waitForFollowup: activeConversation?.isSupport === true,
+      });
     } catch (e) {
+      setPrivateMessages((prev) => prev.filter((m) => m.id !== tempId));
       setError(e?.message || "Impossible d'envoyer le message privé.");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const sendPrivateQuickReply = async (label, sourceMessageId) => {
+    if (!activeConversationId || !label?.trim() || quickReplyBusyMessageId) return;
+
+    const text = label.trim();
+
+    try {
+      setQuickReplyBusyMessageId(sourceMessageId);
+      setError("");
+      setPrivateMessages((prev) =>
+        prev.map((message) =>
+          message.id === sourceMessageId
+            ? { ...message, quickReplySelected: text }
+            : message,
+        ),
+      );
+
+      await submitOnboardingQuickReply({
+        conversationId: activeConversationId,
+        messageId: sourceMessageId,
+        label: text,
+      });
+
+      await refreshPrivateAfterSend(activeConversationId, { waitForFollowup: true });
+    } catch (e) {
+      setPrivateMessages((prev) =>
+        prev.map((message) =>
+          message.id === sourceMessageId
+            ? { ...message, quickReplySelected: null }
+            : message,
+        ),
+      );
+      setError(e?.message || "Impossible d'envoyer la réponse rapide.");
+    } finally {
+      setQuickReplyBusyMessageId("");
     }
   };
 
@@ -739,7 +1025,7 @@ export default function CommunauteVWS() {
       setError("");
       const id = await startPrivateConversation(otherUserId);
       await refreshConversations(id, otherUserId);
-      const freshList = await listPrivateConversations();
+      const freshList = await listPrivateConversations(accessToken);
       setPrivateConversations(freshList);
       const match = freshList.find((c) => c.otherUserId === otherUserId);
       const visibleId = match?.id || id;
@@ -961,12 +1247,17 @@ export default function CommunauteVWS() {
                     translatedText={messageTranslations[msg.id] || ""}
                     menuOpen={msgMenuId === msg.id}
                     onMenuToggle={() => setMsgMenuId((p) => (p === msg.id ? null : msg.id))}
-                    onDelete={() =>
-                      deletePublicMessage(msg.id)
-                        .then(refreshPublic)
-                        .then(() => setMsgMenuId(null))
-                        .catch((e) => setError(e.message))
-                    }
+                    onDelete={() => {
+                      const id = msg.id;
+                      setPublicMessages((prev) => prev.filter((m) => m.id !== id));
+                      setMsgMenuId(null);
+                      void deletePublicMessage(id)
+                        .then(() => refreshPublic())
+                        .catch((e) => {
+                          setError(e.message);
+                          void refreshPublic();
+                        });
+                    }}
                   />
                 ))}
                 <div ref={publicEndRef} />
@@ -1035,18 +1326,31 @@ export default function CommunauteVWS() {
                       translatedText={messageTranslations[msg.id] || ""}
                       menuOpen={msgMenuId === msg.id}
                       onMenuToggle={() => setMsgMenuId((p) => (p === msg.id ? null : msg.id))}
-                      onDelete={() =>
-                        deletePrivateMessage(msg.id)
+                      showQuickReplies={shouldShowMessageQuickReplies(msg, privateMessages, myUserId)}
+                      quickRepliesDisabled={Boolean(quickReplyBusyMessageId) || busy}
+                      onQuickReply={(label, sourceMessageId) => {
+                        void runWithAuth(() => sendPrivateQuickReply(label, sourceMessageId));
+                      }}
+                      onDelete={() => {
+                        const id = msg.id;
+                        setPrivateMessages((prev) => prev.filter((m) => m.id !== id));
+                        setMsgMenuId(null);
+                        void deletePrivateMessage(id)
                           .then(() => refreshPrivateMessages(activeConversationId))
-                          .then(() => setMsgMenuId(null))
-                          .catch((e) => setError(e.message))
-                      }
+                          .then(() => refreshConversations())
+                          .catch((e) => {
+                            setError(e.message);
+                            void refreshPrivateMessages(activeConversationId);
+                          });
+                      }}
                     />
                   ))
                 ) : (
                   <p className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-4 text-xs text-gray-500 text-center">
                     {activeConversation
-                      ? `Conversation avec ${activeConversation.otherUsername} — aucun message pour l'instant.`
+                      ? activeConversation.isSupport
+                        ? "Chargement du message de bienvenue…"
+                        : `Conversation avec ${activeConversation.otherUsername} — aucun message pour l'instant.`
                       : "Choisis une conversation dans la liste ou via la recherche."}
                   </p>
                 )}

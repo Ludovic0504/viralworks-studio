@@ -1,11 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-};
+import { censorMessageText } from "../_shared/name-moderation/censorMessage.ts";
+import { COMMUNITY_CORS_HEADERS, getAuthedClients, jsonResponse } from "../_shared/community/helpers.ts";
 
 const SUPPORTED_LANGS = new Set(["fr", "en", "es"]);
 const LANG_LABELS: Record<string, string> = {
@@ -21,18 +17,48 @@ interface RequestBody {
   messageScope?: MessageScope;
   conversationId?: string | null;
   targetLang?: string;
-  sourceText?: string;
+  accessToken?: string;
+}
+
+async function fetchRawMessageContent(
+  adminClient: ReturnType<typeof createClient>,
+  messageScope: MessageScope,
+  messageId: string,
+  conversationId: string | null,
+): Promise<string> {
+  if (messageScope === "public") {
+    const { data, error } = await adminClient
+      .from("community_public_messages")
+      .select("content")
+      .eq("id", messageId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error("Message public introuvable.");
+    return String(data.content || "").trim();
+  }
+
+  if (!conversationId) throw new Error("Conversation requise pour un message privé.");
+
+  const { data, error } = await adminClient
+    .from("community_private_messages")
+    .select("content")
+    .eq("id", messageId)
+    .eq("conversation_id", conversationId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("Message privé introuvable dans cette conversation.");
+  return String(data.content || "").trim();
 }
 
 async function assertCanAccessMessage(
-  supabase: ReturnType<typeof createClient>,
+  adminClient: ReturnType<typeof createClient>,
   userId: string,
   messageScope: MessageScope,
   messageId: string,
-  conversationId: string | null
+  conversationId: string | null,
 ) {
   if (messageScope === "public") {
-    const { data, error } = await supabase
+    const { data, error } = await adminClient
       .from("community_public_messages")
       .select("id")
       .eq("id", messageId)
@@ -44,101 +70,78 @@ async function assertCanAccessMessage(
 
   if (!conversationId) throw new Error("Conversation requise pour un message privé.");
 
-  const { data: msg, error: msgErr } = await supabase
+  const { data: conv, error: convErr } = await adminClient
+    .from("community_private_conversations")
+    .select("id, user_a, user_b")
+    .eq("id", conversationId)
+    .maybeSingle();
+  if (convErr) throw new Error(convErr.message);
+  if (!conv?.id) throw new Error("Conversation introuvable.");
+
+  const isMember =
+    String(conv.user_a || "") === userId ||
+    String(conv.user_b || "") === userId;
+
+  if (!isMember) {
+    const { data: part, error: partErr } = await adminClient
+      .from("community_private_participants")
+      .select("id")
+      .eq("conversation_id", conversationId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (partErr) throw new Error(partErr.message);
+    if (!part?.id) throw new Error("Accès à cette conversation refusé.");
+  }
+
+  const { data: msg, error: msgErr } = await adminClient
     .from("community_private_messages")
-    .select("id, conversation_id")
+    .select("id")
     .eq("id", messageId)
     .eq("conversation_id", conversationId)
     .maybeSingle();
   if (msgErr) throw new Error(msgErr.message);
   if (!msg?.id) throw new Error("Message privé introuvable dans cette conversation.");
-
-  const { data: part, error: partErr } = await supabase
-    .from("community_private_participants")
-    .select("id")
-    .eq("conversation_id", conversationId)
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (partErr) throw new Error(partErr.message);
-  if (!part?.id) throw new Error("Accès à cette conversation refusé.");
 }
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return new Response("ok", { headers: COMMUNITY_CORS_HEADERS });
   }
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: "Non autorisé." }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-    const supabaseUser = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
-
-    const {
-      data: { user },
-      error: authError,
-    } = await supabaseUser.auth.getUser();
-    if (authError || !user) {
-      return new Response(JSON.stringify({ error: "Non autorisé." }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     const body = (await req.json()) as RequestBody;
+    const { userId, adminClient } = await getAuthedClients(req, body.accessToken);
+
     const messageId = String(body.messageId || "").trim();
     const messageScope = body.messageScope;
     const targetLang = String(body.targetLang || "").trim().toLowerCase();
-    const sourceText = String(body.sourceText || "").trim();
     const conversationId =
       messageScope === "private" ? String(body.conversationId || "").trim() : null;
 
     if (!messageId || !messageScope || !SUPPORTED_LANGS.has(targetLang)) {
-      return new Response(JSON.stringify({ error: "Paramètres invalides." }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse({ error: "Paramètres invalides." }, 400);
     }
     if (messageScope !== "public" && messageScope !== "private") {
-      return new Response(JSON.stringify({ error: "Scope invalide." }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-    if (!sourceText) {
-      return new Response(JSON.stringify({ error: "Message vide." }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-    if (sourceText.length > 8000) {
-      return new Response(JSON.stringify({ error: "Message trop long." }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse({ error: "Scope invalide." }, 400);
     }
 
-    await assertCanAccessMessage(
-      supabaseUser,
-      user.id,
+    await assertCanAccessMessage(adminClient, userId, messageScope, messageId, conversationId);
+
+    const sourceText = await fetchRawMessageContent(
+      adminClient,
       messageScope,
       messageId,
-      conversationId
+      conversationId,
     );
 
-    const { data: cached } = await supabaseAdmin
+    if (!sourceText) {
+      return jsonResponse({ error: "Message vide." }, 400);
+    }
+    if (sourceText.length > 8000) {
+      return jsonResponse({ error: "Message trop long." }, 400);
+    }
+
+    const { data: cached } = await adminClient
       .from("community_message_translations")
       .select("translated_text")
       .eq("message_id", messageId)
@@ -147,18 +150,13 @@ serve(async (req) => {
       .maybeSingle();
 
     if (cached?.translated_text) {
-      return new Response(
-        JSON.stringify({ translatedText: cached.translated_text, cached: true }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      const censoredCached = censorMessageText(String(cached.translated_text));
+      return jsonResponse({ translatedText: censoredCached, cached: true });
     }
 
     const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
     if (!openaiApiKey) {
-      return new Response(JSON.stringify({ error: "Traduction indisponible." }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse({ error: "Traduction indisponible." }, 500);
     }
 
     const targetLabel = LANG_LABELS[targetLang] || targetLang;
@@ -187,22 +185,18 @@ serve(async (req) => {
     if (!openaiResponse.ok) {
       const errText = await openaiResponse.text();
       console.error("OpenAI translate error:", openaiResponse.status, errText);
-      return new Response(JSON.stringify({ error: "Échec de la traduction." }), {
-        status: 502,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse({ error: "Échec de la traduction." }, 502);
     }
 
     const completion = await openaiResponse.json();
-    const translatedText = String(completion?.choices?.[0]?.message?.content || "").trim();
-    if (!translatedText) {
-      return new Response(JSON.stringify({ error: "Traduction vide." }), {
-        status: 502,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    const translatedRaw = String(completion?.choices?.[0]?.message?.content || "").trim();
+    if (!translatedRaw) {
+      return jsonResponse({ error: "Traduction vide." }, 502);
     }
 
-    const { error: upsertErr } = await supabaseAdmin
+    const translatedText = censorMessageText(translatedRaw);
+
+    const { error: upsertErr } = await adminClient
       .from("community_message_translations")
       .upsert(
         {
@@ -212,20 +206,16 @@ serve(async (req) => {
           target_lang: targetLang,
           translated_text: translatedText,
         },
-        { onConflict: "message_id,message_scope,target_lang" }
+        { onConflict: "message_id,message_scope,target_lang" },
       );
     if (upsertErr) {
       console.error("Cache upsert failed:", upsertErr.message);
     }
 
-    return new Response(JSON.stringify({ translatedText, cached: false }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  } catch (e) {
-    const message = e instanceof Error ? e.message : "Erreur serveur.";
-    return new Response(JSON.stringify({ error: message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse({ translatedText, cached: false });
+  } catch (error) {
+    if (error instanceof Response) return error;
+    const message = error instanceof Error ? error.message : "Erreur serveur.";
+    return jsonResponse({ error: message }, 500);
   }
 });

@@ -173,6 +173,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           } catch (err) {
             console.warn("[Auth] Erreur lors du nettoyage:", err);
           }
+
+          if (typeof window !== "undefined" && window.location.pathname !== "/") {
+            window.location.replace("/");
+          }
         }
 
         if (event === "TOKEN_REFRESHED") {
@@ -222,6 +226,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       markPromoSuppressedOnLogout();
       resetPostHogUser();
       await supabase.auth.signOut();
+      if (typeof window !== "undefined") {
+        window.location.replace("/");
+        return;
+      }
       setSession(null);
       try {
         localStorage.removeItem(LAST_ACTIVITY_KEY);

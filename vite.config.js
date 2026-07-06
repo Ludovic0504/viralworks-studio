@@ -17,7 +17,7 @@ export default defineConfig(({ mode }) => {
   return {
   test: {
     environment: 'node',
-    include: ['src/**/*.test.{ts,tsx}'],
+    include: ['src/**/*.test.{ts,tsx}', 'supabase/functions/_shared/**/*.test.ts'],
   },
   plugins: [
     VitePWA({

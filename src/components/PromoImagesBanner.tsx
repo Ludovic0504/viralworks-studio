@@ -65,25 +65,24 @@ export default function PromoImagesBanner() {
       role="region"
       aria-label="Offre ViralWorks Images"
     >
-      <div className={`mx-auto flex w-full min-w-0 max-w-7xl items-center gap-2 px-4 py-2 sm:gap-3 sm:px-6 lg:px-8 md:py-2.5`}>
-        <Sparkles
-          className="hidden h-4 w-4 shrink-0 sm:block"
-          strokeWidth={2.25}
-          aria-hidden
-        />
-        <p className="min-w-0 flex-1 text-[11px] font-semibold leading-snug sm:text-sm">
-          <span className="md:hidden">{PROMO_NANOBANANA_OFFER}</span>
-          <span className="hidden md:inline">
-            ViralWorks Images — {PROMO_NANOBANANA_OFFER}
-          </span>
-        </p>
-        <button
-          type="button"
-          onClick={handleCta}
-          className="shrink-0 rounded-md bg-[#1a1400] px-2.5 py-1.5 text-[10px] font-bold text-[#f5d84e] transition-opacity hover:opacity-90 sm:px-3 sm:text-xs"
-        >
-          {session ? "Voir l'offre" : "9€/mois"}
-        </button>
+      <div className="mx-auto flex w-full min-w-0 max-w-7xl items-center px-4 py-2 sm:px-6 lg:px-8 md:justify-center md:py-2.5">
+        <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3 md:flex-none">
+          <Sparkles
+            className="hidden h-4 w-4 shrink-0 sm:block"
+            strokeWidth={2.25}
+            aria-hidden
+          />
+          <p className="min-w-0 flex-1 text-[11px] font-semibold leading-snug sm:text-sm md:flex-none">
+            {PROMO_NANOBANANA_OFFER}
+          </p>
+          <button
+            type="button"
+            onClick={handleCta}
+            className="shrink-0 rounded-md bg-[#1a1400] px-2.5 py-1.5 text-[10px] font-bold text-[#f5d84e] transition-opacity hover:opacity-90 sm:px-3 sm:text-xs"
+          >
+            {session ? "Voir" : "9€"}
+          </button>
+        </div>
       </div>
     </div>
   );

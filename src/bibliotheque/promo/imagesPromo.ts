@@ -16,4 +16,4 @@ export const PROMO_ACQUISITION_IMAGES = [
 ] as const;
 
 export const PROMO_NANOBANANA_OFFER =
-  "Nanobanana Pro — accès dès 9€/mois avec ViralWorks Images";
+  "Accède à NanoBanana Pro et GPT 2.0 pour seulement 9€";

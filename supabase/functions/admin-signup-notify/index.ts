@@ -13,15 +13,28 @@ type SignupHookPayload = {
     id?: string;
     email?: string | null;
     created_at?: string;
+    first_name?: string | null;
+    last_name?: string | null;
+    full_name?: string | null;
   };
   record?: {
     id?: string;
     email?: string | null;
     created_at?: string;
+    first_name?: string | null;
+    last_name?: string | null;
+    full_name?: string | null;
   };
 };
 
-function getUserFromPayload(payload: SignupHookPayload): { id?: string; email?: string | null; created_at?: string } {
+function getUserFromPayload(payload: SignupHookPayload): {
+  id?: string;
+  email?: string | null;
+  created_at?: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  full_name?: string | null;
+} {
   return payload.user ?? payload.record ?? {};
 }
 
@@ -81,6 +94,10 @@ serve(async (req) => {
   const email = (user.email ?? "").toString();
   const userId = (user.id ?? "").toString();
   const createdAt = user.created_at ?? new Date().toISOString();
+  const firstName = (user.first_name ?? "").toString().trim();
+  const lastName = (user.last_name ?? "").toString().trim();
+  const fullName = (user.full_name ?? "").toString().trim() ||
+    `${firstName} ${lastName}`.trim();
 
   const adminEmail = (Deno.env.get("ADMIN_NOTIFY_EMAIL") ?? "jean.limonta06@gmail.com").trim();
 
@@ -91,7 +108,17 @@ serve(async (req) => {
   });
 
   const title = "Nouvelle inscription";
-  const body = `Un nouvel utilisateur vient de s'inscrire.\n\nEmail: ${email || "(inconnu)"}\nUser ID: ${userId || "(inconnu)"}\nDate: ${createdAt}\n`;
+  const body = [
+    "Un nouvel utilisateur vient de s'inscrire.",
+    "",
+    `Nom affiché: ${fullName || "(inconnu)"}`,
+    `Prénom: ${firstName || "(inconnu)"}`,
+    `Nom: ${lastName || "(inconnu)"}`,
+    `Email: ${email || "(inconnu)"}`,
+    `User ID: ${userId || "(inconnu)"}`,
+    `Date: ${createdAt}`,
+    "",
+  ].join("\n");
 
   const insertResult = await supabaseAdmin.from("admin_notifications").insert({
     kind: "signup",

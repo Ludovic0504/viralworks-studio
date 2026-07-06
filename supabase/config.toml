@@ -37,3 +37,36 @@ verify_jwt = false
 # Liens bio /go/* : redirection publique sans JWT (passerelle : apikey anon en query).
 [functions.go-redirect]
 verify_jwt = false
+
+# Vérification prénom/nom avant inscription (appel public, pas de liste exposée côté client).
+[functions.validate-display-name]
+verify_jwt = false
+
+# Auth Hook Supabase : before-user-created (secret AUTH_HOOK_SECRET).
+[functions.auth-before-user-created]
+verify_jwt = false
+
+# Message de bienvenue onboarding (pg_net depuis auth.users INSERT).
+[functions.welcome-private-message]
+verify_jwt = false
+
+# Rattrapage client : message de bienvenue dès la 1re session (JWT).
+[functions.ensure-welcome-private-message]
+verify_jwt = true
+
+# Suivi onboarding après réponse utilisateur (pg_net depuis community_private_messages INSERT).
+[functions.onboarding-private-followup]
+verify_jwt = false
+
+# Réponse rapide onboarding (bouton, sans message utilisateur dans le chat).
+[functions.onboarding-private-quick-reply]
+verify_jwt = true
+
+# Mise à jour profil : auth JWT vérifiée dans la fonction (getUser).
+[functions.update-user-profile]
+verify_jwt = false
+
+# community-read-messages, translate-community-message, admin-get-community-message-raw :
+# verify_jwt laissé à true (défaut) pour que le JWT utilisateur soit transmis au gateway.
+[functions.community-read-messages]
+verify_jwt = true

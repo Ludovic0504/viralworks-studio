@@ -1,5 +1,7 @@
 import { getBrowserSupabase } from "./client-navigateur";
 import { getUserProfile } from "./profil";
+import { enrichCommunityMessage } from "@/bibliotheque/community/onboarding";
+import { prefetchPrivateMessages as prefetchPrivateMessagesCache } from "@/bibliotheque/community/privateMessagesCache";
 
 export type CommunityUser = {
   userId: string;
@@ -26,6 +28,11 @@ export type CommunityMessage = {
   createdAt: string;
   attachment: CommunityAttachment | null;
   isSupport?: boolean;
+  quickReplyOptions?: string[];
+  quickRepliesClosedAt?: string | null;
+  quickReplySelected?: string | null;
+  responseMethod?: "button" | "text" | null;
+  onboardingStep?: number | null;
 };
 
 export type CommunityConversation = {
@@ -42,6 +49,21 @@ export type CommunityMessageScope = "public" | "private";
 
 export type CommunityLocale = "fr" | "en" | "es";
 
+export type UnreadPrivatePreview = {
+  messageId: string;
+  conversationId: string;
+  senderUserId: string;
+  senderName: string;
+  isSupport: boolean;
+  contentPreview: string;
+  createdAt: string;
+};
+
+export type PrivateUnreadStatus = {
+  count: number;
+  preview: UnreadPrivatePreview | null;
+};
+
 export const COMMUNITY_LOCALES: { code: CommunityLocale; label: string }[] = [
   { code: "fr", label: "Français" },
   { code: "en", label: "English" },
@@ -55,6 +77,59 @@ const ALLOWED_VIDEO_TYPES = new Set(["video/mp4", "video/webm", "video/quicktime
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 25 * 1024 * 1024;
 const TRANSLATION_FETCH_CONCURRENCY = 3;
+
+type CommunityReadAction =
+  | { action: "listPublic"; limit?: number }
+  | { action: "listPrivate"; conversationId: string }
+  | { action: "listConversations" };
+
+async function parseInvokeErrorMessage(error: unknown): Promise<string | null> {
+  if (!error || typeof error !== "object") return null;
+  const ctx = (error as { context?: unknown }).context;
+  if (!ctx || typeof ctx !== "object" || !("json" in ctx)) return null;
+  try {
+    const parsed = (await (ctx as Response).clone().json()) as { error?: string };
+    return typeof parsed.error === "string" && parsed.error.trim() ? parsed.error : null;
+  } catch {
+    return null;
+  }
+}
+
+async function invokeCommunityRead<T>(
+  body: CommunityReadAction,
+  _accessToken?: string,
+): Promise<T> {
+  const auth = await ensureAuthSession();
+
+  const invokeOnce = async (token: string) =>
+    auth.supabase.functions.invoke("community-read-messages", {
+      body: { ...body, accessToken: token },
+    });
+
+  let { data, error } = await invokeOnce(auth.accessToken);
+
+  if (error) {
+    const detail = await parseInvokeErrorMessage(error);
+    const unauthorized =
+      detail?.toLowerCase().includes("non autorisé") ||
+      detail?.toLowerCase().includes("autorisé");
+
+    if (unauthorized) {
+      const { data: refreshed } = await auth.supabase.auth.refreshSession();
+      const retryToken = refreshed.session?.access_token;
+      if (retryToken) {
+        ({ data, error } = await invokeOnce(retryToken));
+      }
+    }
+  }
+
+  if (error) {
+    const detail = await parseInvokeErrorMessage(error);
+    throw new Error(detail || error.message || "Impossible de charger les messages.");
+  }
+  if (data?.error) throw new Error(String(data.error));
+  return data as T;
+}
 
 const translationMemoryCache = new Map<string, string>();
 
@@ -124,14 +199,75 @@ function toAttachment(row: any): CommunityAttachment | null {
   };
 }
 
-async function ensureAuthUser() {
+const AUTHOR_NAME_TTL_MS = 60_000;
+let authorNameCache: { userId: string; name: string; fetchedAt: number } | null = null;
+
+async function getAuthorDisplayName(
+  supabase: ReturnType<typeof getBrowserSupabase>,
+  user: { id: string; email?: string | null },
+): Promise<string> {
+  if (
+    authorNameCache?.userId === user.id &&
+    Date.now() - authorNameCache.fetchedAt < AUTHOR_NAME_TTL_MS
+  ) {
+    return authorNameCache.name;
+  }
+
+  const { data: prof } = await supabase
+    .from("profiles")
+    .select("full_name, first_name, last_name, email")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  const name = prof
+    ? toUsername(prof)
+    : user.email
+      ? String(user.email).split("@")[0]
+      : "Membre";
+
+  authorNameCache = { userId: user.id, name, fetchedAt: Date.now() };
+  return name;
+}
+
+async function ensureAuthSession(): Promise<{
+  supabase: ReturnType<typeof getBrowserSupabase>;
+  user: { id: string; email?: string | null };
+  accessToken: string;
+}> {
   const supabase = getBrowserSupabase();
-  const {
+  let {
     data: { session },
   } = await supabase.auth.getSession();
-  const user = session?.user;
-  if (!user?.id) throw new Error("Utilisateur non connecté.");
-  return { supabase, user: { id: user.id, email: user.email } };
+
+  if (!session?.access_token) {
+    const { data: refreshed } = await supabase.auth.refreshSession();
+    session = refreshed.session;
+  }
+
+  if (!session?.access_token) {
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData.user?.id) {
+      throw new Error("Utilisateur non connecté.");
+    }
+    ({
+      data: { session },
+    } = await supabase.auth.getSession());
+  }
+
+  if (!session?.user?.id || !session.access_token) {
+    throw new Error("Utilisateur non connecté.");
+  }
+
+  return {
+    supabase,
+    user: { id: session.user.id, email: session.user.email },
+    accessToken: session.access_token,
+  };
+}
+
+async function ensureAuthUser() {
+  const { supabase, user } = await ensureAuthSession();
+  return { supabase, user };
 }
 
 type ViewerContext = {
@@ -335,37 +471,15 @@ export async function getCommunitySupportUser(): Promise<CommunityUser | null> {
   };
 }
 
-export async function listPublicMessages(limit = 300): Promise<CommunityMessage[]> {
-  const { supabase } = await ensureAuthUser();
-  const { data, error } = await supabase
-    .from("community_public_messages")
-    .select("*")
-    .order("created_at", { ascending: true })
-    .limit(limit);
-  if (error) throw new Error(error.message);
-  const userIds = [
-    ...new Set(
-      (data || [])
-        .map((m) => (m.user_id != null ? String(m.user_id) : ""))
-        .filter(Boolean)
-    ),
-  ];
-  const users = await loadProfilesMap(userIds);
-  return (data || []).map((row) => {
-    const uid = row.user_id != null ? String(row.user_id) : "";
-    const snapshot = String(row.author_display_name || "").trim();
-    const fromProfile = uid ? users.get(uid)?.username : undefined;
-    const username = fromProfile || snapshot || (uid ? "Utilisateur" : "Ancien membre");
-    return {
-      id: String(row.id),
-      userId: uid,
-      username,
-      content: String(row.content || ""),
-      createdAt: String(row.created_at || ""),
-      attachment: toAttachment(row),
-      isSupport: uid ? users.get(uid)?.isSupport === true : false,
-    };
-  });
+export async function listPublicMessages(
+  limit = 300,
+  accessToken?: string,
+): Promise<CommunityMessage[]> {
+  const data = await invokeCommunityRead<{ messages: CommunityMessage[] }>(
+    { action: "listPublic", limit },
+    accessToken,
+  );
+  return data.messages || [];
 }
 
 export async function sendPublicMessage(input: {
@@ -376,12 +490,7 @@ export async function sendPublicMessage(input: {
   const text = String(input.content || "").trim();
   const file = input.file;
   if (!text && !file) throw new Error("Message vide.");
-  const { data: prof } = await supabase
-    .from("profiles")
-    .select("full_name, first_name, last_name, email")
-    .eq("user_id", user.id)
-    .maybeSingle();
-  const authorDisplayName = prof ? toUsername(prof) : user.email ? String(user.email).split("@")[0] : "Membre";
+  const authorDisplayName = await getAuthorDisplayName(supabase, user);
   const attachment = file ? await uploadAttachment(file, user.id) : null;
   const { error } = await supabase.from("community_public_messages").insert({
     user_id: user.id,
@@ -396,13 +505,13 @@ export async function sendPublicMessage(input: {
 }
 
 export async function deletePublicMessage(messageId: string): Promise<void> {
-  const { supabase, user } = await ensureAuthUser();
-  const { error } = await supabase
-    .from("community_public_messages")
-    .delete()
-    .eq("id", messageId)
-    .eq("user_id", user.id);
+  if (messageId.startsWith("temp-")) return;
+  const { supabase } = await ensureAuthUser();
+  const { data, error } = await supabase.rpc("community_delete_own_public_message", {
+    p_message_id: messageId,
+  });
   if (error) throw new Error(error.message);
+  if (!data) throw new Error("Message introuvable ou déjà supprimé.");
 }
 
 async function findOrCreateDirectConversation(otherUserId: string): Promise<string> {
@@ -456,163 +565,206 @@ async function findOrCreateDirectConversation(otherUserId: string): Promise<stri
   return conversationId;
 }
 
-export async function listPrivateConversations(): Promise<CommunityConversation[]> {
-  const { supabase, user } = await getViewerContext();
-  const { data: hiddenRows } = await supabase
-    .from("community_private_hidden")
-    .select("conversation_id")
-    .eq("user_id", user.id);
-  const hidden = new Set((hiddenRows || []).map((r) => String(r.conversation_id)));
-  const { data: convRows, error: convErr } = await supabase
-    .from("community_private_conversations")
-    .select("id, kind, updated_at, user_a, user_b")
-    .or(`user_a.eq.${user.id},user_b.eq.${user.id}`)
-    .order("updated_at", { ascending: false });
-  if (convErr) throw new Error(convErr.message);
-  const visibleConvs = (convRows || []).filter((c) => !hidden.has(String(c.id)));
-  const ids = visibleConvs.map((c) => String(c.id));
-  if (!ids.length) return [];
-  const userIds = [
-    ...new Set(
-      visibleConvs
-        .flatMap((c) => [String(c.user_a || ""), String(c.user_b || "")])
-        .filter(Boolean)
-    ),
-  ];
-  const users = await loadProfilesMap(userIds);
-  const { data: msgRows } = await supabase
-    .from("community_private_messages")
-    .select("conversation_id, user_id, content, created_at")
-    .in("conversation_id", ids)
-    .order("created_at", { ascending: false });
-  const lastByConv = new Map<string, { content: string; createdAt: string }>();
-  const hasIncomingByConv = new Map<string, boolean>();
-  for (const row of msgRows || []) {
-    const id = String(row.conversation_id);
-    if (!lastByConv.has(id)) {
-      lastByConv.set(id, {
-        content: String(row.content || ""),
-        createdAt: String(row.created_at || ""),
-      });
-    }
-    if (!hasIncomingByConv.has(id)) {
-      hasIncomingByConv.set(id, false);
-    }
-    if (String(row.user_id || "") !== user.id) {
-      hasIncomingByConv.set(id, true);
-    }
-  }
-  const rows = visibleConvs.map((conv) => {
-    const convId = String(conv.id);
-    const userA = String(conv.user_a || "");
-    const userB = String(conv.user_b || "");
-    const otherId = userA === user.id ? userB : userA;
-    const other = users.get(otherId);
-    const last = lastByConv.get(convId);
-    return {
-      id: convId,
-      otherUserId: otherId,
-      otherUsername: other?.username || "Utilisateur",
-      updatedAt: String(conv.updated_at || ""),
-      lastMessage: last?.content || "",
-      lastMessageAt: last?.createdAt || "",
-      isSupport: other?.isSupport === true,
-    };
-  });
-  const rowsVisibleForViewer = rows;
-  // Garder une seule conversation visible par interlocuteur (évite les doublons "Support").
-  const dedupByOther = new Map<string, CommunityConversation>();
-  for (const row of rowsVisibleForViewer) {
-    const key = String(row.otherUserId || "");
-    const existing = dedupByOther.get(key);
-    if (!existing) {
-      dedupByOther.set(key, row);
-      continue;
-    }
-    if (String(row.updatedAt || "").localeCompare(String(existing.updatedAt || "")) > 0) {
-      dedupByOther.set(key, row);
-    }
-  }
-  return [...dedupByOther.values()].sort((a, b) => {
-    if (a.isSupport && !b.isSupport) return -1;
-    if (!a.isSupport && b.isSupport) return 1;
-    return String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
-  });
+export async function listPrivateConversations(
+  accessToken?: string,
+): Promise<CommunityConversation[]> {
+  const data = await invokeCommunityRead<{ conversations: CommunityConversation[] }>(
+    { action: "listConversations" },
+    accessToken,
+  );
+  return data.conversations || [];
 }
 
 export async function startPrivateConversation(otherUserId: string): Promise<string> {
   return findOrCreateDirectConversation(otherUserId);
 }
 
-export async function listPrivateMessages(conversationId: string): Promise<CommunityMessage[]> {
-  const { supabase } = await ensureAuthUser();
-  const { data, error } = await supabase
-    .from("community_private_messages")
-    .select("*")
-    .eq("conversation_id", conversationId)
-    .order("created_at", { ascending: true });
-  if (error) throw new Error(error.message);
-  const userIds = [...new Set((data || []).map((m) => String(m.user_id)))];
-  const users = await loadProfilesMap(userIds);
-  return (data || []).map((row) => ({
-    id: String(row.id),
-    conversationId: String(row.conversation_id),
-    userId: String(row.user_id),
-    username: users.get(String(row.user_id))?.username || "Utilisateur",
-    content: String(row.content || ""),
-    createdAt: String(row.created_at || ""),
-    attachment: toAttachment(row),
-    isSupport: users.get(String(row.user_id))?.isSupport === true,
-  }));
+export async function listPrivateMessages(
+  conversationId: string,
+  accessToken?: string,
+): Promise<CommunityMessage[]> {
+  const data = await invokeCommunityRead<{ messages: CommunityMessage[] }>(
+    { action: "listPrivate", conversationId },
+    accessToken,
+  );
+  return (data.messages || []).map((message) =>
+    enrichCommunityMessage({
+      ...message,
+      conversationId,
+    }),
+  );
+}
+
+export async function prefetchPrivateMessagesForConversation(
+  conversationId: string,
+  accessToken?: string,
+): Promise<CommunityMessage[]> {
+  const id = String(conversationId || "").trim();
+  if (!id) return [];
+  return prefetchPrivateMessagesCache(id, () => listPrivateMessages(id, accessToken));
+}
+
+export async function submitOnboardingQuickReply(input: {
+  conversationId: string;
+  messageId: string;
+  label: string;
+}): Promise<void> {
+  const auth = await ensureAuthSession();
+  const messageId = String(input.messageId || "").trim();
+  const conversationId = String(input.conversationId || "").trim();
+  const label = String(input.label || "").trim();
+  if (!messageId || !conversationId || !label) {
+    throw new Error("Paramètres manquants.");
+  }
+
+  const invokeOnce = async (token: string) =>
+    auth.supabase.functions.invoke("onboarding-private-quick-reply", {
+      body: {
+        accessToken: token,
+        messageId,
+        conversationId,
+        label,
+      },
+    });
+
+  let { data, error } = await invokeOnce(auth.accessToken);
+
+  if (error) {
+    const detail = await parseInvokeErrorMessage(error);
+    const unauthorized =
+      detail?.toLowerCase().includes("non autorisé") ||
+      detail?.toLowerCase().includes("autorisé");
+
+    if (unauthorized) {
+      const { data: refreshed } = await auth.supabase.auth.refreshSession();
+      const retryToken = refreshed.session?.access_token;
+      if (retryToken) {
+        ({ data, error } = await invokeOnce(retryToken));
+      }
+    }
+  }
+
+  if (error) {
+    const detail = await parseInvokeErrorMessage(error);
+    throw new Error(detail || error.message || "Impossible d'enregistrer la réponse rapide.");
+  }
+  if (data?.error) throw new Error(String(data.error));
+  if (data?.ok === false) throw new Error(String(data.error || "Réponse rapide refusée."));
 }
 
 export async function sendPrivateMessage(input: {
   conversationId: string;
   content: string;
   file: File | null;
+  responseMethod?: "button" | "text";
 }): Promise<void> {
   const { supabase, user } = await ensureAuthUser();
   const text = String(input.content || "").trim();
   if (!text && !input.file) throw new Error("Message vide.");
   const attachment = input.file ? await uploadAttachment(input.file, user.id) : null;
+  const now = new Date().toISOString();
+
+  const responseMethod =
+    input.responseMethod === "button" || input.responseMethod === "text"
+      ? input.responseMethod
+      : null;
+
   const { error } = await supabase.from("community_private_messages").insert({
     conversation_id: input.conversationId,
     user_id: user.id,
     content: text,
+    response_method: responseMethod,
     attachment_url: attachment?.url || null,
     attachment_type: attachment?.mimeType || null,
     attachment_size: attachment?.sizeBytes || null,
     attachment_name: attachment?.fileName || null,
   });
   if (error) throw new Error(error.message);
-  await supabase
-    .from("community_private_conversations")
-    .update({ updated_at: new Date().toISOString() })
-    .eq("id", input.conversationId);
-  await supabase
-    .from("community_private_hidden")
-    .delete()
-    .eq("conversation_id", input.conversationId)
-    .eq("user_id", user.id);
+
+  await Promise.all([
+    supabase.from("community_private_conversations").update({ updated_at: now }).eq("id", input.conversationId),
+    supabase
+      .from("community_private_hidden")
+      .delete()
+      .eq("conversation_id", input.conversationId)
+      .eq("user_id", user.id),
+  ]);
 }
 
 export async function deletePrivateMessage(messageId: string): Promise<void> {
-  const { supabase, user } = await ensureAuthUser();
-  const { error } = await supabase
-    .from("community_private_messages")
-    .delete()
-    .eq("id", messageId)
-    .eq("user_id", user.id);
+  if (messageId.startsWith("temp-")) return;
+  const { supabase } = await ensureAuthUser();
+  const { data, error } = await supabase.rpc("community_delete_own_private_message", {
+    p_message_id: messageId,
+  });
   if (error) throw new Error(error.message);
+  if (!data) throw new Error("Message introuvable ou déjà supprimé.");
 }
 
 /** Compte les messages privés reçus (auteur ≠ moi) non couverts par last_read_at du participant. */
 export async function countUnreadPrivateMessages(): Promise<number> {
+  const status = await getPrivateUnreadStatus();
+  return status.count;
+}
+
+function parseUnreadPreview(raw: unknown): UnreadPrivatePreview | null {
+  if (!raw || typeof raw !== "object") return null;
+  const row = raw as Record<string, unknown>;
+  const messageId = String(row.message_id || "").trim();
+  if (!messageId) return null;
+  return {
+    messageId,
+    conversationId: String(row.conversation_id || ""),
+    senderUserId: String(row.sender_user_id || ""),
+    senderName: String(row.sender_name || "Utilisateur"),
+    isSupport: row.is_support === true,
+    contentPreview: String(row.content_preview || ""),
+    createdAt: String(row.created_at || ""),
+  };
+}
+
+/** Compteur + aperçu du dernier message privé non lu (header / toast). */
+export async function getPrivateUnreadStatus(): Promise<PrivateUnreadStatus> {
   const { supabase } = await ensureAuthUser();
-  const { data, error } = await supabase.rpc("community_unread_private_message_count");
-  if (error) throw new Error(error.message);
-  const n = typeof data === "number" ? data : Number(data ?? 0);
-  return Number.isFinite(n) ? n : 0;
+  const { data, error } = await supabase.rpc("community_private_unread_status");
+  if (error) {
+    const { data: countData, error: countError } = await supabase.rpc(
+      "community_unread_private_message_count",
+    );
+    if (countError) throw new Error(error.message);
+    const count = typeof countData === "number" ? countData : Number(countData ?? 0);
+    return {
+      count: Number.isFinite(count) ? count : 0,
+      preview: null,
+    };
+  }
+
+  const payload =
+    data && typeof data === "object" && !Array.isArray(data)
+      ? (data as Record<string, unknown>)
+      : {};
+
+  const countRaw = payload.count;
+  const count =
+    typeof countRaw === "number"
+      ? countRaw
+      : Number(countRaw ?? 0);
+
+  return {
+    count: Number.isFinite(count) ? count : 0,
+    preview: parseUnreadPreview(payload.preview),
+  };
+}
+
+/** Déclenche le message de bienvenue support si pas encore envoyé (idempotent, côté client après connexion). */
+export async function ensureWelcomePrivateMessage(): Promise<void> {
+  const auth = await ensureAuthSession();
+  const { error } = await auth.supabase.functions.invoke("ensure-welcome-private-message", {
+    body: { accessToken: auth.accessToken },
+  });
+  if (error) {
+    console.warn("[ensureWelcomePrivateMessage]", error.message);
+  }
 }
 
 /** Met à jour last_read_at pour la conversation active (marquer comme lu jusqu’à maintenant). */
@@ -641,22 +793,11 @@ export async function markAllPrivateConversationsRead(): Promise<void> {
 /** Indique s’il existe au moins un message public postérieur au timestamp (ISO). Si sinceIso est null, tout message existant compte comme « nouveau ». */
 export async function hasNewPublicMessageSince(sinceIso: string | null): Promise<boolean> {
   const { supabase } = await ensureAuthUser();
-  console.log("[debug] hasNewPublicMessageSince - sinceIso:", sinceIso);
-  if (!sinceIso?.trim()) {
-    const { count, error } = await supabase
-      .from("community_public_messages")
-      .select("id", { count: "exact", head: true });
-    console.log("[debug] hasNewPublicMessageSince - count (no sinceIso):", count);
-    return (count ?? 0) > 0;
-  }
-  const { data, error } = await supabase
-    .from("community_public_messages")
-    .select("id, created_at")
-    .gt("created_at", sinceIso.trim())
-    .limit(1)
-    .maybeSingle();
-  console.log("[debug] hasNewPublicMessageSince - data:", data, "error:", error);
-  return Boolean(data?.id);
+  const { data, error } = await supabase.rpc("community_has_new_public_message_since", {
+    p_since: sinceIso?.trim() || null,
+  });
+  if (error) throw new Error(error.message);
+  return Boolean(data);
 }
 
 export async function hideConversationForMe(conversationId: string): Promise<void> {
@@ -718,21 +859,7 @@ export async function getCachedCommunityMessageTranslation(input: {
 }): Promise<string | null> {
   const memory = getMemoryCachedTranslation(input.messageId, input.messageScope, input.targetLang);
   if (memory) return memory;
-
-  const { supabase } = await ensureAuthUser();
-  const { data, error } = await supabase
-    .from("community_message_translations")
-    .select("translated_text")
-    .eq("message_id", input.messageId)
-    .eq("message_scope", input.messageScope)
-    .eq("target_lang", input.targetLang)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  const text = String(data?.translated_text || "").trim();
-  if (text) {
-    rememberTranslation(input.messageId, input.messageScope, input.targetLang, text);
-  }
-  return text || null;
+  return null;
 }
 
 export async function listCachedCommunityMessageTranslations(input: {
@@ -741,36 +868,10 @@ export async function listCachedCommunityMessageTranslations(input: {
   targetLang: CommunityLocale;
 }): Promise<Record<string, string>> {
   const result: Record<string, string> = {};
-  const missingIds: string[] = [];
-
   for (const messageId of input.messageIds) {
     const memory = getMemoryCachedTranslation(messageId, input.messageScope, input.targetLang);
-    if (memory) {
-      result[messageId] = memory;
-    } else {
-      missingIds.push(messageId);
-    }
+    if (memory) result[messageId] = memory;
   }
-
-  if (!missingIds.length) return result;
-
-  const { supabase } = await ensureAuthUser();
-  const { data, error } = await supabase
-    .from("community_message_translations")
-    .select("message_id, translated_text")
-    .eq("message_scope", input.messageScope)
-    .eq("target_lang", input.targetLang)
-    .in("message_id", missingIds);
-  if (error) throw new Error(error.message);
-
-  for (const row of data || []) {
-    const messageId = String(row.message_id || "");
-    const text = String(row.translated_text || "").trim();
-    if (!messageId || !text) continue;
-    result[messageId] = text;
-    rememberTranslation(messageId, input.messageScope, input.targetLang, text);
-  }
-
   return result;
 }
 
@@ -814,11 +915,10 @@ export async function resolveCommunityMessageTranslations(input: {
         messageScope: input.messageScope,
         conversationId: input.messageScope === "private" ? input.conversationId : null,
         targetLang: input.targetLang,
-        sourceText: message.content,
       });
       result[message.id] = translated;
     } catch {
-      // Garder l'original si une traduction échoue.
+      // Garder l'original censuré si une traduction échoue.
     }
   });
 
@@ -830,37 +930,30 @@ export async function translateCommunityMessage(input: {
   messageScope: CommunityMessageScope;
   conversationId?: string | null;
   targetLang: CommunityLocale;
-  sourceText: string;
+  accessToken?: string;
 }): Promise<string> {
-  const text = String(input.sourceText || "").trim();
-  if (!text) throw new Error("Message vide.");
-
   const cached = await getCachedCommunityMessageTranslation({
     messageId: input.messageId,
     messageScope: input.messageScope,
     targetLang: input.targetLang,
   });
-  if (cached) {
-    rememberTranslation(input.messageId, input.messageScope, input.targetLang, cached);
-    return cached;
-  }
+  if (cached) return cached;
 
-  const { supabase } = await ensureAuthUser();
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  if (!session?.access_token) throw new Error("Utilisateur non connecté.");
+  const auth = await ensureAuthSession();
+  const token = auth.accessToken;
 
-  const { data, error } = await supabase.functions.invoke("translate-community-message", {
-    body: {
-      messageId: input.messageId,
-      messageScope: input.messageScope,
-      conversationId: input.messageScope === "private" ? input.conversationId : null,
-      targetLang: input.targetLang,
-      sourceText: text,
-    },
-    headers: { Authorization: `Bearer ${session.access_token}` },
-  });
+  const invokeOnce = async (accessToken: string) =>
+    auth.supabase.functions.invoke("translate-community-message", {
+      body: {
+        messageId: input.messageId,
+        messageScope: input.messageScope,
+        conversationId: input.messageScope === "private" ? input.conversationId : null,
+        targetLang: input.targetLang,
+        accessToken,
+      },
+    });
+
+  let { data, error } = await invokeOnce(token);
 
   if (error) throw new Error(error.message || "Traduction impossible.");
   if (data?.error) throw new Error(String(data.error));
@@ -868,4 +961,30 @@ export async function translateCommunityMessage(input: {
   if (!translated) throw new Error("Traduction vide.");
   rememberTranslation(input.messageId, input.messageScope, input.targetLang, translated);
   return translated;
+}
+
+/** Contenu brut d'un message — réservé aux admins (signalement / litige). */
+export async function getCommunityMessageRawAdmin(input: {
+  messageId: string;
+  messageScope: CommunityMessageScope;
+  conversationId?: string | null;
+}): Promise<string> {
+  const { supabase } = await ensureAuthUser();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.access_token) throw new Error("Utilisateur non connecté.");
+
+  const { data, error } = await supabase.functions.invoke("admin-get-community-message-raw", {
+    body: {
+      messageId: input.messageId,
+      messageScope: input.messageScope,
+      conversationId: input.messageScope === "private" ? input.conversationId : null,
+    },
+    headers: { Authorization: `Bearer ${session.access_token}` },
+  });
+
+  if (error) throw new Error(error.message || "Impossible de lire le message brut.");
+  if (data?.error) throw new Error(String(data.error));
+  return String(data?.message?.content || "");
 }
