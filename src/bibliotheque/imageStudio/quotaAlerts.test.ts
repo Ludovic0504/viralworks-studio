@@ -8,6 +8,7 @@ import {
 import {
   IMAGE_STUDIO_MONTHLY_QUOTA_DEFAULT,
   IMAGE_STUDIO_MONTHLY_QUOTA_IMAGE_9,
+  IMAGE_STUDIO_TRIAL_QUOTA,
 } from "@/bibliotheque/supabase/planQuotas";
 
 describe("getImageStudioQuotaState", () => {
@@ -57,6 +58,11 @@ describe("shouldShowImageStudioLowQuotaWarning", () => {
   it("affiche l'alerte à 80 % du quota (30 restantes sur 150)", () => {
     expect(shouldShowImageStudioLowQuotaWarning(120, 150)).toBe(true);
     expect(getImageStudioQuotaState(120, 150).remaining).toBe(30);
+  });
+
+  it("affiche l'alerte à 80 % du quota essai (6 restantes sur 30)", () => {
+    expect(shouldShowImageStudioLowQuotaWarning(24, IMAGE_STUDIO_TRIAL_QUOTA)).toBe(true);
+    expect(getImageStudioQuotaState(24, IMAGE_STUDIO_TRIAL_QUOTA).remaining).toBe(6);
   });
 
   it("n'affiche pas l'alerte sous le seuil", () => {

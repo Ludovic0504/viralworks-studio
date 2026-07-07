@@ -12,6 +12,7 @@ import {
   inferSubscriptionPlanFromCycle,
   subscriptionPlanLabel,
 } from "./subscriptionPlans";
+import { ENTITLED_SUBSCRIPTION_STATUSES } from "./subscriptionStatus";
 
 const SUBSCRIPTION_DETAILS_CACHE_TTL_MS = 45_000;
 
@@ -119,6 +120,7 @@ export type UserSubscriptionDetails = {
   subscription: StripeSubscription;
   planKey: UserPlan;
   planName: string;
+  isTrialing: boolean;
 };
 
 /** Identifiant de plan d'abonnement — utilisé par Stripe et le cadeau Gelato. */
@@ -372,7 +374,7 @@ export async function getUserSubscriptionDetails(options?: {
         .from("stripe_subscriptions")
         .select("*")
         .eq("user_id", userId)
-        .eq("status", "active")
+        .in("status", [...ENTITLED_SUBSCRIPTION_STATUSES])
         .order("updated_at", { ascending: false })
         .limit(1)
         .maybeSingle(),
@@ -402,6 +404,7 @@ export async function getUserSubscriptionDetails(options?: {
       subscription,
       planKey,
       planName: subscriptionPlanLabel(planKey !== "free" ? planKey : cycle?.plan_key),
+      isTrialing: subscription.status === "trialing",
     };
 
     subscriptionDetailsCache = {

@@ -1,5 +1,6 @@
 import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { ENTITLED_SUBSCRIPTION_STATUSES } from "./subscription-status.ts";
 
 export async function listOtherActiveSubscriptions(
   supabase: SupabaseClient,
@@ -10,7 +11,7 @@ export async function listOtherActiveSubscriptions(
     .from("stripe_subscriptions")
     .select("stripe_subscription_id")
     .eq("user_id", userId)
-    .eq("status", "active")
+    .in("status", [...ENTITLED_SUBSCRIPTION_STATUSES])
     .neq("stripe_subscription_id", exceptSubscriptionId);
 
   if (error) {
@@ -31,10 +32,14 @@ async function listOtherActiveStripeSubscriptions(
   try {
     const subs = await stripe.subscriptions.list({
       customer: stripeCustomerId,
-      status: "active",
+      status: "all",
       limit: 20,
     });
-    return subs.data
+    const entitled = subs.data.filter(
+      (sub) =>
+        sub.status === "active" || sub.status === "trialing",
+    );
+    return entitled
       .map((sub) => sub.id)
       .filter((id) => id !== exceptSubscriptionId);
   } catch (err) {

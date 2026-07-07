@@ -1,4 +1,5 @@
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { ENTITLED_SUBSCRIPTION_STATUSES } from "./subscription-status.ts";
 
 export type UserPlan = "free" | "image_9" | "pro_59" | "premium_129";
 
@@ -50,7 +51,7 @@ export async function resolveUserPlan(
       "stripe_subscription_id, status, cancel_at_period_end, current_period_end",
     )
     .eq("user_id", userId)
-    .eq("status", "active")
+    .in("status", [...ENTITLED_SUBSCRIPTION_STATUSES])
     .maybeSingle();
 
   if (!sub) return "free";

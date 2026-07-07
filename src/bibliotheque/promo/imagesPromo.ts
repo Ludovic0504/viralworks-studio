@@ -1,5 +1,11 @@
 export const PROMO_IMAGES_BANNER_HEIGHT_VAR = "--promo-images-banner-height";
 
+export const IMAGE_STUDIO_TRIAL_DAYS = 7;
+export const IMAGE_STUDIO_TRIAL_QUOTA = 30;
+
+export const IMAGE_STUDIO_TRIAL_OFFER =
+  "7 jours gratuits — 30 images offertes, puis 9€/mois";
+
 export const PROMO_ACQUISITION_IMAGES = [
   {
     src: "/promo/images-promo/coach.png",
@@ -16,4 +22,4 @@ export const PROMO_ACQUISITION_IMAGES = [
 ] as const;
 
 export const PROMO_NANOBANANA_OFFER =
-  "Accède à NanoBanana Pro et GPT 2.0 pour seulement 9€";
+  "Essaie Image Studio (NanoBanana Pro + GPT 2.0) — 7 jours gratuits";

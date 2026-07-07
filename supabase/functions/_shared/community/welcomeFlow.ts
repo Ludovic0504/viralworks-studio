@@ -20,6 +20,15 @@ export type WelcomeFlowRow = {
   completed_at: string | null;
 };
 
+export type WelcomeStep1Result = {
+  ok: boolean;
+  skipped?: boolean;
+  reason?: string;
+  conversationId?: string;
+  messageId?: string;
+  supportUserId?: string;
+};
+
 export function createAdminClient(): SupabaseClient {
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const serviceRoleKey =
@@ -324,17 +333,24 @@ async function hasPriorManualSupportConversation(
 export async function sendWelcomeOnboardingStep1(
   adminClient: SupabaseClient,
   newUserId: string,
-): Promise<{ ok: boolean; skipped?: boolean; reason?: string }> {
+): Promise<WelcomeStep1Result> {
   const userId = String(newUserId || "").trim();
   if (!userId) return { ok: false, reason: "user_id manquant" };
 
   const { data: existingFlow } = await adminClient
     .from("community_welcome_flow")
-    .select("user_id")
+    .select("conversation_id, step1_message_id")
     .eq("user_id", userId)
     .maybeSingle();
-  if (existingFlow?.user_id) {
-    return { ok: true, skipped: true, reason: "already_sent" };
+  if (existingFlow?.conversation_id) {
+    return {
+      ok: true,
+      skipped: true,
+      reason: "already_sent",
+      conversationId: String(existingFlow.conversation_id || ""),
+      messageId: String(existingFlow.step1_message_id || ""),
+      supportUserId: (await getSupportUserId(adminClient)) || undefined,
+    };
   }
 
   const supportUserId = await getSupportUserId(adminClient);
@@ -385,7 +401,14 @@ export async function sendWelcomeOnboardingStep1(
       },
       { onConflict: "user_id" },
     );
-    return { ok: true, skipped: true, reason: "step1_exists" };
+    return {
+      ok: true,
+      skipped: true,
+      reason: "step1_exists",
+      conversationId,
+      messageId: String(existingStep1.id),
+      supportUserId,
+    };
   }
 
   let step1MessageId: string;
@@ -422,7 +445,12 @@ export async function sendWelcomeOnboardingStep1(
     return { ok: false, reason: flowErr.message };
   }
 
-  return { ok: true };
+  return {
+    ok: true,
+    conversationId,
+    messageId: step1MessageId,
+    supportUserId,
+  };
 }
 
 export async function handleOnboardingQuickReply(

@@ -71,8 +71,8 @@ export const SUBSCRIPTION_PLAN_OPTIONS: SubscriptionPlanOption[] = [
   {
     id: "image_9",
     name: "ViralWorks Image",
-    priceLabel: "9 €/mois",
-    summary: "150 images / mois",
+    priceLabel: "Essai 7 jours gratuits",
+    summary: "7 jours gratuits — 30 images, puis 150 / mois",
   },
   {
     id: "pro_59",

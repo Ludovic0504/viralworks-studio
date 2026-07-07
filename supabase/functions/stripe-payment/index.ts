@@ -5,6 +5,7 @@ import {
   getStripeCheckoutMode,
   getStripeSecretKeyForCheckout,
 } from "../_shared/stripe-keys.ts";
+import { IMAGE_STUDIO_TRIAL_DAYS } from "../_shared/image-studio-quota.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -449,6 +450,28 @@ serve(async (req) => {
       const baseUrl = resolveCheckoutReturnOrigin(req, origin);
       console.log("🌍 URL de retour Checkout résolue", { baseUrl, userId: user.id });
 
+      let imageStudioTrialEligible =
+        type === "subscription" && planKey === "image_9";
+      if (imageStudioTrialEligible) {
+        const profileClient = supabaseAdminClient ?? supabaseClient;
+        const { data: trialProfile, error: trialProfileError } = await profileClient
+          .from("profiles")
+          .select("image_studio_trial_used")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        if (trialProfileError) {
+          console.warn(
+            "Lecture image_studio_trial_used impossible — essai conservé par défaut",
+            { userId: user.id, error: trialProfileError.message },
+          );
+        } else if (trialProfile?.image_studio_trial_used === true) {
+          imageStudioTrialEligible = false;
+          console.log("Essai Image Studio déjà utilisé — checkout sans période d'essai", {
+            userId: user.id,
+          });
+        }
+      }
+
       // Créer la session de checkout
       console.log("🧾 Création session Checkout Stripe", {
         userId: user.id,
@@ -457,6 +480,9 @@ serve(async (req) => {
         credits,
         type,
         baseUrl,
+        imageStudioTrialEligible,
+        trialPeriodDays:
+          imageStudioTrialEligible ? IMAGE_STUDIO_TRIAL_DAYS : undefined,
       });
       const session = await stripe.checkout.sessions.create({
         customer: customerId,
@@ -473,6 +499,9 @@ serve(async (req) => {
           stripePricePro59,
         ),
         mode: type === "subscription" ? "subscription" : "payment",
+        ...(type === "subscription" && planKey === "image_9" && imageStudioTrialEligible
+          ? { subscription_data: { trial_period_days: IMAGE_STUDIO_TRIAL_DAYS } }
+          : {}),
         success_url: `${baseUrl}/?payment=success`,
         cancel_url: `${baseUrl}/?payment=cancelled`,
         ...(welcomeGiftMeta && {
@@ -488,6 +517,10 @@ serve(async (req) => {
           subscription_plan: planKey,
           welcome_gift: welcomeGiftMeta ? "1" : "",
           welcome_gift_choice: "",
+          trial:
+            type === "subscription" && planKey === "image_9" && imageStudioTrialEligible
+              ? "1"
+              : "",
         },
       });
       console.log("✅ Session Checkout Stripe créée", {

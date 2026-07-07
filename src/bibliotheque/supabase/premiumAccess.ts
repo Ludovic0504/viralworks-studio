@@ -1,5 +1,6 @@
 import { getUserProfile } from "./profil";
 import { getUserSubscriptionDetails } from "./stripe";
+import { isEntitledSubscriptionStatus } from "./subscriptionStatus";
 import { resolveUserPlanFromSubscription } from "./subscriptionCycle";
 
 export type UserPlan = "free" | "image_9" | "pro_59" | "premium_129";
@@ -41,6 +42,7 @@ export type PremiumAccessData = {
   isTester: boolean;
   hasAccess: boolean;
   plan: UserPlan;
+  isTrialing: boolean;
 };
 
 const FREE_ACCESS: PremiumAccessData = {
@@ -48,6 +50,7 @@ const FREE_ACCESS: PremiumAccessData = {
   isTester: false,
   hasAccess: false,
   plan: "free",
+  isTrialing: false,
 };
 
 let premiumCache: { userId: string; data: PremiumAccessData } | null = null;
@@ -91,13 +94,17 @@ export async function fetchPremiumAccess(userId?: string | null): Promise<Premiu
     getUserProfile(userId),
   ]);
 
-  const isSubscribed = Boolean(details?.subscription);
+  const isSubscribed = Boolean(
+    details?.subscription &&
+      isEntitledSubscriptionStatus(details.subscription.status),
+  );
   const isTester = profile?.is_tester === true;
   const planFromDetails = details?.planKey && details.planKey !== "free"
     ? normalizeSubscriptionPlan(details.planKey)
     : null;
   const plan = planFromDetails ?? await resolveUserPlanFromSubscription(isSubscribed, isTester);
   const hasAccess = isSubscribed || isTester;
+  const isTrialing = details?.isTrialing === true;
 
-  return { isSubscribed, isTester, hasAccess, plan };
+  return { isSubscribed, isTester, hasAccess, plan, isTrialing };
 }

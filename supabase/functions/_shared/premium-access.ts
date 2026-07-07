@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { ENTITLED_SUBSCRIPTION_STATUSES } from "./subscription-status.ts";
 
 type SupabaseClient = ReturnType<typeof createClient>;
 
@@ -11,7 +12,7 @@ async function userHasActiveSubscription(
     .from("stripe_subscriptions")
     .select("status, cancel_at_period_end, current_period_end")
     .eq("user_id", userId)
-    .eq("status", "active")
+    .in("status", [...ENTITLED_SUBSCRIPTION_STATUSES])
     .maybeSingle();
 
   if (error || !data) return false;

@@ -80,7 +80,7 @@ export default function PromoImagesBanner() {
             onClick={handleCta}
             className="shrink-0 rounded-md bg-[#1a1400] px-2.5 py-1.5 text-[10px] font-bold text-[#f5d84e] transition-opacity hover:opacity-90 sm:px-3 sm:text-xs"
           >
-            {session ? "Voir" : "9€"}
+            {session ? "Essayer" : "Essai gratuit"}
           </button>
         </div>
       </div>

@@ -19,9 +19,8 @@ import { usePremiumAccess } from "@/hooks/usePremiumAccess";
 import { hasImageStudioPlan } from "@/bibliotheque/supabase/premiumAccess";
 import {
   fetchImageStudioQuota,
-  IMAGE_STUDIO_MONTHLY_LIMIT,
 } from "@/bibliotheque/supabase/imageStudioQuota";
-import { getImageStudioMonthlyLimit } from "@/bibliotheque/supabase/planQuotas";
+import { IMAGE_STUDIO_MONTHLY_QUOTA_DEFAULT, getImageStudioMonthlyLimit } from "@/bibliotheque/supabase/planQuotas";
 import {
   dismissImageStudioAlert,
   shouldShowImageStudioLowQuotaWarning,
@@ -510,8 +509,10 @@ export default function ImageStudio() {
   const [generationLoadingHint, setGenerationLoadingHint] = useState("");
   const [error, setError] = useState(null);
   const [quotaCount, setQuotaCount] = useState(0);
-  const [quotaLimit, setQuotaLimit] = useState(IMAGE_STUDIO_MONTHLY_LIMIT);
+  const [quotaLimit, setQuotaLimit] = useState(IMAGE_STUDIO_MONTHLY_QUOTA_DEFAULT);
   const [quotaResetAt, setQuotaResetAt] = useState(null);
+  const [quotaMode, setQuotaMode] = useState("monthly");
+  const [quotaCycleEndsAt, setQuotaCycleEndsAt] = useState(null);
   const [quotaLoading, setQuotaLoading] = useState(true);
   const [quotaAlert, setQuotaAlert] = useState(null);
   const [subscribeModalOpen, setSubscribeModalOpen] = useState(false);
@@ -749,6 +750,8 @@ export default function ImageStudio() {
       setQuotaCount(quota.count);
       setQuotaLimit(quota.limit);
       setQuotaResetAt(quota.resetAt);
+      setQuotaMode(quota.mode);
+      setQuotaCycleEndsAt(quota.cycleEndsAt);
     } catch {
       setQuotaCount(0);
     } finally {
@@ -811,29 +814,32 @@ export default function ImageStudio() {
     });
   }, [authLoading, session?.user?.id, loadHistory]);
 
+  const quotaAlertCycleKey =
+    quotaMode === "trial" ? quotaCycleEndsAt : quotaResetAt;
+
   useEffect(() => {
     if (!hasImagePlan || quotaLoading) return;
 
     if (quotaCount >= quotaLimit) {
-      if (!wasImageStudioAlertDismissed("exhausted", quotaResetAt)) {
+      if (!wasImageStudioAlertDismissed("exhausted", quotaAlertCycleKey)) {
         setQuotaAlert("exhausted");
       }
       return;
     }
 
     if (shouldShowImageStudioLowQuotaWarning(quotaCount, quotaLimit)) {
-      if (!wasImageStudioAlertDismissed("warning", quotaResetAt)) {
+      if (!wasImageStudioAlertDismissed("warning", quotaAlertCycleKey)) {
         setQuotaAlert("warning");
       }
     }
-  }, [hasImagePlan, quotaCount, quotaLimit, quotaLoading, quotaResetAt]);
+  }, [hasImagePlan, quotaCount, quotaLimit, quotaLoading, quotaAlertCycleKey]);
 
   const closeQuotaAlert = useCallback(() => {
     if (quotaAlert) {
-      dismissImageStudioAlert(quotaAlert, quotaResetAt);
+      dismissImageStudioAlert(quotaAlert, quotaAlertCycleKey);
     }
     setQuotaAlert(null);
-  }, [quotaAlert, quotaResetAt]);
+  }, [quotaAlert, quotaAlertCycleKey]);
 
   const resizePromptTextarea = useCallback(() => {
     const el = promptInputRef.current;
@@ -1253,11 +1259,18 @@ export default function ImageStudio() {
             count={quotaCount}
             limit={quotaLimit}
             loading={quotaLoading}
+            mode={quotaMode}
           />
         ) : null}
       </div>
 
-      {hasImagePlan ? <BandeauRenouvellementQuotaImageStudio limit={quotaLimit} /> : null}
+      {hasImagePlan ? (
+        <BandeauRenouvellementQuotaImageStudio
+          limit={quotaLimit}
+          mode={quotaMode}
+          cycleEndsAt={quotaCycleEndsAt}
+        />
+      ) : null}
 
       <div className="image-studio-main flex min-h-0 flex-1 flex-col">
         <div className="image-studio-workspace flex min-h-0 flex-1 flex-col gap-2 px-4 sm:px-6 lg:px-8">
@@ -1444,6 +1457,7 @@ export default function ImageStudio() {
         kind={quotaAlert ?? "warning"}
         count={quotaCount}
         limit={quotaLimit}
+        mode={quotaMode}
         onClose={closeQuotaAlert}
       />
 

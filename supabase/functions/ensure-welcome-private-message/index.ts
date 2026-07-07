@@ -36,7 +36,14 @@ serve(async (req) => {
       return jsonResponse({ ok: false, error: result.reason }, 500);
     }
 
-    return jsonResponse({ ok: true, skipped: result.skipped === true, reason: result.reason });
+    return jsonResponse({
+      ok: true,
+      skipped: result.skipped === true,
+      reason: result.reason,
+      conversationId: result.conversationId ?? null,
+      messageId: result.messageId ?? null,
+      supportUserId: result.supportUserId ?? null,
+    });
   } catch (error) {
     if (error instanceof Response) return error;
     const message = error instanceof Error ? error.message : "Erreur serveur.";

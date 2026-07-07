@@ -5,7 +5,7 @@ import { useAuth } from "@/contexte/FournisseurAuth";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { useBoutiqueModal } from "@/contexte/ContexteModalBoutique";
 import { usePremiumAccess } from "@/hooks/usePremiumAccess";
-import { PROMO_ACQUISITION_IMAGES } from "@/bibliotheque/promo/imagesPromo";
+import { PROMO_ACQUISITION_IMAGES, IMAGE_STUDIO_TRIAL_OFFER } from "@/bibliotheque/promo/imagesPromo";
 import {
   hasSeenPromoVariant,
   isPromoModalSuppressed,
@@ -30,16 +30,14 @@ function markVariantSeen(variant: Variant): void {
 const CONTENT = {
   acquisition: {
     title: "Génère des visuels produits avec l'IA",
-    subtitle:
-      "Accède à Nanobanana Pro inclus dans ViralWorks Images — à partir de 9€/mois",
-    cta: "Créer mon compte gratuitement",
+    subtitle: IMAGE_STUDIO_TRIAL_OFFER,
+    cta: "Créer mon compte et démarrer l'essai",
     dismiss: "Explorer Image Studio d'abord",
   },
   conversion: {
-    title: "ViralWorks Images est disponible",
-    subtitle:
-      "Génère des visuels produits illimités avec Nanobanana Pro — 9€/mois",
-    cta: "Découvrir l'offre",
+    title: "Essaie Image Studio gratuitement",
+    subtitle: IMAGE_STUDIO_TRIAL_OFFER,
+    cta: "Démarrer mon essai gratuit",
     dismiss: "Explorer Image Studio d'abord",
   },
 } as const;

@@ -76,6 +76,32 @@ export type PrivateUnreadStatus = {
   preview: UnreadPrivatePreview | null;
 };
 
+export type EnsureWelcomePrivateMessageResult = {
+  ok: boolean;
+  skipped?: boolean;
+  reason?: string;
+  preview: UnreadPrivatePreview | null;
+};
+
+function buildWelcomePreviewFromEnsureResult(data: unknown): UnreadPrivatePreview | null {
+  if (!data || typeof data !== "object") return null;
+  const row = data as Record<string, unknown>;
+  const messageId = String(row.messageId || "").trim();
+  const conversationId = String(row.conversationId || "").trim();
+  const supportUserId = String(row.supportUserId || "").trim();
+  if (!messageId || !conversationId) return null;
+
+  return {
+    messageId,
+    conversationId,
+    senderUserId: supportUserId,
+    senderName: "Support",
+    isSupport: true,
+    contentPreview: "Salut 👋",
+    createdAt: new Date().toISOString(),
+  };
+}
+
 export const COMMUNITY_LOCALES: { code: CommunityLocale; label: string }[] = [
   { code: "fr", label: "Français" },
   { code: "en", label: "English" },
@@ -861,14 +887,24 @@ export async function setConversationNotificationsMuted(
 }
 
 /** Déclenche le message de bienvenue support si pas encore envoyé (idempotent, côté client après connexion). */
-export async function ensureWelcomePrivateMessage(): Promise<void> {
+export async function ensureWelcomePrivateMessage(): Promise<EnsureWelcomePrivateMessageResult> {
   const auth = await ensureAuthSession();
-  const { error } = await auth.supabase.functions.invoke("ensure-welcome-private-message", {
+  const { data, error } = await auth.supabase.functions.invoke("ensure-welcome-private-message", {
     body: { accessToken: auth.accessToken },
   });
   if (error) {
     console.warn("[ensureWelcomePrivateMessage]", error.message);
+    return { ok: false, reason: error.message, preview: null };
   }
+
+  const payload = data && typeof data === "object" ? (data as Record<string, unknown>) : null;
+  const ok = payload?.ok === true;
+  return {
+    ok,
+    skipped: payload?.skipped === true,
+    reason: typeof payload?.reason === "string" ? payload.reason : undefined,
+    preview: ok ? buildWelcomePreviewFromEnsureResult(payload) : null,
+  };
 }
 
 /** Met à jour last_read_at pour la conversation active (marquer comme lu jusqu’à maintenant). */

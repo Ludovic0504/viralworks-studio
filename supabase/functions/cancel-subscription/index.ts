@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getStripeSecretKeyForCheckout } from "../_shared/stripe-keys.ts";
+import { ENTITLED_SUBSCRIPTION_STATUSES } from "../_shared/subscription-status.ts";
 import { subscriptionPeriodToIso } from "../_shared/subscription-period.ts";
 
 const corsHeaders = {
@@ -69,8 +70,10 @@ serve(async (req) => {
       .from("stripe_subscriptions")
       .select("*")
       .eq("user_id", user.id)
-      .eq("status", "active")
-      .single();
+      .in("status", [...ENTITLED_SUBSCRIPTION_STATUSES])
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
     if (subError || !subscriptionData) {
       return new Response(

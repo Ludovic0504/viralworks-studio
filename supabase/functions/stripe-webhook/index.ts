@@ -385,6 +385,46 @@ serve(async (req) => {
           console.error("⚠️ Impossible de mettre à jour subscription_credit_cycles:", cycleError);
         }
 
+        if (
+          storedPlanKey === "image_9" &&
+          subscription.status === "trialing"
+        ) {
+          const trialEndIso = subscription.trial_end
+            ? new Date(subscription.trial_end * 1000).toISOString()
+            : null;
+
+          if (trialEndIso) {
+            const { data: trialProfile } = await supabaseClient
+              .from("profiles")
+              .select("image_studio_quota_mode")
+              .eq("user_id", userId)
+              .maybeSingle();
+
+            if (trialProfile?.image_studio_quota_mode !== "trial") {
+              const { error: trialStartError } = await supabaseClient.rpc(
+                "start_image_studio_trial",
+                {
+                  p_user_id: userId,
+                  p_cycle_ends_at: trialEndIso,
+                },
+              );
+
+              if (trialStartError) {
+                console.error("❌ start_image_studio_trial:", trialStartError);
+              } else {
+                console.log("✅ Essai Image Studio initialisé", {
+                  userId,
+                  trialEndIso,
+                });
+              }
+            } else {
+              console.log("ℹ️ Essai Image Studio déjà initialisé (idempotent)", {
+                userId,
+              });
+            }
+          }
+        }
+
         try {
           await tryScheduleWelcomeGift(supabaseClient, session, userId);
         } catch (giftErr) {
@@ -565,6 +605,16 @@ serve(async (req) => {
         .eq("stripe_subscription_id", subscriptionId)
         .maybeSingle();
 
+      if (cycleData?.plan_key === "image_9" && (invoice.amount_paid || 0) === 0) {
+        console.log("ℹ️ Facture $0 image_9 ignorée (essai ou création)", {
+          invoiceId: invoice.id,
+          subscriptionId,
+        });
+        return new Response(JSON.stringify({ received: true, skipped: "trial_invoice" }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
       const isYearlyPlan = cycleData?.plan_key === "yearly";
       const monthlyCredits = isYearlyPlan
         ? Number(cycleData?.monthly_credit_amount || 30)
@@ -687,6 +737,62 @@ serve(async (req) => {
         console.log("📧 Notification abonnement envoyée (invoice.payment_succeeded)");
       } catch (mailErr) {
         console.error("📧 Erreur envoi notification abonnement (renewal):", mailErr);
+      }
+    }
+
+    if (event.type === "customer.subscription.updated") {
+      console.log("📦 Événement customer.subscription.updated reçu");
+      const subscription = event.data.object as Stripe.Subscription;
+      const previousAttributes = event.data
+        .previous_attributes as Partial<Stripe.Subscription> | undefined;
+      const previousStatus = previousAttributes?.status;
+
+      const periodIso = subscriptionPeriodToIso(subscription);
+      if (periodIso) {
+        const { error: subscriptionUpdateError } = await supabaseClient
+          .from("stripe_subscriptions")
+          .update({
+            status: subscription.status,
+            current_period_start: periodIso.current_period_start,
+            current_period_end: periodIso.current_period_end,
+            cancel_at_period_end: subscription.cancel_at_period_end,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("stripe_subscription_id", subscription.id);
+
+        if (subscriptionUpdateError) {
+          console.error("❌ Erreur sync subscription.updated:", subscriptionUpdateError);
+        }
+      }
+
+      if (previousStatus === "trialing" && subscription.status === "active") {
+        const { data: subRow } = await supabaseClient
+          .from("stripe_subscriptions")
+          .select("user_id")
+          .eq("stripe_subscription_id", subscription.id)
+          .maybeSingle();
+
+        const { data: cycleRow } = await supabaseClient
+          .from("subscription_credit_cycles")
+          .select("plan_key")
+          .eq("stripe_subscription_id", subscription.id)
+          .maybeSingle();
+
+        if (subRow?.user_id && cycleRow?.plan_key === "image_9") {
+          const { error: convertError } = await supabaseClient.rpc(
+            "convert_image_studio_to_monthly_quota",
+            { p_user_id: subRow.user_id },
+          );
+
+          if (convertError) {
+            console.error("❌ convert_image_studio_to_monthly_quota:", convertError);
+          } else {
+            console.log("✅ Essai Image Studio converti en quota mensuel", {
+              userId: subRow.user_id,
+              subscriptionId: subscription.id,
+            });
+          }
+        }
       }
     }
 

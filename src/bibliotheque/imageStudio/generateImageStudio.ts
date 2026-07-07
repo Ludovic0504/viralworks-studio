@@ -57,7 +57,9 @@ function pickUserFacingMessage(
 ): string {
   const code = data?.code ?? "";
 
-  if (code === "IMAGE_STUDIO_QUOTA_EXCEEDED") return QUOTA_MESSAGE;
+  if (code === "IMAGE_STUDIO_QUOTA_EXCEEDED") {
+    return data?.userMessage || QUOTA_MESSAGE;
+  }
   if (code === "IMAGE_STUDIO_SUBSCRIPTION_REQUIRED") {
     return data?.userMessage || "Un abonnement ViralWorks Image est requis pour générer des images.";
   }
@@ -228,7 +230,7 @@ export async function generateImageStudio(
   }
 
   if (body?.code === "IMAGE_STUDIO_QUOTA_EXCEEDED") {
-    throw new Error(QUOTA_MESSAGE);
+    throw new Error(body.userMessage || QUOTA_MESSAGE);
   }
 
   if (body?.code === "IMAGE_STUDIO_SUBSCRIPTION_REQUIRED") {

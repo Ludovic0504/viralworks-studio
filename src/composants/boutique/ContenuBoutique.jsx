@@ -61,9 +61,9 @@ const SUBSCRIPTION_PLANS = [
     period: "mois",
     popular: false,
     features: [
-      "Image Studio — jusqu'à 150 générations / mois",
-      "Génération d'images par prompt",
-      "Accès aux outils image ViralWorks",
+      "7 jours gratuits — 30 images offertes",
+      "Puis 150 générations / mois",
+      "NanoBanana Pro + GPT 2.0",
     ],
     savings: null,
   },
@@ -450,6 +450,7 @@ export default function ContenuBoutique({
               <Crown className={`text-violet-400 ${m.statusBadgeIcon}`} />
               <span className={m.statusBadgeText}>
                 {subscriptionDetails.planName}
+                {subscriptionDetails.isTrialing ? " — essai gratuit" : ""}
                 {subscriptionDetails.subscription.cancel_at_period_end ? " — fin prochaine" : ""}
               </span>
             </div>
@@ -621,7 +622,11 @@ export default function ContenuBoutique({
 
             const currentPlanKey = subscriptionDetails?.planKey ?? null;
             const isCurrentPlan = isSameSubscriptionPlan(currentPlanKey, plan.id);
-            const subscribeLabel = isCurrentPlan ? "Déjà abonné" : "S'abonner";
+            const subscribeLabel = isCurrentPlan
+              ? "Déjà abonné"
+              : plan.id === "image_9"
+                ? "Démarrer l'essai gratuit"
+                : "S'abonner";
             const subscribeDisabled = paymentLoading || isCurrentPlan || subscriptionLoading;
 
             return (
@@ -663,8 +668,9 @@ export default function ContenuBoutique({
                     </>
                   ) : (
                     <>
-                      9,00 €
-                      <span className={m.subPriceNote}>/ mois</span>
+                      0 €
+                      <span className={m.subPriceNote}>pendant 7 jours</span>
+                      <span className={m.subPriceThen}>puis 9 €/mois</span>
                     </>
                   )}
                 </div>

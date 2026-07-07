@@ -41,12 +41,17 @@ import {
   enrichCommunityMessage,
   buildConversationFromUnreadPreview,
   resolveQuickReplyOptions,
-  resolveOnboardingStep,
-  buildOptimisticOnboardingFollowUp,
   mergePrivateMessagesWithServer,
-  isOptimisticOnboardingMessageId,
+  onboardingMessageRenderKey,
   hydratePrivateMessagesFromUnreadPreview,
 } from "@/bibliotheque/community/onboarding";
+import {
+  applyOnboardingQuickReplyOptimistic,
+  resolvePersistedOnboardingMessageId,
+  resolveSupportUserId,
+  rollbackOnboardingQuickReplySelection,
+  syncOnboardingFollowUpAfterReply,
+} from "@/bibliotheque/community/onboardingQuickReply";
 import {
   getRememberedOnboardingPrivateMessages,
   rememberOnboardingPrivateMessages,
@@ -352,7 +357,10 @@ function MessageItem({
           options={quickReplyOptions}
           disabled={quickRepliesDisabled}
           selectedLabel={msg.quickReplySelected || null}
-          onSelect={(label) => onQuickReply?.(label, msg.id)}
+          onSelect={(label) => {
+            const accepted = onQuickReply?.(label, msg.id, msg.onboardingStep ?? null);
+            return accepted !== false;
+          }}
         />
       ) : null}
     </div>
@@ -492,6 +500,7 @@ export default function CommunauteVWS() {
     latestUnreadPrivatePreviewRaw,
     prefetchPrivateMessagesForConversation,
     setPrivateMessagesViewActive,
+    setActivePrivateConversationId,
     setCommunityPageActive,
     privateInboxMeta,
     patchPrivateInboxMeta,
@@ -530,7 +539,8 @@ export default function CommunauteVWS() {
   const [localeMenuOpen, setLocaleMenuOpen] = useState(false);
   const [preferredLocale, setPreferredLocale] = useState("fr");
   const [messageTranslations, setMessageTranslations] = useState({});
-  const [quickReplyBusyMessageId, setQuickReplyBusyMessageId] = useState("");
+  const [quickReplyInFlightStep, setQuickReplyInFlightStep] = useState(null);
+  const quickReplyInFlightRef = useRef(new Set());
 
   const publicEndRef = useRef(null);
   const userSearchRef = useRef(null);
@@ -539,6 +549,8 @@ export default function CommunauteVWS() {
   const publicFileRef = useRef(null);
   const privateFileRef = useRef(null);
   const activeConversationIdRef = useRef(activeConversationId);
+  const activeConversationSnapshotRef = useRef(null);
+  const privateMessagesRef = useRef([]);
   const translationRequestRef = useRef(0);
 
   useEffect(() => {
@@ -604,8 +616,20 @@ export default function CommunauteVWS() {
   }, [tab, setPrivateMessagesViewActive]);
 
   useEffect(() => {
+    if (tab === "private") {
+      setActivePrivateConversationId(activeConversationId);
+      return;
+    }
+    setActivePrivateConversationId("");
+  }, [tab, activeConversationId, setActivePrivateConversationId]);
+
+  useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
   }, [activeConversationId]);
+
+  useEffect(() => {
+    privateMessagesRef.current = privateMessages;
+  }, [privateMessages]);
 
   useLayoutEffect(() => {
     if (isSupportViewer) return;
@@ -695,22 +719,39 @@ export default function CommunauteVWS() {
 
   const activeConversation = useMemo(() => {
     if (!activeConversationId) return null;
+
+    const rememberSnapshot = (conversation) => {
+      if (conversation?.id === activeConversationId) {
+        activeConversationSnapshotRef.current = conversation;
+      }
+      return conversation;
+    };
+
     const fromList = privateConversations.find((c) => c.id === activeConversationId);
-    if (fromList) return fromList;
+    if (fromList) return rememberSnapshot(fromList);
 
     const remembered = getRememberedSupportConversation();
-    if (remembered?.id === activeConversationId) return remembered;
+    if (remembered?.id === activeConversationId) return rememberSnapshot(remembered);
 
-    if (latestUnreadPrivatePreviewRaw?.conversationId === activeConversationId) {
-      return buildConversationFromUnreadPreview(latestUnreadPrivatePreviewRaw);
+    if (
+      tab === "private" &&
+      activeConversationSnapshotRef.current?.id === activeConversationId
+    ) {
+      return activeConversationSnapshotRef.current;
     }
 
-    return null;
+    if (latestUnreadPrivatePreviewRaw?.conversationId === activeConversationId) {
+      return rememberSnapshot(buildConversationFromUnreadPreview(latestUnreadPrivatePreviewRaw));
+    }
+
+    return activeConversationSnapshotRef.current?.id === activeConversationId
+      ? activeConversationSnapshotRef.current
+      : null;
   }, [
     privateConversations,
     activeConversationId,
     latestUnreadPrivatePreviewRaw?.conversationId,
-    latestUnreadPrivatePreviewRaw?.messageId,
+    tab,
   ]);
 
   const activeConversations = useMemo(() => {
@@ -721,8 +762,15 @@ export default function CommunauteVWS() {
     }
 
     const remembered = getRememberedSupportConversation();
+    const previewConversationId = String(latestUnreadPrivatePreviewRaw?.conversationId || "");
+    const suppressPreviewStub =
+      tab === "private" &&
+      activeConversationId &&
+      previewConversationId === activeConversationId;
     const previewStub =
-      latestUnreadPrivatePreviewRaw?.conversationId && latestUnreadPrivatePreviewRaw?.isSupport
+      !suppressPreviewStub &&
+      previewConversationId &&
+      latestUnreadPrivatePreviewRaw?.isSupport
         ? {
             ...buildConversationFromUnreadPreview(latestUnreadPrivatePreviewRaw),
             hasIncomingFromSupport: true,
@@ -744,14 +792,18 @@ export default function CommunauteVWS() {
     isSupportViewer,
     myUserId,
     activeConversationId,
+    tab,
     latestUnreadPrivatePreviewRaw?.conversationId,
-    latestUnreadPrivatePreviewRaw?.messageId,
+    latestUnreadPrivatePreviewRaw?.isSupport,
   ]);
 
-  const conversationsForSidebar = useMemo(
-    () => mergeInboxMetaIntoConversations(activeConversations, privateInboxMeta, muteOverrides),
-    [activeConversations, privateInboxMeta, muteOverrides],
-  );
+  const conversationsForSidebar = useMemo(() => {
+    const merged = mergeInboxMetaIntoConversations(activeConversations, privateInboxMeta, muteOverrides);
+    if (!activeConversationId || tab !== "private") return merged;
+    return merged.map((conversation) =>
+      conversation.id === activeConversationId ? { ...conversation, unreadCount: 0 } : conversation,
+    );
+  }, [activeConversations, privateInboxMeta, muteOverrides, activeConversationId, tab]);
 
   useEffect(() => {
     if (!privateInboxMeta.length) return;
@@ -781,15 +833,15 @@ export default function CommunauteVWS() {
   const markConversationAsViewed = async (conversationId) => {
     const id = String(conversationId || "").trim();
     if (!id) return;
+    patchPrivateInboxMeta(id, { unreadCount: 0 });
+    setPrivateConversations((prev) =>
+      prev.map((conversation) =>
+        conversation.id === id ? { ...conversation, unreadCount: 0 } : conversation,
+      ),
+    );
     try {
       await markConversationRead(id);
-      patchPrivateInboxMeta(id, { unreadCount: 0 });
       await refreshUnreadPrivate();
-      setPrivateConversations((prev) =>
-        prev.map((conversation) =>
-          conversation.id === id ? { ...conversation, unreadCount: 0 } : conversation,
-        ),
-      );
     } catch {
       /* non-bloquant */
     }
@@ -819,14 +871,17 @@ export default function CommunauteVWS() {
           latestUnreadPrivatePreviewRaw?.conversationId && latestUnreadPrivatePreviewRaw?.isSupport
             ? buildConversationFromUnreadPreview(latestUnreadPrivatePreviewRaw)
             : null;
-        merged = mergeConversationLists(list, [remembered, previewStub].filter(Boolean));
+        merged = mergeConversationLists(merged, [remembered, previewStub].filter(Boolean));
       }
-      if (inboxMeta) {
-        merged = mergeInboxMetaIntoConversations(merged, inboxMeta, muteOverrides);
-      }
-      const support = merged.find((c) => c.isSupport);
-      if (support && !isSupportViewer) rememberSupportConversation(support);
-      setPrivateConversations(merged);
+      setPrivateConversations((prev) => {
+        let next = mergeConversationLists(merged, prev);
+        if (inboxMeta) {
+          next = mergeInboxMetaIntoConversations(next, inboxMeta, muteOverrides);
+        }
+        const support = next.find((c) => c.isSupport);
+        if (support && !isSupportViewer) rememberSupportConversation(support);
+        return next;
+      });
       setError("");
       let resolvedId = "";
       setActiveConversationId((prev) => {
@@ -906,6 +961,9 @@ export default function CommunauteVWS() {
     }
     if (!accessToken) return [];
     try {
+      if (activeConversationIdRef.current === conversationId) {
+        patchPrivateInboxMeta(conversationId, { unreadCount: 0 });
+      }
       const messages = (await listPrivateMessages(conversationId, accessToken)).map(enrichCommunityMessage);
       if (activeConversationIdRef.current !== conversationId) return messages;
       setPrivateMessages((prev) => {
@@ -1165,6 +1223,11 @@ export default function CommunauteVWS() {
     void markConversationAsViewed(activeConversationId);
   }, [tab, activeConversationId, session?.user?.id]);
 
+  useEffect(() => {
+    if (tab !== "private" || !activeConversationId) return;
+    patchPrivateInboxMeta(activeConversationId, { unreadCount: 0 });
+  }, [tab, activeConversationId, privateMessages.length, patchPrivateInboxMeta]);
+
   const sendToPublic = async () => {
     const text = publicInput.trim();
     const file = publicFile;
@@ -1205,27 +1268,55 @@ export default function CommunauteVWS() {
     const delays = waitForFollowup ? [0, 250, 500, 900, 1400] : [0];
     let messages = [];
 
-    for (const delay of delays) {
-      if (delay > 0) {
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      }
-      const fetched = await listPrivateMessages(conversationId, accessToken);
-      setPrivateMessages((prev) => {
-        const merged = mergePrivateMessagesWithServer(prev, fetched);
-        rememberPrivateMessages(conversationId, merged);
-        rememberOnboardingPrivateMessages(conversationId, merged);
-        return merged;
-      });
-      messages = fetched;
-
       if (
         waitForFollowup &&
         expectOnboardingStep &&
-        fetched.some((message) => message.onboardingStep === expectOnboardingStep)
+        (expectOnboardingStep === 2 || expectOnboardingStep === 3)
       ) {
-        break;
+        const supportUserId = resolveSupportUserId(privateMessagesRef.current, activeConversation);
+        const answeredStep = expectOnboardingStep - 1;
+        const synced = await syncOnboardingFollowUpAfterReply(
+          () => listPrivateMessages(conversationId, accessToken),
+          () => privateMessagesRef.current,
+          expectOnboardingStep,
+          supportUserId
+            ? {
+                answeredStep: answeredStep === 1 ? 1 : 2,
+                conversationId,
+                supportUserId,
+              }
+            : null,
+          (merged) => {
+            privateMessagesRef.current = merged;
+            setPrivateMessages(merged);
+            rememberPrivateMessages(conversationId, merged);
+            rememberOnboardingPrivateMessages(conversationId, merged);
+          },
+        );
+        messages = synced;
+      } else {
+        for (const delay of delays) {
+          if (delay > 0) {
+            await new Promise((resolve) => setTimeout(resolve, delay));
+          }
+          const fetched = await listPrivateMessages(conversationId, accessToken);
+          setPrivateMessages((prev) => {
+            const merged = mergePrivateMessagesWithServer(prev, fetched);
+            rememberPrivateMessages(conversationId, merged);
+            rememberOnboardingPrivateMessages(conversationId, merged);
+            return merged;
+          });
+          messages = fetched;
+
+          if (
+            waitForFollowup &&
+            expectOnboardingStep &&
+            fetched.some((message) => message.onboardingStep === expectOnboardingStep)
+          ) {
+            break;
+          }
+        }
       }
-    }
 
     const latest = messages[messages.length - 1];
     if (latest) {
@@ -1248,6 +1339,10 @@ export default function CommunauteVWS() {
           }),
         ),
       );
+    }
+    if (activeConversationIdRef.current === conversationId) {
+      patchPrivateInboxMeta(conversationId, { unreadCount: 0 });
+      void markConversationRead(conversationId).catch(() => {});
     }
     void refreshConversations().catch(() => {});
     void refreshUnreadPrivate().catch(() => {});
@@ -1314,79 +1409,133 @@ export default function CommunauteVWS() {
     }
   };
 
-  const sendPrivateQuickReply = async (label, sourceMessageId) => {
-    if (!activeConversationId || !label?.trim() || quickReplyBusyMessageId) return;
+  const applyPrivateQuickReplyOptimistic = (label, sourceMessageId, sourceOnboardingStep = null) => {
+    const stepKey = Number(sourceOnboardingStep || 0) || null;
+    if (
+      !activeConversationId ||
+      !label?.trim() ||
+      (stepKey != null && quickReplyInFlightRef.current.has(stepKey))
+    ) {
+      return null;
+    }
+
+    const messages = privateMessagesRef.current;
+    const supportUserId = resolveSupportUserId(messages, activeConversation);
+    const optimistic = applyOnboardingQuickReplyOptimistic(messages, {
+      sourceMessageId,
+      sourceOnboardingStep,
+      label,
+      conversationId: activeConversationId,
+      supportUserId,
+    });
+    if (!optimistic) return null;
+
+    quickReplyInFlightRef.current.add(optimistic.answeredStep);
+    setQuickReplyInFlightStep(optimistic.answeredStep);
+    setError("");
+    setPrivateMessages(optimistic.messages);
+    privateMessagesRef.current = optimistic.messages;
+    rememberPrivateMessages(activeConversationId, optimistic.messages);
+    rememberOnboardingPrivateMessages(activeConversationId, optimistic.messages);
+
+    return {
+      text: label.trim(),
+      answeredStep: optimistic.answeredStep,
+      followUpStep: optimistic.followUpStep,
+      sourceMessageId: optimistic.sourceMessageId,
+    };
+  };
+
+  const clearQuickReplyInFlight = (answeredStep) => {
+    if (answeredStep != null) {
+      quickReplyInFlightRef.current.delete(answeredStep);
+    }
+    setQuickReplyInFlightStep((current) => (current === answeredStep ? null : current));
+  };
+
+  const sendPrivateQuickReply = async (label, sourceMessageId, answeredStep) => {
+    if (!activeConversationId || !label?.trim()) return;
 
     const text = label.trim();
-    const sourceMessage = privateMessages.find((message) => message.id === sourceMessageId);
-    const answeredStep = sourceMessage ? resolveOnboardingStep(sourceMessage) : null;
-    const supportUserId = activeConversation?.isSupport ? activeConversation.otherUserId : "";
+    const supportUserId = resolveSupportUserId(privateMessagesRef.current, activeConversation);
+    const followUpStep = answeredStep === 1 ? 2 : answeredStep === 2 ? 3 : null;
 
     try {
-      setQuickReplyBusyMessageId(sourceMessageId);
-      setError("");
-      setPrivateMessages((prev) => {
-        const next = prev.map((message) =>
-          message.id === sourceMessageId
-            ? { ...message, quickReplySelected: text }
-            : message,
-        );
-
-        let result = next;
-        if (
-          (answeredStep === 1 || answeredStep === 2) &&
-          supportUserId &&
-          !next.some(
-            (message) =>
-              message.onboardingStep === answeredStep + 1 &&
-              !isOptimisticOnboardingMessageId(message.id),
-          )
-        ) {
-          const followUp = buildOptimisticOnboardingFollowUp({
-            answeredStep,
-            conversationId: activeConversationId,
-            supportUserId,
-          });
-          if (!next.some((message) => message.onboardingStep === followUp.onboardingStep)) {
-            result = [...next, followUp];
-          }
-        }
-
-        const hydrated = result.map(enrichCommunityMessage);
-        rememberPrivateMessages(activeConversationId, hydrated);
-        rememberOnboardingPrivateMessages(activeConversationId, hydrated);
-        return hydrated;
-      });
+      const persistedMessageId = await resolvePersistedOnboardingMessageId(
+        () => listPrivateMessages(activeConversationId, accessToken),
+        sourceMessageId,
+        answeredStep,
+        () => privateMessagesRef.current,
+      );
 
       await submitOnboardingQuickReply({
         conversationId: activeConversationId,
-        messageId: sourceMessageId,
+        messageId: persistedMessageId,
         label: text,
       });
 
-      setQuickReplyBusyMessageId("");
-      void refreshPrivateAfterSend(activeConversationId, {
-        waitForFollowup: true,
-        expectOnboardingStep: answeredStep === 1 ? 2 : answeredStep === 2 ? 3 : null,
-      });
+      if (followUpStep) {
+        const synced = await syncOnboardingFollowUpAfterReply(
+          () => listPrivateMessages(activeConversationId, accessToken),
+          () => privateMessagesRef.current,
+          followUpStep,
+          supportUserId
+            ? {
+                answeredStep: answeredStep === 1 ? 1 : 2,
+                conversationId: activeConversationId,
+                supportUserId,
+              }
+            : null,
+          (merged) => {
+            privateMessagesRef.current = merged;
+            setPrivateMessages(merged);
+            rememberPrivateMessages(activeConversationId, merged);
+            rememberOnboardingPrivateMessages(activeConversationId, merged);
+          },
+        );
+        privateMessagesRef.current = synced;
+        setPrivateMessages(synced);
+        rememberPrivateMessages(activeConversationId, synced);
+        rememberOnboardingPrivateMessages(activeConversationId, synced);
+
+        const latest = synced[synced.length - 1];
+        if (latest) {
+          setPrivateConversations((prev) =>
+            sortActivePrivateConversations(
+              prev.map((conversation) => {
+                if (conversation.id !== activeConversationId) return conversation;
+                return {
+                  ...conversation,
+                  lastMessage: latest.content,
+                  lastMessageAt: latest.createdAt,
+                  hasIncomingFromSupport: latest.isSupport === true,
+                };
+              }),
+            ),
+          );
+        }
+      } else {
+        await refreshPrivateAfterSend(activeConversationId, {
+          waitForFollowup: true,
+          expectOnboardingStep: null,
+        });
+      }
+
+      if (activeConversationIdRef.current === activeConversationId) {
+        patchPrivateInboxMeta(activeConversationId, { unreadCount: 0 });
+        void markConversationRead(activeConversationId).catch(() => {});
+      }
+      void refreshConversations().catch(() => {});
+      void refreshUnreadPrivate().catch(() => {});
     } catch (e) {
-      setPrivateMessages((prev) =>
-        prev
-          .filter((message) => {
-            if (!isOptimisticOnboardingMessageId(message.id)) return true;
-            if (answeredStep === 1) return message.onboardingStep !== 2;
-            if (answeredStep === 2) return message.onboardingStep !== 3;
-            return true;
-          })
-          .map((message) =>
-            message.id === sourceMessageId
-              ? { ...message, quickReplySelected: null }
-              : message,
-          ),
-      );
+      setPrivateMessages((prev) => {
+        const rolledBack = rollbackOnboardingQuickReplySelection(prev, answeredStep);
+        privateMessagesRef.current = rolledBack;
+        return rolledBack;
+      });
       setError(e?.message || "Impossible d'envoyer la réponse rapide.");
     } finally {
-      setQuickReplyBusyMessageId("");
+      clearQuickReplyInFlight(answeredStep);
     }
   };
 
@@ -1745,7 +1894,7 @@ export default function CommunauteVWS() {
                 {privateMessages.length > 0 ? (
                   privateMessages.map((msg) => (
                     <MessageItem
-                      key={msg.id}
+                      key={onboardingMessageRenderKey(msg)}
                       mine={msg.userId === myUserId}
                       msg={msg}
                       preferredLocale={preferredLocale}
@@ -1756,9 +1905,26 @@ export default function CommunauteVWS() {
                       showQuickReplies={shouldShowMessageQuickReplies(msg, privateMessages, myUserId, {
                         viewerIsSupport: isSupportViewer,
                       })}
-                      quickRepliesDisabled={quickReplyBusyMessageId === msg.id || busy}
-                      onQuickReply={(label, sourceMessageId) => {
-                        void runWithAuth(() => sendPrivateQuickReply(label, sourceMessageId));
+                      quickRepliesDisabled={
+                        (msg.onboardingStep != null &&
+                          quickReplyInFlightStep === msg.onboardingStep) ||
+                        busy
+                      }
+                      onQuickReply={(label, sourceMessageId, sourceOnboardingStep) => {
+                        const optimistic = applyPrivateQuickReplyOptimistic(
+                          label,
+                          sourceMessageId,
+                          sourceOnboardingStep,
+                        );
+                        if (!optimistic) return false;
+                        void runWithAuth(() =>
+                          sendPrivateQuickReply(
+                            label,
+                            optimistic.sourceMessageId,
+                            optimistic.answeredStep,
+                          ),
+                        );
+                        return true;
                       }}
                       onDelete={() => {
                         const id = msg.id;

@@ -1,17 +1,32 @@
 import { getBrowserSupabase } from "./client-navigateur";
-import { fetchPremiumAccess } from "./premiumAccess";
 import {
-  getImageStudioMonthlyLimit,
-  IMAGE_STUDIO_MONTHLY_QUOTA_DEFAULT,
+  IMAGE_STUDIO_TRIAL_QUOTA,
+  type ImageStudioQuotaMode,
 } from "./planQuotas";
-
-export const IMAGE_STUDIO_MONTHLY_LIMIT = IMAGE_STUDIO_MONTHLY_QUOTA_DEFAULT;
 
 export type ImageStudioQuota = {
   count: number;
   limit: number;
   resetAt: string | null;
+  mode: ImageStudioQuotaMode;
+  cycleEndsAt: string | null;
+  trialUsed: boolean;
+  trialExpired: boolean;
 };
+
+function parseQuotaRow(data: unknown): ImageStudioQuota | null {
+  if (!data || typeof data !== "object") return null;
+  const row = data as Record<string, unknown>;
+  return {
+    count: typeof row.count === "number" ? row.count : 0,
+    limit: typeof row.limit === "number" ? row.limit : 0,
+    resetAt: typeof row.reset_at === "string" ? row.reset_at : null,
+    mode: row.mode === "trial" ? "trial" : "monthly",
+    cycleEndsAt: typeof row.cycle_ends_at === "string" ? row.cycle_ends_at : null,
+    trialUsed: row.trial_used === true,
+    trialExpired: row.trial_expired === true,
+  };
+}
 
 export async function fetchImageStudioQuota(): Promise<ImageStudioQuota> {
   const supabase = getBrowserSupabase();
@@ -20,40 +35,28 @@ export async function fetchImageStudioQuota(): Promise<ImageStudioQuota> {
     error: userErr,
   } = await supabase.auth.getUser();
 
-  if (userErr || !user) {
-    return { count: 0, limit: IMAGE_STUDIO_MONTHLY_LIMIT, resetAt: null };
-  }
+  const empty: ImageStudioQuota = {
+    count: 0,
+    limit: IMAGE_STUDIO_TRIAL_QUOTA,
+    resetAt: null,
+    mode: "monthly",
+    cycleEndsAt: null,
+    trialUsed: false,
+    trialExpired: false,
+  };
 
-  const { plan } = await fetchPremiumAccess();
-  const limit = getImageStudioMonthlyLimit(plan) || IMAGE_STUDIO_MONTHLY_LIMIT;
+  if (userErr || !user) {
+    return empty;
+  }
 
   const { data: quotaRow, error: rpcError } = await supabase.rpc(
     "get_my_image_studio_quota",
   );
 
-  if (rpcError || !quotaRow || typeof quotaRow !== "object") {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("image_studio_count, image_studio_reset_at")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (error || !data) {
-      return { count: 0, limit, resetAt: null };
-    }
-
-    return {
-      count: data.image_studio_count ?? 0,
-      limit,
-      resetAt: data.image_studio_reset_at,
-    };
+  const parsed = parseQuotaRow(quotaRow);
+  if (!rpcError && parsed) {
+    return parsed;
   }
 
-  const row = quotaRow as { count?: number; reset_at?: string | null };
-
-  return {
-    count: typeof row.count === "number" ? row.count : 0,
-    limit,
-    resetAt: row.reset_at ?? null,
-  };
+  return empty;
 }

@@ -52,7 +52,7 @@ function SegmentedPhoneBattery({ percentage, loading }) {
   );
 }
 
-export default function IndicateurCreditsImageStudio({ count, limit, loading }) {
+export default function IndicateurCreditsImageStudio({ count, limit, loading, mode = "monthly" }) {
   if (loading) {
     return (
       <div
@@ -75,16 +75,19 @@ export default function IndicateurCreditsImageStudio({ count, limit, loading }) 
   const state = getImageStudioQuotaState(count, limit);
   const imageWord = imagesLeft > 1 ? "images" : "image";
 
+  const isTrial = mode === "trial";
+  const periodLabel = isTrial ? "pendant l'essai" : "ce mois-ci";
+
   return (
     <div
       className={FRAME_CLASS}
       style={FRAME_STYLE}
-      title={`${imagesLeft} ${imageWord} restante${imagesLeft > 1 ? "s" : ""} ce mois-ci`}
-      aria-label={`${state.remaining} images restantes sur ${state.limit}`}
+      title={`${imagesLeft} ${imageWord} restante${imagesLeft > 1 ? "s" : ""} ${periodLabel}`}
+      aria-label={`${state.remaining} images restantes sur ${state.limit}${isTrial ? " (essai)" : ""}`}
     >
       <SegmentedPhoneBattery percentage={percentage} loading={false} />
       <span className="text-[10px] font-medium tabular-nums text-white/42">
-        {percentage}%
+        {isTrial ? `${imagesLeft}/${totalImages}` : `${percentage}%`}
       </span>
     </div>
   );

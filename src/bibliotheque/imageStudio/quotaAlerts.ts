@@ -1,4 +1,7 @@
-import { IMAGE_STUDIO_MONTHLY_LIMIT } from "@/bibliotheque/supabase/imageStudioQuota";
+import { IMAGE_STUDIO_MONTHLY_QUOTA_DEFAULT } from "@/bibliotheque/supabase/planQuotas";
+
+/** @deprecated Préférer IMAGE_STUDIO_MONTHLY_QUOTA_DEFAULT */
+export const IMAGE_STUDIO_MONTHLY_LIMIT = IMAGE_STUDIO_MONTHLY_QUOTA_DEFAULT;
 
 /** Popup d'alerte consommation : 80 % du quota utilisé (= 20 % restants). */
 export const IMAGE_STUDIO_WARNING_USED_PERCENT = 80;

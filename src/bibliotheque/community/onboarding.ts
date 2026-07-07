@@ -172,11 +172,35 @@ export function isOptimisticOnboardingMessageId(id: string | null | undefined): 
 export function resolveOnboardingStep(
   msg: Pick<CommunityMessage, "content" | "onboardingStep" | "isSupport">,
 ): number | null {
-  if (msg.onboardingStep === 1 || msg.onboardingStep === 2) return msg.onboardingStep;
+  if (msg.onboardingStep === 1 || msg.onboardingStep === 2 || msg.onboardingStep === 3) {
+    return msg.onboardingStep;
+  }
   const content = String(msg.content || "");
   if (content.includes(ONBOARDING_STEP1_MARKER)) return 1;
   if (content.includes(ONBOARDING_STEP2_MARKER)) return 2;
+  if (content.includes(ONBOARDING_STEP3_MARKER)) return 3;
   return null;
+}
+
+export function resolveMessageOnboardingStep(
+  message: CommunityMessage,
+): number | null {
+  return (
+    message.onboardingStep ??
+    resolveOnboardingStep(message) ??
+    resolveOnboardingStepFromPreviewText(message.content, Boolean(message.isSupport))
+  );
+}
+
+export function hasOnboardingStep(messages: CommunityMessage[], step: number): boolean {
+  return messages.some((message) => resolveMessageOnboardingStep(message) === step);
+}
+
+function serverHasVisibleOnboardingStep(messages: CommunityMessage[], step: number): boolean {
+  return messages.some((message) => {
+    if (resolveMessageOnboardingStep(message) !== step) return false;
+    return Boolean(String(message.content || "").trim());
+  });
 }
 
 export function buildOptimisticOnboardingFollowUp(input: {
@@ -213,22 +237,85 @@ export function buildOptimisticOnboardingFollowUp(input: {
   };
 }
 
+function preserveLocalQuickReplySelection(
+  local: CommunityMessage | undefined,
+  remote: CommunityMessage,
+  current: CommunityMessage[],
+): CommunityMessage {
+  const remoteSelected = String(remote.quickReplySelected || "").trim();
+  if (remoteSelected) return remote;
+
+  const localSelected = String(local?.quickReplySelected || "").trim();
+  if (localSelected) {
+    return { ...remote, quickReplySelected: localSelected };
+  }
+
+  const step = remote.onboardingStep;
+  if (!step) return remote;
+
+  const localByStep = current.find(
+    (message) =>
+      message.onboardingStep === step && String(message.quickReplySelected || "").trim(),
+  );
+  const stepSelected = String(localByStep?.quickReplySelected || "").trim();
+  if (stepSelected) {
+    return { ...remote, quickReplySelected: stepSelected };
+  }
+
+  return remote;
+}
+
+export function resolvePersistedOnboardingMessage(
+  messages: CommunityMessage[],
+  sourceMessageId: string,
+): CommunityMessage | null {
+  const id = String(sourceMessageId || "").trim();
+  if (!id) return null;
+
+  const direct = messages.find((message) => message.id === id) || null;
+  if (direct && !isOptimisticOnboardingMessageId(direct.id)) return direct;
+
+  const step = direct ? resolveOnboardingStep(direct) : null;
+  if (!step) return direct;
+
+  const persisted = messages.find(
+    (message) =>
+      resolveMessageOnboardingStep(message) === step &&
+      !isOptimisticOnboardingMessageId(message.id),
+  );
+  return persisted || direct;
+}
+
+export function onboardingMessageRenderKey(
+  message: Pick<CommunityMessage, "id" | "onboardingStep" | "isSupport">,
+): string {
+  if (
+    message.isSupport &&
+    (message.onboardingStep === 1 || message.onboardingStep === 2 || message.onboardingStep === 3)
+  ) {
+    return `support-onboarding-${message.onboardingStep}`;
+  }
+  return message.id;
+}
+
 export function mergePrivateMessagesWithServer(
   current: CommunityMessage[],
   server: CommunityMessage[],
 ): CommunityMessage[] {
-  const serverSteps = new Set(
-    server.map((message) => message.onboardingStep).filter((step): step is number => Boolean(step)),
-  );
-  const optimistic = current.filter(
-    (message) =>
-      isOptimisticOnboardingMessageId(message.id) &&
-      message.onboardingStep != null &&
-      !serverSteps.has(message.onboardingStep),
-  );
-  if (!optimistic.length) return server;
+  const localById = new Map(current.map((message) => [message.id, message]));
+  const mergedServer = server
+    .map((message) => preserveLocalQuickReplySelection(localById.get(message.id), message, current))
+    .map(enrichCommunityMessage);
 
-  return [...server, ...optimistic].sort((a, b) =>
+  const optimistic = current.filter((message) => {
+    if (!isOptimisticOnboardingMessageId(message.id) || message.onboardingStep == null) {
+      return false;
+    }
+    return !serverHasVisibleOnboardingStep(mergedServer, message.onboardingStep);
+  });
+  if (!optimistic.length) return mergedServer;
+
+  return [...mergedServer, ...optimistic.map(enrichCommunityMessage)].sort((a, b) =>
     String(a.createdAt).localeCompare(String(b.createdAt)),
   );
 }

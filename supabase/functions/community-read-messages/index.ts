@@ -252,9 +252,7 @@ serve(async (req) => {
           const recap = buildOnboardingRecap(flow);
           const last = lastByConv.get(convId);
           const activity = activityByConv.get(convId);
-          const lastMessage = recap
-            ? `Réponses : ${recap}`
-            : last?.content || "";
+          const lastMessage = last?.content || "";
           const lastMessageAt = last?.createdAt || String(conv.updated_at || "");
 
           return {

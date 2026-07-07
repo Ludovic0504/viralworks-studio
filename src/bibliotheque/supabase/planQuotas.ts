@@ -2,6 +2,9 @@ import type { UserPlan } from "./premiumAccess";
 
 export const IMAGE_STUDIO_MONTHLY_QUOTA_DEFAULT = 200;
 export const IMAGE_STUDIO_MONTHLY_QUOTA_IMAGE_9 = 150;
+export const IMAGE_STUDIO_TRIAL_QUOTA = 30;
+export const IMAGE_STUDIO_TRIAL_DAYS = 7;
+export type ImageStudioQuotaMode = "monthly" | "trial";
 export const SEEDANCE_MONTHLY_QUOTA_PRO = 5;
 export const SEEDANCE_MONTHLY_QUOTA_PREMIUM = 15;
 /** @deprecated Préférer getSeedanceMonthlyLimit(plan) */

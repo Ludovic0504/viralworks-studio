@@ -6,10 +6,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
-  getImageStudioMonthlyLimit,
   planAllowsImageStudio,
   resolveUserPlan,
 } from "../_shared/plan-access.ts";
+import {
+  imageStudioQuotaExceededMessage,
+  resolveImageStudioQuota,
+} from "../_shared/image-studio-quota.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -875,6 +878,16 @@ serve(async (req) => {
       );
     }
 
+    const quotaState = await resolveImageStudioQuota(supabaseAdmin, user.id, userPlan);
+    const imageStudioLimit = quotaState.limit;
+    if (imageStudioLimit <= 0) {
+      const message =
+        quotaState.mode === "trial" && quotaState.trialExpired
+          ? imageStudioQuotaExceededMessage(quotaState)
+          : "Un abonnement ViralWorks Image est requis pour générer des images.";
+      return jsonError(403, "IMAGE_STUDIO_SUBSCRIPTION_REQUIRED", message);
+    }
+
     let body: RequestBody;
     try {
       body = await req.json();
@@ -926,15 +939,6 @@ serve(async (req) => {
                 : null,
           }
         : null;
-
-    const imageStudioLimit = getImageStudioMonthlyLimit(userPlan);
-    if (imageStudioLimit <= 0) {
-      return jsonError(
-        403,
-        "IMAGE_STUDIO_SUBSCRIPTION_REQUIRED",
-        "Un abonnement ViralWorks Image est requis pour générer des images.",
-      );
-    }
 
     try {
       const { url, provider } = await assertQuotaAndGenerate(
@@ -989,11 +993,10 @@ serve(async (req) => {
       }
       const msg = genErr instanceof Error ? genErr.message : String(genErr);
       if (msg.startsWith("QUOTA:")) {
-        const limit = msg.split(":")[1] || String(imageStudioLimit);
         return jsonError(
           429,
           "IMAGE_STUDIO_QUOTA_EXCEEDED",
-          `Quota mensuel atteint (${limit} images). Réessayez le mois prochain.`,
+          imageStudioQuotaExceededMessage(quotaState),
         );
       }
       if (model === "nano_banana_pro") {

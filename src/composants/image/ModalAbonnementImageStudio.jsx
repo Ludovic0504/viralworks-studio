@@ -1,6 +1,7 @@
 import { createPortal } from "react-dom";
 import { ImageIcon, X } from "lucide-react";
 import { useBoutiqueModal } from "@/contexte/ContexteModalBoutique";
+import { IMAGE_STUDIO_TRIAL_OFFER } from "@/bibliotheque/promo/imagesPromo";
 
 export default function ModalAbonnementImageStudio({ open, onClose }) {
   const { openBoutiqueModal } = useBoutiqueModal();
@@ -39,12 +40,12 @@ export default function ModalAbonnementImageStudio({ open, onClose }) {
         </div>
 
         <h2 id="image-studio-subscribe-title" className="image-studio-quota-title">
-          Passez à ViralWorks Image
+          Essaie Image Studio gratuitement
         </h2>
         <p className="image-studio-quota-message">
-          Pour générer vos images en 2K, prenez l&apos;abonnement{" "}
-          <strong className="font-semibold text-white">ViralWorks Image</strong>{" "}
-          — 9&nbsp;€/mois, jusqu&apos;à 150 créations par mois.
+          {IMAGE_STUDIO_TRIAL_OFFER} — génère des visuels produits en 2K avec{" "}
+          <strong className="font-semibold text-white">NanoBanana Pro</strong> et{" "}
+          <strong className="font-semibold text-white">GPT 2.0</strong>.
         </p>
         <p className="image-studio-quota-hint">
           Décrivez votre scène, l&apos;IA s&apos;occupe du reste.
@@ -59,7 +60,7 @@ export default function ModalAbonnementImageStudio({ open, onClose }) {
             Plus tard
           </button>
           <button type="button" className="image-studio-quota-cta" onClick={goSubscribe}>
-            Voir l&apos;abonnement
+            Démarrer mon essai gratuit
           </button>
         </div>
       </div>

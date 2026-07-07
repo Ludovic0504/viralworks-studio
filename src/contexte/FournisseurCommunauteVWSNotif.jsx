@@ -13,6 +13,7 @@ import {
   getPrivateUnreadStatus,
   getPrivateInboxMeta,
   hasNewPublicMessageSince,
+  markConversationRead,
   prefetchPrivateMessagesForConversation,
 } from "@/bibliotheque/supabase/communaute";
 import { censorMessageText } from "@/bibliotheque/moderation/messageCensor";
@@ -30,7 +31,7 @@ const DISMISSED_PREVIEW_KEY = "vws_dismissed_private_preview_id";
 const FAST_POLL_MS = 500;
 const NORMAL_POLL_MS = 8000;
 const FAST_POLL_WINDOW_MS = 3 * 60 * 1000;
-const PREVIEW_BUBBLE_DELAY_MS = 2000;
+const PREVIEW_BUBBLE_DELAY_MS = 800;
 
 const CommunauteVWSNotifContext = createContext(null);
 
@@ -63,13 +64,70 @@ export function FournisseurCommunauteVWSNotif({ children }) {
   const [isViewingCommunityPage, setIsViewingCommunityPage] = useState(false);
   const [privateInboxMeta, setPrivateInboxMeta] = useState([]);
   const sessionStartedAtRef = useRef(0);
+  const isViewingPrivateMessagesRef = useRef(false);
+  const activePrivateConversationIdRef = useRef("");
+  const markReadInFlightRef = useRef(false);
 
   const setPrivateMessagesViewActive = useCallback((active) => {
-    setIsViewingPrivateMessages(active === true);
+    const isActive = active === true;
+    isViewingPrivateMessagesRef.current = isActive;
+    setIsViewingPrivateMessages(isActive);
+  }, []);
+
+  const setActivePrivateConversationId = useCallback((conversationId) => {
+    const id = String(conversationId || "").trim();
+    activePrivateConversationIdRef.current = id;
+    if (!id) return;
+
+    setPrivateInboxMeta((prev) =>
+      prev.map((row) => (row.conversationId === id ? { ...row, unreadCount: 0 } : row)),
+    );
+    setLatestUnreadPrivatePreview((prev) => (prev?.conversationId === id ? null : prev));
   }, []);
 
   const setCommunityPageActive = useCallback((active) => {
     setIsViewingCommunityPage(active === true);
+  }, []);
+
+  const applyUnreadStatus = useCallback((status) => {
+    setUnreadPrivateCount(status.count);
+    setLatestUnreadPrivatePreview(enrichPreview(status.preview));
+  }, []);
+
+  const adjustUnreadForActiveConversation = useCallback((status, inboxMeta) => {
+    const activeId = activePrivateConversationIdRef.current;
+    if (!isViewingPrivateMessagesRef.current || !activeId) {
+      return { status, inboxMeta };
+    }
+
+    const activeRow = inboxMeta.find((row) => row.conversationId === activeId);
+    let unreadFromActive = Number(activeRow?.unreadCount || 0);
+
+    let adjustedPreview = status.preview;
+    let adjustedCount = status.count;
+
+    if (status.preview?.conversationId === activeId) {
+      adjustedPreview = null;
+      if (unreadFromActive <= 0) {
+        unreadFromActive = Math.min(Math.max(adjustedCount, 0), 1);
+      }
+    }
+
+    if (unreadFromActive > 0) {
+      adjustedCount = Math.max(0, adjustedCount - unreadFromActive);
+    }
+
+    const adjustedInbox = inboxMeta.map((row) =>
+      row.conversationId === activeId ? { ...row, unreadCount: 0 } : row,
+    );
+
+    return {
+      status: {
+        count: adjustedCount,
+        preview: adjustedPreview,
+      },
+      inboxMeta: adjustedInbox,
+    };
   }, []);
 
   const refreshUnreadPrivate = useCallback(async () => {
@@ -77,24 +135,64 @@ export function FournisseurCommunauteVWSNotif({ children }) {
       setUnreadPrivateCount(0);
       setLatestUnreadPrivatePreview(null);
       setPrivateInboxMeta([]);
-      return;
+      return null;
     }
     try {
       const status = await getPrivateUnreadStatus();
-      setUnreadPrivateCount(status.count);
-      setLatestUnreadPrivatePreview(enrichPreview(status.preview));
-
+      let inboxMeta = [];
       try {
-        const inboxMeta = await getPrivateInboxMeta();
-        setPrivateInboxMeta(inboxMeta);
+        inboxMeta = await getPrivateInboxMeta();
       } catch {
-        /* conserve l’inbox précédente si le rafraîchissement échoue */
+        inboxMeta = [];
       }
+
+      const activeId = activePrivateConversationIdRef.current;
+      const shouldMarkActiveRead =
+        isViewingPrivateMessagesRef.current &&
+        activeId &&
+        !markReadInFlightRef.current &&
+        (status.preview?.conversationId === activeId ||
+          inboxMeta.some((row) => row.conversationId === activeId && Number(row.unreadCount || 0) > 0));
+
+      if (shouldMarkActiveRead) {
+        markReadInFlightRef.current = true;
+        void markConversationRead(activeId)
+          .catch(() => {})
+          .finally(() => {
+            markReadInFlightRef.current = false;
+          });
+      }
+
+      const adjusted = adjustUnreadForActiveConversation(status, inboxMeta);
+      applyUnreadStatus(adjusted.status);
+      setPrivateInboxMeta(adjusted.inboxMeta);
+      return adjusted.status;
     } catch {
       setUnreadPrivateCount(0);
       setLatestUnreadPrivatePreview(null);
+      return null;
     }
-  }, [uid]);
+  }, [uid, applyUnreadStatus, adjustUnreadForActiveConversation]);
+
+  const bootstrapWelcomeAndUnread = useCallback(async () => {
+    const welcome = await ensureWelcomePrivateMessage().catch(() => ({
+      ok: false,
+      preview: null,
+    }));
+
+    if (welcome.ok && welcome.preview && !welcome.skipped) {
+      setUnreadPrivateCount((count) => Math.max(count, 1));
+      setLatestUnreadPrivatePreview(enrichPreview(welcome.preview));
+    }
+
+    await refreshUnreadPrivate();
+
+    for (const delay of [300, 900, 2000]) {
+      await new Promise((resolve) => window.setTimeout(resolve, delay));
+      const status = await refreshUnreadPrivate();
+      if ((status?.count ?? 0) > 0 && status?.preview) break;
+    }
+  }, [refreshUnreadPrivate]);
 
   const patchPrivateInboxMeta = useCallback((conversationId, patch) => {
     const id = String(conversationId || "").trim();
@@ -167,20 +265,9 @@ export function FournisseurCommunauteVWSNotif({ children }) {
       return;
     }
     sessionStartedAtRef.current = Date.now();
-    void (async () => {
-      await Promise.all([
-        ensureWelcomePrivateMessage().catch(() => {}),
-        refreshUnreadPrivate(),
-      ]);
-      window.setTimeout(() => {
-        void refreshUnreadPrivate();
-      }, 400);
-      window.setTimeout(() => {
-        void refreshUnreadPrivate();
-      }, 1200);
-    })();
+    void bootstrapWelcomeAndUnread();
     void refreshPublicIndicator();
-  }, [uid, refreshUnreadPrivate, refreshPublicIndicator]);
+  }, [uid, bootstrapWelcomeAndUnread, refreshPublicIndicator]);
 
   useEffect(() => {
     if (!uid) {
@@ -252,6 +339,12 @@ export function FournisseurCommunauteVWSNotif({ children }) {
   useEffect(() => {
     const conversationId = String(latestUnreadPrivatePreview?.conversationId || "").trim();
     if (!conversationId || unreadPrivateCount <= 0 || !latestUnreadPrivatePreview?.isSupport) return;
+    if (
+      isViewingPrivateMessagesRef.current &&
+      activePrivateConversationIdRef.current === conversationId
+    ) {
+      return;
+    }
     rememberSupportConversation(buildConversationFromUnreadPreview(latestUnreadPrivatePreview));
     const remembered = getRememberedOnboardingPrivateMessages(conversationId);
     const hydrated = hydratePrivateMessagesFromUnreadPreview(
@@ -313,6 +406,7 @@ export function FournisseurCommunauteVWSNotif({ children }) {
       dismissPrivateMessagePreview,
       prefetchPrivateMessagesForConversation,
       setPrivateMessagesViewActive,
+      setActivePrivateConversationId,
       setCommunityPageActive,
       patchPrivateInboxMeta,
     }),
@@ -328,6 +422,7 @@ export function FournisseurCommunauteVWSNotif({ children }) {
       markPublicTabVisited,
       dismissPrivateMessagePreview,
       setPrivateMessagesViewActive,
+      setActivePrivateConversationId,
       setCommunityPageActive,
       patchPrivateInboxMeta,
     ],
@@ -354,6 +449,7 @@ export function useCommunauteVWSNotif() {
       dismissPrivateMessagePreview: () => {},
       prefetchPrivateMessagesForConversation: async () => [],
       setPrivateMessagesViewActive: () => {},
+      setActivePrivateConversationId: () => {},
       setCommunityPageActive: () => {},
       patchPrivateInboxMeta: () => {},
     };
