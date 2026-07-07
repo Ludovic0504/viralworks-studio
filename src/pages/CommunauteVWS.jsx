@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router-dom";
 import PageTitle from "@/composants/interface/TitrePage";
-import { MessageCircle, Users, Send, Paperclip, Plus, X, MoreVertical, Languages, BellOff } from "lucide-react";
+import { MessageCircle, Users, Send, Paperclip, Plus, X, MoreVertical, Languages, BellOff, ChevronLeft } from "lucide-react";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { useCommunauteVWSNotif } from "@/contexte/FournisseurCommunauteVWSNotif.jsx";
@@ -162,7 +162,12 @@ const COMMUNITY_PAGE_ROOT_CLASS = `${PAGE_SHELL_INNER_CLASS} flex min-h-0 flex-1
 const COMMUNITY_TOOLBAR_CLASS = "flex shrink-0 flex-wrap items-center gap-2";
 const COMMUNITY_MAIN_SECTION_CLASS =
   "flex min-h-0 flex-1 flex-col gap-3 overflow-hidden md:grid md:grid-cols-12 md:items-stretch md:gap-4";
-const SIDEBAR_PANEL_CLASS = `${CHAT_PANEL_BASE_CLASS} max-md:max-h-[min(42dvh,17.5rem)] max-md:shrink-0 md:col-span-4 gap-2 md:h-full md:gap-3`;
+const SIDEBAR_PANEL_BASE_CLASS = `${CHAT_PANEL_BASE_CLASS} gap-2 md:col-span-4 md:h-full md:gap-3`;
+const SIDEBAR_PANEL_MOBILE_LIST_CLASS = "max-md:flex max-md:min-h-0 max-md:flex-1 max-md:flex-col";
+const SIDEBAR_PANEL_MOBILE_HIDDEN_CLASS = "max-md:hidden";
+const PRIVATE_CHAT_PANEL_CLASS = `${CHAT_PANEL_BASE_CLASS} min-h-0 md:col-span-8 md:h-full`;
+const PRIVATE_CHAT_PANEL_MOBILE_OPEN_CLASS = "max-md:flex max-md:min-h-0 max-md:flex-1 max-md:flex-col";
+const PRIVATE_CHAT_PANEL_MOBILE_HIDDEN_CLASS = "max-md:hidden";
 const CHAT_MESSAGES_FRAME_CLASS =
   "flex-1 min-h-0 overflow-y-auto overscroll-y-contain studio-subtle-scrollbar space-y-3 pr-1";
 const CHAT_MESSAGES_FRAME_PUBLIC_CLASS =
@@ -170,8 +175,7 @@ const CHAT_MESSAGES_FRAME_PUBLIC_CLASS =
 const CHAT_COMPOSER_CLASS = "border-t border-white/10 pt-3 space-y-2 shrink-0";
 const SIDEBAR_CONVERSATIONS_SCROLL_CLASS =
   "flex-1 min-h-0 overflow-y-auto overscroll-y-contain studio-subtle-scrollbar space-y-2 pr-1";
-const PRIVATE_CHAT_PANEL_CLASS = `${CHAT_PANEL_BASE_CLASS} min-h-0 flex-1 md:col-span-8 md:h-full md:flex-none`;
-const PUBLIC_CHAT_PANEL_CLASS = `${CHAT_PANEL_BASE_CLASS} min-h-0 flex-1 md:col-span-12 md:h-full md:flex-none`;
+const PUBLIC_CHAT_PANEL_CLASS = `${CHAT_PANEL_BASE_CLASS} min-h-0 flex-1 md:col-span-12 md:h-full`;
 
 function useFloatingMenuCoords(open, anchorRef) {
   const [coords, setCoords] = useState({ top: 0, left: 0 });
@@ -1611,6 +1615,12 @@ export default function CommunauteVWS() {
     void markConversationAsViewed(conversationId);
   };
 
+  const backToPrivateConversationList = () => {
+    setActiveConversationId("");
+    activeConversationIdRef.current = "";
+    setConvMenuId(null);
+  };
+
   const removePrivateConversationForMe = async (conversationId) => {
     setConvMenuId(null);
     const target = privateConversations.find((c) => c.id === conversationId);
@@ -1630,16 +1640,19 @@ export default function CommunauteVWS() {
     }
   };
 
+  const mobilePrivateInChat = tab === "private" && Boolean(activeConversationId);
+  const mobilePrivateChromeHidden = mobilePrivateInChat ? "max-md:hidden" : "";
+
   return (
     <div className={COMMUNITY_PAGE_ROOT_CLASS}>
       <PageTitle
         green="Communauté"
         subtitle="Salon public et conversations privées, simple et persistant."
-        className="mb-0 shrink-0 !mb-1 md:!mb-2"
+        className={`mb-0 shrink-0 !mb-1 md:!mb-2 ${mobilePrivateChromeHidden}`}
         titleClassName="text-2xl md:text-3xl"
       />
 
-      <div className={COMMUNITY_TOOLBAR_CLASS}>
+      <div className={`${COMMUNITY_TOOLBAR_CLASS} ${mobilePrivateChromeHidden}`}>
         <div className="inline-flex rounded-xl border border-white/10 bg-white/[0.03] p-1">
           <button
             type="button"
@@ -1730,7 +1743,11 @@ export default function CommunauteVWS() {
 
       <section className={COMMUNITY_MAIN_SECTION_CLASS}>
         {tab === "private" ? (
-          <div className={SIDEBAR_PANEL_CLASS}>
+          <div
+            className={`${SIDEBAR_PANEL_BASE_CLASS} ${SIDEBAR_PANEL_MOBILE_LIST_CLASS} ${
+              mobilePrivateInChat ? SIDEBAR_PANEL_MOBILE_HIDDEN_CLASS : ""
+            }`}
+          >
             <div ref={userSearchRef} className="relative shrink-0">
                 <input
                   value={searchUser}
@@ -1804,7 +1821,17 @@ export default function CommunauteVWS() {
           </div>
         ) : null}
 
-        <div className={tab === "private" ? PRIVATE_CHAT_PANEL_CLASS : PUBLIC_CHAT_PANEL_CLASS}>
+        <div
+          className={
+            tab === "private"
+              ? `${PRIVATE_CHAT_PANEL_CLASS} ${
+                  mobilePrivateInChat
+                    ? PRIVATE_CHAT_PANEL_MOBILE_OPEN_CLASS
+                    : PRIVATE_CHAT_PANEL_MOBILE_HIDDEN_CLASS
+                }`
+              : PUBLIC_CHAT_PANEL_CLASS
+          }
+        >
           {tab === "public" ? (
             <>
               <div className={CHAT_MESSAGES_FRAME_PUBLIC_CLASS}>
@@ -1885,12 +1912,24 @@ export default function CommunauteVWS() {
             </>
           ) : (
             <>
-              {activeConversation ? (
-                <div className="mb-3 shrink-0 border-b border-white/10 pb-2">
-                  <p className="text-sm font-medium text-gray-200">{activeConversation.otherUsername}</p>
-                  {isSupportViewer ? (
-                    <p className="text-[11px] text-gray-500">Onboarding et messagerie privée</p>
-                  ) : null}
+              {activeConversation || mobilePrivateInChat ? (
+                <div className="mb-3 flex shrink-0 items-center gap-2 border-b border-white/10 pb-2">
+                  <button
+                    type="button"
+                    onClick={backToPrivateConversationList}
+                    aria-label="Retour aux conversations"
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 text-gray-300 transition-colors hover:border-white/20 hover:text-white md:hidden"
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </button>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-gray-200">
+                      {activeConversation?.otherUsername || "Conversation"}
+                    </p>
+                    {isSupportViewer ? (
+                      <p className="text-[11px] text-gray-500">Onboarding et messagerie privée</p>
+                    ) : null}
+                  </div>
                 </div>
               ) : null}
               <div className={CHAT_MESSAGES_FRAME_CLASS}>
