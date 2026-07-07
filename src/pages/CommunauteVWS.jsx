@@ -1641,18 +1641,17 @@ export default function CommunauteVWS() {
   };
 
   const mobilePrivateInChat = tab === "private" && Boolean(activeConversationId);
-  const mobilePrivateChromeHidden = mobilePrivateInChat ? "max-md:hidden" : "";
 
   return (
     <div className={COMMUNITY_PAGE_ROOT_CLASS}>
       <PageTitle
         green="Communauté"
         subtitle="Salon public et conversations privées, simple et persistant."
-        className={`mb-0 shrink-0 !mb-1 md:!mb-2 ${mobilePrivateChromeHidden}`}
+        className="mb-0 shrink-0 !mb-1 md:!mb-2"
         titleClassName="text-2xl md:text-3xl"
       />
 
-      <div className={`${COMMUNITY_TOOLBAR_CLASS} ${mobilePrivateChromeHidden}`}>
+      <div className={COMMUNITY_TOOLBAR_CLASS}>
         <div className="inline-flex rounded-xl border border-white/10 bg-white/[0.03] p-1">
           <button
             type="button"
