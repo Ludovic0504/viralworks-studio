@@ -9,7 +9,9 @@ export default function Footer({ compact = false }) {
   const location = useLocation();
   const isAccueilCompact = compact || location.pathname === "/";
   const hideFooterOnMobile =
-    hideGlobalFooterOnMobile || location.pathname === "/image-studio";
+    hideGlobalFooterOnMobile ||
+    location.pathname === "/image-studio" ||
+    location.pathname === "/communaute-vws";
 
   return (
     <footer

@@ -53,6 +53,16 @@ const VIDEO_STUDIO = {
   compactFooter: false,
 };
 
+/** Communauté VWS — hauteur viewport fixe ; scroll interne à la liste des conversations. */
+const COMMUNaute_VWS = {
+  shellLayoutClass: "h-dvh max-h-dvh overflow-hidden",
+  contentAreaFlexClass: "min-h-0 flex-1",
+  sidebarMainClassName: "flex-1 min-h-0 overflow-hidden",
+  mainWrapperClass: "min-h-0 flex-1 overflow-hidden flex flex-col",
+  mainShellTopPadding: DEFAULT_PADDING,
+  compactFooter: true,
+};
+
 /** Playbook, Lab, profil, etc. — scroll document libre. */
 const SCROLL = VIDEO_STUDIO;
 
@@ -68,6 +78,10 @@ function isViralWorksImagePath(pathname) {
   return pathname === "/image-studio" || isAvatarStudioPath(pathname);
 }
 
+function isCommunauteVwsPath(pathname) {
+  return pathname === "/communaute-vws";
+}
+
 export function getDashboardShellLayout(pathname) {
   if (pathname === "/") {
     return { profile: "accueil", ...ACCUEIL };
@@ -79,6 +93,10 @@ export function getDashboardShellLayout(pathname) {
 
   if (isAvatarStudioPath(pathname)) {
     return { profile: "avatar-studio", ...AVATAR_STUDIO };
+  }
+
+  if (isCommunauteVwsPath(pathname)) {
+    return { profile: "communaute-vws", ...COMMUNaute_VWS };
   }
 
   if (isViralWorksVideoPath(pathname) || pathname === "/edit-video") {

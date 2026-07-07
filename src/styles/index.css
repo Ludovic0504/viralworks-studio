@@ -41,11 +41,12 @@
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
     scroll-behavior: smooth;
-    scrollbar-gutter: stable;
+    overflow-x: clip;
   }
 
   body {
     @apply antialiased;
+    overflow-x: clip;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 

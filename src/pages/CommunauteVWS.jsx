@@ -157,16 +157,21 @@ const FLOATING_MENU_WIDTH = 160;
 /** Hauteur approximative (une ligne + padding) pour le placement au-dessus du trigger si bas de viewport */
 const FLOATING_MENU_HEIGHT = 52;
 
-const CHAT_PANEL_BASE_CLASS = "studio-panel p-4 sm:p-5 flex flex-col min-h-0";
-const SIDEBAR_PANEL_CLASS = `${CHAT_PANEL_BASE_CLASS} md:col-span-4 gap-3`;
+const CHAT_PANEL_BASE_CLASS = "studio-panel p-4 sm:p-5 flex flex-col min-h-0 overflow-hidden";
+const COMMUNITY_PAGE_ROOT_CLASS = `${PAGE_SHELL_INNER_CLASS} flex min-h-0 flex-1 flex-col overflow-hidden gap-3 py-3 md:gap-4 md:py-4`;
+const COMMUNITY_TOOLBAR_CLASS = "flex shrink-0 flex-wrap items-center gap-2";
+const COMMUNITY_MAIN_SECTION_CLASS =
+  "flex min-h-0 flex-1 flex-col gap-3 overflow-hidden md:grid md:grid-cols-12 md:items-stretch md:gap-4";
+const SIDEBAR_PANEL_CLASS = `${CHAT_PANEL_BASE_CLASS} max-md:max-h-[min(42dvh,17.5rem)] max-md:shrink-0 md:col-span-4 gap-2 md:h-full md:gap-3`;
 const CHAT_MESSAGES_FRAME_CLASS =
-  "flex-1 min-h-[48vh] md:min-h-0 overflow-y-auto space-y-3 pr-1";
+  "flex-1 min-h-0 overflow-y-auto overscroll-y-contain studio-subtle-scrollbar space-y-3 pr-1";
 const CHAT_MESSAGES_FRAME_PUBLIC_CLASS =
-  "min-h-[56vh] max-h-[56vh] overflow-y-auto space-y-3 pr-1";
+  "flex-1 min-h-0 overflow-y-auto overscroll-y-contain studio-subtle-scrollbar space-y-3 pr-1";
 const CHAT_COMPOSER_CLASS = "border-t border-white/10 pt-3 space-y-2 shrink-0";
-const SIDEBAR_SCROLL_FRAME_CLASS = "flex-1 min-h-0 overflow-y-auto space-y-2";
-const COMMUNITY_GRID_CLASS = "grid grid-cols-1 md:grid-cols-12 gap-4 md:items-stretch";
-const COMMUNITY_PANEL_HEIGHT_CLASS = "md:min-h-[calc(56vh+7.5rem)]";
+const SIDEBAR_CONVERSATIONS_SCROLL_CLASS =
+  "flex-1 min-h-0 overflow-y-auto overscroll-y-contain studio-subtle-scrollbar space-y-2 pr-1";
+const PRIVATE_CHAT_PANEL_CLASS = `${CHAT_PANEL_BASE_CLASS} min-h-0 flex-1 md:col-span-8 md:h-full md:flex-none`;
+const PUBLIC_CHAT_PANEL_CLASS = `${CHAT_PANEL_BASE_CLASS} min-h-0 flex-1 md:col-span-12 md:h-full md:flex-none`;
 
 function useFloatingMenuCoords(open, anchorRef) {
   const [coords, setCoords] = useState({ top: 0, left: 0 });
@@ -1626,13 +1631,15 @@ export default function CommunauteVWS() {
   };
 
   return (
-    <div className={`${PAGE_SHELL_INNER_CLASS} py-6 space-y-6`}>
+    <div className={COMMUNITY_PAGE_ROOT_CLASS}>
       <PageTitle
         green="Communauté"
         subtitle="Salon public et conversations privées, simple et persistant."
+        className="mb-0 shrink-0 !mb-1 md:!mb-2"
+        titleClassName="text-2xl md:text-3xl"
       />
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className={COMMUNITY_TOOLBAR_CLASS}>
         <div className="inline-flex rounded-xl border border-white/10 bg-white/[0.03] p-1">
           <button
             type="button"
@@ -1718,12 +1725,12 @@ export default function CommunauteVWS() {
       </div>
 
       {error ? (
-        <p className="text-xs text-red-300 border border-red-500/30 bg-red-500/10 rounded-lg px-3 py-2">{error}</p>
+        <p className="shrink-0 text-xs text-red-300 border border-red-500/30 bg-red-500/10 rounded-lg px-3 py-2">{error}</p>
       ) : null}
 
-      <section className={COMMUNITY_GRID_CLASS}>
+      <section className={COMMUNITY_MAIN_SECTION_CLASS}>
         {tab === "private" ? (
-          <div className={`${SIDEBAR_PANEL_CLASS} ${COMMUNITY_PANEL_HEIGHT_CLASS}`}>
+          <div className={SIDEBAR_PANEL_CLASS}>
             <div ref={userSearchRef} className="relative shrink-0">
                 <input
                   value={searchUser}
@@ -1771,7 +1778,7 @@ export default function CommunauteVWS() {
               <p className="shrink-0 text-[11px] font-medium uppercase tracking-wide text-gray-500">
                 Conversations actives
               </p>
-              <div className={SIDEBAR_SCROLL_FRAME_CLASS}>
+              <div className={SIDEBAR_CONVERSATIONS_SCROLL_CLASS}>
                 {activeConversations.length > 0 ? (
                   conversationsForSidebar.map((c) => (
                   <PrivateConversationRow
@@ -1797,11 +1804,7 @@ export default function CommunauteVWS() {
           </div>
         ) : null}
 
-        <div
-          className={`${CHAT_PANEL_BASE_CLASS} ${COMMUNITY_PANEL_HEIGHT_CLASS} ${
-            tab === "public" ? "md:col-span-12" : "md:col-span-8"
-          }`}
-        >
+        <div className={tab === "private" ? PRIVATE_CHAT_PANEL_CLASS : PUBLIC_CHAT_PANEL_CLASS}>
           {tab === "public" ? (
             <>
               <div className={CHAT_MESSAGES_FRAME_PUBLIC_CLASS}>
