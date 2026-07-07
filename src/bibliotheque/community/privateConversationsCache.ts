@@ -87,3 +87,27 @@ export function mergeConversationLists(
   }
   return merged;
 }
+
+export function conversationsListAreSame(
+  left: CommunityConversation[],
+  right: CommunityConversation[],
+): boolean {
+  if (left.length !== right.length) return false;
+  return left.every((conversation, index) => {
+    const other = right[index];
+    if (!other || conversation.id !== other.id) return false;
+    return (
+      conversation.otherUserId === other.otherUserId &&
+      conversation.otherUsername === other.otherUsername &&
+      conversation.isSupport === other.isSupport &&
+      Number(conversation.unreadCount || 0) === Number(other.unreadCount || 0) &&
+      conversation.notificationsMuted === other.notificationsMuted &&
+      conversation.hasIncomingFromSupport === other.hasIncomingFromSupport &&
+      conversation.hasOnboardingAnswers === other.hasOnboardingAnswers &&
+      String(conversation.lastMessage || "") === String(other.lastMessage || "") &&
+      String(conversation.lastMessageAt || "") === String(other.lastMessageAt || "") &&
+      String(conversation.lastOutgoingAt || "") === String(other.lastOutgoingAt || "") &&
+      String(conversation.updatedAt || "") === String(other.updatedAt || "")
+    );
+  });
+}

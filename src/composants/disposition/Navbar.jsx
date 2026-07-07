@@ -1,7 +1,8 @@
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useLocation } from "react-router-dom";
-import { Home, Sparkles, X, FileText, Info } from "lucide-react";
+import { Home, Sparkles, FileText, Info } from "lucide-react";
 import LienNavSync from "@/composants/disposition/LienNavSync";
 import { MenuNavViralWorksMobile } from "@/composants/disposition/MenuNavViralWorks";
 import { useAuth } from "@/contexte/FournisseurAuth";
@@ -102,12 +103,12 @@ export default function SidebarShell({
     return (
       <LienNavSync
         to={path}
-        className={`group flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200
+        className={`group flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors duration-150
          ${isActive
-           ? "card-vws-active text-emerald-300"
-           : "text-slate-300 hover:bg-white/5 hover:text-white border border-transparent"}`}
+           ? "bg-white/14 text-white"
+           : "text-white/80 hover:bg-white/[0.08] hover:text-white"}`}
       >
-        <IconComponent className={`w-5 h-5 transition-transform ${isActive ? "scale-110" : "group-hover:scale-110"}`} />
+        <IconComponent className="h-4 w-4 shrink-0 opacity-80" strokeWidth={2} />
         <span>{label}</span>
       </LienNavSync>
     );
@@ -115,59 +116,56 @@ export default function SidebarShell({
 
   return (
     <div className="w-full min-h-0 flex-1 flex flex-col">
-      {open ? (
-        <div
-          className="mobile-nav-drawer-backdrop fixed inset-0 z-40 bg-black/55 backdrop-blur-[2px] md:hidden"
-          role="presentation"
-          aria-hidden
-          data-pwa-block-drawer="true"
-          onClick={() => onCloseMenu?.()}
-        />
-      ) : null}
+      {typeof document !== "undefined"
+        ? createPortal(
+            <>
+              {open ? (
+                <div
+                  className="mobile-nav-drawer-backdrop fixed inset-0 z-[70] bg-[#07090f]/20 md:hidden"
+                  role="presentation"
+                  aria-hidden
+                  data-pwa-block-drawer="true"
+                  onClick={() => onCloseMenu?.()}
+                />
+              ) : null}
 
-      <aside
-        ref={panelRef}
-        className={`mobile-nav-drawer-panel fixed inset-y-0 left-0 w-72 bg-gradient-to-b from-[#0C1116] via-[#0a0f14] to-[#0C1116] border-r border-white/10 transform transform-gpu will-change-transform transition-transform duration-300 z-50 md:hidden shadow-2xl ${
-          open ? "translate-x-0" : "-translate-x-full"
-        }`}
-        aria-hidden={!open}
-      >
-        <div className="h-full text-white overflow-y-auto flex flex-col">
-          <div className="p-5 border-b border-white/10 flex items-center justify-between bg-[#0C1116]/80 backdrop-blur-sm sticky top-0 z-10">
-            <span className="font-semibold text-lg">Navigation</span>
-            <button
-              onClick={() => onCloseMenu?.()}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 hover:bg-white/5 active:bg-white/10 transition-all duration-200 hover:scale-105"
-              aria-label="Fermer"
-            >
-              <X size={18} className="text-slate-300" />
-            </button>
-          </div>
-          <nav className="flex flex-col gap-2 px-4 py-4 flex-1">
-            <Item path={links[0].path} label={links[0].label} icon={links[0].icon} />
-            <Item path={links[1].path} label={links[1].label} icon={links[1].icon} />
-            <MenuNavViralWorksMobile
-              showEditVideo={showEditVideo}
-              onNavigate={() => onCloseMenu?.()}
-            />
-            {links.slice(2).map((link) => (
-              <Item key={link.path} {...link} />
-            ))}
-          </nav>
+              <aside
+                ref={panelRef}
+                className={`mobile-nav-drawer-panel fixed left-4 z-[80] w-[min(14rem,72vw)] max-h-[min(26rem,calc(100dvh-5.5rem-var(--pwa-install-banner-height,0px)-var(--promo-images-banner-height,0px)))] top-[calc(4rem+var(--pwa-install-banner-height,0px)+var(--promo-images-banner-height,0px)+0.375rem)] overflow-hidden rounded-xl border border-white/12 bg-[#141a22] shadow-[0_10px_40px_rgba(0,0,0,0.45)] ring-1 ring-black/20 transform-gpu will-change-[transform,opacity] transition-[transform,opacity] duration-250 ease-out md:hidden ${
+                  open ? "translate-y-0 opacity-100" : "-translate-y-1 opacity-0 pointer-events-none"
+                }`}
+                aria-hidden={!open}
+              >
+                <div className="flex max-h-[inherit] flex-col overflow-y-auto text-white">
+                  <nav className="flex flex-col gap-0.5 px-2 py-2">
+                    <Item path={links[0].path} label={links[0].label} icon={links[0].icon} />
+                    <Item path={links[1].path} label={links[1].label} icon={links[1].icon} />
+                    <MenuNavViralWorksMobile
+                      showEditVideo={showEditVideo}
+                      compact
+                      onNavigate={() => onCloseMenu?.()}
+                    />
+                    {links.slice(2).map((link) => (
+                      <Item key={link.path} {...link} />
+                    ))}
+                  </nav>
 
-          <div className="border-t border-white/10 px-4 py-3">
-            <LienNavSync
-              to="/mentions-legales"
-              onClick={() => onCloseMenu?.()}
-              className="group flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium text-slate-300 transition-all duration-200 hover:bg-white/5 hover:text-white border border-transparent"
-            >
-              <FileText className="w-5 h-5 opacity-80" />
-              <span>Mentions légales</span>
-            </LienNavSync>
-          </div>
-
-        </div>
-      </aside>
+                  <div className="mt-auto border-t border-white/10 px-2 py-1.5">
+                    <LienNavSync
+                      to="/mentions-legales"
+                      onClick={() => onCloseMenu?.()}
+                      className="group flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium text-white/75 transition-colors hover:bg-white/[0.08] hover:text-white"
+                    >
+                      <FileText className="h-4 w-4 shrink-0 opacity-75" strokeWidth={2} />
+                      <span>Mentions légales</span>
+                    </LienNavSync>
+                  </div>
+                </div>
+              </aside>
+            </>,
+            document.body,
+          )
+        : null}
 
       <main className={`flex min-h-0 min-w-0 flex-col ${mainClassName}`}>
         {children}

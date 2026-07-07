@@ -70,6 +70,7 @@ import {
   mergeConversationLists,
   mergeConversationRecords,
   upsertConversationInList,
+  conversationsListAreSame,
 } from "@/bibliotheque/community/privateConversationsCache";
 
 function deriveSupportActivityFromMessages(messages, viewerUserId) {
@@ -228,11 +229,23 @@ function messagesAreSame(prev, next) {
       message.id === next[index]?.id &&
       message.content === next[index]?.content &&
       message.createdAt === next[index]?.createdAt &&
+      message.onboardingStep === next[index]?.onboardingStep &&
+      message.isOnboardingAnswer === next[index]?.isOnboardingAnswer &&
+      message.isSupport === next[index]?.isSupport &&
       message.quickRepliesClosedAt === next[index]?.quickRepliesClosedAt &&
       message.quickReplySelected === next[index]?.quickReplySelected &&
       JSON.stringify(message.quickReplyOptions || []) ===
         JSON.stringify(next[index]?.quickReplyOptions || [])
   );
+}
+
+function buildPrivateMessagesSignature(messages) {
+  return messages
+    .map(
+      (message) =>
+        `${message.id}|${message.createdAt}|${message.content}|${message.quickReplySelected || ""}|${message.quickRepliesClosedAt || ""}|${message.onboardingStep || ""}`,
+    )
+    .join(";;");
 }
 
 function MessageItem({
@@ -555,6 +568,8 @@ export default function CommunauteVWS() {
   const userSearchRef = useRef(null);
   const localeMenuRef = useRef(null);
   const privateEndRef = useRef(null);
+  const privateMessagesLengthRef = useRef(0);
+  const lastPrivateFetchSignatureRef = useRef({ conversationId: "", signature: "" });
   const publicFileRef = useRef(null);
   const privateFileRef = useRef(null);
   const activeConversationIdRef = useRef(activeConversationId);
@@ -595,7 +610,9 @@ export default function CommunauteVWS() {
 
   useEffect(() => {
     if (preferredLocale === "fr" || tab !== "private" || !activeConversationId) {
-      if (tab === "private") setMessageTranslations({});
+      if (tab === "private") {
+        setMessageTranslations((prev) => (Object.keys(prev).length === 0 ? prev : {}));
+      }
       return;
     }
 
@@ -634,6 +651,7 @@ export default function CommunauteVWS() {
 
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
+    lastPrivateFetchSignatureRef.current = { conversationId: "", signature: "" };
   }, [activeConversationId]);
 
   useEffect(() => {
@@ -809,6 +827,8 @@ export default function CommunauteVWS() {
   const conversationsForSidebar = useMemo(() => {
     const merged = mergeInboxMetaIntoConversations(activeConversations, privateInboxMeta, muteOverrides);
     if (!activeConversationId || tab !== "private") return merged;
+    const active = merged.find((conversation) => conversation.id === activeConversationId);
+    if (!active || Number(active.unreadCount || 0) === 0) return merged;
     return merged.map((conversation) =>
       conversation.id === activeConversationId ? { ...conversation, unreadCount: 0 } : conversation,
     );
@@ -843,11 +863,13 @@ export default function CommunauteVWS() {
     const id = String(conversationId || "").trim();
     if (!id) return;
     patchPrivateInboxMeta(id, { unreadCount: 0 });
-    setPrivateConversations((prev) =>
-      prev.map((conversation) =>
+    setPrivateConversations((prev) => {
+      const target = prev.find((conversation) => conversation.id === id);
+      if (!target || Number(target.unreadCount || 0) === 0) return prev;
+      return prev.map((conversation) =>
         conversation.id === id ? { ...conversation, unreadCount: 0 } : conversation,
-      ),
-    );
+      );
+    });
     try {
       await markConversationRead(id);
       await refreshUnreadPrivate();
@@ -889,6 +911,7 @@ export default function CommunauteVWS() {
         }
         const support = next.find((c) => c.isSupport);
         if (support && !isSupportViewer) rememberSupportConversation(support);
+        if (conversationsListAreSame(prev, next)) return prev;
         return next;
       });
       setError("");
@@ -970,13 +993,18 @@ export default function CommunauteVWS() {
     }
     if (!accessToken) return [];
     try {
-      if (activeConversationIdRef.current === conversationId) {
-        patchPrivateInboxMeta(conversationId, { unreadCount: 0 });
-      }
       const messages = (await listPrivateMessages(conversationId, accessToken)).map(enrichCommunityMessage);
       if (activeConversationIdRef.current !== conversationId) return messages;
+
+      const merged = mergePrivateMessagesWithServer(privateMessagesRef.current, messages);
+      const signature = buildPrivateMessagesSignature(merged);
+      const lastFetch = lastPrivateFetchSignatureRef.current;
+      if (lastFetch.conversationId === conversationId && lastFetch.signature === signature) {
+        return merged;
+      }
+      lastPrivateFetchSignatureRef.current = { conversationId, signature };
+
       setPrivateMessages((prev) => {
-        const merged = mergePrivateMessagesWithServer(prev, messages);
         const next = messagesAreSame(prev, merged) ? prev : merged;
         rememberPrivateMessages(conversationId, next);
         rememberOnboardingPrivateMessages(conversationId, next);
@@ -1016,14 +1044,12 @@ export default function CommunauteVWS() {
           return prev;
         }
         const next = upsertConversationInList(prev, enriched);
+        if (conversationsListAreSame(prev, next)) return prev;
         rememberSupportConversation(enriched);
         return next;
       });
       setError("");
-      if (activeConversationIdRef.current === conversationId) {
-        void markConversationAsViewed(conversationId);
-      }
-      return messages;
+      return merged;
     } catch (e) {
       if (activeConversationIdRef.current !== conversationId) return [];
       setError(e?.message || "Erreur chargement messages privés.");
@@ -1134,24 +1160,23 @@ export default function CommunauteVWS() {
 
   useEffect(() => {
     if (loading || !session?.user?.id || !accessToken) return;
-    const waitingSupportWelcome =
-      tab === "private" &&
-      Boolean(activeConversation?.isSupport) &&
-      privateMessages.length === 0;
-    const pollMs = waitingSupportWelcome ? 1200 : 5000;
     const id = setInterval(() => {
+      if (document.visibilityState === "hidden") return;
       if (tab === "public") void refreshPublic();
       if (tab === "private") {
-        void refreshConversations();
+        const inMobileChat =
+          typeof window !== "undefined" &&
+          window.matchMedia("(max-width: 767px)").matches &&
+          Boolean(activeConversationIdRef.current);
+        if (!inMobileChat) void refreshConversations();
         void refreshPrivateMessages(activeConversationId);
       }
-    }, pollMs);
+    }, 5000);
     return () => clearInterval(id);
   }, [
     tab,
     activeConversationId,
     activeConversation?.isSupport,
-    privateMessages.length,
     loading,
     session?.user?.id,
     accessToken,
@@ -1162,6 +1187,9 @@ export default function CommunauteVWS() {
   }, [publicMessages.length]);
 
   useEffect(() => {
+    const previousLength = privateMessagesLengthRef.current;
+    privateMessagesLengthRef.current = privateMessages.length;
+    if (privateMessages.length <= previousLength) return;
     privateEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [privateMessages.length]);
 
@@ -1235,7 +1263,7 @@ export default function CommunauteVWS() {
   useEffect(() => {
     if (tab !== "private" || !activeConversationId) return;
     patchPrivateInboxMeta(activeConversationId, { unreadCount: 0 });
-  }, [tab, activeConversationId, privateMessages.length, patchPrivateInboxMeta]);
+  }, [tab, activeConversationId, patchPrivateInboxMeta]);
 
   const sendToPublic = async () => {
     const text = publicInput.trim();

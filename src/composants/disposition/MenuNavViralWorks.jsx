@@ -200,6 +200,7 @@ function NavAccordionMobile({
   isNavItemActive,
   onNavigate,
   onPrefetch,
+  compact = false,
 }) {
   const [expanded, setExpanded] = useState(false);
   const { session } = useAuth();
@@ -209,43 +210,52 @@ function NavAccordionMobile({
     onNavigate?.();
   };
 
+  const triggerClass = compact
+    ? isTriggerActive
+      ? "bg-white/14 text-white"
+      : "text-white/80 hover:bg-white/[0.08] hover:text-white"
+    : isTriggerActive
+      ? "card-vws-active text-emerald-300"
+      : "text-slate-300 hover:bg-white/5 hover:text-white border border-transparent";
+
+  const subItemClass = (active) =>
+    compact
+      ? active
+        ? "bg-white/14 text-white"
+        : "text-white/75 hover:bg-white/[0.08] hover:text-white"
+      : itemClass(active);
+
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-0.5">
       <button
         type="button"
         aria-expanded={expanded}
-        className={`group flex w-full items-center justify-between gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200 ${
-          isTriggerActive
-            ? "card-vws-active text-emerald-300"
-            : "text-slate-300 hover:bg-white/5 hover:text-white border border-transparent"
-        }`}
+        className={`group flex w-full items-center justify-between gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors duration-150 ${triggerClass}`}
         onClick={() => setExpanded((v) => !v)}
         onMouseEnter={onPrefetch}
         onFocus={onPrefetch}
       >
-        <span className="flex min-w-0 items-center gap-3">
+        <span className="flex min-w-0 items-center gap-2.5">
           <Icon
-            className={`h-5 w-5 shrink-0 transition-transform ${
-              isTriggerActive ? "scale-110" : "group-hover:scale-110"
-            }`}
+            className="h-4 w-4 shrink-0 opacity-80"
             strokeWidth={2}
             aria-hidden
           />
           <span>{label}</span>
         </span>
         <ChevronDown
-          className={`h-4 w-4 shrink-0 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
+          className={`h-3.5 w-3.5 shrink-0 opacity-60 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
           strokeWidth={2.25}
         />
       </button>
 
       {expanded ? (
-        <div className="ml-2 flex flex-col gap-1 border-l border-white/10 pl-3">
+        <div className={`ml-2 flex flex-col gap-0.5 pl-2.5 ${compact ? "border-l border-white/[0.1]" : "border-l border-white/10"}`}>
           {items.map((item) => (
             <LienNavSync
               key={item.to}
               to={item.to}
-              className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${itemClass(isNavItemActive(item))}`}
+              className={`flex items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-[12px] transition-colors ${subItemClass(isNavItemActive(item))}`}
               onClick={close}
               onMouseEnter={() => prefetchNavTarget(item.to, session?.user?.id)}
               onFocus={() => prefetchNavTarget(item.to, session?.user?.id)}
@@ -261,7 +271,7 @@ function NavAccordionMobile({
 }
 
 /** Sections mobile : accordéons "ViralWorks Vidéo" puis "ViralWorks Image". */
-export function MenuNavViralWorksMobile({ onNavigate, showEditVideo = false }) {
+export function MenuNavViralWorksMobile({ onNavigate, showEditVideo = false, compact = false }) {
   const { session } = useAuth();
   const { isNavItemActive, isVideoTriggerActive, isImageTriggerActive } =
     useViralWorksNavState();
@@ -284,6 +294,7 @@ export function MenuNavViralWorksMobile({ onNavigate, showEditVideo = false }) {
         isNavItemActive={isNavItemActive}
         onNavigate={onNavigate}
         onPrefetch={prefetchEditVideo}
+        compact={compact}
       />
       <NavAccordionMobile
         label="ViralWorks Image"
@@ -293,6 +304,7 @@ export function MenuNavViralWorksMobile({ onNavigate, showEditVideo = false }) {
         isNavItemActive={isNavItemActive}
         onNavigate={onNavigate}
         onPrefetch={prefetchImageStudio}
+        compact={compact}
       />
     </div>
   );

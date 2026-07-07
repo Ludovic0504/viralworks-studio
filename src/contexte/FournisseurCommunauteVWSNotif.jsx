@@ -33,6 +33,30 @@ const NORMAL_POLL_MS = 8000;
 const FAST_POLL_WINDOW_MS = 3 * 60 * 1000;
 const PREVIEW_BUBBLE_DELAY_MS = 800;
 
+function privateInboxMetaAreSame(left, right) {
+  if (left.length !== right.length) return false;
+  return left.every((row, index) => {
+    const other = right[index];
+    if (!other) return false;
+    return (
+      row.conversationId === other.conversationId &&
+      Number(row.unreadCount || 0) === Number(other.unreadCount || 0) &&
+      row.notificationsMuted === other.notificationsMuted
+    );
+  });
+}
+
+function unreadPreviewIsSame(left, right) {
+  if (!left && !right) return true;
+  if (!left || !right) return false;
+  return (
+    left.messageId === right.messageId &&
+    left.conversationId === right.conversationId &&
+    left.contentPreview === right.contentPreview &&
+    left.createdAt === right.createdAt
+  );
+}
+
 const CommunauteVWSNotifContext = createContext(null);
 
 function readDismissedPreviewId() {
@@ -79,9 +103,16 @@ export function FournisseurCommunauteVWSNotif({ children }) {
     activePrivateConversationIdRef.current = id;
     if (!id) return;
 
-    setPrivateInboxMeta((prev) =>
-      prev.map((row) => (row.conversationId === id ? { ...row, unreadCount: 0 } : row)),
-    );
+    setPrivateInboxMeta((prev) => {
+      let changed = false;
+      const next = prev.map((row) => {
+        if (row.conversationId !== id) return row;
+        if (Number(row.unreadCount || 0) === 0) return row;
+        changed = true;
+        return { ...row, unreadCount: 0 };
+      });
+      return changed ? next : prev;
+    });
     setLatestUnreadPrivatePreview((prev) => (prev?.conversationId === id ? null : prev));
   }, []);
 
@@ -90,8 +121,9 @@ export function FournisseurCommunauteVWSNotif({ children }) {
   }, []);
 
   const applyUnreadStatus = useCallback((status) => {
-    setUnreadPrivateCount(status.count);
-    setLatestUnreadPrivatePreview(enrichPreview(status.preview));
+    const preview = enrichPreview(status.preview);
+    setUnreadPrivateCount((prev) => (prev === status.count ? prev : status.count));
+    setLatestUnreadPrivatePreview((prev) => (unreadPreviewIsSame(prev, preview) ? prev : preview));
   }, []);
 
   const adjustUnreadForActiveConversation = useCallback((status, inboxMeta) => {
@@ -117,16 +149,19 @@ export function FournisseurCommunauteVWSNotif({ children }) {
       adjustedCount = Math.max(0, adjustedCount - unreadFromActive);
     }
 
-    const adjustedInbox = inboxMeta.map((row) =>
-      row.conversationId === activeId ? { ...row, unreadCount: 0 } : row,
-    );
+    const adjustedInbox = inboxMeta.map((row) => {
+      if (row.conversationId !== activeId) return row;
+      if (Number(row.unreadCount || 0) === 0) return row;
+      return { ...row, unreadCount: 0 };
+    });
+    const inboxChanged = adjustedInbox.some((row, index) => row !== inboxMeta[index]);
 
     return {
       status: {
         count: adjustedCount,
         preview: adjustedPreview,
       },
-      inboxMeta: adjustedInbox,
+      inboxMeta: inboxChanged ? adjustedInbox : inboxMeta,
     };
   }, []);
 
@@ -165,7 +200,9 @@ export function FournisseurCommunauteVWSNotif({ children }) {
 
       const adjusted = adjustUnreadForActiveConversation(status, inboxMeta);
       applyUnreadStatus(adjusted.status);
-      setPrivateInboxMeta(adjusted.inboxMeta);
+      setPrivateInboxMeta((prev) =>
+        privateInboxMetaAreSame(prev, adjusted.inboxMeta) ? prev : adjusted.inboxMeta,
+      );
       return adjusted.status;
     } catch {
       setUnreadPrivateCount(0);
@@ -200,8 +237,12 @@ export function FournisseurCommunauteVWSNotif({ children }) {
     setPrivateInboxMeta((prev) => {
       const index = prev.findIndex((row) => row.conversationId === id);
       if (index >= 0) {
+        const current = prev[index];
+        const merged = { ...current, ...patch };
+        const unchanged = Object.keys(patch).every((key) => current[key] === merged[key]);
+        if (unchanged) return prev;
         const next = [...prev];
-        next[index] = { ...next[index], ...patch };
+        next[index] = merged;
         return next;
       }
       return [
@@ -295,7 +336,10 @@ export function FournisseurCommunauteVWSNotif({ children }) {
 
     const schedule = () => {
       const elapsed = Date.now() - sessionStartedAtRef.current;
-      const delay = elapsed < FAST_POLL_WINDOW_MS ? FAST_POLL_MS : NORMAL_POLL_MS;
+      const inActiveChat =
+        isViewingPrivateMessagesRef.current && Boolean(activePrivateConversationIdRef.current);
+      let delay = elapsed < FAST_POLL_WINDOW_MS ? FAST_POLL_MS : NORMAL_POLL_MS;
+      if (inActiveChat) delay = Math.max(delay, 12000);
       timeoutId = window.setTimeout(() => {
         tick();
         schedule();
