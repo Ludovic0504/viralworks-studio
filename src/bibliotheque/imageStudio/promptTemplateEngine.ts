@@ -658,6 +658,7 @@ export type UgcPresentationAssemblyInput = {
   bodyZone?: UgcPresentationBodyZone | string | null;
   pose?: UgcPresentationPose | string | null;
   profileId: string;
+  age?: number;
   productName: string;
   autreTenue?: string;
   location?: string;
@@ -793,9 +794,12 @@ export function assembleUgcPresentationPrompt(input: UgcPresentationAssemblyInpu
         )
       : resolveUgcPresentationWornPose(input.pose, pronouns.pronounInPose);
 
+  const resolvedAge =
+    input.age !== undefined && Number.isFinite(input.age) ? Math.round(input.age) : profile.age;
+
   const commonValues: Record<string, string> = {
     [UGC_PRESENTATION_PLACEHOLDERS.sexeDescription]: pronouns.sexeDescription,
-    [UGC_PRESENTATION_PLACEHOLDERS.age]: String(profile.age),
+    [UGC_PRESENTATION_PLACEHOLDERS.age]: String(resolvedAge),
     [UGC_PRESENTATION_PLACEHOLDERS.hairDescription]: hairDescription,
     [UGC_PRESENTATION_PLACEHOLDERS.pose]: pose,
     [UGC_PRESENTATION_PLACEHOLDERS.pronounPossessive]: pronouns.pronounPossessive,
@@ -886,11 +890,16 @@ export function assembleUgcPresentationPromptFromSlots(slots: TemplateSlotValues
     hairDescription = hairDescription || drawn.hairDescription;
   }
 
+  const ageRaw = (slots.age ?? "").trim();
+  const parsedAge = ageRaw ? Number(ageRaw) : NaN;
+  const age = Number.isFinite(parsedAge) ? parsedAge : undefined;
+
   return assembleUgcPresentationPrompt({
     presentationMode,
     bodyZone: slots.bodyZone ?? null,
     pose: (slots.pose ?? "default") as UgcPresentationPose,
     profileId,
+    age,
     productName,
     autreTenue: slots.autreTenue,
     location: slots.location ?? "",

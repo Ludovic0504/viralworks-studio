@@ -6,6 +6,8 @@ export type PromptMentionAssets = {
   avatarUrl?: string | null;
   productUrl?: string | null;
   image1Url?: string | null;
+  /** Précision sur l'article à extraire de l'image @Produit (consigne technique, pas dans le prompt utilisateur). */
+  productFocus?: string | null;
 };
 
 export type PromptMentionOption = {
@@ -158,10 +160,27 @@ function buildReferenceOrder(
   return ordered;
 }
 
+function buildProductReferenceFocusLine(
+  imageIndex: number,
+  productFocus: string,
+): string {
+  return `@Produit scope: from image${imageIndex}, reproduce ONLY this item — ${productFocus}. Ignore every other garment, accessory, or object visible in that reference image.`;
+}
+
+export function buildProductReferenceFocusInstruction(
+  imageIndex: number,
+  productFocus: string,
+): string {
+  const focus = productFocus.trim();
+  if (!focus || imageIndex < 1) return "";
+  return buildProductReferenceFocusLine(imageIndex, focus);
+}
+
 function buildCompositionInstructions(
   userPrompt: string,
   mentionKinds: PromptMentionKind[],
   imageIndexByKind: Map<PromptMentionKind, number>,
+  assets: PromptMentionAssets,
 ): string {
   const lines: string[] = ["[Refs]", "Mapping:"];
 
@@ -196,6 +215,12 @@ function buildCompositionInstructions(
 
   if (mentionKinds.some((kind) => countMentionOccurrences(userPrompt, kind) > 1)) {
     lines.push("Les mentions répétées renvoient à la même référence.");
+  }
+
+  const productFocus = typeof assets.productFocus === "string" ? assets.productFocus.trim() : "";
+  const productImageIndex = imageIndexByKind.get("Produit");
+  if (productFocus && productImageIndex != null && mentionKinds.includes("Produit")) {
+    lines.push(buildProductReferenceFocusLine(productImageIndex, productFocus));
   }
 
   return lines.join(" ");
@@ -241,7 +266,12 @@ export function resolvePromptMentions(
     imageIndexByKind.set(kind, referenceImages.length);
   }
 
-  const compositionBlock = buildCompositionInstructions(trimmed, mentionKinds, imageIndexByKind);
+  const compositionBlock = buildCompositionInstructions(
+    trimmed,
+    mentionKinds,
+    imageIndexByKind,
+    assets,
+  );
   const generationPrompt = `${trimmed}\n\n${compositionBlock}`;
 
   return {

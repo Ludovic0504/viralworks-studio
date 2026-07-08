@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import { BookOpen, Check, Crop, Layers2, SlidersHorizontal, Wand2, X } from "lucide-react";
+import { Check, Crop, Layers2, SlidersHorizontal, Wand2, X } from "lucide-react";
 import ImageStudioModelIcon from "@/composants/image/ImageStudioModelIcon";
 
 export default function SheetReglagesImageStudio({
@@ -17,14 +17,11 @@ export default function SheetReglagesImageStudio({
   onGenerationCountChange,
   generationCounts,
   maxGenerationCount = 4,
-  onOpenPrompts,
-  blockBackdropClose = false,
   disabled,
 }) {
   if (!open) return null;
 
   const handleBackdropClick = () => {
-    if (blockBackdropClose) return;
     onClose();
   };
 
@@ -165,16 +162,6 @@ export default function SheetReglagesImageStudio({
               })}
             </div>
           </section>
-
-          <button
-            type="button"
-            className="image-studio-settings-sheet-prompts"
-            disabled={disabled}
-            onClick={onOpenPrompts}
-          >
-            <BookOpen className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
-            Assistant Prompt
-          </button>
         </div>
       </div>
     </div>,

@@ -37,7 +37,7 @@ import {
   drawUgcPresentationPhysicalDefaults,
   UGC_PRESENTATION_PHYSIQUE_POOLS,
 } from "./ugcPresentationPhysicalPools";
-import { getUgcSelfieProfileById } from "./ugcSelfieProfiles";
+import { getUgcSelfieProfileById, resolveUgcPresentationProfileIdFromAge } from "./ugcSelfieProfiles";
 
 const productTemplate = getPromptTemplateById("product-photography");
 
@@ -857,6 +857,44 @@ describe("ugc presentation produit guide", () => {
     expect(first).toBe(second);
     expect(first).toContain(drawn.physique);
     expect(first).toContain(drawn.hairDescription);
+  });
+
+  it("uses the exact slider age in the assembled prompt when provided", () => {
+    const prompt = assembleUgcPresentationPrompt({
+      presentationMode: "held",
+      pose: "natural",
+      profileId: "femme-30",
+      age: 42,
+      productName: "a luxury handbag",
+      autreTenue: "",
+      location: "",
+      physicalMode: "default",
+    });
+
+    expect(prompt).toContain("42-year-old");
+    expect(prompt).not.toContain("30-year-old");
+  });
+
+  it("maps continuous ages to the nearest presentation physique bucket", () => {
+    expect(resolveUgcPresentationProfileIdFromAge("femme", 22)).toBe("femme-20");
+    expect(resolveUgcPresentationProfileIdFromAge("homme", 37)).toBe("homme-40");
+    expect(resolveUgcPresentationProfileIdFromAge("femme", 72)).toBe("femme-60");
+  });
+
+  it("injects @Produit mention when product is provided as an image reference", () => {
+    const prompt = assembleUgcPresentationPrompt({
+      presentationMode: "worn",
+      bodyZone: "upper",
+      pose: "natural",
+      profileId: "femme-30",
+      productName: "@Produit",
+      autreTenue: "",
+      location: "",
+      physicalMode: "default",
+    });
+
+    expect(prompt).toContain("is fully wearing @Produit");
+    expect(prompt).not.toContain("[PRODUIT]");
   });
 
   it("isUgcPresentationGuideReady requires mode, profile, product and location slot", () => {

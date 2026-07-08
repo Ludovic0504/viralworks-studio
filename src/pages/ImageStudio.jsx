@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  BookOpen,
   Check,
   ChevronDown,
   Clock,
@@ -10,6 +9,7 @@ import {
   Loader2,
   Plus,
   SlidersHorizontal,
+  Sparkles,
   Wand2,
   X,
 } from "lucide-react";
@@ -68,6 +68,7 @@ import {
   saveImageStudioHistoryCache,
 } from "@/bibliotheque/imageStudio/imageStudioHistoryCache";
 import { resolvePromptMentions, IMAGE_STUDIO_PROMPT_MAX_LENGTH, getImageStudioUserPrompt } from "@/bibliotheque/imageStudio/promptMentions";
+import { resolveImageStudioGuideApplyPayload } from "@/bibliotheque/imageStudio/imageStudioGuideApply";
 import {
   uploadImageStudioReferenceUrl,
   isSupportedImageStudioReferenceMime,
@@ -497,6 +498,7 @@ export default function ImageStudio() {
   const [importedRefPreview, setImportedRefPreview] = useState(null);
   const [productImage, setProductImage] = useState(null);
   const [productPreview, setProductPreview] = useState(null);
+  const [productFocus, setProductFocus] = useState(null);
   const [avatarLibraryOpen, setAvatarLibraryOpen] = useState(false);
   const [productLibraryOpen, setProductLibraryOpen] = useState(false);
   const [activeHistoryId, setActiveHistoryId] = useState(null);
@@ -963,6 +965,23 @@ export default function ImageStudio() {
   const clearProduct = useCallback(() => {
     setProductImage(null);
     setProductPreview(null);
+    setProductFocus(null);
+  }, []);
+
+  const handleGuideApplyPrompt = useCallback((payload) => {
+    const { prompt: nextPrompt, productImageUrl, productFocus: nextProductFocus } =
+      resolveImageStudioGuideApplyPayload(payload);
+    setPrompt(nextPrompt);
+    if (productImageUrl) {
+      setProductImage(productImageUrl);
+      setProductPreview(productImageUrl);
+      setProductFocus(nextProductFocus);
+      setError(null);
+      return;
+    }
+    if (nextProductFocus) {
+      setProductFocus(nextProductFocus);
+    }
   }, []);
 
   const handleFeedScroll = useCallback(
@@ -1081,6 +1100,7 @@ export default function ImageStudio() {
       avatarUrl: referenceImage,
       productUrl: productImage,
       image1Url: importedRefImage,
+      productFocus,
     });
 
     const generationPrompt = resolved.generationPrompt;
@@ -1221,8 +1241,9 @@ export default function ImageStudio() {
       avatarUrl: referenceImage,
       productUrl: productImage,
       image1Url: importedRefImage,
+      productFocus,
     }),
-    [referenceImage, productImage, importedRefImage],
+    [referenceImage, productImage, importedRefImage, productFocus],
   );
 
   const requestGenerate = () => {
@@ -1351,6 +1372,18 @@ export default function ImageStudio() {
               </div>
 
               <div className="image-studio-settings-row">
+                <button
+                  type="button"
+                  className="image-studio-prompt-guide-chip shrink-0"
+                  onClick={() => setPromptsModalOpen(true)}
+                  disabled={generating}
+                  title="Choisir un type d'image — l'assistant remplit le prompt"
+                  aria-label="Choisir un type d'image — l'assistant remplit le prompt"
+                >
+                  <Sparkles className="image-studio-prompt-guide-chip-icon" strokeWidth={2} aria-hidden />
+                  <span>Type d&apos;image</span>
+                </button>
+
                 <div className="image-studio-settings-desktop">
                   <ModelDropdown
                     value={model}
@@ -1372,18 +1405,6 @@ export default function ImageStudio() {
                     disabled={generating}
                     maxCount={maxGenerationCount}
                   />
-
-                  <button
-                    type="button"
-                    className="image-studio-setting-pill image-studio-prompts-btn shrink-0"
-                    onClick={() => setPromptsModalOpen(true)}
-                    disabled={generating}
-                    aria-label="Ouvrir l'assistant prompt par type d'image"
-                    title="Assistant Prompt — remplissage automatique"
-                  >
-                    <BookOpen className="image-studio-setting-pill-icon" strokeWidth={2} aria-hidden />
-                    <span className="image-studio-setting-pill-label">Assistant Prompt</span>
-                  </button>
                 </div>
 
                 <button
@@ -1391,7 +1412,7 @@ export default function ImageStudio() {
                   className="image-studio-settings-mobile-btn"
                   onClick={() => setMobileSettingsOpen(true)}
                   disabled={generating}
-                  aria-label="Ouvrir les réglages : modèle, format, générations et prompts"
+                  aria-label="Ouvrir les réglages : modèle, format et générations"
                 >
                   <SlidersHorizontal className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
                   <span>Réglages</span>
@@ -1469,7 +1490,7 @@ export default function ImageStudio() {
       <ModalPromptsImageStudio
         open={promptsModalOpen}
         onClose={() => setPromptsModalOpen(false)}
-        onApplyPrompt={setPrompt}
+        onApplyPrompt={handleGuideApplyPrompt}
       />
 
       <ModalImageStudioPreview
@@ -1493,7 +1514,6 @@ export default function ImageStudio() {
 
       <SheetReglagesImageStudio
         open={mobileSettingsOpen}
-        blockBackdropClose={promptsModalOpen}
         onClose={() => setMobileSettingsOpen(false)}
         model={model}
         onModelChange={setModel}
@@ -1507,7 +1527,6 @@ export default function ImageStudio() {
         onGenerationCountChange={setGenerationCount}
         generationCounts={GENERATION_COUNTS}
         maxGenerationCount={maxGenerationCount}
-        onOpenPrompts={() => setPromptsModalOpen(true)}
         disabled={generating}
       />
     </div>

@@ -1210,7 +1210,7 @@ export default function ModalPromptsImageStudio({ open, onClose, onApplyPrompt }
 
   return createPortal(
     <div
-      className="image-studio-quota-modal-backdrop"
+      className="image-studio-prompts-modal-backdrop"
       role="presentation"
       onClick={handleBackdropClose}
     >
@@ -1223,36 +1223,48 @@ export default function ModalPromptsImageStudio({ open, onClose, onApplyPrompt }
       >
         {view === "hub" ? (
           <>
-            <button
-              type="button"
-              className="image-studio-quota-modal-close"
-              onClick={onClose}
-              aria-label="Fermer"
-            >
-              <X className="h-4 w-4" />
-            </button>
+            <header className="image-studio-prompts-hub-header">
+              <div className="image-studio-prompts-hub-title-row">
+                <span className="image-studio-prompts-hub-badge" aria-hidden>
+                  <Sparkles className="h-3.5 w-3.5" strokeWidth={2} />
+                </span>
+                <h2 id="image-studio-prompts-title" className="image-studio-prompts-hub-title">
+                  Type d&apos;image
+                </h2>
+              </div>
+              <button
+                type="button"
+                className="image-studio-prompts-hub-close"
+                onClick={onClose}
+                aria-label="Fermer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </header>
 
-            <h2 id="image-studio-prompts-title" className="image-studio-quota-title">
-              Guides prompt
-            </h2>
-
-            <div className="image-studio-prompts-list image-studio-prompt-templates-grid">
+            <div className="image-studio-prompts-list image-studio-prompts-visual-grid">
               {IMAGE_STUDIO_PROMPT_TEMPLATES.map((template) => (
                 <button
                   key={template.id}
                   type="button"
-                  className="image-studio-prompt-template-tile"
+                  className="image-studio-prompt-visual-tile"
                   onClick={() => openTemplate(template)}
                   aria-label={`Ouvrir le guide ${template.label}`}
                 >
-                  {template.heroImage ? (
-                    <img
-                      src={template.heroImage}
-                      alt=""
-                      className="image-studio-prompt-template-tile-img"
-                    />
-                  ) : null}
-                  <span className="image-studio-prompt-template-tile-label">{template.label}</span>
+                  <div className="image-studio-prompt-visual-tile-frame">
+                    {template.heroImage ? (
+                      <img
+                        src={template.heroImage}
+                        alt=""
+                        className="image-studio-prompt-visual-tile-img"
+                      />
+                    ) : (
+                      <span className="image-studio-prompt-visual-tile-fallback">
+                        <TemplateIcon icon={template.icon} className="h-5 w-5" />
+                      </span>
+                    )}
+                  </div>
+                  <span className="image-studio-prompt-visual-tile-label">{template.label}</span>
                 </button>
               ))}
             </div>

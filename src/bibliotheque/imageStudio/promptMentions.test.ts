@@ -38,6 +38,24 @@ describe("promptMentions", () => {
     expect(result.generationPrompt).toContain(userText);
     expect(result.generationPrompt).toContain("[Refs]");
     expect(stripImageStudioCompositionBlock(result.generationPrompt)).toBe(userText);
+    expect(result.generationPrompt.indexOf(userText)).toBe(0);
+  });
+
+  it("injects product focus scope in refs block without altering user prompt body", () => {
+    const userText =
+      "Photorealistic lifestyle portrait. She is fully wearing @Produit in a luxury closet.";
+    const result = resolvePromptMentions(userText, {
+      avatarUrl: null,
+      productUrl: "https://cdn/product.png",
+      image1Url: null,
+      productFocus: "la veste uniquement, ignorer le pantalon",
+    });
+
+    expect(result.userPrompt).toBe(userText);
+    expect(stripImageStudioCompositionBlock(result.generationPrompt)).toBe(userText);
+    expect(result.generationPrompt).toContain("@Produit scope:");
+    expect(result.generationPrompt).toContain("la veste uniquement, ignorer le pantalon");
+    expect(result.generationPrompt).toContain("Ignore every other garment");
   });
 
   it("resolves attached mentions to ordered reference images with role instructions", () => {

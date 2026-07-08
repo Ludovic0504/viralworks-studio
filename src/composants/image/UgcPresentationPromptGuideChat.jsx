@@ -5,6 +5,7 @@ import {
   ChevronUp,
   Footprints,
   Hand,
+  ImageUp,
   SendHorizontal,
   Shirt,
   ShoppingBag,
@@ -16,9 +17,17 @@ import {
   fillTemplateSlotDefaults,
   isUgcPresentationGuideReady,
 } from "@/bibliotheque/imageStudio/promptTemplateEngine";
+import { IMAGE_STUDIO_PRODUCT_MENTION_TOKEN } from "@/bibliotheque/imageStudio/imageStudioGuideApply";
+import {
+  IMAGE_STUDIO_REF_IMPORT_MESSAGE,
+  isSupportedImageStudioReferenceMime,
+} from "@/bibliotheque/imageStudio/uploadImageStudioReference";
 import {
   getUgcSelfieProfileById,
-  getUgcSelfieProfilesForGender,
+  UGC_PRESENTATION_AGE_DEFAULT,
+  UGC_PRESENTATION_AGE_MAX,
+  UGC_PRESENTATION_AGE_MIN,
+  resolveUgcPresentationProfileIdFromAge,
   UGC_SELFIE_HAIR_OPTIONS,
   UGC_SELFIE_SKIN_TONE_OPTIONS,
 } from "@/bibliotheque/imageStudio/ugcSelfieProfiles";
@@ -32,6 +41,9 @@ import {
 } from "@/bibliotheque/imageStudio/ugcPresentationPhysicalPools";
 
 /** @typedef {'presentationMode' | 'bodyZone' | 'posture' | 'gender' | 'age' | 'physical' | 'product' | 'autreTenue' | 'autreTenueCustom' | 'location' | 'ready'} UgcPresentationGuideStep */
+/** @typedef {'text' | 'image'} UgcPresentationProductInputMode */
+
+const PRODUCT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 
 const BOT_TYPING_DELAY_MS = 520;
 
@@ -132,32 +144,115 @@ function useConversationBotVisibility(botTurnKeys) {
   return { isBotVisible, isTyping };
 }
 
-function AgeProfileGrid({ profiles, selectedId, locked, onSelect }) {
+function AgeSliderPicker({ value, disabled, onChange, onConfirm }) {
+  const progress =
+    ((value - UGC_PRESENTATION_AGE_MIN) / (UGC_PRESENTATION_AGE_MAX - UGC_PRESENTATION_AGE_MIN)) *
+    100;
+
   return (
-    <div
-      className={`image-studio-prompt-shot-grid${locked ? " image-studio-prompt-shot-grid--locked" : ""}`}
-      role="radiogroup"
-      aria-label="Âge"
-    >
-      {profiles.map((profile) => {
-        const selected = selectedId === profile.id;
-        return (
-          <button
-            key={profile.id}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            disabled={locked}
-            className={`image-studio-prompt-shot-tile${selected ? " is-selected" : ""}${
-              locked ? " is-locked" : ""
-            }`}
-            onClick={() => onSelect(profile.id)}
-          >
-            <img src={profile.image} alt="" className="image-studio-prompt-shot-tile-img" />
-            <span className="image-studio-prompt-shot-tile-label">{profile.ageLabel}</span>
-          </button>
-        );
-      })}
+    <div className="image-studio-prompt-ugc-age-slider">
+      <p className="image-studio-prompt-ugc-age-value" aria-live="polite">
+        {value}
+      </p>
+      <input
+        type="range"
+        min={UGC_PRESENTATION_AGE_MIN}
+        max={UGC_PRESENTATION_AGE_MAX}
+        step={1}
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(Number(event.target.value))}
+        onDragStart={(event) => event.preventDefault()}
+        className="image-studio-prompt-ugc-age-range"
+        style={{ "--age-pct": `${progress}%` }}
+        aria-label="Âge"
+        aria-valuemin={UGC_PRESENTATION_AGE_MIN}
+        aria-valuemax={UGC_PRESENTATION_AGE_MAX}
+        aria-valuenow={value}
+      />
+      <div className="image-studio-prompt-guide-elements-actions image-studio-prompt-guide-bubble-actions image-studio-prompt-ugc-age-actions">
+        <button
+          type="button"
+          className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
+          disabled={disabled}
+          onClick={onConfirm}
+        >
+          Valider
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ProductImageImportPicker({
+  disabled,
+  previewUrl,
+  focusValue,
+  errorMessage,
+  onPickFile,
+  onFocusChange,
+  onConfirm,
+}) {
+  const inputRef = useRef(null);
+
+  return (
+    <div className="image-studio-prompt-ugc-product-image-picker">
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+        className="sr-only"
+        disabled={disabled}
+        onChange={(event) => {
+          const file = event.target.files?.[0] ?? null;
+          event.target.value = "";
+          onPickFile(file);
+        }}
+      />
+      <button
+        type="button"
+        className="studio-toolbar-btn image-studio-prompt-guide-elements-btn image-studio-prompt-ugc-product-image-btn"
+        disabled={disabled}
+        onClick={() => inputRef.current?.click()}
+      >
+        <ImageUp className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden="true" />
+        <span>{previewUrl ? "Changer l'image" : "Choisir une image"}</span>
+      </button>
+      {previewUrl ? (
+        <>
+          <div className="image-studio-prompt-ugc-product-image-preview" aria-hidden="true">
+            <img src={previewUrl} alt="" />
+          </div>
+          <label className="image-studio-prompt-ugc-product-focus-field">
+            <span className="image-studio-prompt-ugc-product-focus-label">
+              Quel article reprendre ? <span className="image-studio-prompt-ugc-optional">(optionnel)</span>
+            </span>
+            <input
+              type="text"
+              value={focusValue}
+              onChange={(event) => onFocusChange(event.target.value)}
+              placeholder="ex: la veste uniquement, ignorer le pantalon"
+              className="image-studio-prompt-guide-input image-studio-prompt-ugc-product-focus-input"
+              disabled={disabled}
+            />
+          </label>
+          <div className="image-studio-prompt-guide-elements-actions image-studio-prompt-guide-bubble-actions image-studio-prompt-ugc-product-image-actions">
+            <button
+              type="button"
+              className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
+              disabled={disabled}
+              onClick={onConfirm}
+            >
+              Valider
+            </button>
+          </div>
+        </>
+      ) : null}
+      {errorMessage ? (
+        <p className="image-studio-prompt-ugc-product-image-error" role="alert">
+          {errorMessage}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -296,6 +391,7 @@ export default function UgcPresentationPromptGuideChat({ template, onBack, onApp
   const [bodyZone, setBodyZone] = useState(null);
   const [pose, setPose] = useState(null);
   const [gender, setGender] = useState(null);
+  const [age, setAge] = useState(UGC_PRESENTATION_AGE_DEFAULT);
   const [profileId, setProfileId] = useState(null);
   const [guideStep, setGuideStep] = useState(
     /** @type {UgcPresentationGuideStep} */ ("presentationMode"),
@@ -309,12 +405,16 @@ export default function UgcPresentationPromptGuideChat({ template, onBack, onApp
   const [locationPresetId, setLocationPresetId] = useState(null);
   const [locationOtherOpen, setLocationOtherOpen] = useState(false);
   const [productValidationShown, setProductValidationShown] = useState(false);
+  const [productInputMode, setProductInputMode] = useState(
+    /** @type {UgcPresentationProductInputMode | null} */ (null),
+  );
+  const [productImageDraft, setProductImageDraft] = useState(null);
+  const [productImagePreview, setProductImagePreview] = useState(null);
+  const [productFocusDraft, setProductFocusDraft] = useState("");
+  const [productImageError, setProductImageError] = useState(null);
 
   const profile = useMemo(() => getUgcSelfieProfileById(profileId), [profileId]);
-  const ageProfiles = useMemo(
-    () => (gender ? getUgcSelfieProfilesForGender(gender) : []),
-    [gender],
-  );
+  const selectedAge = (slots.age ?? "").trim();
   const isFullOutfit = bodyZone === "full-outfit";
 
   const filledSlots = useMemo(() => fillTemplateSlotDefaults(template, slots), [template, slots]);
@@ -324,9 +424,76 @@ export default function UgcPresentationPromptGuideChat({ template, onBack, onApp
     return assembleUgcPresentationPromptFromSlots(slots);
   }, [ready, slots]);
 
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, [guideStep, locationOtherOpen]);
+  const advanceAfterProduct = useCallback(
+    (nextSlots) => {
+      if (isFullOutfit) {
+        setSlots((prev) => ({ ...prev, ...nextSlots, autreTenue: "" }));
+        setGuideStep("location");
+        return;
+      }
+      setSlots((prev) => ({ ...prev, ...nextSlots }));
+      setGuideStep("autreTenue");
+    },
+    [isFullOutfit],
+  );
+
+  const handleProductModeSelect = useCallback((mode) => {
+    setProductInputMode(mode);
+    setProductValidationShown(false);
+    setProductImageError(null);
+    setProductImageDraft(null);
+    setProductFocusDraft("");
+    if (mode === "text") {
+      setProductImagePreview(null);
+    } else {
+      setDraft("");
+    }
+  }, []);
+
+  const handleProductImagePick = useCallback((file) => {
+    if (!file) return;
+
+    if (!isSupportedImageStudioReferenceMime(file.type)) {
+      setProductImageError(IMAGE_STUDIO_REF_IMPORT_MESSAGE);
+      return;
+    }
+
+    if (file.size > PRODUCT_IMAGE_MAX_BYTES) {
+      setProductImageError(IMAGE_STUDIO_REF_IMPORT_MESSAGE);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result || "").trim();
+      if (!dataUrl) {
+        setProductImageError(IMAGE_STUDIO_REF_IMPORT_MESSAGE);
+        return;
+      }
+
+      setProductImageDraft(dataUrl);
+      setProductImageError(null);
+      setProductValidationShown(false);
+    };
+    reader.onerror = () => {
+      setProductImageError(IMAGE_STUDIO_REF_IMPORT_MESSAGE);
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
+  const handleProductImageConfirm = useCallback(() => {
+    if (!productImageDraft) return;
+
+    const productFocus = productFocusDraft.trim();
+    setProductImagePreview(productImageDraft);
+    setProductImageDraft(null);
+    setProductValidationShown(false);
+    advanceAfterProduct({
+      productName: IMAGE_STUDIO_PRODUCT_MENTION_TOKEN,
+      productInputMode: "image",
+      productFocus,
+    });
+  }, [advanceAfterProduct, productFocusDraft, productImageDraft]);
 
   const finalizeGuide = useCallback((nextSlots) => {
     setSlots(nextSlots);
@@ -366,16 +533,24 @@ export default function UgcPresentationPromptGuideChat({ template, onBack, onApp
 
   const handleGenderSelect = useCallback((nextGender) => {
     setGender(nextGender);
+    setAge(UGC_PRESENTATION_AGE_DEFAULT);
+    setProfileId(null);
     setGuideStep("age");
   }, []);
 
-  const handleProfileSelect = useCallback((nextProfileId) => {
+  const handleAgeConfirm = useCallback(() => {
+    if (!gender) return;
+    const nextProfileId = resolveUgcPresentationProfileIdFromAge(gender, age);
     setProfileId(nextProfileId);
-    setSlots((prev) => ({ ...prev, profileId: nextProfileId }));
+    setSlots((prev) => ({
+      ...prev,
+      profileId: nextProfileId,
+      age: String(age),
+    }));
     setPhysicalSkinId(null);
     setPhysicalHairId(null);
     setGuideStep("physical");
-  }, []);
+  }, [age, gender]);
 
   const handlePhysicalDefault = useCallback(() => {
     if (!profileId) return;
@@ -421,15 +596,17 @@ export default function UgcPresentationPromptGuideChat({ template, onBack, onApp
       }
       setProductValidationShown(false);
       setDraft("");
-      if (isFullOutfit) {
-        setSlots((prev) => ({ ...prev, productName, autreTenue: "" }));
-        setGuideStep("location");
-      } else {
-        setSlots((prev) => ({ ...prev, productName }));
-        setGuideStep("autreTenue");
-      }
+      setProductImagePreview(null);
+      setProductImageDraft(null);
+      setProductFocusDraft("");
+      setProductImageError(null);
+      advanceAfterProduct({
+        productName,
+        productInputMode: "text",
+        productFocus: "",
+      });
     },
-    [isFullOutfit],
+    [advanceAfterProduct],
   );
 
   const handleAutreTenueRien = useCallback(() => {
@@ -519,14 +696,28 @@ export default function UgcPresentationPromptGuideChat({ template, onBack, onApp
 
   const handleApply = useCallback(() => {
     if (!assembledPrompt) return;
-    onApplyPrompt(assembledPrompt);
+    if (slots.productInputMode === "image" && productImagePreview) {
+      const productFocus = (slots.productFocus ?? "").trim();
+      onApplyPrompt({
+        prompt: assembledPrompt,
+        productImageUrl: productImagePreview,
+        productFocus: productFocus || null,
+      });
+    } else {
+      onApplyPrompt(assembledPrompt);
+    }
     onClose();
-  }, [assembledPrompt, onApplyPrompt, onClose]);
+  }, [
+    assembledPrompt,
+    onApplyPrompt,
+    onClose,
+    productImagePreview,
+    slots.productFocus,
+    slots.productInputMode,
+  ]);
 
   const showTextInput =
-    guideStep === "product" ||
-    guideStep === "autreTenueCustom" ||
-    (guideStep === "location" && locationOtherOpen);
+    guideStep === "autreTenueCustom" || (guideStep === "location" && locationOtherOpen);
 
   const inputPlaceholder =
     guideStep === "product"
@@ -536,6 +727,22 @@ export default function UgcPresentationPromptGuideChat({ template, onBack, onApp
       : guideStep === "autreTenueCustom"
         ? "ex: soft beige knit cardigan over a dark top"
         : "Décrivez le lieu…";
+
+  const productName = (slots.productName ?? "").trim();
+  const productFocusLabel = (slots.productFocus ?? "").trim();
+  const isProductImageMode = slots.productInputMode === "image";
+  const productQuestion =
+    isFullOutfit ? "Décrivez la tenue complète" : "Quel est le produit ?";
+  const productModeLabel =
+    productInputMode === "text"
+      ? "Écrire le produit"
+      : productInputMode === "image"
+        ? "Importer une image"
+        : null;
+  const productStepActive = guideStep === "product" && !productName;
+  const showProductModePicker = productStepActive;
+  const showProductInputBubble =
+    productStepActive && (productInputMode === "text" || productInputMode === "image");
 
   const composeForm =
     showTextInput && !ready ? (
@@ -560,6 +767,35 @@ export default function UgcPresentationPromptGuideChat({ template, onBack, onApp
       </form>
     ) : null;
 
+  const productTextComposeForm =
+    showProductInputBubble && productInputMode === "text" && !ready ? (
+      <form className="image-studio-prompt-guide-compose" onSubmit={handleSubmit}>
+        <input
+          ref={inputRef}
+          type="text"
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          placeholder={inputPlaceholder}
+          className="image-studio-prompt-guide-input"
+          aria-label="Votre message"
+        />
+        <button
+          type="submit"
+          className="image-studio-prompt-guide-send"
+          disabled={!draft.trim()}
+          aria-label="Envoyer"
+        >
+          <SendHorizontal className="h-4 w-4" strokeWidth={2.25} />
+        </button>
+      </form>
+    ) : null;
+
+  useEffect(() => {
+    if (showProductInputBubble && productInputMode === "text") {
+      inputRef.current?.focus();
+    }
+  }, [guideStep, locationOtherOpen, productInputMode, showProductInputBubble]);
+
   const presentationModeLabel =
     presentationMode === "held"
       ? "Tenu en main"
@@ -580,9 +816,6 @@ export default function UgcPresentationPromptGuideChat({ template, onBack, onApp
   }, [pose]);
 
   const genderLabel = gender === "homme" ? "Homme" : gender === "femme" ? "Femme" : null;
-  const productName = (slots.productName ?? "").trim();
-  const productQuestion =
-    isFullOutfit ? "Décrivez la tenue complète" : "Quel est le produit ?";
 
   const locationLabel = useMemo(() => {
     const location = slots.location;
@@ -611,7 +844,7 @@ export default function UgcPresentationPromptGuideChat({ template, onBack, onApp
     if (skin) parts.push(skin.label);
     if (hair) parts.push(hair.label);
     if (parts.length > 0) return parts.join(" · ");
-    if (slots.physicalMode === "default" && profileId) return "Laisser le chatbot choisir";
+    if (slots.physicalMode === "default" && profileId) return "Choisir pour moi";
     return null;
   }, [guideStep, physicalHairId, physicalSkinId, profileId, slots.physicalMode]);
 
@@ -632,6 +865,7 @@ export default function UgcPresentationPromptGuideChat({ template, onBack, onApp
     if (gender) keys.push("age");
     if (profileId) keys.push("physical");
     if (guideStep === "product" || productName) keys.push("product");
+    if (showProductInputBubble) keys.push("product-input");
     if (productValidationShown) keys.push("product-validation");
     if (!isFullOutfit && guideStep === "autreTenue") {
       keys.push("autreTenue");
@@ -654,6 +888,7 @@ export default function UgcPresentationPromptGuideChat({ template, onBack, onApp
     profileId,
     ready,
     showPostureStep,
+    showProductInputBubble,
   ]);
 
   const { isBotVisible, isTyping } = useConversationBotVisibility(botTurnKeys);
@@ -668,6 +903,7 @@ export default function UgcPresentationPromptGuideChat({ template, onBack, onApp
     ready,
     gender,
     profileId,
+    productInputMode,
   ]);
 
   const physicalStepActive = guideStep === "physical";
@@ -699,7 +935,7 @@ export default function UgcPresentationPromptGuideChat({ template, onBack, onApp
           {profile ? (
             <label className="image-studio-prompt-guide-field">
               <span>Profil</span>
-              <input type="text" value={`${genderLabel} · ${profile.ageLabel}`} readOnly />
+              <input type="text" value={`${genderLabel} · ${selectedAge}`} readOnly />
             </label>
           ) : null}
           {template.variables.map((variable) => (
@@ -877,19 +1113,19 @@ export default function UgcPresentationPromptGuideChat({ template, onBack, onApp
           <ConversationBubble role="bot" wide visible={isBotVisible("age")}>
             <p className="image-studio-prompt-guide-bubble-text">Quel âge ?</p>
             {guideStep === "age" ? (
-              <AgeProfileGrid
-                profiles={ageProfiles}
-                selectedId={profileId}
-                locked={false}
-                onSelect={handleProfileSelect}
+              <AgeSliderPicker
+                value={age}
+                disabled={false}
+                onChange={setAge}
+                onConfirm={handleAgeConfirm}
               />
             ) : null}
           </ConversationBubble>
         ) : null}
 
-        {profile ? (
+        {selectedAge ? (
           <ConversationBubble role="user">
-            <p className="image-studio-prompt-guide-bubble-text">{profile.ageLabel}</p>
+            <p className="image-studio-prompt-guide-bubble-text">{selectedAge}</p>
           </ConversationBubble>
         ) : null}
 
@@ -920,17 +1156,20 @@ export default function UgcPresentationPromptGuideChat({ template, onBack, onApp
                   className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
                   onClick={handlePhysicalDefault}
                 >
-                  Laisser le chatbot choisir
+                  Choisir pour moi
                 </button>
-                {hasPhysicalSelection ? (
-                  <button
-                    type="button"
-                    className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
-                    onClick={handlePhysicalContinue}
-                  >
-                    Valider
-                  </button>
-                ) : null}
+                <button
+                  type="button"
+                  className={`studio-toolbar-btn image-studio-prompt-guide-elements-btn${
+                    hasPhysicalSelection ? "" : " image-studio-prompt-ugc-physical-validate--hidden"
+                  }`}
+                  disabled={!hasPhysicalSelection}
+                  onClick={handlePhysicalContinue}
+                  aria-hidden={!hasPhysicalSelection}
+                  tabIndex={hasPhysicalSelection ? 0 : -1}
+                >
+                  Valider
+                </button>
               </div>
             ) : null}
           </ConversationBubble>
@@ -945,9 +1184,56 @@ export default function UgcPresentationPromptGuideChat({ template, onBack, onApp
         {guideStep === "product" || productName ? (
           <ConversationBubble role="bot" visible={isBotVisible("product")}>
             <p className="image-studio-prompt-guide-bubble-text">{productQuestion}</p>
-            {guideStep === "product" ? (
-              <div className="image-studio-prompt-guide-bubble-compose">{composeForm}</div>
+            {showProductModePicker ? (
+              <div
+                className="image-studio-prompt-guide-elements-actions image-studio-prompt-guide-bubble-actions image-studio-prompt-ugc-product-mode-actions"
+                role="group"
+                aria-label="Mode de saisie du produit"
+              >
+                <button
+                  type="button"
+                  className={`studio-toolbar-btn image-studio-prompt-guide-elements-btn${
+                    productInputMode === "text" ? " is-selected" : ""
+                  }`}
+                  onClick={() => handleProductModeSelect("text")}
+                >
+                  Écrire le produit
+                </button>
+                <button
+                  type="button"
+                  className={`studio-toolbar-btn image-studio-prompt-guide-elements-btn${
+                    productInputMode === "image" ? " is-selected" : ""
+                  }`}
+                  onClick={() => handleProductModeSelect("image")}
+                >
+                  Importer une image
+                </button>
+              </div>
             ) : null}
+          </ConversationBubble>
+        ) : null}
+
+        {productModeLabel && productStepActive ? (
+          <ConversationBubble role="user">
+            <p className="image-studio-prompt-guide-bubble-text">{productModeLabel}</p>
+          </ConversationBubble>
+        ) : null}
+
+        {showProductInputBubble ? (
+          <ConversationBubble role="bot" wide visible={isBotVisible("product-input")}>
+            {productInputMode === "text" ? (
+              <div className="image-studio-prompt-guide-bubble-compose">{productTextComposeForm}</div>
+            ) : (
+              <ProductImageImportPicker
+                disabled={false}
+                previewUrl={productImageDraft}
+                focusValue={productFocusDraft}
+                errorMessage={productImageError}
+                onPickFile={handleProductImagePick}
+                onFocusChange={setProductFocusDraft}
+                onConfirm={handleProductImageConfirm}
+              />
+            )}
           </ConversationBubble>
         ) : null}
 
@@ -959,7 +1245,25 @@ export default function UgcPresentationPromptGuideChat({ template, onBack, onApp
 
         {productName ? (
           <ConversationBubble role="user">
-            <p className="image-studio-prompt-guide-bubble-text">{productName}</p>
+            {isProductImageMode && productImagePreview ? (
+              <div className="image-studio-prompt-ugc-product-answer">
+                <img
+                  src={productImagePreview}
+                  alt=""
+                  className="image-studio-prompt-ugc-product-answer-img"
+                />
+                <div className="image-studio-prompt-ugc-product-answer-copy">
+                  <p className="image-studio-prompt-guide-bubble-text">
+                    {IMAGE_STUDIO_PRODUCT_MENTION_TOKEN}
+                  </p>
+                  {productFocusLabel ? (
+                    <p className="image-studio-prompt-ugc-product-answer-focus">{productFocusLabel}</p>
+                  ) : null}
+                </div>
+              </div>
+            ) : (
+              <p className="image-studio-prompt-guide-bubble-text">{productName}</p>
+            )}
           </ConversationBubble>
         ) : null}
 

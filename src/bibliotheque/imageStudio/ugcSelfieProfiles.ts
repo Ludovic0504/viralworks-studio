@@ -255,3 +255,25 @@ export function getUgcSelfieProfileById(
   if (!profileId) return undefined;
   return UGC_SELFIE_PROFILES.find((profile) => profile.id === profileId);
 }
+
+export const UGC_PRESENTATION_AGE_MIN = 18;
+export const UGC_PRESENTATION_AGE_MAX = 80;
+export const UGC_PRESENTATION_AGE_DEFAULT = 30;
+
+export function clampUgcPresentationAge(age: number): number {
+  return Math.min(UGC_PRESENTATION_AGE_MAX, Math.max(UGC_PRESENTATION_AGE_MIN, Math.round(age)));
+}
+
+export function resolveUgcPresentationProfileIdFromAge(
+  gender: UgcSelfieGender,
+  age: number,
+): UgcSelfieProfileId {
+  const clamped = clampUgcPresentationAge(age);
+  let bucket: UgcSelfieAge;
+  if (clamped <= 24) bucket = 20;
+  else if (clamped <= 34) bucket = 30;
+  else if (clamped <= 44) bucket = 40;
+  else if (clamped <= 54) bucket = 50;
+  else bucket = 60;
+  return `${gender}-${bucket}`;
+}

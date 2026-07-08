@@ -504,9 +504,8 @@ export function getLifestyleShotStyleById(
 export const IMAGE_STUDIO_PROMPT_TEMPLATES: PromptTemplateDefinition[] = [
   {
     id: "product-photography",
-    label: "Studio Product Photography",
-    summary:
-      "Boisson en héros studio — condensation, éclaboussures, ingrédients en orbite. Indiquez la marque et la saveur.",
+    label: "Photo produit studio",
+    summary: "Boisson en héros studio — marque, format canette/bouteille et ingrédients.",
     icon: "product",
     heroImage: "/image-studio/templates/product-photography-beverage.png",
     guideMode: "studio-product",
@@ -575,9 +574,8 @@ STYLE: ${PRODUCT_PHOTOGRAPHY_PLACEHOLDERS.styleSection}`,
   },
   {
     id: "lifestyle-product-photography",
-    label: "Lifestyle Product Photography",
-    summary:
-      "Produit en situation réelle — main, décor naturel, lumière du jour. Indiquez la marque et le contexte.",
+    label: "Produit en lifestyle",
+    summary: "Produit tenu en main dans un décor réel — marque et environnement.",
     icon: "product",
     heroImage: "/image-studio/templates/lifestyle-product-photography.png",
     guideMode: "lifestyle-product",
@@ -609,11 +607,10 @@ STYLE: ${PRODUCT_PHOTOGRAPHY_PLACEHOLDERS.styleSection}`,
   },
   {
     id: "ugc-selfie-produit",
-    label: "UGC Selfie Produit",
-    summary:
-      "Selfie UGC réaliste — personne tenant un produit, style smartphone naturel. Choisissez le profil, le produit et le lieu.",
+    label: "Selfie produit UGC",
+    summary: "Selfie naturel : la personne présente un produit, style smartphone.",
     icon: "product",
-    heroImage: "/image-studio/templates/ugc-selfie/Selfie_Femme_30ans.png",
+    heroImage: "/image-studio/templates/ugc-selfie/Selfie_Femme_60ans.png",
     guideMode: "ugc-selfie",
     extractorId: "generic-product",
     botIntro: "Quel sexe ?",
@@ -658,9 +655,8 @@ STYLE: ${PRODUCT_PHOTOGRAPHY_PLACEHOLDERS.styleSection}`,
   },
   {
     id: "ugc-presentation-produit",
-    label: "Présentation Produit UGC",
-    summary:
-      "Personne présentant un produit face à une caméra fixe — en main ou porté — style dressing luxe, caméra posée (pas selfie).",
+    label: "Présentation produit UGC",
+    summary: "Face caméra fixe : produit tenu en main ou porté sur le corps.",
     icon: "product",
     heroImage: "/image-studio/templates/ugc-presentation/presentation-produit-ugc.png",
     guideMode: "ugc-presentation",
@@ -706,9 +702,8 @@ STYLE: ${PRODUCT_PHOTOGRAPHY_PLACEHOLDERS.styleSection}`,
   },
   {
     id: "brand-campaign-shoot",
-    label: "Brand Campaign Shoot",
-    summary:
-      "Shooting éditorial haut de gamme — mannequin en action, environnement narratif, contrôle caméra et regard. Style campagne premium.",
+    label: "Shooting campagne",
+    summary: "Style campagne premium — pose, décor narratif et cadrage éditorial.",
     icon: "product",
     heroImage: "/image-studio/templates/brand-campaign/brand-campaign-shoot.png",
     guideMode: "brand-campaign-shoot",
