@@ -46,6 +46,10 @@ verify_jwt = false
 [functions.auth-before-user-created]
 verify_jwt = false
 
+# pg_net depuis auth.users INSERT : pas de JWT, sécurisé par x-hook-secret.
+[functions.admin-signup-notify]
+verify_jwt = false
+
 # Message de bienvenue onboarding (pg_net depuis auth.users INSERT).
 [functions.welcome-private-message]
 verify_jwt = false

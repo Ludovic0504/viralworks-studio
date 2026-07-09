@@ -31,6 +31,7 @@ import { initPostHog, trackPostHogPageView } from "./bibliotheque/posthog/client
 import BannerInstallPWA from "@/composants/BannerInstallPWA";
 import PromoImagesModal from "@/components/PromoImagesModal";
 import PromoImagesBanner from "@/components/PromoImagesBanner";
+import { requestPwaUpdateCheck } from "@/bibliotheque/pwa/registerPwa";
 
 class RouteErrorBoundary extends Component {
   constructor(props) {
@@ -107,6 +108,8 @@ function BoutiqueStripeReturnHandler() {
     handledRef.current = true;
 
     const finish = async () => {
+      await requestPwaUpdateCheck({ forceReload: true, reason: "stripe-return" });
+
       if (!session) {
         const { data: current } = await supabase.auth.getSession();
         if (!current.session) {

@@ -243,6 +243,24 @@ async function ensureRemoteDirsRecursive(client, ctx, relativeDirs) {
 /**
  * @param {import("basic-ftp").Client} client
  * @param {ReturnType<typeof createUploadContext>} ctx
+ */
+async function removeObsoleteRemoteFiles(client, ctx) {
+  const obsoleteFiles = ["registerSW.js"];
+  await cdUploadBase(client, ctx);
+  for (const rel of obsoleteFiles) {
+    try {
+      await client.remove(rel);
+      console.log(`  [remove] ${rel} (fichier obsolète supprimé sur le serveur)`);
+    } catch {
+      // absent ou déjà supprimé — ignorer
+    }
+  }
+  await cdUploadBase(client, ctx);
+}
+
+/**
+ * @param {import("basic-ftp").Client} client
+ * @param {ReturnType<typeof createUploadContext>} ctx
  * @param {{ localPath: string, rel: string }} entry
  */
 async function uploadOneEntry(client, ctx, entry) {
@@ -482,6 +500,10 @@ async function main() {
       `\nRacine de déploiement FTP (miroir de dist/) : ${uploadCtx.uploadBasePwd}\n` +
         "Chemins distants = chemins sous dist/ (indépendants du pwd après mkdir).\n"
     );
+
+    console.log("Nettoyage des fichiers obsolètes sur le serveur distant…");
+    await removeObsoleteRemoteFiles(client, uploadCtx);
+    console.log("");
 
     const remoteSubdirs = collectRemoteSubdirs(entries);
     if (remoteSubdirs.length > 0) {

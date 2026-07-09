@@ -21,7 +21,11 @@ export default defineConfig(({ mode }) => {
   },
   plugins: [
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
+      injectRegister: null,
+      workbox: {
+        cleanupOutdatedCaches: true,
+      },
       includeAssets: ['logo.png', 'Logo_VWS_sans_bordure.png', 'pwa-192x192.png', 'pwa-512x512.png'],
       manifest: {
         name: 'ViralWorks Studio',
