@@ -176,6 +176,7 @@ export type PromptTemplateGuideMode =
   | "ugc-selfie"
   | "ugc-presentation"
   | "brand-campaign-shoot"
+  | "packshot-dynamique"
   | "generic";
 
 export type PromptTemplateDefinition = {
@@ -253,6 +254,12 @@ export function isBrandCampaignShootGuideTemplate(
   template: Pick<PromptTemplateDefinition, "guideMode">,
 ): boolean {
   return template.guideMode === "brand-campaign-shoot";
+}
+
+export function isPackshotDynamiqueGuideTemplate(
+  template: Pick<PromptTemplateDefinition, "guideMode">,
+): boolean {
+  return template.guideMode === "packshot-dynamique";
 }
 
 export function isShotStyleGuideTemplate(
@@ -737,6 +744,73 @@ STYLE: ${PRODUCT_PHOTOGRAPHY_PLACEHOLDERS.styleSection}`,
         label: "Environnement",
         placeholder: "ex. golf course green with ocean behind",
         defaultValue: "",
+      },
+    ],
+    body: "",
+  },
+  {
+    id: "packshot-dynamique",
+    label: "Packshot Dynamique",
+    summary:
+      "Packshot produit mis en scène — posture (posé ou lévitation) et effet dynamique optionnel.",
+    icon: "product",
+    heroImage: "/image-studio/templates/packshot-dynamique/packshot-dynamique.png",
+    guideMode: "packshot-dynamique",
+    extractorId: "generic-product",
+    botIntro: "Décris ton produit (nom, matière visible, couleur dominante)",
+    botAskRequired:
+      "Décris ton produit (nom, matière visible, couleur dominante) — au moins quelques mots.",
+    botReady:
+      "Votre prompt est prêt. Vérifiez-le ci-dessous puis appliquez-le à la zone de saisie, ou ajustez les champs si besoin.",
+    variables: [
+      {
+        key: "productDescription",
+        label: "Produit",
+        placeholder: "ex. bougie artisanale en verre ambré, cire végétale",
+        defaultValue: "",
+        required: true,
+      },
+      {
+        key: "positionId",
+        label: "Position",
+        placeholder: "ex. debout-incline",
+        defaultValue: "debout-droit",
+      },
+      {
+        key: "backgroundId",
+        label: "Fond",
+        placeholder: "ex. environnement",
+        defaultValue: "neutre",
+      },
+      {
+        key: "ambianceId",
+        label: "Ambiance",
+        placeholder: "ex. artisanal-cosy",
+        defaultValue: "",
+      },
+      {
+        key: "customAmbiance",
+        label: "Ambiance personnalisée",
+        placeholder: "ex. bohème désertique",
+        defaultValue: "",
+      },
+      {
+        key: "interactionId",
+        label: "Effet dynamique",
+        placeholder: "ex. fumee-vapeur",
+        defaultValue: "aucun",
+      },
+      {
+        key: "productStateId",
+        label: "État produit",
+        placeholder: "ex. ouvert-entame",
+        defaultValue: "ferme-neuf",
+      },
+      {
+        key: "formatId",
+        label: "Format",
+        placeholder: "ex. story-9-16",
+        defaultValue: "banniere-4-5",
       },
     ],
     body: "",

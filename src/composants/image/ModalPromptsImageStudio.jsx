@@ -4,11 +4,29 @@ import {
   ArrowLeft,
   ChevronDown,
   ChevronUp,
+  ImageUp,
   Package,
   SendHorizontal,
   Sparkles,
   X,
 } from "lucide-react";
+import {
+  assemblePackshotDynamiquePromptFromSlots,
+  isPackshotDynamiqueGuideReady,
+} from "@/bibliotheque/imageStudio/packshotDynamiqueAssembly";
+import {
+  PACKSHOT_AMBIANCE_OPTIONS,
+  PACKSHOT_BACKGROUND_OPTIONS,
+  PACKSHOT_FORMAT_OPTIONS,
+  PACKSHOT_INTERACTION_OPTIONS,
+  PACKSHOT_POSITION_OPTIONS,
+  PACKSHOT_STATE_OPTIONS,
+} from "@/bibliotheque/imageStudio/packshotDynamiqueConfig";
+import {
+  IMAGE_STUDIO_REF_IMPORT_MESSAGE,
+  isSupportedImageStudioReferenceMime,
+} from "@/bibliotheque/imageStudio/uploadImageStudioReference";
+import { IMAGE_STUDIO_PRODUCT_MENTION_TOKEN } from "@/bibliotheque/imageStudio/imageStudioGuideApply";
 import {
   assemblePromptFromTemplate,
   buildCustomFlavorElements,
@@ -36,6 +54,7 @@ import {
   isUgcSelfieGuideTemplate,
   isUgcPresentationGuideTemplate,
   isBrandCampaignShootGuideTemplate,
+  isPackshotDynamiqueGuideTemplate,
   LIFESTYLE_SHOT_STYLES,
   LIFESTYLE_SHOT_STYLES_EXTENDED,
   PRODUCT_PHOTOGRAPHY_SHOT_STYLES,
@@ -47,6 +66,7 @@ import BrandCampaignShootPromptGuideChat from "@/composants/image/BrandCampaignS
 
 /** @typedef {'drink' | 'packaging_mode' | 'elements_mode' | 'custom_elements' | 'ready'} BeverageGuideStep */
 /** @typedef {'product' | 'environment' | 'ready'} LifestyleGuideStep */
+/** @typedef {'product' | 'position' | 'background' | 'ambiance' | 'customAmbiance' | 'interaction' | 'state' | 'format' | 'ready'} PackshotGuideStep */
 
 /** @typedef {{ id: string, role: 'bot' | 'user', text: string }} ChatMessage */
 
@@ -184,6 +204,74 @@ function useConversationBotVisibility(botTurnKeys) {
   return { isBotVisible, isTyping };
 }
 
+function findPackshotOptionLabel(options, id) {
+  return options.find((item) => item.id === id)?.label ?? null;
+}
+
+function PackshotOptionButtonRow({ options, selectedId, disabled, onSelect, ariaLabel }) {
+  return (
+    <div className="image-studio-prompt-ugc-option-row" role="radiogroup" aria-label={ariaLabel}>
+      {options.map((option) => (
+        <button
+          key={option.id}
+          type="button"
+          role="radio"
+          aria-checked={selectedId === option.id}
+          disabled={disabled}
+          className={`studio-toolbar-btn image-studio-prompt-guide-elements-btn image-studio-prompt-ugc-option-btn${
+            selectedId === option.id ? " is-selected" : ""
+          }`}
+          onClick={() => onSelect(option.id)}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const PRODUCT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+
+function PackshotProductImagePicker({ disabled, previewUrl, errorMessage, onPickFile }) {
+  const inputRef = useRef(null);
+
+  return (
+    <div className="image-studio-prompt-ugc-product-image-picker">
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+        className="sr-only"
+        disabled={disabled}
+        onChange={(event) => {
+          const file = event.target.files?.[0] ?? null;
+          event.target.value = "";
+          onPickFile(file);
+        }}
+      />
+      <button
+        type="button"
+        className="studio-toolbar-btn image-studio-prompt-guide-elements-btn image-studio-prompt-ugc-product-image-btn"
+        disabled={disabled}
+        onClick={() => inputRef.current?.click()}
+      >
+        <ImageUp className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden="true" />
+        <span>{previewUrl ? "Changer l'image" : "Ajouter une image (optionnel)"}</span>
+      </button>
+      {previewUrl ? (
+        <div className="image-studio-prompt-ugc-product-image-preview" aria-hidden="true">
+          <img src={previewUrl} alt="" />
+        </div>
+      ) : null}
+      {errorMessage ? (
+        <p className="image-studio-prompt-ugc-product-image-error" role="alert">
+          {errorMessage}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function PromptTemplateChat({
   template,
   onBack,
@@ -194,8 +282,10 @@ function PromptTemplateChat({
   const inputRef = useRef(null);
   const isStudioGuide = isStudioProductGuideTemplate(template);
   const isLifestyleGuide = isLifestyleProductGuideTemplate(template);
+  const isPackshotGuide = isPackshotDynamiqueGuideTemplate(template);
   const isBeverageGuide = template.extractorId === "beverage-hero";
   const showShotStylePicker = isShotStyleGuideTemplate(template);
+  const showConversationUI = showShotStylePicker || isPackshotGuide;
 
   const primaryShotStyles = isLifestyleGuide
     ? LIFESTYLE_SHOT_STYLES
@@ -214,15 +304,20 @@ function PromptTemplateChat({
   const [draft, setDraft] = useState("");
   const [ready, setReady] = useState(false);
   const [adjustOpen, setAdjustOpen] = useState(false);
-  const [guideStep, setGuideStep] = useState(() =>
-    isLifestyleGuide ? /** @type {LifestyleGuideStep} */ ("product") : /** @type {BeverageGuideStep} */ ("drink"),
-  );
+  const [guideStep, setGuideStep] = useState(() => {
+    if (isPackshotGuide) return /** @type {PackshotGuideStep} */ ("product");
+    if (isLifestyleGuide) return /** @type {LifestyleGuideStep} */ ("product");
+    return /** @type {BeverageGuideStep} */ ("drink");
+  });
   const [selectedShotId, setSelectedShotId] = useState(null);
   const [selectedFromExtended, setSelectedFromExtended] = useState(false);
   /** @type {[null | 'yes' | 'no', import('react').Dispatch<import('react').SetStateAction<null | 'yes' | 'no'>>]} */
   const [moreStylesChoice, setMoreStylesChoice] = useState(null);
   const [packagingWasAsked, setPackagingWasAsked] = useState(false);
   const [shotStyleError, setShotStyleError] = useState(false);
+  const [packshotProductValidationShown, setPackshotProductValidationShown] = useState(false);
+  const [packshotProductImagePreview, setPackshotProductImagePreview] = useState(null);
+  const [packshotProductImageError, setPackshotProductImageError] = useState(null);
 
   const selectedShot = useMemo(
     () => allShotStyles.find((style) => style.id === selectedShotId) ?? null,
@@ -244,6 +339,9 @@ function PromptTemplateChat({
   const assembledPrompt = useMemo(
     () => {
       if (!ready) return "";
+      if (isPackshotGuide) {
+        return assemblePackshotDynamiquePromptFromSlots(slots);
+      }
       if (isLifestyleGuide) {
         return assemblePromptFromTemplate(template, slots, {
           shotId: selectedShotId ?? undefined,
@@ -261,10 +359,15 @@ function PromptTemplateChat({
         shotId: selectedShotId ?? undefined,
       });
     },
-    [isLifestyleGuide, isStudioGuide, ready, template, slots, selectedShot, selectedShotId],
+    [isLifestyleGuide, isPackshotGuide, isStudioGuide, ready, template, slots, selectedShot, selectedShotId],
   );
 
   const inputPlaceholder = useMemo(() => {
+    if (isPackshotGuide) {
+      if (guideStep === "customAmbiance") return "Ex. bohème désertique, industriel brut…";
+      if (guideStep === "product") return "Ex. bougie artisanale en verre ambré, cire végétale…";
+      return "Votre réponse…";
+    }
     if (isLifestyleGuide) {
       if (guideStep === "product") return "Ex. HOLY Hydration Strawberry Kiwi…";
       if (guideStep === "environment") return "Ex. salle de sport moderne, terrain de tennis…";
@@ -276,7 +379,7 @@ function PromptTemplateChat({
     if (guideStep === "elements_mode") return "Ou choisissez une option ci-dessus…";
     if (guideStep === "custom_elements") return "Décrivez les éléments autour et la saveur…";
     return "Décrivez la boisson…";
-  }, [guideStep, isBeverageGuide, isLifestyleGuide]);
+  }, [guideStep, isBeverageGuide, isLifestyleGuide, isPackshotGuide]);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -286,15 +389,157 @@ function PromptTemplateChat({
     setMessages((prev) => [...prev, { id: nextMessageId(), role, text }]);
   }, []);
 
+  const handlePackshotProductImagePick = useCallback((file) => {
+    setPackshotProductImageError(null);
+    if (!file) return;
+
+    if (!isSupportedImageStudioReferenceMime(file.type)) {
+      setPackshotProductImageError(IMAGE_STUDIO_REF_IMPORT_MESSAGE);
+      return;
+    }
+
+    if (file.size > PRODUCT_IMAGE_MAX_BYTES) {
+      setPackshotProductImageError(IMAGE_STUDIO_REF_IMPORT_MESSAGE);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result || "").trim();
+      if (!dataUrl) {
+        setPackshotProductImageError(IMAGE_STUDIO_REF_IMPORT_MESSAGE);
+        return;
+      }
+      setPackshotProductImagePreview(dataUrl);
+      setPackshotProductImageError(null);
+    };
+    reader.onerror = () => {
+      setPackshotProductImageError(IMAGE_STUDIO_REF_IMPORT_MESSAGE);
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
   const finalizeGuide = useCallback(
     (nextSlots) => {
       setSlots(nextSlots);
       setReady(true);
       setGuideStep("ready");
-      pushMessage("bot", template.botReady);
+      if (!isPackshotGuide) {
+        pushMessage("bot", template.botReady);
+      }
     },
-    [pushMessage, template.botReady],
+    [isPackshotGuide, pushMessage, template.botReady],
   );
+
+  const advancePackshotAfterBackground = useCallback((backgroundId) => {
+    if (backgroundId === "environnement") {
+      setGuideStep("ambiance");
+    } else {
+      setGuideStep("interaction");
+    }
+  }, []);
+
+  const handlePackshotProductSubmit = useCallback(
+    (raw) => {
+      const productDescription = raw.trim();
+      const hasImage = Boolean(packshotProductImagePreview);
+
+      if (productDescription.length < 2 && !hasImage) {
+        setPackshotProductValidationShown(true);
+        return;
+      }
+
+      setPackshotProductValidationShown(false);
+      setDraft("");
+      setSlots((prev) => ({
+        ...prev,
+        productDescription:
+          productDescription.length >= 2
+            ? productDescription
+            : IMAGE_STUDIO_PRODUCT_MENTION_TOKEN,
+        productImageUrl: packshotProductImagePreview,
+        productInputMode: productDescription.length >= 2 ? "text" : "image",
+      }));
+      setGuideStep("position");
+    },
+    [packshotProductImagePreview],
+  );
+
+  const handlePackshotPositionSelect = useCallback((positionId) => {
+    setSlots((prev) => ({ ...prev, positionId }));
+    setGuideStep("background");
+  }, []);
+
+  const handlePackshotBackgroundSelect = useCallback(
+    (backgroundId) => {
+      setSlots((prev) => {
+        const next = { ...prev, backgroundId };
+        if (backgroundId === "neutre") {
+          next.ambianceId = null;
+          next.customAmbiance = null;
+        }
+        return next;
+      });
+      advancePackshotAfterBackground(backgroundId);
+    },
+    [advancePackshotAfterBackground],
+  );
+
+  const handlePackshotAmbianceSelect = useCallback((ambianceId) => {
+    setSlots((prev) => ({ ...prev, ambianceId }));
+    if (ambianceId === "autre") {
+      setGuideStep("customAmbiance");
+    } else {
+      setGuideStep("interaction");
+    }
+  }, []);
+
+  const handlePackshotCustomAmbianceSubmit = useCallback((raw) => {
+    const customAmbiance = raw.trim();
+    if (customAmbiance.length < 2) return;
+    setDraft("");
+    setSlots((prev) => ({ ...prev, customAmbiance }));
+    setGuideStep("interaction");
+  }, []);
+
+  const handlePackshotInteractionSelect = useCallback((interactionId) => {
+    setSlots((prev) => ({ ...prev, interactionId }));
+    setGuideStep("state");
+  }, []);
+
+  const handlePackshotInteractionSkip = useCallback(() => {
+    setSlots((prev) => ({ ...prev, interactionId: "aucun" }));
+    setGuideStep("state");
+  }, []);
+
+  const handlePackshotStateSelect = useCallback((productStateId) => {
+    setSlots((prev) => ({ ...prev, productStateId }));
+    setGuideStep("format");
+  }, []);
+
+  const handlePackshotStateSkip = useCallback(() => {
+    setSlots((prev) => ({ ...prev, productStateId: "ferme-neuf" }));
+    setGuideStep("format");
+  }, []);
+
+  const handlePackshotFormatSelect = useCallback(
+    (formatId) => {
+      setSlots((prev) => {
+        const next = { ...prev, formatId };
+        finalizeGuide(next);
+        return next;
+      });
+    },
+    [finalizeGuide],
+  );
+
+  const handlePackshotFormatSkip = useCallback(() => {
+    setSlots((prev) => {
+      const next = { ...prev, formatId: "banniere-4-5" };
+      finalizeGuide(next);
+      return next;
+    });
+  }, [finalizeGuide]);
 
   const processBeverageMessage = useCallback(
     (text) => {
@@ -477,16 +722,35 @@ function PromptTemplateChat({
   const handleSubmit = useCallback(
     (event) => {
       event.preventDefault();
+      if (isPackshotGuide) {
+        if (guideStep === "product") {
+          handlePackshotProductSubmit(draft);
+          return;
+        }
+        if (guideStep === "customAmbiance") {
+          handlePackshotCustomAmbianceSubmit(draft);
+        }
+        return;
+      }
       processUserMessage(draft);
     },
-    [draft, processUserMessage],
+    [
+      draft,
+      guideStep,
+      handlePackshotCustomAmbianceSubmit,
+      handlePackshotProductSubmit,
+      isPackshotGuide,
+      processUserMessage,
+    ],
   );
 
   const handleSlotChange = useCallback(
     (key, value) => {
       setSlots((prev) => {
         const next = { ...prev, [key]: value };
-        if (isLifestyleGuide) {
+        if (isPackshotGuide) {
+          setReady(isPackshotDynamiqueGuideReady(next));
+        } else if (isLifestyleGuide) {
           setReady(isLifestyleGuideReady(template, next));
         } else {
           setReady(isBeverageGuideReady(template, next));
@@ -494,7 +758,7 @@ function PromptTemplateChat({
         return next;
       });
     },
-    [isLifestyleGuide, template],
+    [isLifestyleGuide, isPackshotGuide, template],
   );
 
   const handleShotSelect = useCallback((shotId, fromExtended = false) => {
@@ -517,13 +781,30 @@ function PromptTemplateChat({
       return;
     }
     if (!assembledPrompt) return;
-    onApplyPrompt(assembledPrompt);
+    if (isPackshotGuide && slots.productImageUrl) {
+      onApplyPrompt({ prompt: assembledPrompt, productImageUrl: slots.productImageUrl });
+    } else {
+      onApplyPrompt(assembledPrompt);
+    }
     onClose();
-  }, [assembledPrompt, onApplyPrompt, onClose, selectedShotId, showShotStylePicker]);
+  }, [
+    assembledPrompt,
+    isPackshotGuide,
+    onApplyPrompt,
+    onClose,
+    selectedShotId,
+    showShotStylePicker,
+    slots.productImageUrl,
+  ]);
+
+  const canSubmitPackshotProduct =
+    Boolean(draft.trim()) || Boolean(packshotProductImagePreview);
 
   const composeForm =
     guideStep !== "ready" && !ready && (
-      isLifestyleGuide
+      isPackshotGuide
+        ? guideStep === "product" || guideStep === "customAmbiance"
+        : isLifestyleGuide
         ? guideStep === "product" || guideStep === "environment"
         : guideStep !== "packaging_mode" && guideStep !== "elements_mode"
     ) ? (
@@ -540,7 +821,11 @@ function PromptTemplateChat({
         <button
           type="submit"
           className="image-studio-prompt-guide-send"
-          disabled={!draft.trim()}
+          disabled={
+            isPackshotGuide && guideStep === "product"
+              ? !canSubmitPackshotProduct
+              : !draft.trim()
+          }
           aria-label="Envoyer"
         >
           <SendHorizontal className="h-4 w-4" strokeWidth={2.25} />
@@ -641,7 +926,26 @@ function PromptTemplateChat({
   );
 
   const botTurnKeys = useMemo(() => {
-    if (!showShotStylePicker) return [];
+    if (!showConversationUI) return [];
+
+    if (isPackshotGuide) {
+      const productDescription = slots.productDescription?.trim() ?? "";
+      const keys = ["product"];
+      if (productDescription) keys.push("position");
+      if (slots.positionId) keys.push("background");
+      if (slots.backgroundId) {
+        if (slots.backgroundId === "environnement") {
+          keys.push("ambiance");
+          if (slots.ambianceId === "autre") keys.push("customAmbiance");
+        }
+        if (slots.interactionId || guideStep === "interaction") keys.push("interaction");
+      }
+      if (slots.productStateId || guideStep === "state") keys.push("state");
+      if (guideStep === "format" || ready) keys.push("format");
+      if (packshotProductValidationShown) keys.push("product-validation");
+      if (ready) keys.push("result");
+      return keys;
+    }
 
     if (isLifestyleGuide) {
       const keys = ["shot"];
@@ -678,23 +982,48 @@ function PromptTemplateChat({
     environmentValidationBotMessage,
     guideStep,
     isLifestyleGuide,
+    isPackshotGuide,
     moreStylesChoice,
     packagingValidationBotMessage,
+    packshotProductValidationShown,
     productValidationBotMessage,
     ready,
     selectedShotId,
+    showConversationUI,
     showElementsBot,
     showEnvironmentBot,
     showMoreStylesBubble,
     showPackagingBot,
-    showShotStylePicker,
+    slots.ambianceId,
+    slots.backgroundId,
+    slots.interactionId,
+    slots.positionId,
+    slots.productDescription,
+    slots.productStateId,
     userMessages,
   ]);
+
+  const packshotProductDescription = slots.productDescription?.trim() ?? "";
+  const packshotPositionLabel = findPackshotOptionLabel(PACKSHOT_POSITION_OPTIONS, slots.positionId);
+  const packshotBackgroundLabel = findPackshotOptionLabel(
+    PACKSHOT_BACKGROUND_OPTIONS,
+    slots.backgroundId,
+  );
+  const packshotAmbianceLabel =
+    slots.ambianceId === "autre"
+      ? slots.customAmbiance?.trim() || "Autre"
+      : findPackshotOptionLabel(PACKSHOT_AMBIANCE_OPTIONS, slots.ambianceId);
+  const packshotInteractionLabel = findPackshotOptionLabel(
+    PACKSHOT_INTERACTION_OPTIONS,
+    slots.interactionId,
+  );
+  const packshotStateLabel = findPackshotOptionLabel(PACKSHOT_STATE_OPTIONS, slots.productStateId);
+  const packshotFormatLabel = findPackshotOptionLabel(PACKSHOT_FORMAT_OPTIONS, slots.formatId);
 
   const { isBotVisible, isTyping } = useConversationBotVisibility(botTurnKeys);
 
   useEffect(() => {
-    if (!showShotStylePicker) return;
+    if (!showConversationUI) return;
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [
     adjustOpen,
@@ -704,7 +1033,7 @@ function PromptTemplateChat({
     messages,
     ready,
     selectedShotId,
-    showShotStylePicker,
+    showConversationUI,
     moreStylesChoice,
   ]);
 
@@ -807,12 +1136,12 @@ function PromptTemplateChat({
   return (
     <div
       className={`image-studio-prompt-guide-chat${
-        showShotStylePicker ? " image-studio-prompt-guide-chat--conversation" : ""
+        showConversationUI ? " image-studio-prompt-guide-chat--conversation" : ""
       }`}
     >
       <div
         className={`image-studio-prompt-guide-chat-head${
-          showShotStylePicker ? " image-studio-prompt-guide-chat-head--minimal" : ""
+          showConversationUI ? " image-studio-prompt-guide-chat-head--minimal" : ""
         }`}
       >
         <button
@@ -823,7 +1152,7 @@ function PromptTemplateChat({
         >
           <ArrowLeft className="h-4 w-4" strokeWidth={2.25} />
         </button>
-        {showShotStylePicker ? (
+        {showConversationUI ? (
           <div className="image-studio-prompt-guide-chat-title-row">
             <p className="image-studio-prompt-guide-chat-title">{template.label}</p>
             <span className="pulse-dot pulse-dot--online shrink-0" aria-hidden="true" />
@@ -849,12 +1178,227 @@ function PromptTemplateChat({
         )}
       </div>
 
-      {showShotStylePicker ? (
+      {showConversationUI ? (
         <div
           className="image-studio-prompt-guide-messages image-studio-prompt-guide-messages--conversation studio-subtle-scrollbar"
           role="log"
           aria-live="polite"
         >
+          {isPackshotGuide ? (
+            <>
+              <ConversationBubble role="bot" visible={isBotVisible("product")}>
+                <p className="image-studio-prompt-guide-bubble-text">
+                  Décris ton produit (nom, matière visible, couleur dominante)
+                </p>
+                {guideStep === "product" ? (
+                  <>
+                    <div className="image-studio-prompt-guide-bubble-compose">{composeForm}</div>
+                    <PackshotProductImagePicker
+                      disabled={false}
+                      previewUrl={packshotProductImagePreview}
+                      errorMessage={packshotProductImageError}
+                      onPickFile={handlePackshotProductImagePick}
+                    />
+                  </>
+                ) : null}
+              </ConversationBubble>
+
+              {packshotProductValidationShown ? (
+                <ConversationBubble role="bot" visible={isBotVisible("product-validation")}>
+                  <p className="image-studio-prompt-guide-bubble-text">{template.botAskRequired}</p>
+                </ConversationBubble>
+              ) : null}
+
+              {packshotProductDescription ? (
+                <ConversationBubble role="user">
+                  {packshotProductImagePreview ? (
+                    <div className="image-studio-prompt-ugc-product-answer">
+                      <img
+                        src={packshotProductImagePreview}
+                        alt=""
+                        className="image-studio-prompt-ugc-product-answer-img"
+                      />
+                      <p className="image-studio-prompt-guide-bubble-text">{packshotProductDescription}</p>
+                    </div>
+                  ) : (
+                    <p className="image-studio-prompt-guide-bubble-text">{packshotProductDescription}</p>
+                  )}
+                </ConversationBubble>
+              ) : null}
+
+              {packshotProductDescription ? (
+                <ConversationBubble role="bot" wide visible={isBotVisible("position")}>
+                  <p className="image-studio-prompt-guide-bubble-text">
+                    Comment le produit est-il positionné ?
+                  </p>
+                  {guideStep === "position" ? (
+                    <PackshotOptionButtonRow
+                      options={PACKSHOT_POSITION_OPTIONS}
+                      selectedId={slots.positionId}
+                      disabled={false}
+                      onSelect={handlePackshotPositionSelect}
+                      ariaLabel="Position du produit"
+                    />
+                  ) : null}
+                </ConversationBubble>
+              ) : null}
+
+              {packshotPositionLabel ? (
+                <ConversationBubble role="user">
+                  <p className="image-studio-prompt-guide-bubble-text">{packshotPositionLabel}</p>
+                </ConversationBubble>
+              ) : null}
+
+              {slots.positionId ? (
+                <ConversationBubble role="bot" visible={isBotVisible("background")}>
+                  <p className="image-studio-prompt-guide-bubble-text">Quel type de fond veux-tu ?</p>
+                  {guideStep === "background" ? (
+                    <PackshotOptionButtonRow
+                      options={PACKSHOT_BACKGROUND_OPTIONS}
+                      selectedId={slots.backgroundId}
+                      disabled={false}
+                      onSelect={handlePackshotBackgroundSelect}
+                      ariaLabel="Type de fond"
+                    />
+                  ) : null}
+                </ConversationBubble>
+              ) : null}
+
+              {packshotBackgroundLabel ? (
+                <ConversationBubble role="user">
+                  <p className="image-studio-prompt-guide-bubble-text">{packshotBackgroundLabel}</p>
+                </ConversationBubble>
+              ) : null}
+
+              {slots.backgroundId === "environnement" ? (
+                <ConversationBubble role="bot" wide visible={isBotVisible("ambiance")}>
+                  <p className="image-studio-prompt-guide-bubble-text">Quelle ambiance ?</p>
+                  {guideStep === "ambiance" ? (
+                    <PackshotOptionButtonRow
+                      options={PACKSHOT_AMBIANCE_OPTIONS}
+                      selectedId={slots.ambianceId}
+                      disabled={false}
+                      onSelect={handlePackshotAmbianceSelect}
+                      ariaLabel="Ambiance environnement"
+                    />
+                  ) : null}
+                </ConversationBubble>
+              ) : null}
+
+              {slots.backgroundId === "environnement" && packshotAmbianceLabel && slots.ambianceId ? (
+                <ConversationBubble role="user">
+                  <p className="image-studio-prompt-guide-bubble-text">{packshotAmbianceLabel}</p>
+                </ConversationBubble>
+              ) : null}
+
+              {guideStep === "customAmbiance" || (slots.ambianceId === "autre" && slots.customAmbiance) ? (
+                <ConversationBubble role="bot" visible={isBotVisible("customAmbiance")}>
+                  <p className="image-studio-prompt-guide-bubble-text">
+                    Précise ton ambiance personnalisée
+                  </p>
+                  {guideStep === "customAmbiance" ? (
+                    <div className="image-studio-prompt-guide-bubble-compose">{composeForm}</div>
+                  ) : null}
+                </ConversationBubble>
+              ) : null}
+
+              {(slots.interactionId || guideStep === "interaction") &&
+              (slots.backgroundId === "neutre" || slots.ambianceId) ? (
+                <ConversationBubble role="bot" wide visible={isBotVisible("interaction")}>
+                  <p className="image-studio-prompt-guide-bubble-text">
+                    Veux-tu ajouter un effet dynamique ?
+                  </p>
+                  {guideStep === "interaction" ? (
+                    <div className="image-studio-prompt-guide-elements-actions image-studio-prompt-guide-bubble-actions">
+                      <PackshotOptionButtonRow
+                        options={PACKSHOT_INTERACTION_OPTIONS}
+                        selectedId={slots.interactionId}
+                        disabled={false}
+                        onSelect={handlePackshotInteractionSelect}
+                        ariaLabel="Effet dynamique"
+                      />
+                      <button
+                        type="button"
+                        className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
+                        onClick={handlePackshotInteractionSkip}
+                      >
+                        Passer
+                      </button>
+                    </div>
+                  ) : null}
+                </ConversationBubble>
+              ) : null}
+
+              {packshotInteractionLabel && slots.interactionId ? (
+                <ConversationBubble role="user">
+                  <p className="image-studio-prompt-guide-bubble-text">{packshotInteractionLabel}</p>
+                </ConversationBubble>
+              ) : null}
+
+              {(slots.productStateId || guideStep === "state") && slots.interactionId ? (
+                <ConversationBubble role="bot" wide visible={isBotVisible("state")}>
+                  <p className="image-studio-prompt-guide-bubble-text">
+                    Produit neuf/fermé ou entamé/ouvert ?
+                  </p>
+                  {guideStep === "state" ? (
+                    <div className="image-studio-prompt-guide-elements-actions image-studio-prompt-guide-bubble-actions">
+                      <PackshotOptionButtonRow
+                        options={PACKSHOT_STATE_OPTIONS}
+                        selectedId={slots.productStateId}
+                        disabled={false}
+                        onSelect={handlePackshotStateSelect}
+                        ariaLabel="État du produit"
+                      />
+                      <button
+                        type="button"
+                        className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
+                        onClick={handlePackshotStateSkip}
+                      >
+                        Passer
+                      </button>
+                    </div>
+                  ) : null}
+                </ConversationBubble>
+              ) : null}
+
+              {packshotStateLabel && slots.productStateId ? (
+                <ConversationBubble role="user">
+                  <p className="image-studio-prompt-guide-bubble-text">{packshotStateLabel}</p>
+                </ConversationBubble>
+              ) : null}
+
+              {(guideStep === "format" || ready) && slots.productStateId ? (
+                <ConversationBubble role="bot" wide visible={isBotVisible("format")}>
+                  <p className="image-studio-prompt-guide-bubble-text">Format de destination ?</p>
+                  {guideStep === "format" && !ready ? (
+                    <div className="image-studio-prompt-guide-elements-actions image-studio-prompt-guide-bubble-actions">
+                      <PackshotOptionButtonRow
+                        options={PACKSHOT_FORMAT_OPTIONS}
+                        selectedId={slots.formatId}
+                        disabled={false}
+                        onSelect={handlePackshotFormatSelect}
+                        ariaLabel="Format de destination"
+                      />
+                      <button
+                        type="button"
+                        className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
+                        onClick={handlePackshotFormatSkip}
+                      >
+                        Passer
+                      </button>
+                    </div>
+                  ) : null}
+                </ConversationBubble>
+              ) : null}
+
+              {packshotFormatLabel && ready ? (
+                <ConversationBubble role="user">
+                  <p className="image-studio-prompt-guide-bubble-text">{packshotFormatLabel}</p>
+                </ConversationBubble>
+              ) : null}
+            </>
+          ) : (
+            <>
           <ConversationBubble role="bot" wide visible={isBotVisible("shot")}>
             <p className="image-studio-prompt-guide-bubble-text">Quel style de shot ?</p>
             {showPrimaryShotGrid ? (
@@ -1055,6 +1599,8 @@ function PromptTemplateChat({
                 </ConversationBubble>
               ))
             : null}
+            </>
+          )}
 
           {ready ? (
             <ConversationBubble role="bot" wide visible={isBotVisible("result")}>

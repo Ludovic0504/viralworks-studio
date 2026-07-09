@@ -49,6 +49,57 @@ function parseImageDataUrl(
   }
 }
 
+function mimeToExtension(mime: string): string {
+  if (mime.includes("jpeg") || mime.includes("jpg")) return "jpg";
+  if (mime.includes("webp")) return "webp";
+  return "png";
+}
+
+async function parseImageBlobUrl(
+  blobUrl: string,
+): Promise<{ bytes: Uint8Array; mime: string; ext: string } | null> {
+  try {
+    const response = await fetch(blobUrl);
+    if (!response.ok) return null;
+
+    const blob = await response.blob();
+    const mime = blob.type.toLowerCase();
+    if (!["image/png", "image/jpeg", "image/jpg", "image/webp"].includes(mime)) {
+      return null;
+    }
+
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    if (bytes.length === 0 || bytes.length > MAX_REF_BYTES) return null;
+
+    return { bytes, mime, ext: mimeToExtension(mime) };
+  } catch {
+    return null;
+  }
+}
+
+async function uploadReferenceBytes(
+  userId: string,
+  parsed: { bytes: Uint8Array; mime: string; ext: string },
+): Promise<string> {
+  const supabase = getBrowserSupabase();
+  const filePath = `${userId}/image-studio-refs/${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${parsed.ext}`;
+  const { error } = await supabase.storage.from("generated-images").upload(filePath, parsed.bytes, {
+    contentType: parsed.mime,
+    cacheControl: "3600",
+    upsert: false,
+  });
+
+  if (error) {
+    throw new Error(error.message || "Impossible d'envoyer l'image de référence.");
+  }
+
+  const {
+    data: { publicUrl },
+  } = supabase.storage.from("generated-images").getPublicUrl(filePath);
+
+  return normalizePublicStorageUrl(publicUrl);
+}
+
 function normalizePublicStorageUrl(url: string): string {
   let u = String(url || "").trim();
   if (!u) return u;
@@ -75,6 +126,14 @@ export async function uploadImageStudioReferenceUrl(
     return normalizePublicStorageUrl(trimmed);
   }
 
+  if (trimmed.startsWith("blob:")) {
+    const parsed = await parseImageBlobUrl(trimmed);
+    if (!parsed) {
+      throw new Error(IMAGE_STUDIO_REF_IMPORT_MESSAGE);
+    }
+    return uploadReferenceBytes(userId, parsed);
+  }
+
   if (!trimmed.startsWith("data:")) {
     throw new Error("Format d'image de référence non supporté.");
   }
@@ -84,23 +143,7 @@ export async function uploadImageStudioReferenceUrl(
     throw new Error(IMAGE_STUDIO_REF_IMPORT_MESSAGE);
   }
 
-  const supabase = getBrowserSupabase();
-  const filePath = `${userId}/image-studio-refs/${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${parsed.ext}`;
-  const { error } = await supabase.storage.from("generated-images").upload(filePath, parsed.bytes, {
-    contentType: parsed.mime,
-    cacheControl: "3600",
-    upsert: false,
-  });
-
-  if (error) {
-    throw new Error(error.message || "Impossible d'envoyer l'image de référence.");
-  }
-
-  const {
-    data: { publicUrl },
-  } = supabase.storage.from("generated-images").getPublicUrl(filePath);
-
-  return normalizePublicStorageUrl(publicUrl);
+  return uploadReferenceBytes(userId, parsed);
 }
 
 export async function uploadImageStudioReferenceUrls(
