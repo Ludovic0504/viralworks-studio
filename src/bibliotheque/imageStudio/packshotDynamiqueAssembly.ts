@@ -1,6 +1,9 @@
 import type { TemplateSlotValues } from "./promptTemplateEngine";
 import {
+  enrichProfileForUsage,
+  inferPackshotFlyingElements,
   inferPackshotMaterialHints,
+  inferPackshotUsageContext,
   isPackshotLevitationPosition,
   isPackshotPosedTemplate,
   resolvePackshotAmbianceProfile,
@@ -11,6 +14,7 @@ import {
   type PackshotInteractionId,
   type PackshotPositionId,
   type PackshotProductStateId,
+  type PackshotUsageContextId,
 } from "./packshotDynamiqueConfig";
 
 export type PackshotAssemblyInput = {
@@ -173,13 +177,11 @@ function inferLiquidType(product: string): string {
   return "liquide";
 }
 
-function inferFlyingElements(product: string, profile: ReturnType<typeof resolvePackshotAmbianceProfile>): string {
-  if (profile.decorElements.includes("lavande")) return "brins de lavande séchée";
-  if (profile.decorElements.includes("fruits")) return "morceaux de fruits frais";
-  if (profile.decorElements.includes("bambou")) return "feuilles d'eucalyptus et pétales légers";
-  if (/\b(boisson|drink|citron|lime|menthe)\b/i.test(product)) return "tranches d'agrumes et glaçons";
-  if (/\b(cosmétique|beauty|skincare)\b/i.test(product)) return "pétales et gouttes d'huile légère";
-  return "particules et éléments décoratifs légers";
+function inferFlyingElements(
+  product: string,
+  usage: PackshotUsageContextId | null,
+): string {
+  return inferPackshotFlyingElements(product, usage);
 }
 
 function inferEnvelopingMatter(product: string): { matter: string; visiblePart: string } {
@@ -208,7 +210,7 @@ function inferSmokeType(product: string): { smoke: string; position: string } {
 function buildBlocInteraction(
   interactionId: PackshotInteractionId,
   product: string,
-  profile: ReturnType<typeof resolvePackshotAmbianceProfile>,
+  usage: PackshotUsageContextId | null,
 ): string {
   switch (interactionId) {
     case "eclaboussure": {
@@ -216,7 +218,7 @@ function buildBlocInteraction(
       return `Une éclaboussure de ${liquid} éclatant autour du produit, gouttelettes suspendues en l'air, mouvement figé net.`;
     }
     case "elements-volants": {
-      const elements = inferFlyingElements(product, profile);
+      const elements = inferFlyingElements(product, usage);
       return `Des ${elements} flottent et virevoltent autour du produit, suspendus en plein mouvement.`;
     }
     case "matiere-englobante": {
@@ -247,11 +249,16 @@ export function assemblePackshotDynamiquePrompt(input: PackshotAssemblyInput): s
   if (!product) return "";
 
   const ratio = resolvePackshotFormatRatio(input.formatId);
-  const profile = resolvePackshotAmbianceProfile(
+  const baseProfile = resolvePackshotAmbianceProfile(
     input.backgroundId,
     input.ambianceId,
     input.customAmbiance,
   );
+  const usage = inferPackshotUsageContext(product);
+  const profile =
+    input.backgroundId === "environnement"
+      ? enrichProfileForUsage(baseProfile, product, input.ambianceId)
+      : baseProfile;
   const material = inferPackshotMaterialHints(product);
   const camera = resolveCamera(input.positionId, ratio);
   const lightingType = resolveLightingType(input.backgroundId);
@@ -264,7 +271,7 @@ export function assemblePackshotDynamiquePrompt(input: PackshotAssemblyInput): s
 
   const blocSujet = buildBlocSujet(product, input.positionId, input.productStateId);
   const blocDecor = buildBlocDecor(input.backgroundId, profile);
-  const blocInteraction = buildBlocInteraction(input.interactionId, product, profile);
+  const blocInteraction = buildBlocInteraction(input.interactionId, product, usage);
   const surrealNote = buildSurrealNote(input.positionId, input.interactionId);
 
   const lines = [

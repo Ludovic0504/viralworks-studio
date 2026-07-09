@@ -177,6 +177,7 @@ export type PromptTemplateGuideMode =
   | "ugc-presentation"
   | "brand-campaign-shoot"
   | "packshot-dynamique"
+  | "editorial-worn-held"
   | "generic";
 
 export type PromptTemplateDefinition = {
@@ -262,6 +263,12 @@ export function isPackshotDynamiqueGuideTemplate(
   return template.guideMode === "packshot-dynamique";
 }
 
+export function isEditorialWornHeldGuideTemplate(
+  template: Pick<PromptTemplateDefinition, "guideMode">,
+): boolean {
+  return template.guideMode === "editorial-worn-held";
+}
+
 export function isShotStyleGuideTemplate(
   template: Pick<PromptTemplateDefinition, "guideMode">,
 ): boolean {
@@ -272,6 +279,8 @@ export const LIFESTYLE_PLACEHOLDERS = {
   productName: "[NOM DU PRODUIT]",
   shotType: "[TYPE DE SHOT]",
   environment: "[LIEU]",
+  lensLine: "[LIGNE OPTIQUE]",
+  composition: "[COMPOSITION]",
 } as const;
 
 export const UGC_SELFIE_PLACEHOLDERS = {
@@ -355,7 +364,7 @@ Style and mood: ${UGC_PRESENTATION_PLACEHOLDERS.styleMoodBlock}.
 Photorealistic quality, high detail, natural skin texture, 4K, soft cinematic color grading, warm tones, slight natural grain, vertical 9:16 aspect ratio.`;
 
 export const LIFESTYLE_TEMPLATE_BODY_CONTINUITY = `Ultra-realistic lifestyle product photography, POV first-person perspective,
-85mm lens f/2.0, natural light.
+${LIFESTYLE_PLACEHOLDERS.lensLine}, natural light.
 
 SUBJECT: ${LIFESTYLE_PLACEHOLDERS.productName}, brand label clearly visible and facing the camera.
 
@@ -377,10 +386,7 @@ shadows on the product surface, consistent light direction and color temperature
 across both the hand/arm and the body below — no mismatched lighting between
 the limb and the environment, organic warm color temperature 4500K.
 
-COMPOSITION: Portrait orientation 9:16, product as the clear focal point of
-the frame, arm and hand entering from the bottom or side of frame in a way
-that logically connects to the visible body/lap/legs below, environment in
-soft bokeh behind.
+COMPOSITION: ${LIFESTYLE_PLACEHOLDERS.composition}
 
 MOOD: Authentic, organic, aspirational without being staged. Feels like a
 genuine first-person photo taken by the person themselves.
@@ -389,7 +395,7 @@ STYLE: High-end lifestyle editorial photography, photorealistic, cinematic
 color grading, soft contrast, 4K resolution. Reference: outdoor brand
 campaigns, Apple lifestyle photography aesthetic.`;
 
-export const LIFESTYLE_TEMPLATE_BODY_STANDALONE = `Ultra-realistic lifestyle product photography, 85mm lens f/2.0, natural light.
+export const LIFESTYLE_TEMPLATE_BODY_STANDALONE = `Ultra-realistic lifestyle product photography, ${LIFESTYLE_PLACEHOLDERS.lensLine}, natural light.
 
 SUBJECT: ${LIFESTYLE_PLACEHOLDERS.productName}, brand label clearly visible and facing the camera.
 
@@ -401,8 +407,7 @@ LIGHTING: Soft natural daylight adapted to the environment, gentle directional
 shadows on the product surface, no harsh flash, organic warm color temperature
 4500K.
 
-COMPOSITION: Portrait orientation 9:16, product as the clear focal point of
-the frame, environment in soft bokeh behind.
+COMPOSITION: ${LIFESTYLE_PLACEHOLDERS.composition}
 
 MOOD: Authentic, organic, aspirational without being staged. No studio feel.
 
@@ -810,6 +815,97 @@ STYLE: ${PRODUCT_PHOTOGRAPHY_PLACEHOLDERS.styleSection}`,
         key: "formatId",
         label: "Format",
         placeholder: "ex. story-9-16",
+        defaultValue: "banniere-4-5",
+      },
+    ],
+    body: "",
+  },
+  {
+    id: "editorial-worn-held",
+    label: "Porté & Tenu Éditorial",
+    summary:
+      "Bijou porté ou produit tenu — rendu éditorial haute couture, cadrage macro à corps entier.",
+    icon: "product",
+    heroImage: "/image-studio/templates/editorial-worn-held/editorial-worn-held.png",
+    guideMode: "editorial-worn-held",
+    extractorId: "generic-product",
+    botIntro: "Quel type de mise en scène ?",
+    botAskRequired:
+      "Décris le bijou ou le produit — au moins quelques mots (matière, couleur, forme…).",
+    botReady:
+      "Votre prompt est prêt. Vérifiez-le ci-dessous puis appliquez-le à la zone de saisie, ou ajustez les champs si besoin.",
+    variables: [
+      {
+        key: "sceneTypeId",
+        label: "Type de mise en scène",
+        placeholder: "ex. bijou-porte",
+        defaultValue: "bijou-porte",
+      },
+      {
+        key: "genderId",
+        label: "Genre du modèle",
+        placeholder: "ex. femme",
+        defaultValue: "femme",
+      },
+      {
+        key: "zoneId",
+        label: "Zone du corps",
+        placeholder: "ex. poignet-main",
+        defaultValue: "poignet-main",
+      },
+      {
+        key: "framingId",
+        label: "Cadrage",
+        placeholder: "ex. macro",
+        defaultValue: "macro",
+      },
+      {
+        key: "outfitDescription",
+        label: "Tenue (corps entier)",
+        placeholder: "ex. robe fluide blanche et sandales nude",
+        defaultValue: "",
+      },
+      {
+        key: "backgroundId",
+        label: "Fond",
+        placeholder: "ex. neutre",
+        defaultValue: "neutre",
+      },
+      {
+        key: "ambianceId",
+        label: "Ambiance",
+        placeholder: "ex. spa-bien-etre",
+        defaultValue: "",
+      },
+      {
+        key: "customAmbiance",
+        label: "Ambiance personnalisée",
+        placeholder: "ex. atelier joaillier",
+        defaultValue: "",
+      },
+      {
+        key: "productDescription",
+        label: "Bijou / produit",
+        placeholder: "ex. bracelet chaîne torsadée en argent poli",
+        defaultValue: "",
+        required: true,
+      },
+      {
+        key: "postureId",
+        label: "Posture",
+        placeholder: "ex. debout",
+        defaultValue: "",
+      },
+      {
+        key: "customGesture",
+        label: "Geste personnalisé",
+        placeholder: "ex. main dans les cheveux",
+        defaultValue: "",
+      },
+      {
+        key: "formatId",
+        label: "Format",
+        placeholder: "ex. banniere-4-5",
         defaultValue: "banniere-4-5",
       },
     ],

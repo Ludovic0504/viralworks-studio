@@ -2114,7 +2114,8 @@
   }
 
   .image-studio-prompts-modal:not(.image-studio-prompts-modal--chat) .image-studio-prompts-list {
-    overflow-y: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .image-studio-prompts-visual-grid {

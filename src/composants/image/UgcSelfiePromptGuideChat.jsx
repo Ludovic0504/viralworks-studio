@@ -14,6 +14,9 @@ import {
   UGC_SELFIE_OUTFIT_OPTIONS,
   UGC_SELFIE_SKIN_TONE_OPTIONS,
 } from "@/bibliotheque/imageStudio/ugcSelfieProfiles";
+import { IMAGE_STUDIO_PRODUCT_MENTION_TOKEN } from "@/bibliotheque/imageStudio/imageStudioGuideApply";
+import { readGuideProductImageFile } from "@/bibliotheque/imageStudio/guideProductImage";
+import GuideProductImagePicker from "@/composants/image/GuideProductImagePicker";
 
 /** @typedef {'gender' | 'age' | 'physical' | 'product' | 'location' | 'ready'} UgcSelfieGuideStep */
 
@@ -246,6 +249,8 @@ export default function UgcSelfiePromptGuideChat({ template, onBack, onApplyProm
   const [locationPresetId, setLocationPresetId] = useState(null);
   const [locationOtherOpen, setLocationOtherOpen] = useState(false);
   const [productValidationShown, setProductValidationShown] = useState(false);
+  const [guideProductImagePreview, setGuideProductImagePreview] = useState(null);
+  const [guideProductImageError, setGuideProductImageError] = useState(null);
 
   const profile = useMemo(() => getUgcSelfieProfileById(profileId), [profileId]);
   const ageProfiles = useMemo(
@@ -323,19 +328,39 @@ export default function UgcSelfiePromptGuideChat({ template, onBack, onApplyProm
     setGuideStep("product");
   }, [applyPhysicalOverrides, mergeResolvedPhysicalSlots, physicalHairId, physicalOutfitId, physicalSkinId]);
 
+  const handleGuideProductImagePick = useCallback(async (file) => {
+    setGuideProductImageError(null);
+    if (!file) return;
+
+    const result = await readGuideProductImageFile(file);
+    if (!result.ok) {
+      setGuideProductImageError(result.error);
+      return;
+    }
+
+    setGuideProductImagePreview(result.dataUrl);
+    setGuideProductImageError(null);
+  }, []);
+
   const handleProductSubmit = useCallback(
     (raw) => {
       const productName = raw.trim();
-      if (productName.length < 2) {
+      const hasImage = Boolean(guideProductImagePreview);
+      if (productName.length < 2 && !hasImage) {
         setProductValidationShown(true);
         return;
       }
       setProductValidationShown(false);
-      setSlots((prev) => ({ ...prev, productName }));
+      setSlots((prev) => ({
+        ...prev,
+        productName: productName.length >= 2 ? productName : IMAGE_STUDIO_PRODUCT_MENTION_TOKEN,
+        productImageUrl: guideProductImagePreview,
+        productInputMode: productName.length >= 2 ? "text" : "image",
+      }));
       setDraft("");
       setGuideStep("location");
     },
-    [],
+    [guideProductImagePreview],
   );
 
   const handleLocationPreset = useCallback((preset) => {
@@ -394,14 +419,21 @@ export default function UgcSelfiePromptGuideChat({ template, onBack, onApplyProm
 
   const handleApply = useCallback(() => {
     if (!assembledPrompt) return;
-    onApplyPrompt(assembledPrompt);
+    if (slots.productImageUrl) {
+      onApplyPrompt({ prompt: assembledPrompt, productImageUrl: slots.productImageUrl });
+    } else {
+      onApplyPrompt(assembledPrompt);
+    }
     onClose();
-  }, [assembledPrompt, onApplyPrompt, onClose]);
+  }, [assembledPrompt, onApplyPrompt, onClose, slots.productImageUrl]);
 
   const inputPlaceholder =
     guideStep === "product"
       ? "ex: Chewing-gum Freedent"
       : "Décrivez le lieu…";
+
+  const canSubmitGuideProduct =
+    Boolean(draft.trim()) || Boolean(guideProductImagePreview);
 
   const composeForm =
     (guideStep === "product" || (guideStep === "location" && locationOtherOpen)) && !ready ? (
@@ -418,7 +450,7 @@ export default function UgcSelfiePromptGuideChat({ template, onBack, onApplyProm
         <button
           type="submit"
           className="image-studio-prompt-guide-send"
-          disabled={!draft.trim()}
+          disabled={guideStep === "product" ? !canSubmitGuideProduct : !draft.trim()}
           aria-label="Envoyer"
         >
           <SendHorizontal className="h-4 w-4" strokeWidth={2.25} />
@@ -654,7 +686,15 @@ export default function UgcSelfiePromptGuideChat({ template, onBack, onApplyProm
           <ConversationBubble role="bot" visible={isBotVisible("product")}>
             <p className="image-studio-prompt-guide-bubble-text">Quel est le produit ?</p>
             {guideStep === "product" ? (
-              <div className="image-studio-prompt-guide-bubble-compose">{composeForm}</div>
+              <>
+                <div className="image-studio-prompt-guide-bubble-compose">{composeForm}</div>
+                <GuideProductImagePicker
+                  disabled={false}
+                  previewUrl={guideProductImagePreview}
+                  errorMessage={guideProductImageError}
+                  onPickFile={handleGuideProductImagePick}
+                />
+              </>
             ) : null}
           </ConversationBubble>
         ) : null}
@@ -667,7 +707,18 @@ export default function UgcSelfiePromptGuideChat({ template, onBack, onApplyProm
 
         {productName ? (
           <ConversationBubble role="user">
-            <p className="image-studio-prompt-guide-bubble-text">{productName}</p>
+            {slots.productImageUrl ? (
+              <div className="image-studio-prompt-ugc-product-answer">
+                <img
+                  src={slots.productImageUrl}
+                  alt=""
+                  className="image-studio-prompt-ugc-product-answer-img"
+                />
+                <p className="image-studio-prompt-guide-bubble-text">{productName}</p>
+              </div>
+            ) : (
+              <p className="image-studio-prompt-guide-bubble-text">{productName}</p>
+            )}
           </ConversationBubble>
         ) : null}
 

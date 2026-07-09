@@ -514,6 +514,46 @@ describe("lifestyle product photography", () => {
     expect(isLifestyleGuideReady(lifestyleTemplate, { product: "HOLY" })).toBe(false);
     expect(isLifestyleGuideReady(lifestyleTemplate, { environment: "gym" })).toBe(false);
   });
+
+  it("uses large framing lens and composition for produit seul", () => {
+    if (!lifestyleTemplate) throw new Error("lifestyle-product-photography template missing");
+
+    const prompt = assemblePromptFromTemplate(lifestyleTemplate, lifestyleSlots, {
+      shotId: "produit-seul",
+      lifestyleFramingId: "large",
+    });
+
+    expect(prompt).toContain("35mm lens f/4.0");
+    expect(prompt).toContain("15–20% of the frame height");
+    expect(prompt).toContain("deeper depth of field");
+    expect(prompt).not.toContain("[LIGNE OPTIQUE]");
+    expect(prompt).not.toContain("[COMPOSITION]");
+  });
+
+  it("keeps fixed lens and composition for zoom produit", () => {
+    if (!lifestyleTemplate) throw new Error("lifestyle-product-photography template missing");
+
+    const prompt = assemblePromptFromTemplate(lifestyleTemplate, lifestyleSlots, {
+      shotId: "zoom-produit",
+      lifestyleFramingId: "large",
+    });
+
+    expect(prompt).toContain("85mm lens f/2.0");
+    expect(prompt).toContain("product as the clear focal point of the frame, environment in soft bokeh behind.");
+  });
+
+  it("uses special medium contextual large composition for deux-mains", () => {
+    if (!lifestyleTemplate) throw new Error("lifestyle-product-photography template missing");
+
+    const prompt = assemblePromptFromTemplate(lifestyleTemplate, lifestyleSlots, {
+      shotId: "deux-mains",
+      lifestyleFramingId: "large",
+    });
+
+    expect(prompt).toContain("50mm lens f/4.0");
+    expect(prompt).toContain("30–40% of the frame height");
+    expect(prompt).toContain("medium contextual framing");
+  });
 });
 
 describe("ugc selfie produit prompt template", () => {

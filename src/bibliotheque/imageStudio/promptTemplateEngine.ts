@@ -23,6 +23,11 @@ import {
   UGC_SELFIE_TEMPLATE_BODY,
 } from "./promptTemplates";
 import {
+  resolveLifestyleComposition,
+  resolveLifestyleLensLine,
+  type LifestyleFramingId,
+} from "./lifestyleFramingConfig";
+import {
   getUgcPresentationBodyZoneOption,
   getUgcPresentationHeroFocus,
   needsFootwearLightingHighlight,
@@ -343,6 +348,7 @@ export type AssemblePromptOptions = {
   shotType?: string;
   drinkName?: string;
   shotId?: string;
+  lifestyleFramingId?: LifestyleFramingId | null;
 };
 
 function extractBeverageSlots(
@@ -914,9 +920,14 @@ export function assembleUgcPresentationPromptFromSlots(slots: TemplateSlotValues
 export function assembleLifestylePrompt(
   shotId: string | null | undefined,
   slots: TemplateSlotValues,
+  options?: Pick<AssemblePromptOptions, "lifestyleFramingId">,
 ): string {
   const shot = getLifestyleShotStyleById(shotId);
   if (!shot) return "";
+
+  const framingId = options?.lifestyleFramingId ?? null;
+  const lensLine = resolveLifestyleLensLine(shotId, framingId);
+  const composition = resolveLifestyleComposition(shotId, framingId, shot.templateVariant);
 
   const templateBody =
     shot.templateVariant === "body-continuity"
@@ -927,6 +938,8 @@ export function assembleLifestylePrompt(
   const environment = (slots.environment ?? "").trim();
 
   return templateBody
+    .replaceAll(LIFESTYLE_PLACEHOLDERS.lensLine, lensLine)
+    .replaceAll(LIFESTYLE_PLACEHOLDERS.composition, composition)
     .replaceAll(LIFESTYLE_PLACEHOLDERS.productName, productName)
     .replaceAll(LIFESTYLE_PLACEHOLDERS.shotType, shot.promptValue)
     .replaceAll(LIFESTYLE_PLACEHOLDERS.environment, environment)
@@ -951,7 +964,9 @@ export function assemblePromptFromTemplate(
   }
 
   if (isLifestyleProductGuideTemplate(template)) {
-    return assembleLifestylePrompt(options?.shotId, slots);
+    return assembleLifestylePrompt(options?.shotId, slots, {
+      lifestyleFramingId: options?.lifestyleFramingId,
+    });
   }
 
   if (isStudioProductGuideTemplate(template)) {

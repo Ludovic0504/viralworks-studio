@@ -22,6 +22,9 @@ import {
   resolveBrandCampaignManualPhysique,
 } from "@/bibliotheque/imageStudio/brandCampaignShootConfig";
 import { fillTemplateSlotDefaults } from "@/bibliotheque/imageStudio/promptTemplateEngine";
+import { IMAGE_STUDIO_PRODUCT_MENTION_TOKEN } from "@/bibliotheque/imageStudio/imageStudioGuideApply";
+import { readGuideProductImageFile } from "@/bibliotheque/imageStudio/guideProductImage";
+import GuideProductImagePicker from "@/composants/image/GuideProductImagePicker";
 
 /** @typedef {'gender' | 'ambiance' | 'cameraAngle' | 'gaze' | 'distance' | 'action' | 'environment' | 'product' | 'physical' | 'format' | 'ready'} BrandCampaignGuideStep */
 
@@ -230,6 +233,8 @@ export default function BrandCampaignShootPromptGuideChat({
   const [ready, setReady] = useState(false);
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [productValidationShown, setProductValidationShown] = useState(false);
+  const [guideProductImagePreview, setGuideProductImagePreview] = useState(null);
+  const [guideProductImageError, setGuideProductImageError] = useState(null);
 
   const ambiance = useMemo(
     () => BRAND_CAMPAIGN_AMBIANCE_OPTIONS.find((item) => item.id === ambianceId) ?? null,
@@ -355,19 +360,39 @@ export default function BrandCampaignShootPromptGuideChat({
     setGuideStep("product");
   }, [ambianceId]);
 
+  const handleGuideProductImagePick = useCallback(async (file) => {
+    setGuideProductImageError(null);
+    if (!file) return;
+
+    const result = await readGuideProductImageFile(file);
+    if (!result.ok) {
+      setGuideProductImageError(result.error);
+      return;
+    }
+
+    setGuideProductImagePreview(result.dataUrl);
+    setGuideProductImageError(null);
+  }, []);
+
   const handleProductSubmit = useCallback(
     (raw) => {
       const productOutfit = raw.trim();
-      if (productOutfit.length < 2) {
+      const hasImage = Boolean(guideProductImagePreview);
+      if (productOutfit.length < 2 && !hasImage) {
         setProductValidationShown(true);
         return;
       }
       setProductValidationShown(false);
       setDraft("");
-      setSlots((prev) => ({ ...prev, productOutfit }));
+      setSlots((prev) => ({
+        ...prev,
+        productOutfit: productOutfit.length >= 2 ? productOutfit : IMAGE_STUDIO_PRODUCT_MENTION_TOKEN,
+        productImageUrl: guideProductImagePreview,
+        productInputMode: productOutfit.length >= 2 ? "text" : "image",
+      }));
       setGuideStep("physical");
     },
-    [],
+    [guideProductImagePreview],
   );
 
   const handlePhysicalRandom = useCallback(() => {
@@ -449,9 +474,16 @@ export default function BrandCampaignShootPromptGuideChat({
 
   const handleApply = useCallback(() => {
     if (!assembledPrompt) return;
-    onApplyPrompt(assembledPrompt);
+    if (slots.productImageUrl) {
+      onApplyPrompt({ prompt: assembledPrompt, productImageUrl: slots.productImageUrl });
+    } else {
+      onApplyPrompt(assembledPrompt);
+    }
     onClose();
-  }, [assembledPrompt, onApplyPrompt, onClose]);
+  }, [assembledPrompt, onApplyPrompt, onClose, slots.productImageUrl]);
+
+  const canSubmitGuideProduct =
+    Boolean(draft.trim()) || Boolean(guideProductImagePreview);
 
   const composeForm =
     guideStep === "product" && !ready ? (
@@ -468,7 +500,7 @@ export default function BrandCampaignShootPromptGuideChat({
         <button
           type="submit"
           className="image-studio-prompt-guide-send"
-          disabled={!draft.trim()}
+          disabled={!canSubmitGuideProduct}
           aria-label="Envoyer"
         >
           <SendHorizontal className="h-4 w-4" strokeWidth={2.25} />
@@ -804,7 +836,15 @@ export default function BrandCampaignShootPromptGuideChat({
               Décris la tenue ou le produit à mettre en avant
             </p>
             {guideStep === "product" ? (
-              <div className="image-studio-prompt-guide-bubble-compose">{composeForm}</div>
+              <>
+                <div className="image-studio-prompt-guide-bubble-compose">{composeForm}</div>
+                <GuideProductImagePicker
+                  disabled={false}
+                  previewUrl={guideProductImagePreview}
+                  errorMessage={guideProductImageError}
+                  onPickFile={handleGuideProductImagePick}
+                />
+              </>
             ) : null}
           </ConversationBubble>
         ) : null}
@@ -817,7 +857,18 @@ export default function BrandCampaignShootPromptGuideChat({
 
         {productOutfit ? (
           <ConversationBubble role="user">
-            <p className="image-studio-prompt-guide-bubble-text">{productOutfit}</p>
+            {slots.productImageUrl ? (
+              <div className="image-studio-prompt-ugc-product-answer">
+                <img
+                  src={slots.productImageUrl}
+                  alt=""
+                  className="image-studio-prompt-ugc-product-answer-img"
+                />
+                <p className="image-studio-prompt-guide-bubble-text">{productOutfit}</p>
+              </div>
+            ) : (
+              <p className="image-studio-prompt-guide-bubble-text">{productOutfit}</p>
+            )}
           </ConversationBubble>
         ) : null}
 

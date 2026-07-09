@@ -101,4 +101,69 @@ describe("packshotDynamiqueAssembly", () => {
     expect(resolvePackshotFormatRatio("banniere-4-5")).toBe("4:5");
     expect(resolvePackshotFormatRatio(null)).toBe("4:5");
   });
+
+  it("uses usage-aware decor for sport bottle with tech-minimal ambiance", () => {
+    const prompt = assemblePackshotDynamiquePrompt({
+      productDescription: "gourde isotherme inox, usage sport/randonnée",
+      positionId: "debout-droit",
+      backgroundId: "environnement",
+      ambianceId: "tech-minimal",
+      customAmbiance: null,
+      interactionId: "aucun",
+      productStateId: "ferme-neuf",
+      formatId: "banniere-4-5",
+    });
+
+    expect(prompt).toContain("randonnée");
+    expect(prompt).not.toContain("lavande");
+    expect(prompt).toContain("Style éditorial tech premium");
+    expect(prompt).toContain("gris anthracite");
+  });
+
+  it("uses generic sport decor for sport bottle with gourmand-frais ambiance", () => {
+    const prompt = assemblePackshotDynamiquePrompt({
+      productDescription: "gourde isotherme sport",
+      positionId: "debout-droit",
+      backgroundId: "environnement",
+      ambianceId: "gourmand-frais",
+      customAmbiance: null,
+      interactionId: "aucun",
+      productStateId: "ferme-neuf",
+      formatId: "banniere-4-5",
+    });
+
+    expect(prompt).toContain("sportif");
+    expect(prompt).not.toContain("fruits frais tranchés");
+  });
+
+  it("uses usage-aware flying elements instead of lavender for sport bottle", () => {
+    const prompt = assemblePackshotDynamiquePrompt({
+      productDescription: "gourde isotherme sport",
+      positionId: "debout-droit",
+      backgroundId: "environnement",
+      ambianceId: "artisanal-cosy",
+      customAmbiance: null,
+      interactionId: "elements-volants",
+      productStateId: "ferme-neuf",
+      formatId: "banniere-4-5",
+    });
+
+    expect(prompt).toContain("gouttelettes d'eau");
+    expect(prompt).not.toContain("lavande");
+  });
+
+  it("leaves neutral background unchanged when no usage inference applies", () => {
+    const prompt = assemblePackshotDynamiquePrompt({
+      productDescription: "flacon de sérum en verre",
+      positionId: "debout-droit",
+      backgroundId: "neutre",
+      ambianceId: null,
+      customAmbiance: null,
+      interactionId: "aucun",
+      productStateId: "ferme-neuf",
+      formatId: "banniere-4-5",
+    });
+
+    expect(prompt).toContain("Arrière-plan neutre uni");
+  });
 });

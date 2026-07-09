@@ -4,7 +4,6 @@ import {
   ArrowLeft,
   ChevronDown,
   ChevronUp,
-  ImageUp,
   Package,
   SendHorizontal,
   Sparkles,
@@ -22,11 +21,9 @@ import {
   PACKSHOT_POSITION_OPTIONS,
   PACKSHOT_STATE_OPTIONS,
 } from "@/bibliotheque/imageStudio/packshotDynamiqueConfig";
-import {
-  IMAGE_STUDIO_REF_IMPORT_MESSAGE,
-  isSupportedImageStudioReferenceMime,
-} from "@/bibliotheque/imageStudio/uploadImageStudioReference";
 import { IMAGE_STUDIO_PRODUCT_MENTION_TOKEN } from "@/bibliotheque/imageStudio/imageStudioGuideApply";
+import { readGuideProductImageFile } from "@/bibliotheque/imageStudio/guideProductImage";
+import GuideProductImagePicker from "@/composants/image/GuideProductImagePicker";
 import {
   assemblePromptFromTemplate,
   buildCustomFlavorElements,
@@ -54,18 +51,25 @@ import {
   isUgcSelfieGuideTemplate,
   isUgcPresentationGuideTemplate,
   isBrandCampaignShootGuideTemplate,
+  isEditorialWornHeldGuideTemplate,
   isPackshotDynamiqueGuideTemplate,
   LIFESTYLE_SHOT_STYLES,
   LIFESTYLE_SHOT_STYLES_EXTENDED,
   PRODUCT_PHOTOGRAPHY_SHOT_STYLES,
   PRODUCT_PHOTOGRAPHY_SHOT_STYLES_EXTENDED,
 } from "@/bibliotheque/imageStudio/promptTemplates";
+import {
+  getLifestyleFramingOptionLabel,
+  isLifestyleFramingEligible,
+  LIFESTYLE_FRAMING_OPTIONS,
+} from "@/bibliotheque/imageStudio/lifestyleFramingConfig";
 import UgcSelfiePromptGuideChat from "@/composants/image/UgcSelfiePromptGuideChat";
 import UgcPresentationPromptGuideChat from "@/composants/image/UgcPresentationPromptGuideChat";
 import BrandCampaignShootPromptGuideChat from "@/composants/image/BrandCampaignShootPromptGuideChat";
+import EditorialWornHeldPromptGuideChat from "@/composants/image/EditorialWornHeldPromptGuideChat";
 
 /** @typedef {'drink' | 'packaging_mode' | 'elements_mode' | 'custom_elements' | 'ready'} BeverageGuideStep */
-/** @typedef {'product' | 'environment' | 'ready'} LifestyleGuideStep */
+/** @typedef {'framing' | 'product' | 'environment' | 'ready'} LifestyleGuideStep */
 /** @typedef {'product' | 'position' | 'background' | 'ambiance' | 'customAmbiance' | 'interaction' | 'state' | 'format' | 'ready'} PackshotGuideStep */
 
 /** @typedef {{ id: string, role: 'bot' | 'user', text: string }} ChatMessage */
@@ -230,48 +234,6 @@ function PackshotOptionButtonRow({ options, selectedId, disabled, onSelect, aria
   );
 }
 
-const PRODUCT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
-
-function PackshotProductImagePicker({ disabled, previewUrl, errorMessage, onPickFile }) {
-  const inputRef = useRef(null);
-
-  return (
-    <div className="image-studio-prompt-ugc-product-image-picker">
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
-        className="sr-only"
-        disabled={disabled}
-        onChange={(event) => {
-          const file = event.target.files?.[0] ?? null;
-          event.target.value = "";
-          onPickFile(file);
-        }}
-      />
-      <button
-        type="button"
-        className="studio-toolbar-btn image-studio-prompt-guide-elements-btn image-studio-prompt-ugc-product-image-btn"
-        disabled={disabled}
-        onClick={() => inputRef.current?.click()}
-      >
-        <ImageUp className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden="true" />
-        <span>{previewUrl ? "Changer l'image" : "Ajouter une image (optionnel)"}</span>
-      </button>
-      {previewUrl ? (
-        <div className="image-studio-prompt-ugc-product-image-preview" aria-hidden="true">
-          <img src={previewUrl} alt="" />
-        </div>
-      ) : null}
-      {errorMessage ? (
-        <p className="image-studio-prompt-ugc-product-image-error" role="alert">
-          {errorMessage}
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
 function PromptTemplateChat({
   template,
   onBack,
@@ -316,8 +278,10 @@ function PromptTemplateChat({
   const [packagingWasAsked, setPackagingWasAsked] = useState(false);
   const [shotStyleError, setShotStyleError] = useState(false);
   const [packshotProductValidationShown, setPackshotProductValidationShown] = useState(false);
-  const [packshotProductImagePreview, setPackshotProductImagePreview] = useState(null);
-  const [packshotProductImageError, setPackshotProductImageError] = useState(null);
+  const [guideProductImagePreview, setGuideProductImagePreview] = useState(null);
+  const [guideProductImageError, setGuideProductImageError] = useState(null);
+  /** @type {[null | import('@/bibliotheque/imageStudio/lifestyleFramingConfig').LifestyleFramingId, import('react').Dispatch<import('react').SetStateAction<null | import('@/bibliotheque/imageStudio/lifestyleFramingConfig').LifestyleFramingId>>]} */
+  const [lifestyleFramingId, setLifestyleFramingId] = useState(null);
 
   const selectedShot = useMemo(
     () => allShotStyles.find((style) => style.id === selectedShotId) ?? null,
@@ -345,6 +309,7 @@ function PromptTemplateChat({
       if (isLifestyleGuide) {
         return assemblePromptFromTemplate(template, slots, {
           shotId: selectedShotId ?? undefined,
+          lifestyleFramingId,
         });
       }
       if (isStudioGuide) {
@@ -359,7 +324,7 @@ function PromptTemplateChat({
         shotId: selectedShotId ?? undefined,
       });
     },
-    [isLifestyleGuide, isPackshotGuide, isStudioGuide, ready, template, slots, selectedShot, selectedShotId],
+    [isLifestyleGuide, isPackshotGuide, isStudioGuide, lifestyleFramingId, ready, template, slots, selectedShot, selectedShotId],
   );
 
   const inputPlaceholder = useMemo(() => {
@@ -389,34 +354,18 @@ function PromptTemplateChat({
     setMessages((prev) => [...prev, { id: nextMessageId(), role, text }]);
   }, []);
 
-  const handlePackshotProductImagePick = useCallback((file) => {
-    setPackshotProductImageError(null);
+  const handleGuideProductImagePick = useCallback(async (file) => {
+    setGuideProductImageError(null);
     if (!file) return;
 
-    if (!isSupportedImageStudioReferenceMime(file.type)) {
-      setPackshotProductImageError(IMAGE_STUDIO_REF_IMPORT_MESSAGE);
+    const result = await readGuideProductImageFile(file);
+    if (!result.ok) {
+      setGuideProductImageError(result.error);
       return;
     }
 
-    if (file.size > PRODUCT_IMAGE_MAX_BYTES) {
-      setPackshotProductImageError(IMAGE_STUDIO_REF_IMPORT_MESSAGE);
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = String(reader.result || "").trim();
-      if (!dataUrl) {
-        setPackshotProductImageError(IMAGE_STUDIO_REF_IMPORT_MESSAGE);
-        return;
-      }
-      setPackshotProductImagePreview(dataUrl);
-      setPackshotProductImageError(null);
-    };
-    reader.onerror = () => {
-      setPackshotProductImageError(IMAGE_STUDIO_REF_IMPORT_MESSAGE);
-    };
-    reader.readAsDataURL(file);
+    setGuideProductImagePreview(result.dataUrl);
+    setGuideProductImageError(null);
   }, []);
 
   const finalizeGuide = useCallback(
@@ -442,7 +391,7 @@ function PromptTemplateChat({
   const handlePackshotProductSubmit = useCallback(
     (raw) => {
       const productDescription = raw.trim();
-      const hasImage = Boolean(packshotProductImagePreview);
+      const hasImage = Boolean(guideProductImagePreview);
 
       if (productDescription.length < 2 && !hasImage) {
         setPackshotProductValidationShown(true);
@@ -457,12 +406,35 @@ function PromptTemplateChat({
           productDescription.length >= 2
             ? productDescription
             : IMAGE_STUDIO_PRODUCT_MENTION_TOKEN,
-        productImageUrl: packshotProductImagePreview,
+        productImageUrl: guideProductImagePreview,
         productInputMode: productDescription.length >= 2 ? "text" : "image",
       }));
       setGuideStep("position");
     },
-    [packshotProductImagePreview],
+    [guideProductImagePreview],
+  );
+
+  const handleLifestyleProductSubmit = useCallback(
+    (raw) => {
+      const product = raw.trim();
+      const hasImage = Boolean(guideProductImagePreview);
+
+      if (product.length < 2 && !hasImage) {
+        setReady(false);
+        pushMessage("bot", template.botAskRequired);
+        return;
+      }
+
+      setDraft("");
+      setSlots((prev) => ({
+        ...prev,
+        product: product.length >= 2 ? product : IMAGE_STUDIO_PRODUCT_MENTION_TOKEN,
+        productImageUrl: guideProductImagePreview,
+        productInputMode: product.length >= 2 ? "text" : "image",
+      }));
+      setGuideStep("environment");
+    },
+    [guideProductImagePreview, pushMessage, template.botAskRequired],
   );
 
   const handlePackshotPositionSelect = useCallback((positionId) => {
@@ -634,20 +606,6 @@ function PromptTemplateChat({
 
   const processLifestyleMessage = useCallback(
     (text) => {
-      if (guideStep === "product") {
-        const product = extractVerbatimSlot(text);
-        if (product.length < 2) {
-          setReady(false);
-          pushMessage("bot", template.botAskRequired);
-          return;
-        }
-
-        const merged = mergeTemplateSlots(slots, { product });
-        setSlots(merged);
-        setGuideStep("environment");
-        return;
-      }
-
       if (guideStep === "environment") {
         const environment = extractVerbatimSlot(text);
         if (environment.length < 2) {
@@ -655,10 +613,11 @@ function PromptTemplateChat({
           return;
         }
 
+        pushMessage("user", text);
         finalizeGuide(mergeTemplateSlots(slots, { environment }));
       }
     },
-    [finalizeGuide, guideStep, pushMessage, slots, template],
+    [finalizeGuide, guideStep, pushMessage, slots],
   );
 
   const processGenericMessage = useCallback(
@@ -732,13 +691,19 @@ function PromptTemplateChat({
         }
         return;
       }
+      if (isLifestyleGuide && guideStep === "product") {
+        handleLifestyleProductSubmit(draft);
+        return;
+      }
       processUserMessage(draft);
     },
     [
       draft,
       guideStep,
+      handleLifestyleProductSubmit,
       handlePackshotCustomAmbianceSubmit,
       handlePackshotProductSubmit,
+      isLifestyleGuide,
       isPackshotGuide,
       processUserMessage,
     ],
@@ -761,10 +726,28 @@ function PromptTemplateChat({
     [isLifestyleGuide, isPackshotGuide, template],
   );
 
-  const handleShotSelect = useCallback((shotId, fromExtended = false) => {
-    setSelectedShotId(shotId);
-    setSelectedFromExtended(fromExtended);
-    setShotStyleError(false);
+  const handleShotSelect = useCallback(
+    (shotId, fromExtended = false) => {
+      setSelectedShotId(shotId);
+      setSelectedFromExtended(fromExtended);
+      setShotStyleError(false);
+      if (isLifestyleGuide) {
+        setLifestyleFramingId(null);
+        setGuideProductImagePreview(null);
+        setGuideProductImageError(null);
+        if (isLifestyleFramingEligible(shotId)) {
+          setGuideStep("framing");
+        } else {
+          setGuideStep("product");
+        }
+      }
+    },
+    [isLifestyleGuide],
+  );
+
+  const handleLifestyleFramingSelect = useCallback((framingId) => {
+    setLifestyleFramingId(framingId);
+    setGuideStep("product");
   }, []);
 
   const handleMoreStylesYes = useCallback(() => {
@@ -781,7 +764,7 @@ function PromptTemplateChat({
       return;
     }
     if (!assembledPrompt) return;
-    if (isPackshotGuide && slots.productImageUrl) {
+    if (slots.productImageUrl) {
       onApplyPrompt({ prompt: assembledPrompt, productImageUrl: slots.productImageUrl });
     } else {
       onApplyPrompt(assembledPrompt);
@@ -789,7 +772,6 @@ function PromptTemplateChat({
     onClose();
   }, [
     assembledPrompt,
-    isPackshotGuide,
     onApplyPrompt,
     onClose,
     selectedShotId,
@@ -797,8 +779,8 @@ function PromptTemplateChat({
     slots.productImageUrl,
   ]);
 
-  const canSubmitPackshotProduct =
-    Boolean(draft.trim()) || Boolean(packshotProductImagePreview);
+  const canSubmitGuideProduct =
+    Boolean(draft.trim()) || Boolean(guideProductImagePreview);
 
   const composeForm =
     guideStep !== "ready" && !ready && (
@@ -822,8 +804,8 @@ function PromptTemplateChat({
           type="submit"
           className="image-studio-prompt-guide-send"
           disabled={
-            isPackshotGuide && guideStep === "product"
-              ? !canSubmitPackshotProduct
+            (isPackshotGuide || isLifestyleGuide) && guideStep === "product"
+              ? !canSubmitGuideProduct
               : !draft.trim()
           }
           aria-label="Envoyer"
@@ -855,8 +837,23 @@ function PromptTemplateChat({
   const showEnvironmentBot =
     isLifestyleGuide &&
     selectedShotId &&
-    userMessages.length >= 1 &&
+    Boolean(slots.product?.trim()) &&
     (guideStep === "environment" || ready);
+
+  const lifestyleProductDescription = slots.product?.trim() ?? "";
+
+  const showLifestyleFramingBot =
+    isLifestyleGuide &&
+    selectedShotId &&
+    isLifestyleFramingEligible(selectedShotId);
+
+  const showLifestyleProductBot =
+    selectedShotId &&
+    (!isLifestyleGuide ||
+      !isLifestyleFramingEligible(selectedShotId) ||
+      Boolean(lifestyleFramingId));
+
+  const lifestyleFramingLabel = getLifestyleFramingOptionLabel(lifestyleFramingId);
 
   const productValidationBotMessage = useMemo(
     () =>
@@ -951,7 +948,12 @@ function PromptTemplateChat({
       const keys = ["shot"];
       if (showMoreStylesBubble) keys.push("more-styles");
       if (moreStylesChoice === "yes") keys.push("extended-shots");
-      if (selectedShotId) keys.push("product");
+      if (showLifestyleFramingBot) {
+        keys.push("framing");
+        if (lifestyleFramingId) keys.push("product");
+      } else if (selectedShotId) {
+        keys.push("product");
+      }
       if (productValidationBotMessage) keys.push("product-validation");
       if (showEnvironmentBot) keys.push("environment");
       if (environmentValidationBotMessage) keys.push("environment-validation");
@@ -983,6 +985,7 @@ function PromptTemplateChat({
     guideStep,
     isLifestyleGuide,
     isPackshotGuide,
+    lifestyleFramingId,
     moreStylesChoice,
     packagingValidationBotMessage,
     packshotProductValidationShown,
@@ -992,6 +995,7 @@ function PromptTemplateChat({
     showConversationUI,
     showElementsBot,
     showEnvironmentBot,
+    showLifestyleFramingBot,
     showMoreStylesBubble,
     showPackagingBot,
     slots.ambianceId,
@@ -1193,11 +1197,11 @@ function PromptTemplateChat({
                 {guideStep === "product" ? (
                   <>
                     <div className="image-studio-prompt-guide-bubble-compose">{composeForm}</div>
-                    <PackshotProductImagePicker
+                    <GuideProductImagePicker
                       disabled={false}
-                      previewUrl={packshotProductImagePreview}
-                      errorMessage={packshotProductImageError}
-                      onPickFile={handlePackshotProductImagePick}
+                      previewUrl={guideProductImagePreview}
+                      errorMessage={guideProductImageError}
+                      onPickFile={handleGuideProductImagePick}
                     />
                   </>
                 ) : null}
@@ -1211,10 +1215,10 @@ function PromptTemplateChat({
 
               {packshotProductDescription ? (
                 <ConversationBubble role="user">
-                  {packshotProductImagePreview ? (
+                  {guideProductImagePreview || slots.productImageUrl ? (
                     <div className="image-studio-prompt-ugc-product-answer">
                       <img
-                        src={packshotProductImagePreview}
+                        src={guideProductImagePreview || slots.productImageUrl}
                         alt=""
                         className="image-studio-prompt-ugc-product-answer-img"
                       />
@@ -1470,18 +1474,71 @@ function PromptTemplateChat({
             </ConversationBubble>
           ) : null}
 
-          {selectedShotId ? (
+          {showLifestyleFramingBot ? (
+            <ConversationBubble role="bot" wide visible={isBotVisible("framing")}>
+              <p className="image-studio-prompt-guide-bubble-text">Quel cadrage ?</p>
+              <p className="image-studio-prompt-guide-bubble-text image-studio-prompt-guide-bubble-hint">
+                {selectedShotId === "deux-mains"
+                  ? "Serré : produit dominant. Large : plan moyen — mains et action visibles, décor plus présent."
+                  : "Serré : produit dominant. Large : produit intégré dans la scène."}
+              </p>
+              {guideStep === "framing" && !lifestyleFramingId ? (
+                <PackshotOptionButtonRow
+                  options={LIFESTYLE_FRAMING_OPTIONS}
+                  selectedId={lifestyleFramingId}
+                  disabled={false}
+                  onSelect={handleLifestyleFramingSelect}
+                  ariaLabel="Cadrage lifestyle"
+                />
+              ) : null}
+            </ConversationBubble>
+          ) : null}
+
+          {lifestyleFramingLabel ? (
+            <ConversationBubble role="user">
+              <p className="image-studio-prompt-guide-bubble-text">{lifestyleFramingLabel}</p>
+            </ConversationBubble>
+          ) : null}
+
+          {showLifestyleProductBot ? (
             <ConversationBubble role="bot" visible={isBotVisible("drink") || isBotVisible("product")}>
               <p className="image-studio-prompt-guide-bubble-text">
                 {isLifestyleGuide ? template.botIntro : "Quelle boisson ?"}
               </p>
               {(isLifestyleGuide ? guideStep === "product" : guideStep === "drink") ? (
-                <div className="image-studio-prompt-guide-bubble-compose">{composeForm}</div>
+                <>
+                  <div className="image-studio-prompt-guide-bubble-compose">{composeForm}</div>
+                  {isLifestyleGuide && guideStep === "product" ? (
+                    <GuideProductImagePicker
+                      disabled={false}
+                      previewUrl={guideProductImagePreview}
+                      errorMessage={guideProductImageError}
+                      onPickFile={handleGuideProductImagePick}
+                    />
+                  ) : null}
+                </>
               ) : null}
             </ConversationBubble>
           ) : null}
 
-          {userMessages[0] ? (
+          {isLifestyleGuide && lifestyleProductDescription ? (
+            <ConversationBubble role="user">
+              {slots.productImageUrl ? (
+                <div className="image-studio-prompt-ugc-product-answer">
+                  <img
+                    src={slots.productImageUrl}
+                    alt=""
+                    className="image-studio-prompt-ugc-product-answer-img"
+                  />
+                  <p className="image-studio-prompt-guide-bubble-text">{lifestyleProductDescription}</p>
+                </div>
+              ) : (
+                <p className="image-studio-prompt-guide-bubble-text">{lifestyleProductDescription}</p>
+              )}
+            </ConversationBubble>
+          ) : null}
+
+          {!isLifestyleGuide && userMessages[0] ? (
             <ConversationBubble role="user">
               <p className="image-studio-prompt-guide-bubble-text">{userMessages[0].text}</p>
             </ConversationBubble>
@@ -1509,9 +1566,9 @@ function PromptTemplateChat({
             </ConversationBubble>
           ) : null}
 
-          {isLifestyleGuide && userMessages[1] ? (
+          {isLifestyleGuide && userMessages[0] ? (
             <ConversationBubble role="user">
-              <p className="image-studio-prompt-guide-bubble-text">{userMessages[1].text}</p>
+              <p className="image-studio-prompt-guide-bubble-text">{userMessages[0].text}</p>
             </ConversationBubble>
           ) : null}
 
@@ -1788,7 +1845,7 @@ export default function ModalPromptsImageStudio({ open, onClose, onApplyPrompt }
               </button>
             </header>
 
-            <div className="image-studio-prompts-list image-studio-prompts-visual-grid">
+            <div className="image-studio-prompts-list image-studio-prompts-visual-grid studio-subtle-scrollbar">
               {IMAGE_STUDIO_PROMPT_TEMPLATES.map((template) => (
                 <button
                   key={template.id}
@@ -1832,6 +1889,13 @@ export default function ModalPromptsImageStudio({ open, onClose, onApplyPrompt }
             />
           ) : isBrandCampaignShootGuideTemplate(activeTemplate) ? (
             <BrandCampaignShootPromptGuideChat
+              template={activeTemplate}
+              onBack={handleBack}
+              onApplyPrompt={onApplyPrompt}
+              onClose={onClose}
+            />
+          ) : isEditorialWornHeldGuideTemplate(activeTemplate) ? (
+            <EditorialWornHeldPromptGuideChat
               template={activeTemplate}
               onBack={handleBack}
               onApplyPrompt={onApplyPrompt}
