@@ -1388,7 +1388,7 @@ export default function ImageStudio() {
                   aria-label="Choisir un type d'image — l'assistant remplit le prompt"
                 >
                   <Sparkles className="image-studio-prompt-guide-chip-icon" strokeWidth={2} aria-hidden />
-                  <span>Type d&apos;image</span>
+                  <span>Assistant prompt</span>
                 </button>
 
                 <div className="image-studio-settings-desktop">

@@ -17,7 +17,6 @@ import {
 } from "@/bibliotheque/imageStudio/outfitStudioConfig";
 import { fillTemplateSlotDefaults } from "@/bibliotheque/imageStudio/promptTemplateEngine";
 import { readGuideProductImageFile } from "@/bibliotheque/imageStudio/guideProductImage";
-import { IMAGE_STUDIO_PRODUCT_MENTION_TOKEN } from "@/bibliotheque/imageStudio/imageStudioGuideApply";
 
 /** @typedef {'gender' | 'clothing' | 'sceneType' | 'subContext' | 'framing' | 'ratio' | 'pose' | 'ready'} OutfitStudioGuideStep */
 
@@ -392,6 +391,20 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
     [buildClothingSlots, clothingPreviews.length],
   );
 
+  const handleClothingSkip = useCallback(() => {
+    if (clothingPreviews.length === 0) return;
+    handleClothingSubmit("");
+  }, [clothingPreviews.length, handleClothingSubmit]);
+
+  const handleClothingTextSubmit = useCallback(
+    (event) => {
+      event.preventDefault();
+      if (!draft.length) return;
+      handleClothingSubmit(draft);
+    },
+    [draft, handleClothingSubmit],
+  );
+
   const handleSceneTypeSelect = useCallback((nextSceneTypeId) => {
     setSceneTypeId(nextSceneTypeId);
     setSubContextId(null);
@@ -445,16 +458,6 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
     });
   }, [finalizeGuide, genderId]);
 
-  const handleSubmit = useCallback(
-    (event) => {
-      event.preventDefault();
-      if (guideStep === "clothing") {
-        handleClothingSubmit(draft);
-      }
-    },
-    [draft, guideStep, handleClothingSubmit],
-  );
-
   const handleSlotChange = useCallback((key, value) => {
     setSlots((prev) => {
       const next = { ...prev, [key]: value };
@@ -487,31 +490,6 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
     onClose();
   }, [assembledPrompt, clothingPreviews, onApplyPrompt, onClose, slots.clothingNotes]);
 
-  const canSubmitClothing = Boolean(draft.trim()) || clothingPreviews.length > 0;
-
-  const composeForm =
-    guideStep === "clothing" && !ready ? (
-      <form className="image-studio-prompt-guide-compose" onSubmit={handleSubmit}>
-        <input
-          ref={inputRef}
-          type="text"
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          placeholder="Ex. focus sur la veste, plan buste… (optionnel)"
-          className="image-studio-prompt-guide-input"
-          aria-label="Précisions sur les vêtements"
-        />
-        <button
-          type="submit"
-          className="image-studio-prompt-guide-send"
-          disabled={!canSubmitClothing}
-          aria-label="Envoyer"
-        >
-          <SendHorizontal className="h-4 w-4" strokeWidth={2.25} />
-        </button>
-      </form>
-    ) : null;
-
   const genderLabel = findOptionLabel(OUTFIT_STUDIO_GENDER_OPTIONS, genderId);
   const sceneTypeLabel = findOptionLabel(OUTFIT_STUDIO_SCENE_TYPE_OPTIONS, sceneTypeId);
   const subContextLabel = findOptionLabel(subContextOptions, subContextId);
@@ -521,18 +499,21 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
   const clothingNotes = slots.clothingNotes?.trim() ?? "";
 
   const clothingAnswerLabel = useMemo(() => {
-    if (!clothingPreviews.length && !clothingNotes) return null;
+    if (guideStep === "clothing") return null;
+
+    const notes = slots.clothingNotes?.trim() ?? "";
+    const imageCount = Number(slots.clothingImageCount || 0);
+    if (imageCount === 0 && !notes) return null;
+
     const parts = [];
-    if (clothingPreviews.length > 0) {
+    if (imageCount > 0) {
       parts.push(
-        clothingPreviews.length === 1
-          ? "1 vêtement uploadé"
-          : `${clothingPreviews.length} vêtements uploadés`,
+        imageCount === 1 ? "1 vêtement uploadé" : `${imageCount} vêtements uploadés`,
       );
     }
-    if (clothingNotes) parts.push(clothingNotes);
+    if (notes) parts.push(notes);
     return parts.join(" — ");
-  }, [clothingNotes, clothingPreviews.length]);
+  }, [guideStep, slots.clothingImageCount, slots.clothingNotes]);
 
   const poseAnswerLabel = useMemo(() => {
     if (!poseId && guideStep !== "pose" && !ready) return null;
@@ -549,34 +530,26 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
   const botTurnKeys = useMemo(() => {
     const keys = ["gender"];
     if (genderId) keys.push("clothing");
-    if (clothingAnswerLabel) keys.push("clothing-answer");
-    if (sceneTypeId || guideStep === "sceneType") keys.push("sceneType");
-    if (sceneTypeLabel) keys.push("sceneType-answer");
+    if (guideStep !== "gender" && guideStep !== "clothing") keys.push("sceneType");
     if (sceneTypeId && sceneTypeId !== "studio-blanc") keys.push("subContext");
-    if (subContextLabel) keys.push("subContext-answer");
-    if (framingId || guideStep === "framing") keys.push("framing");
-    if (framingLabel) keys.push("framing-answer");
-    if (ratioId || guideStep === "ratio") keys.push("ratio");
-    if (ratioLabel) keys.push("ratio-answer");
+    if (framingId || guideStep === "framing" || (sceneTypeId && (subContextId || sceneTypeId === "studio-blanc"))) {
+      keys.push("framing");
+    }
+    if (ratioId || guideStep === "ratio" || framingId) keys.push("ratio");
     if (guideStep === "pose" || poseAnswerLabel) keys.push("pose");
-    if (poseAnswerLabel) keys.push("pose-answer");
     if (clothingValidationShown) keys.push("clothing-validation");
     if (ready) keys.push("result");
     return keys;
   }, [
-    clothingAnswerLabel,
     clothingValidationShown,
     framingId,
-    framingLabel,
     genderId,
     guideStep,
     poseAnswerLabel,
     ratioId,
-    ratioLabel,
     ready,
     sceneTypeId,
-    sceneTypeLabel,
-    subContextLabel,
+    subContextId,
   ]);
 
   const { isBotVisible, isTyping } = useConversationBotVisibility(botTurnKeys);
@@ -687,18 +660,51 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
                   onPickFiles={handleClothingImagePick}
                   onRemove={handleClothingImageRemove}
                 />
-                <p className="image-studio-prompt-guide-bubble-hint">
-                  Sans texte, la détection automatique s&apos;applique selon les images uploadées.
-                  Sinon, utilisez {IMAGE_STUDIO_PRODUCT_MENTION_TOKEN} dans le prompt final via
-                  l&apos;image.
-                </p>
+                {clothingPreviews.length > 0 ? (
+                  <>
+                    <p className="image-studio-prompt-guide-bubble-hint">
+                      Précisez la pièce à mettre en avant si besoin, ou continuez sans précision.
+                    </p>
+                    <div className="image-studio-prompt-guide-bubble-compose">
+                      <form
+                        className="image-studio-prompt-guide-compose"
+                        onSubmit={handleClothingTextSubmit}
+                      >
+                        <input
+                          ref={inputRef}
+                          type="text"
+                          value={draft}
+                          onChange={(event) => setDraft(event.target.value)}
+                          placeholder="Ex. focus sur la veste, plan buste… (optionnel)"
+                          className="image-studio-prompt-guide-input"
+                          aria-label="Précisions sur les vêtements"
+                        />
+                        {draft.length > 0 ? (
+                          <button
+                            type="submit"
+                            className="image-studio-prompt-guide-send"
+                            aria-label="Valider la précision"
+                            title="Valider"
+                          >
+                            <SendHorizontal className="h-4 w-4" strokeWidth={2.25} />
+                          </button>
+                        ) : null}
+                      </form>
+                    </div>
+                    <SkipButton
+                      disabled={false}
+                      onClick={handleClothingSkip}
+                      label="Continuer sans précision"
+                    />
+                  </>
+                ) : null}
               </>
             ) : null}
           </ConversationBubble>
         ) : null}
 
         {clothingAnswerLabel ? (
-          <ConversationBubble role="user" visible={isBotVisible("clothing-answer")}>
+          <ConversationBubble role="user">
             <p className="image-studio-prompt-guide-bubble-text">{clothingAnswerLabel}</p>
           </ConversationBubble>
         ) : null}
@@ -726,7 +732,7 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
         ) : null}
 
         {sceneTypeLabel ? (
-          <ConversationBubble role="user" visible={isBotVisible("sceneType-answer")}>
+          <ConversationBubble role="user">
             <p className="image-studio-prompt-guide-bubble-text">{sceneTypeLabel}</p>
           </ConversationBubble>
         ) : null}
@@ -747,7 +753,7 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
         ) : null}
 
         {subContextLabel ? (
-          <ConversationBubble role="user" visible={isBotVisible("subContext-answer")}>
+          <ConversationBubble role="user">
             <p className="image-studio-prompt-guide-bubble-text">{subContextLabel}</p>
           </ConversationBubble>
         ) : null}
@@ -769,7 +775,7 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
         ) : null}
 
         {framingLabel ? (
-          <ConversationBubble role="user" visible={isBotVisible("framing-answer")}>
+          <ConversationBubble role="user">
             <p className="image-studio-prompt-guide-bubble-text">{framingLabel}</p>
           </ConversationBubble>
         ) : null}
@@ -790,7 +796,7 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
         ) : null}
 
         {ratioLabel ? (
-          <ConversationBubble role="user" visible={isBotVisible("ratio-answer")}>
+          <ConversationBubble role="user">
             <p className="image-studio-prompt-guide-bubble-text">{ratioLabel}</p>
           </ConversationBubble>
         ) : null}
@@ -816,7 +822,7 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
         ) : null}
 
         {poseAnswerLabel ? (
-          <ConversationBubble role="user" visible={isBotVisible("pose-answer")}>
+          <ConversationBubble role="user">
             <p className="image-studio-prompt-guide-bubble-text">{poseAnswerLabel}</p>
           </ConversationBubble>
         ) : null}
@@ -831,8 +837,6 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
         {isTyping ? <TypingIndicator /> : null}
         <div ref={messagesEndRef} />
       </div>
-
-      {composeForm}
     </div>
   );
 }
