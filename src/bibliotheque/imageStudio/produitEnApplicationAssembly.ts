@@ -111,7 +111,7 @@ export function assembleProduitApplicationObjetPrompt(
     ZONE_CORPS: zone.zoneCorps,
     TYPE_CONTACT: objectProfile.typeContact,
     RESULTAT_VISUEL_PEAU: objectProfile.resultatVisuelPeau,
-    CONTENANT_DESC: resolveProduitApplicationContenantDescObjet(randomFn),
+    CONTENANT_DESC: resolveProduitApplicationContenantDescObjet(),
     ECLAIRAGE_DESC: PRODUIT_APPLICATION_ECLAIRAGE_DESC[input.lightingId],
     DECOR_DESC: resolveProduitApplicationDecorDesc(input.decorId),
     AMBIANCE_STYLE: ambianceStyle,

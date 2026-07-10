@@ -547,6 +547,9 @@ export const PRODUIT_APPLICATION_CONTENANT_OBJET_POOL = [
   "Objet partiellement hors-cadre, seul le point de contact avec la peau est net",
 ] as const;
 
+export const PRODUIT_APPLICATION_CONTENANT_OBJET_DEFAULT =
+  PRODUIT_APPLICATION_CONTENANT_OBJET_POOL[0];
+
 export const PRODUIT_APPLICATION_MATERIAU_OBJET_POOL = [
   "métal brossé mat",
   "plastique blanc mat premium",
@@ -693,10 +696,8 @@ export function resolveProduitApplicationContenantDescTexture(
   return pickRandom(PRODUIT_APPLICATION_CONTENANT_VISIBLE_TEXTURE_POOL, randomFn);
 }
 
-export function resolveProduitApplicationContenantDescObjet(
-  randomFn: RandomFn = Math.random,
-): string {
-  return pickRandom(PRODUIT_APPLICATION_CONTENANT_OBJET_POOL, randomFn);
+export function resolveProduitApplicationContenantDescObjet(): string {
+  return PRODUIT_APPLICATION_CONTENANT_OBJET_DEFAULT;
 }
 
 export function resolveProduitApplicationMateriauObjet(randomFn: RandomFn = Math.random): string {

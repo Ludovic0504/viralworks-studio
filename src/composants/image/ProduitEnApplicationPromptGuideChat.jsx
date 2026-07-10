@@ -237,12 +237,14 @@ export default function ProduitEnApplicationPromptGuideChat({
   const handleProductTypeSelect = useCallback((nextProductTypeId) => {
     setProductTypeId(nextProductTypeId);
     setBodyZoneId(null);
+    setContainerId(null);
     setTextureTypeId(null);
     setObjectTypeId(null);
     setSlots((prev) => ({
       ...prev,
       productTypeId: nextProductTypeId,
       bodyZoneId: "",
+      containerId: "",
       textureTypeId: "",
       objectTypeId: "",
     }));
@@ -255,18 +257,21 @@ export default function ProduitEnApplicationPromptGuideChat({
     setGuideStep("bodyZone");
   }, []);
 
-  const handleBodyZoneSelect = useCallback((nextBodyZoneId) => {
-    setBodyZoneId(nextBodyZoneId);
-    setTextureTypeId(null);
-    setObjectTypeId(null);
-    setSlots((prev) => ({
-      ...prev,
-      bodyZoneId: nextBodyZoneId,
-      textureTypeId: "",
-      objectTypeId: "",
-    }));
-    setGuideStep("container");
-  }, []);
+  const handleBodyZoneSelect = useCallback(
+    (nextBodyZoneId) => {
+      setBodyZoneId(nextBodyZoneId);
+      setTextureTypeId(null);
+      setObjectTypeId(null);
+      setSlots((prev) => ({
+        ...prev,
+        bodyZoneId: nextBodyZoneId,
+        textureTypeId: "",
+        objectTypeId: "",
+      }));
+      setGuideStep(productTypeId === "objet" ? "textureOrObject" : "container");
+    },
+    [productTypeId],
+  );
 
   const handleContainerSelect = useCallback((nextContainerId) => {
     setContainerId(nextContainerId);
@@ -306,25 +311,23 @@ export default function ProduitEnApplicationPromptGuideChat({
 
   const handleDecorSelect = useCallback((nextDecorId) => {
     setDecorId(nextDecorId);
-    const defaultLighting = resolveProduitApplicationDefaultLightingId(nextDecorId);
-    setLightingId(defaultLighting);
+    setLightingId(null);
     setSlots((prev) => ({
       ...prev,
       decorId: nextDecorId,
-      lightingId: defaultLighting,
+      lightingId: "",
     }));
     setGuideStep("lighting");
   }, []);
 
   const handleDecorSkip = useCallback(() => {
     const nextDecorId = "studio";
-    const defaultLighting = resolveProduitApplicationDefaultLightingId(nextDecorId);
     setDecorId(nextDecorId);
-    setLightingId(defaultLighting);
+    setLightingId(null);
     setSlots((prev) => ({
       ...prev,
       decorId: nextDecorId,
-      lightingId: defaultLighting,
+      lightingId: "",
     }));
     setGuideStep("lighting");
   }, []);
@@ -341,6 +344,17 @@ export default function ProduitEnApplicationPromptGuideChat({
     setSlots((prev) => ({ ...prev, lightingId: defaultLighting }));
     setGuideStep("product");
   }, [decorId]);
+
+  useEffect(() => {
+    if (guideStep !== "lighting") return;
+
+    const defaultLighting = resolveProduitApplicationDefaultLightingId(decorId ?? "studio");
+    setLightingId(defaultLighting);
+    setSlots((prev) => {
+      if (prev.lightingId === defaultLighting) return prev;
+      return { ...prev, lightingId: defaultLighting };
+    });
+  }, [decorId, guideStep]);
 
   const handleGuideProductImagePick = useCallback(async (file) => {
     setGuideProductImageError(null);
@@ -439,6 +453,7 @@ export default function ProduitEnApplicationPromptGuideChat({
   const postureLabel = findOptionLabel(PRODUIT_APPLICATION_POSTURE_OPTIONS, postureId);
   const decorLabel = findOptionLabel(PRODUIT_APPLICATION_DECOR_OPTIONS, decorId);
   const lightingLabel = findOptionLabel(PRODUIT_APPLICATION_LIGHTING_OPTIONS, lightingId);
+  const resolvedLightingId = lightingId ?? slots.lightingId ?? null;
   const productName = slots.productName?.trim() ?? "";
 
   const textureOrObjectAnswerLabel = isTextureGuide ? textureLabel : objectLabel;
@@ -455,14 +470,16 @@ export default function ProduitEnApplicationPromptGuideChat({
     const keys = ["productType"];
     if (productTypeId) keys.push("gender");
     if (genderId) keys.push("bodyZone");
-    if (bodyZoneId) keys.push("container");
-    if (containerId || guideStep === "textureOrObject" || textureOrObjectAnswerLabel) {
-      keys.push("textureOrObject");
-    }
+    if (bodyZoneId && isTextureGuide) keys.push("container");
+    const canShowTextureOrObject =
+      isTextureGuide
+        ? containerId || guideStep === "textureOrObject" || textureOrObjectAnswerLabel
+        : bodyZoneId && (guideStep === "textureOrObject" || textureOrObjectAnswerLabel);
+    if (canShowTextureOrObject) keys.push("textureOrObject");
     if (textureOrObjectAnswerLabel) keys.push("posture");
     if (postureAnswerLabel || guideStep === "posture") keys.push("posture-answer");
     if (decorId || guideStep === "decor" || decorLabel) keys.push("decor");
-    if (lightingId || guideStep === "lighting" || lightingLabel) keys.push("lighting");
+    if (resolvedLightingId || guideStep === "lighting") keys.push("lighting");
     if (guideStep === "product" || productName) keys.push("product");
     if (productValidationShown) keys.push("product-validation");
     if (ready) keys.push("result");
@@ -474,13 +491,13 @@ export default function ProduitEnApplicationPromptGuideChat({
     decorLabel,
     genderId,
     guideStep,
-    lightingId,
-    lightingLabel,
+    isTextureGuide,
     postureAnswerLabel,
     productName,
     productTypeId,
     productValidationShown,
     ready,
+    resolvedLightingId,
     textureOrObjectAnswerLabel,
   ]);
 
@@ -619,7 +636,7 @@ export default function ProduitEnApplicationPromptGuideChat({
           </ConversationBubble>
         ) : null}
 
-        {bodyZoneId ? (
+        {bodyZoneId && isTextureGuide ? (
           <ConversationBubble role="bot" visible={isBotVisible("container")}>
             <p className="image-studio-prompt-guide-bubble-text">Contenant</p>
             {guideStep === "container" ? (
@@ -643,7 +660,8 @@ export default function ProduitEnApplicationPromptGuideChat({
           </ConversationBubble>
         ) : null}
 
-        {(containerId || guideStep === "textureOrObject") && bodyZoneId ? (
+        {(isTextureGuide ? containerId || guideStep === "textureOrObject" : bodyZoneId) &&
+        bodyZoneId ? (
           <ConversationBubble role="bot" visible={isBotVisible("textureOrObject")}>
             <p className="image-studio-prompt-guide-bubble-text">
               {isTextureGuide ? "Type de texture" : "Type d'objet"}
@@ -721,7 +739,7 @@ export default function ProduitEnApplicationPromptGuideChat({
               <>
                 <OptionButtonRow
                   options={PRODUIT_APPLICATION_LIGHTING_OPTIONS}
-                  selectedId={lightingId}
+                  selectedId={resolvedLightingId}
                   disabled={false}
                   onSelect={handleLightingSelect}
                   ariaLabel="Éclairage"
@@ -732,13 +750,13 @@ export default function ProduitEnApplicationPromptGuideChat({
           </ConversationBubble>
         ) : null}
 
-        {lightingLabel ? (
+        {lightingLabel && guideStep !== "lighting" ? (
           <ConversationBubble role="user">
             <p className="image-studio-prompt-guide-bubble-text">{lightingLabel}</p>
           </ConversationBubble>
         ) : null}
 
-        {(guideStep === "product" || productName) && lightingId ? (
+        {(guideStep === "product" || productName) && resolvedLightingId ? (
           <ConversationBubble role="bot" visible={isBotVisible("product")}>
             <p className="image-studio-prompt-guide-bubble-text">Nom du produit</p>
             {guideStep === "product" ? (

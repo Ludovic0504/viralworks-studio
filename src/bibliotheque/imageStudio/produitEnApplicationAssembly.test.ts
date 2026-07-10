@@ -66,7 +66,8 @@ describe("produitEnApplicationAssembly", () => {
     expect(prompt).toContain("fait glisser la lame en un mouvement long et contrôlé");
     expect(prompt).toContain("genou");
     expect(prompt).toContain("ligne nette rasée contrastant avec la mousse restante");
-    expect(prompt).toContain("Objet tenu en gros plan");
+    expect(prompt).toContain("Objet tenu en gros plan, design et matériau clairement lisibles");
+    expect(prompt).not.toContain("partiellement hors-cadre");
     expect(prompt).not.toContain("[");
   });
 
