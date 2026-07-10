@@ -178,6 +178,7 @@ export type PromptTemplateGuideMode =
   | "brand-campaign-shoot"
   | "packshot-dynamique"
   | "editorial-worn-held"
+  | "produit-en-application"
   | "generic";
 
 export type PromptTemplateDefinition = {
@@ -267,6 +268,12 @@ export function isEditorialWornHeldGuideTemplate(
   template: Pick<PromptTemplateDefinition, "guideMode">,
 ): boolean {
   return template.guideMode === "editorial-worn-held";
+}
+
+export function isProduitEnApplicationGuideTemplate(
+  template: Pick<PromptTemplateDefinition, "guideMode">,
+): boolean {
+  return template.guideMode === "produit-en-application";
 }
 
 export function isShotStyleGuideTemplate(
@@ -907,6 +914,91 @@ STYLE: ${PRODUCT_PHOTOGRAPHY_PLACEHOLDERS.styleSection}`,
         label: "Format",
         placeholder: "ex. banniere-4-5",
         defaultValue: "banniere-4-5",
+      },
+    ],
+    body: "",
+  },
+  {
+    id: "produit-en-application",
+    label: "Produit en application",
+    summary:
+      "Texture ou objet en contact avec le corps — geste d'application, zone ciblée et rendu photoréaliste.",
+    icon: "product",
+    heroImage: "/image-studio/templates/produit-en-application/produit-en-application.png",
+    guideMode: "produit-en-application",
+    extractorId: "generic-product",
+    botIntro: "Quel type de produit ?",
+    botAskRequired:
+      "Quel est le nom du produit ? (ex. crème hydratante, sérum vitamine C…) — au moins quelques mots ou une image @Produit.",
+    botReady:
+      "Votre prompt est prêt. Vérifiez-le ci-dessous puis appliquez-le à la zone de saisie, ou ajustez les champs si besoin.",
+    variables: [
+      {
+        key: "productTypeId",
+        label: "Type de produit",
+        placeholder: "ex. texture, objet",
+        defaultValue: "texture",
+      },
+      {
+        key: "genderId",
+        label: "Sexe du modèle",
+        placeholder: "ex. femme",
+        defaultValue: "femme",
+      },
+      {
+        key: "bodyZoneId",
+        label: "Zone du corps",
+        placeholder: "ex. visage-joue",
+        defaultValue: "visage-joue",
+      },
+      {
+        key: "containerId",
+        label: "Contenant",
+        placeholder: "ex. visible",
+        defaultValue: "visible",
+      },
+      {
+        key: "textureTypeId",
+        label: "Type de texture",
+        placeholder: "ex. serum-liquide",
+        defaultValue: "",
+      },
+      {
+        key: "objectTypeId",
+        label: "Type d'objet",
+        placeholder: "ex. rasoir-jetable",
+        defaultValue: "",
+      },
+      {
+        key: "postureId",
+        label: "Posture",
+        placeholder: "ex. debout",
+        defaultValue: "debout",
+      },
+      {
+        key: "decorId",
+        label: "Décor",
+        placeholder: "ex. studio",
+        defaultValue: "studio",
+      },
+      {
+        key: "lightingId",
+        label: "Éclairage",
+        placeholder: "ex. naturelle-douce",
+        defaultValue: "naturelle-douce",
+      },
+      {
+        key: "productName",
+        label: "Nom du produit",
+        placeholder: "ex. crème hydratante SPF 50",
+        defaultValue: "",
+        required: true,
+      },
+      {
+        key: "physique",
+        label: "Physique",
+        placeholder: "ex. A 30-year-old woman with…",
+        defaultValue: "",
       },
     ],
     body: "",

@@ -52,6 +52,7 @@ import {
   isUgcPresentationGuideTemplate,
   isBrandCampaignShootGuideTemplate,
   isEditorialWornHeldGuideTemplate,
+  isProduitEnApplicationGuideTemplate,
   isPackshotDynamiqueGuideTemplate,
   LIFESTYLE_SHOT_STYLES,
   LIFESTYLE_SHOT_STYLES_EXTENDED,
@@ -67,6 +68,7 @@ import UgcSelfiePromptGuideChat from "@/composants/image/UgcSelfiePromptGuideCha
 import UgcPresentationPromptGuideChat from "@/composants/image/UgcPresentationPromptGuideChat";
 import BrandCampaignShootPromptGuideChat from "@/composants/image/BrandCampaignShootPromptGuideChat";
 import EditorialWornHeldPromptGuideChat from "@/composants/image/EditorialWornHeldPromptGuideChat";
+import ProduitEnApplicationPromptGuideChat from "@/composants/image/ProduitEnApplicationPromptGuideChat";
 
 /** @typedef {'drink' | 'packaging_mode' | 'elements_mode' | 'custom_elements' | 'ready'} BeverageGuideStep */
 /** @typedef {'framing' | 'product' | 'environment' | 'ready'} LifestyleGuideStep */
@@ -1896,6 +1898,13 @@ export default function ModalPromptsImageStudio({ open, onClose, onApplyPrompt }
             />
           ) : isEditorialWornHeldGuideTemplate(activeTemplate) ? (
             <EditorialWornHeldPromptGuideChat
+              template={activeTemplate}
+              onBack={handleBack}
+              onApplyPrompt={onApplyPrompt}
+              onClose={onClose}
+            />
+          ) : isProduitEnApplicationGuideTemplate(activeTemplate) ? (
+            <ProduitEnApplicationPromptGuideChat
               template={activeTemplate}
               onBack={handleBack}
               onApplyPrompt={onApplyPrompt}
