@@ -19,13 +19,28 @@ export default defineConfig(({ mode }) => {
     process.env.GITHUB_SHA?.slice(0, 12) ||
     `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 
+  const vwsCanonicalOrigin = (() => {
+    const site = String(env.VITE_SITE_URL || process.env.VITE_SITE_URL || '').trim()
+    if (site && !/netlify\.app/i.test(site)) {
+      try {
+        const origin = new URL(site).origin
+        if (!/\.netlify\.app$/i.test(new URL(origin).hostname)) {
+          return origin
+        }
+      } catch {
+        // ignore
+      }
+    }
+    return 'https://viralworks-studio.com'
+  })()
+
   return {
   test: {
     environment: 'node',
     include: ['src/**/*.test.{ts,tsx}', 'supabase/functions/_shared/**/*.test.ts'],
   },
   plugins: [
-    vwsBuildBootPlugin(vwsBuildId),
+    vwsBuildBootPlugin(vwsBuildId, vwsCanonicalOrigin),
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: null,
@@ -40,12 +55,7 @@ export default defineConfig(({ mode }) => {
         runtimeCaching: [
           {
             urlPattern: ({ request }) => request.mode === 'navigate',
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'vws-html-navigate',
-              networkTimeoutSeconds: 5,
-              expiration: { maxEntries: 8, maxAgeSeconds: 86400 },
-            },
+            handler: 'NetworkOnly',
           },
         ],
       },

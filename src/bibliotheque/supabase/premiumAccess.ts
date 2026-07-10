@@ -56,9 +56,19 @@ const FREE_ACCESS: PremiumAccessData = {
 let premiumCache: { userId: string; data: PremiumAccessData } | null = null;
 let premiumInflight: { userId: string; promise: Promise<PremiumAccessData> } | null = null;
 
+export const PREMIUM_ACCESS_UPDATED_EVENT = "vws:premium-access-updated";
+
 export function readCachedPremiumAccess(userId?: string | null): PremiumAccessData | null {
   if (!userId || premiumCache?.userId !== userId) return null;
   return premiumCache.data;
+}
+
+export function invalidatePremiumAccessCache(): void {
+  premiumCache = null;
+  premiumInflight = null;
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(PREMIUM_ACCESS_UPDATED_EVENT));
+  }
 }
 
 export function prefetchPremiumAccessData(userId: string | undefined | null): void {

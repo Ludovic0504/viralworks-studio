@@ -32,6 +32,7 @@ import BannerInstallPWA from "@/composants/BannerInstallPWA";
 import PromoImagesModal from "@/components/PromoImagesModal";
 import PromoImagesBanner from "@/components/PromoImagesBanner";
 import { requestPwaUpdateCheck } from "@/bibliotheque/pwa/registerPwa";
+import { invalidatePremiumAccessCache } from "@/bibliotheque/supabase/premiumAccess";
 
 class RouteErrorBoundary extends Component {
   constructor(props) {
@@ -109,6 +110,10 @@ function BoutiqueStripeReturnHandler() {
 
     const finish = async () => {
       await requestPwaUpdateCheck();
+
+      if (payment === "success") {
+        invalidatePremiumAccessCache();
+      }
 
       if (!session) {
         const { data: current } = await supabase.auth.getSession();

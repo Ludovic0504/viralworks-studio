@@ -13,6 +13,7 @@ import {
 import {
   isSameSubscriptionPlan,
 } from "@/bibliotheque/supabase/subscriptionPlans";
+import { invalidatePremiumAccessCache } from "@/bibliotheque/supabase/premiumAccess";
 import { useStripePayment, payImage9, payPro59, payPremium129, payVideoPack } from "@/hooks/useStripePayment";
 import ModalCadeauBienvenue from "@/composants/ModalCadeauBienvenue";
 import ModalConfirmAnnulationAbonnement from "@/composants/boutique/ModalConfirmAnnulationAbonnement";
@@ -318,6 +319,7 @@ export default function ContenuBoutique({
   const refreshCredits = async () => {
     setRefreshing(true);
     try {
+      invalidatePremiumAccessCache();
       await refreshSubscriptionDetails({ skipCache: true });
     } catch (err) {
       console.error("Erreur rafraîchissement abonnement:", err);

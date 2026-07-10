@@ -6,62 +6,13 @@ import {
   getStripeSecretKeyForCheckout,
 } from "../_shared/stripe-keys.ts";
 import { IMAGE_STUDIO_TRIAL_DAYS } from "../_shared/image-studio-quota.ts";
+import { resolveCheckoutReturnOrigin } from "../_shared/site-origin.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
 };
-
-function resolveBaseUrl(req: Request, requestedOrigin?: unknown): string {
-  const fallbackUrl = Deno.env.get("SITE_URL") || "http://localhost:5173";
-
-  const candidates = [
-    typeof requestedOrigin === "string" ? requestedOrigin : "",
-    req.headers.get("origin") || "",
-    fallbackUrl,
-  ];
-
-  for (const candidate of candidates) {
-    if (!candidate) continue;
-    try {
-      const url = new URL(candidate);
-      if (url.protocol === "http:" || url.protocol === "https:") {
-        return url.origin;
-      }
-    } catch {
-      // Ignorer les URLs invalides et continuer sur le fallback suivant.
-    }
-  }
-
-  return "http://localhost:5173";
-}
-
-function isLocalOrigin(origin: string): boolean {
-  try {
-    const host = new URL(origin).hostname;
-    return host === "localhost" || host === "127.0.0.1";
-  } catch {
-    return false;
-  }
-}
-
-/** URL de retour Stripe — toujours l'origine canonique en prod (évite perte de session www/apex). */
-function resolveCheckoutReturnOrigin(req: Request, requestedOrigin?: unknown): string {
-  const fromClient = resolveBaseUrl(req, requestedOrigin);
-  if (isLocalOrigin(fromClient)) return fromClient;
-
-  const siteUrl = Deno.env.get("SITE_URL")?.trim();
-  if (siteUrl) {
-    try {
-      return new URL(siteUrl).origin;
-    } catch {
-      // ignore
-    }
-  }
-
-  return fromClient;
-}
 
 function subscriptionProductName(planKey: string): string {
   if (planKey === "image_9") return "ViralWorks Image";
@@ -447,7 +398,7 @@ serve(async (req) => {
         await createAndPersistCustomer();
       }
 
-      const baseUrl = resolveCheckoutReturnOrigin(req, origin);
+      const baseUrl = resolveCheckoutReturnOrigin(origin);
       console.log("🌍 URL de retour Checkout résolue", { baseUrl, userId: user.id });
 
       let imageStudioTrialEligible =

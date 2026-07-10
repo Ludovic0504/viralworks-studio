@@ -8,6 +8,7 @@
 #
 # Secret Supabase (dashboard, pas GitHub) — tracking bio /go/* :
 #   SERVICE_ROLE_KEY dans Edge Functions → Secrets (utilisé par go-redirect)
+#   SITE_URL=https://viralworks-studio.com (retours Stripe — jamais Netlify)
 #
 # Variables de dépôt (optionnelles, pour le build Vite) :
 #   VITE_SITE_URL, VITE_STRIPE_PUBLISHABLE_KEY, VITE_META_PIXEL_ID, etc.
@@ -98,6 +99,15 @@ jobs:
           supabase functions deploy go-redirect \
             --project-ref "$SUPABASE_PROJECT_REF" \
             --no-verify-jwt \
+            --use-api
+
+      - name: Deploy stripe-payment edge function
+        if: steps.db_push.outcome == 'success'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase functions deploy stripe-payment \
+            --project-ref "$SUPABASE_PROJECT_REF" \
             --use-api
 
       - name: Smoke test go-redirect

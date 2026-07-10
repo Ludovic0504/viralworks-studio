@@ -1,5 +1,6 @@
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { getAppOrigin } from '@/bibliotheque/appOrigin'
 
 declare global {
   var __supabase__: SupabaseClient | undefined
@@ -63,11 +64,7 @@ export const getRedirectTo = (): string => {
   const explicit = String(import.meta.env.VITE_AUTH_REDIRECT_URL ?? "").trim()
   if (explicit) return explicit
 
-  if (typeof window !== "undefined" && window.location?.origin) {
-    return `${window.location.origin}/auth/callback`
-  }
-
-  return "https://viralworks-studio.com/auth/callback"
+  return `${getAppOrigin()}/auth/callback`
 }
 
 /** Liens utiles du dashboard Supabase (dérivés de VITE_SUPABASE_URL) pour configurer SMTP et Redirect URLs. */

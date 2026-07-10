@@ -61,6 +61,7 @@ const required = [
   "STRIPE_PRICE_PRO_59",
   "STRIPE_PRICE_IMAGE_9",
   "SERVICE_ROLE_KEY",
+  "SITE_URL",
 ];
 const { execSync } = await import("node:child_process");
 let secretList = "";

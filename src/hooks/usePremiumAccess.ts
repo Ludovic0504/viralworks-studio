@@ -3,6 +3,7 @@ import { useAuth } from "@/contexte/FournisseurAuth";
 import {
   readCachedPremiumAccess,
   resolvePremiumAccess,
+  PREMIUM_ACCESS_UPDATED_EVENT,
   type PremiumAccessData,
   type UserPlan,
 } from "@/bibliotheque/supabase/premiumAccess";
@@ -66,6 +67,22 @@ export function usePremiumAccess() {
 
     return () => {
       active = false;
+    };
+  }, [userId]);
+
+  useEffect(() => {
+    if (!userId) return;
+
+    const onPremiumAccessUpdated = () => {
+      setState((prev) => (prev.loading ? prev : { ...prev, loading: true }));
+      void resolvePremiumAccess(userId).then((data) => {
+        setState({ ...data, loading: false });
+      });
+    };
+
+    window.addEventListener(PREMIUM_ACCESS_UPDATED_EVENT, onPremiumAccessUpdated);
+    return () => {
+      window.removeEventListener(PREMIUM_ACCESS_UPDATED_EVENT, onPremiumAccessUpdated);
     };
   }, [userId]);
 
