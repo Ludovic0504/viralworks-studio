@@ -21,6 +21,7 @@
     "supabase:deploy:go-redirect": "supabase functions deploy go-redirect",
     "supabase:deploy:hailuo": "supabase functions deploy hailuo-image",
     "supabase:deploy:gemini-image-edit": "supabase functions deploy gemini-image-edit",
+    "supabase:deploy:generate-image-studio": "supabase functions deploy generate-image-studio",
     "supabase:deploy:hailuo-video": "supabase functions deploy hailuo-video",
     "supabase:deploy:anthropic-messages": "supabase functions deploy anthropic-messages",
     "supabase:deploy:vertex-veo-video": "supabase functions deploy vertex-veo-video",

@@ -21,7 +21,7 @@ export type ImageStudioHistoryItem = {
   created_at?: string;
 };
 
-export type ImageStudioAspectRatio = "1:1" | "9:16" | "16:9";
+export type ImageStudioAspectRatio = "1:1" | "4:5" | "9:16" | "16:9";
 
 /** Plafond de sécurité pour l'affichage (toutes les générations Image Studio de l'utilisateur). */
 const HISTORY_LIST_LIMIT = 1000;

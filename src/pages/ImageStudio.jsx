@@ -79,7 +79,7 @@ import ModalBibliothequeProduits from "@/composants/studio/product/ModalBiblioth
 import { capturePostHog, trackPostHogError } from "@/bibliotheque/posthog/client";
 import { requestPromoModalOpen } from "@/bibliotheque/promo/promoModalGate";
 
-const ASPECT_RATIOS = ["1:1", "9:16", "16:9"];
+const ASPECT_RATIOS = ["1:1", "4:5", "9:16", "16:9"];
 const GENERATION_COUNTS = [1, 2, 3, 4];
 
 const DEFAULT_MODELS = {
@@ -969,18 +969,25 @@ export default function ImageStudio() {
   }, []);
 
   const handleGuideApplyPrompt = useCallback((payload) => {
-    const { prompt: nextPrompt, productImageUrl, productFocus: nextProductFocus } =
-      resolveImageStudioGuideApplyPayload(payload);
+    const {
+      prompt: nextPrompt,
+      productImageUrl,
+      productFocus: nextProductFocus,
+      importedRefImageUrl,
+    } = resolveImageStudioGuideApplyPayload(payload);
     setPrompt(nextPrompt);
     if (productImageUrl) {
       setProductImage(productImageUrl);
       setProductPreview(productImageUrl);
       setProductFocus(nextProductFocus);
       setError(null);
-      return;
-    }
-    if (nextProductFocus) {
+    } else if (nextProductFocus) {
       setProductFocus(nextProductFocus);
+    }
+    if (importedRefImageUrl) {
+      setImportedRefImage(importedRefImageUrl);
+      setImportedRefPreview(importedRefImageUrl);
+      setError(null);
     }
   }, []);
 
@@ -1053,7 +1060,7 @@ export default function ImageStudio() {
       if (promptText) setPrompt(promptText);
 
       const ratio = item.metadata?.aspectRatio;
-      if (ratio === "1:1" || ratio === "9:16" || ratio === "16:9") {
+      if (ASPECT_RATIOS.includes(ratio)) {
         setAspectRatio(ratio);
       }
 

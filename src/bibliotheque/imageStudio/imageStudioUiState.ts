@@ -19,7 +19,7 @@ function storageKey(userId: string): string {
 }
 
 function isAspectRatio(value: unknown): value is ImageStudioAspectRatio {
-  return value === "1:1" || value === "9:16" || value === "16:9";
+  return value === "1:1" || value === "4:5" || value === "9:16" || value === "16:9";
 }
 
 function isModelId(value: unknown): value is ImageStudioModelId {

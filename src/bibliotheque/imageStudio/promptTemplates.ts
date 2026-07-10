@@ -181,6 +181,7 @@ export type PromptTemplateGuideMode =
   | "packshot-dynamique"
   | "editorial-worn-held"
   | "produit-en-application"
+  | "outfit-studio"
   | "generic";
 
 export type PromptTemplateDefinition = {
@@ -276,6 +277,12 @@ export function isProduitEnApplicationGuideTemplate(
   template: Pick<PromptTemplateDefinition, "guideMode">,
 ): boolean {
   return template.guideMode === "produit-en-application";
+}
+
+export function isOutfitStudioGuideTemplate(
+  template: Pick<PromptTemplateDefinition, "guideMode">,
+): boolean {
+  return template.guideMode === "outfit-studio";
 }
 
 export function isShotStyleGuideTemplate(
@@ -1000,6 +1007,79 @@ STYLE: ${PRODUCT_PHOTOGRAPHY_PLACEHOLDERS.styleSection}`,
         key: "physique",
         label: "Physique",
         placeholder: "ex. A 30-year-old woman with…",
+        defaultValue: "",
+      },
+    ],
+    body: "",
+  },
+  {
+    id: "outfit-studio",
+    label: "Outfit Studio",
+    summary:
+      "Stylisez un ou plusieurs vêtements uploadés sur un mannequin — studio, lifestyle, intérieur commercial ou mirror selfie.",
+    icon: "product",
+    heroImage: `${IMAGE_STUDIO_TEMPLATES_BASE}/outfit-studio/outfit-studio.png`,
+    guideMode: "outfit-studio",
+    extractorId: "generic-product",
+    botIntro: "Sexe du modèle",
+    botAskRequired:
+      "Uploadez au moins une image de vêtement ou décrivez la pièce à styliser (ex. focus sur la veste, plan buste…).",
+    botReady:
+      "Votre prompt est prêt. Vérifiez-le ci-dessous puis appliquez-le à la zone de saisie, ou ajustez les champs si besoin.",
+    variables: [
+      {
+        key: "genderId",
+        label: "Sexe du modèle",
+        placeholder: "ex. homme, femme",
+        defaultValue: "femme",
+      },
+      {
+        key: "clothingNotes",
+        label: "Précisions vêtements",
+        placeholder: "ex. focus sur la veste, plan buste",
+        defaultValue: "",
+      },
+      {
+        key: "sceneTypeId",
+        label: "Type de scène",
+        placeholder: "ex. studio-blanc",
+        defaultValue: "studio-blanc",
+      },
+      {
+        key: "subContextId",
+        label: "Sous-contexte",
+        placeholder: "ex. rue-urbaine",
+        defaultValue: "",
+      },
+      {
+        key: "framingId",
+        label: "Cadrage",
+        placeholder: "ex. plein-pied",
+        defaultValue: "plein-pied",
+      },
+      {
+        key: "ratioId",
+        label: "Ratio de sortie",
+        placeholder: "ex. 4-5",
+        defaultValue: "4-5",
+        required: true,
+      },
+      {
+        key: "poseId",
+        label: "Pose",
+        placeholder: "ex. debout-statique",
+        defaultValue: "debout-statique",
+      },
+      {
+        key: "clothingImageCount",
+        label: "Nombre d'images vêtements",
+        placeholder: "ex. 1",
+        defaultValue: "0",
+      },
+      {
+        key: "clothingImageFilenames",
+        label: "Fichiers vêtements",
+        placeholder: "noms de fichiers",
         defaultValue: "",
       },
     ],

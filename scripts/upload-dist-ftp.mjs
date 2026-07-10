@@ -244,6 +244,22 @@ async function ensureRemoteDirsRecursive(client, ctx, relativeDirs) {
  * @param {import("basic-ftp").Client} client
  * @param {ReturnType<typeof createUploadContext>} ctx
  */
+async function removeObsoleteRemoteDir(client, ctx, relativeDir) {
+  const remote = ctx.remotePath(relativeDir);
+  await cdUploadBase(client, ctx);
+  try {
+    await client.removeDir(remote);
+    console.log(`  [removeDir] ${remote} (dossier obsolète supprimé sur le serveur)`);
+  } catch (err) {
+    console.log(`  [removeDir] ${remote} — ignoré (${err?.message ?? err})`);
+  }
+  await cdUploadBase(client, ctx);
+}
+
+/**
+ * @param {import("basic-ftp").Client} client
+ * @param {ReturnType<typeof createUploadContext>} ctx
+ */
 async function removeObsoleteRemoteFiles(client, ctx) {
   const obsoleteFiles = ["registerSW.js"];
   await cdUploadBase(client, ctx);
@@ -255,6 +271,10 @@ async function removeObsoleteRemoteFiles(client, ctx) {
       // absent ou déjà supprimé — ignorer
     }
   }
+
+  // Ancien emplacement des assets Image Studio — collisionnait avec la route SPA /image-studio.
+  await removeObsoleteRemoteDir(client, ctx, "image-studio");
+
   await cdUploadBase(client, ctx);
 }
 

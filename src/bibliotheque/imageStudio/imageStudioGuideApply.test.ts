@@ -10,6 +10,7 @@ describe("imageStudioGuideApply", () => {
       prompt: "hello prompt",
       productImageUrl: null,
       productFocus: null,
+      importedRefImageUrl: null,
     });
   });
 
@@ -19,11 +20,13 @@ describe("imageStudioGuideApply", () => {
         prompt: "use @Produit",
         productImageUrl: "data:image/png;base64,abc",
         productFocus: "la veste uniquement",
+        importedRefImageUrl: "data:image/png;base64,def",
       }),
     ).toEqual({
       prompt: "use @Produit",
       productImageUrl: "data:image/png;base64,abc",
       productFocus: "la veste uniquement",
+      importedRefImageUrl: "data:image/png;base64,def",
     });
   });
 

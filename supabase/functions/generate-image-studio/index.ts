@@ -54,7 +54,7 @@ type RequestBody = {
   };
 };
 
-const ALLOWED_RATIOS = new Set(["1:1", "9:16", "16:9"]);
+const ALLOWED_RATIOS = new Set(["1:1", "4:5", "9:16", "16:9"]);
 const ALLOWED_MODELS = new Set<ImageStudioModel>([
   "nano_banana_pro",
   "hailuo",
@@ -134,7 +134,14 @@ function getModelsAvailability() {
 function openAiSizeForRatio(ratio: string): string {
   if (ratio === "16:9") return "1536x1024";
   if (ratio === "9:16") return "1024x1536";
+  if (ratio === "4:5") return "1024x1280";
   return "1024x1024";
+}
+
+function hailuoAspectRatioForRatio(ratio: string): string {
+  // image-01 ne supporte pas 4:5 ; 3:4 est le portrait le plus proche.
+  if (ratio === "4:5") return "3:4";
+  return ratio;
 }
 
 async function sleep(ms: number): Promise<void> {
@@ -647,7 +654,7 @@ async function generateHailuoImage(
   const requestBody: Record<string, unknown> = {
     model: "image-01",
     prompt: prompt.slice(0, 1500),
-    aspect_ratio: aspectRatio,
+    aspect_ratio: hailuoAspectRatioForRatio(aspectRatio),
     response_format: "url",
     n: 1,
     prompt_optimizer: true,

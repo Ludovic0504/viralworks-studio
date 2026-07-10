@@ -83,6 +83,7 @@ export function mergeFeedRowsFromHistory(
 
 export function feedRowAspectClass(ratio?: string): string {
   if (ratio === "9:16") return "is-portrait";
+  if (ratio === "4:5") return "is-portrait-45";
   if (ratio === "16:9") return "is-landscape";
   return "is-square";
 }
