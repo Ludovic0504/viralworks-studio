@@ -24,41 +24,6 @@
   </head>
   <body>
     <div id="root"></div>
-    <script>
-      (function () {
-        var q = new URLSearchParams(location.search);
-        var shouldRecover =
-          q.get("vws_recover") === "1" || q.get("payment") === "success";
-        if (!shouldRecover || !("serviceWorker" in navigator)) return;
-        try {
-          if (sessionStorage.getItem("vws_sw_recovery_pending") === "1") return;
-          sessionStorage.setItem("vws_sw_recovery_pending", "1");
-        } catch (e) {
-          return;
-        }
-        navigator.serviceWorker
-          .getRegistrations()
-          .then(function (regs) {
-            if (!regs.length) {
-              try { sessionStorage.removeItem("vws_sw_recovery_pending"); } catch (e) {}
-              return;
-            }
-            return Promise.all(regs.map(function (r) { return r.unregister(); }));
-          })
-          .then(function () {
-            if (!("caches" in window)) return;
-            return caches.keys().then(function (keys) {
-              return Promise.all(keys.map(function (k) { return caches.delete(k); }));
-            });
-          })
-          .then(function () {
-            location.reload();
-          })
-          .catch(function () {
-            try { sessionStorage.removeItem("vws_sw_recovery_pending"); } catch (e) {}
-          });
-      })();
-    </script>
     <script type="module" src="/src/principal.jsx"></script>
   </body>
 </html>

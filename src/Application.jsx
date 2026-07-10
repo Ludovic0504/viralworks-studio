@@ -108,7 +108,7 @@ function BoutiqueStripeReturnHandler() {
     handledRef.current = true;
 
     const finish = async () => {
-      await requestPwaUpdateCheck({ forceReload: true, reason: "stripe-return" });
+      await requestPwaUpdateCheck();
 
       if (!session) {
         const { data: current } = await supabase.auth.getSession();

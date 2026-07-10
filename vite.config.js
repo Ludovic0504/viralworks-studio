@@ -4,6 +4,7 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { vwsBuildBootPlugin } from './scripts/vws-build-boot.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -14,20 +15,27 @@ export default defineConfig(({ mode }) => {
     pexelsKey = pexelsKey.slice(7).trim()
   }
 
+  const vwsBuildId =
+    process.env.GITHUB_SHA?.slice(0, 12) ||
+    `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+
   return {
   test: {
     environment: 'node',
     include: ['src/**/*.test.{ts,tsx}', 'supabase/functions/_shared/**/*.test.ts'],
   },
   plugins: [
+    vwsBuildBootPlugin(vwsBuildId),
     VitePWA({
-      registerType: 'prompt',
+      registerType: 'autoUpdate',
       injectRegister: null,
       workbox: {
         cleanupOutdatedCaches: true,
-        // index.html hors precache : navigations en network-first (évite shell SW obsolète).
+        skipWaiting: true,
+        clientsClaim: true,
+        importScripts: ['sw-activate-reload.js'],
         globPatterns: ['**/*.{js,css,ico,png,svg,webp,woff,woff2,webmanifest,json,txt}'],
-        globIgnores: ['**/index.html', '**/recover.html'],
+        globIgnores: ['**/index.html', '**/recover.html', '**/sw-activate-reload.js'],
         navigateFallback: null,
         runtimeCaching: [
           {

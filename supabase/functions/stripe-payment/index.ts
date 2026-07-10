@@ -502,7 +502,7 @@ serve(async (req) => {
         ...(type === "subscription" && planKey === "image_9" && imageStudioTrialEligible
           ? { subscription_data: { trial_period_days: IMAGE_STUDIO_TRIAL_DAYS } }
           : {}),
-        success_url: `${baseUrl}/?payment=success&vws_recover=1`,
+        success_url: `${baseUrl}/?payment=success`,
         cancel_url: `${baseUrl}/?payment=cancelled`,
         ...(welcomeGiftMeta && {
           shipping_address_collection: {
