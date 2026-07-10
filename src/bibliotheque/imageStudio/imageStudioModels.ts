@@ -1,4 +1,5 @@
 import type { ImageStudioModelId } from "./generateImageStudio";
+import { imageStudioModelAsset } from "./imageStudioAssets";
 
 export type ImageStudioModelOption = {
   id: ImageStudioModelId;
@@ -7,9 +8,9 @@ export type ImageStudioModelOption = {
 };
 
 export const IMAGE_STUDIO_MODEL_LOGOS: Record<ImageStudioModelId, string> = {
-  nano_banana_pro: "/image-studio/models/nano-banana-open.png",
-  hailuo: "/image-studio/models/hailuo.png",
-  gpt_image_2: "/image-studio/models/gpt-image-2.png",
+  nano_banana_pro: imageStudioModelAsset("nano-banana-open.png"),
+  hailuo: imageStudioModelAsset("hailuo.png"),
+  gpt_image_2: imageStudioModelAsset("gpt-image-2.png"),
 };
 
 export const IMAGE_STUDIO_MODEL_OPTIONS: ImageStudioModelOption[] = [

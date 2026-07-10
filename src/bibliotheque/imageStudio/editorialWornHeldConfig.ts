@@ -6,6 +6,7 @@ import {
   type PackshotBackgroundId,
   type PackshotFormatId,
 } from "./packshotDynamiqueConfig";
+import { imageStudioTemplateAsset } from "./imageStudioAssets";
 
 export type EditorialSceneTypeId = "bijou-porte" | "produit-tenu";
 
@@ -71,8 +72,10 @@ export const EDITORIAL_BACKGROUND_OPTIONS = PACKSHOT_BACKGROUND_OPTIONS;
 export const EDITORIAL_AMBIANCE_OPTIONS = PACKSHOT_AMBIANCE_OPTIONS;
 export const EDITORIAL_FORMAT_OPTIONS = PACKSHOT_FORMAT_OPTIONS;
 
-export const EDITORIAL_HERO_IMAGE =
-  "/image-studio/templates/editorial-worn-held/editorial-worn-held.png";
+export const EDITORIAL_HERO_IMAGE = imageStudioTemplateAsset(
+  "editorial-worn-held",
+  "editorial-worn-held.png",
+);
 
 export type EditorialZoneProfile = {
   zoneCorps: string;

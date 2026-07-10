@@ -33,7 +33,9 @@ export type UgcSelfieLocationPreset = {
   promptValue: string;
 };
 
-const UGC_SELFIE_IMAGE_BASE = "/image-studio/templates/ugc-selfie";
+import { imageStudioTemplateAsset } from "./imageStudioAssets";
+
+const UGC_SELFIE_IMAGE_BASE = imageStudioTemplateAsset("ugc-selfie");
 
 export const UGC_SELFIE_AGES: UgcSelfieAge[] = [20, 30, 40, 50, 60];
 

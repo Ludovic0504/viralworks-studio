@@ -1,4 +1,5 @@
 import type { UgcSelfieGender } from "./ugcSelfieProfiles";
+import { IMAGE_STUDIO_TEMPLATES_BASE, imageStudioTemplateAsset } from "./imageStudioAssets";
 
 export type BrandCampaignAmbianceId =
   | "sportif-luxe"
@@ -51,7 +52,7 @@ export type BrandCampaignCameraAngleOption = {
   tiers: WeightedTier[];
 };
 
-const BRAND_CAMPAIGN_IMAGE_BASE = "/image-studio/templates/brand-campaign";
+const BRAND_CAMPAIGN_IMAGE_BASE = imageStudioTemplateAsset("brand-campaign");
 
 export const BRAND_CAMPAIGN_AMBIANCE_OPTIONS: BrandCampaignAmbianceOption[] = [
   {
@@ -63,25 +64,25 @@ export const BRAND_CAMPAIGN_AMBIANCE_OPTIONS: BrandCampaignAmbianceOption[] = [
   {
     id: "minimaliste-luxe",
     label: "Minimaliste luxe",
-    image: "/image-studio/templates/shot-serre-minimal.jpg",
+    image: `${IMAGE_STUDIO_TEMPLATES_BASE}/shot-serre-minimal.jpg`,
     promptValue: "minimalist luxury",
   },
   {
     id: "streetwear-energique",
     label: "Streetwear énergique",
-    image: "/image-studio/templates/lifestyle/shot-pov-debout.jpg",
+    image: imageStudioTemplateAsset("lifestyle", "shot-pov-debout.jpg"),
     promptValue: "energetic streetwear",
   },
   {
     id: "romantique-nostalgique",
     label: "Romantique nostalgique",
-    image: "/image-studio/templates/lifestyle/shot-produit-seul.jpg",
+    image: imageStudioTemplateAsset("lifestyle", "shot-produit-seul.jpg"),
     promptValue: "romantic nostalgic",
   },
   {
     id: "editorial-haute-couture",
     label: "Éditorial haute couture",
-    image: "/image-studio/templates/shot-vue-basse.jpg",
+    image: `${IMAGE_STUDIO_TEMPLATES_BASE}/shot-vue-basse.jpg`,
     promptValue: "high-fashion editorial",
   },
 ];

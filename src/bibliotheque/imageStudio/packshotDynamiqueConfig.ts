@@ -1,3 +1,5 @@
+import { imageStudioTemplateAsset } from "./imageStudioAssets";
+
 export type PackshotPositionId =
   | "debout-droit"
   | "debout-incline"
@@ -68,8 +70,10 @@ export const PACKSHOT_FORMAT_OPTIONS: PackshotButtonOption<PackshotFormatId>[] =
   { id: "banniere-4-5", label: "Bannière-pub (4:5)" },
 ];
 
-export const PACKSHOT_HERO_IMAGE =
-  "/image-studio/templates/packshot-dynamique/packshot-dynamique.png";
+export const PACKSHOT_HERO_IMAGE = imageStudioTemplateAsset(
+  "packshot-dynamique",
+  "packshot-dynamique.png",
+);
 
 export type PackshotAmbianceProfile = {
   ambianceLabel: string;

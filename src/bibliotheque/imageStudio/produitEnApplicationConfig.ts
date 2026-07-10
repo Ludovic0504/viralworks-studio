@@ -1,3 +1,5 @@
+import { imageStudioTemplateAsset } from "./imageStudioAssets";
+
 export type ProduitApplicationProductTypeId = "texture" | "objet";
 
 export type ProduitApplicationGenderId = "homme" | "femme";
@@ -70,8 +72,10 @@ export type ProduitApplicationButtonOption<T extends string = string> = {
   label: string;
 };
 
-export const PRODUIT_APPLICATION_HERO_IMAGE =
-  "/image-studio/templates/produit-en-application/produit-en-application.png";
+export const PRODUIT_APPLICATION_HERO_IMAGE = imageStudioTemplateAsset(
+  "produit-en-application",
+  "produit-en-application.png",
+);
 
 export const PRODUIT_APPLICATION_PRODUCT_TYPE_OPTIONS: ProduitApplicationButtonOption<ProduitApplicationProductTypeId>[] =
   [

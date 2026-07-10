@@ -1,3 +1,5 @@
+import { IMAGE_STUDIO_TEMPLATES_BASE } from "./imageStudioAssets";
+
 export type PromptTemplateVariable = {
   key: string;
   label: string;
@@ -69,14 +71,14 @@ export const PRODUCT_PHOTOGRAPHY_SHOT_STYLES: ProductShotStyle[] = [
   {
     id: "low-angle",
     label: "Vue basse",
-    image: "/image-studio/templates/shot-vue-basse.jpg",
+    image: `${IMAGE_STUDIO_TEMPLATES_BASE}/shot-vue-basse.jpg`,
     promptValue:
       "centered, slightly low camera angle (worm's eye view), container monumental and imposing",
   },
   {
     id: "macro-label",
     label: "Gros plan",
-    image: "/image-studio/templates/shot-gros-plan-label.jpg",
+    image: `${IMAGE_STUDIO_TEMPLATES_BASE}/shot-gros-plan-label.jpg`,
     promptValue:
       "extreme close-up on the label and container surface, macro detail, condensation droplets in foreground",
     subjectDetail: MACRO_LABEL_SUBJECT_DETAIL,
@@ -84,14 +86,14 @@ export const PRODUCT_PHOTOGRAPHY_SHOT_STYLES: ProductShotStyle[] = [
   {
     id: "explosion-wide",
     label: "Explosion large",
-    image: "/image-studio/templates/shot-explosion-large.jpg",
+    image: `${IMAGE_STUDIO_TEMPLATES_BASE}/shot-explosion-large.jpg`,
     promptValue:
       "wide shot, container small in frame, ingredients explosion filling 80% of the image",
   },
   {
     id: "freeze-frame",
     label: "Freeze-frame",
-    image: "/image-studio/templates/shot-freeze-frame.jpg",
+    image: `${IMAGE_STUDIO_TEMPLATES_BASE}/shot-freeze-frame.jpg`,
     promptValue:
       "freeze-frame action shot, container mid-fall, ingredients and ice erupting outward in all directions",
     subjectDetail: FREEZE_FRAME_SUBJECT_DETAIL,
@@ -99,7 +101,7 @@ export const PRODUCT_PHOTOGRAPHY_SHOT_STYLES: ProductShotStyle[] = [
   {
     id: "ground-fog",
     label: "Brume au sol",
-    image: "/image-studio/templates/shot-brume-sol.jpg",
+    image: `${IMAGE_STUDIO_TEMPLATES_BASE}/shot-brume-sol.jpg`,
     promptValue:
       "smoke and mist ground effect, container emerging from a low fog layer, moody atmosphere",
   },
@@ -109,28 +111,28 @@ export const PRODUCT_PHOTOGRAPHY_SHOT_STYLES_EXTENDED: ProductShotStyle[] = [
   {
     id: "diagonal-45",
     label: "45° diagonal",
-    image: "/image-studio/templates/shot-45-diagonal.jpg",
+    image: `${IMAGE_STUDIO_TEMPLATES_BASE}/shot-45-diagonal.jpg`,
     promptValue:
       "45-degree angle shot, container slightly tilted, dynamic diagonal composition",
   },
   {
     id: "tight-minimal",
     label: "Serré minimal",
-    image: "/image-studio/templates/shot-serre-minimal.jpg",
+    image: `${IMAGE_STUDIO_TEMPLATES_BASE}/shot-serre-minimal.jpg`,
     promptValue:
       "tight centered shot, container filling 70% of frame, minimal ingredients, clean and minimal",
   },
   {
     id: "side-left",
     label: "Côté gauche",
-    image: "/image-studio/templates/shot-cote-gauche.jpg",
+    image: `${IMAGE_STUDIO_TEMPLATES_BASE}/shot-cote-gauche.jpg`,
     promptValue:
       "side profile shot, container facing left, ingredients bursting from the right side",
   },
   {
     id: "underwater",
     label: "Underwater",
-    image: "/image-studio/templates/shot-underwater.jpg",
+    image: `${IMAGE_STUDIO_TEMPLATES_BASE}/shot-underwater.jpg`,
     promptValue:
       "underwater-style shot, container submerged, bubbles and water distortion around it",
     subjectDetail: UNDERWATER_SUBJECT_DETAIL,
@@ -142,7 +144,7 @@ export const PRODUCT_PHOTOGRAPHY_SHOT_STYLES_EXTENDED: ProductShotStyle[] = [
   {
     id: "top-down",
     label: "Vue du dessus",
-    image: "/image-studio/templates/shot-vue-dessus.jpg",
+    image: `${IMAGE_STUDIO_TEMPLATES_BASE}/shot-vue-dessus.jpg`,
     promptValue:
       "bird's eye view, top-down flat lay, container centered from above, ingredients spread around",
     subjectDetail: TOP_DOWN_SUBJECT_DETAIL,
@@ -450,35 +452,35 @@ export const LIFESTYLE_SHOT_STYLES: LifestyleShotStyle[] = [
   {
     id: "pov-assis",
     label: "POV assis",
-    image: "/image-studio/templates/lifestyle/shot-pov-assis.jpg",
+    image: `${IMAGE_STUDIO_TEMPLATES_BASE}/lifestyle/shot-pov-assis.jpg`,
     promptValue: LIFESTYLE_SHOT_POV_ASSIS,
     templateVariant: "body-continuity",
   },
   {
     id: "pov-debout",
     label: "POV debout",
-    image: "/image-studio/templates/lifestyle/shot-pov-debout.jpg",
+    image: `${IMAGE_STUDIO_TEMPLATES_BASE}/lifestyle/shot-pov-debout.jpg`,
     promptValue: LIFESTYLE_SHOT_POV_DEBOUT,
     templateVariant: "body-continuity",
   },
   {
     id: "produit-levitation",
     label: "Produit en lévitation",
-    image: "/image-studio/templates/lifestyle/shot-produit-levitation.jpg",
+    image: `${IMAGE_STUDIO_TEMPLATES_BASE}/lifestyle/shot-produit-levitation.jpg`,
     promptValue: LIFESTYLE_SHOT_PRODUIT_LEVITATION,
     templateVariant: "standalone",
   },
   {
     id: "produit-seul",
     label: "Produit seul",
-    image: "/image-studio/templates/lifestyle/shot-produit-seul.jpg",
+    image: `${IMAGE_STUDIO_TEMPLATES_BASE}/lifestyle/shot-produit-seul.jpg`,
     promptValue: LIFESTYLE_SHOT_PRODUIT_SEUL,
     templateVariant: "standalone",
   },
   {
     id: "main-gros-plan",
     label: "Main en gros plan",
-    image: "/image-studio/templates/lifestyle/shot-main-gros-plan.jpg",
+    image: `${IMAGE_STUDIO_TEMPLATES_BASE}/lifestyle/shot-main-gros-plan.jpg`,
     promptValue: LIFESTYLE_SHOT_MAIN_GROS_PLAN,
     templateVariant: "standalone",
   },
@@ -488,21 +490,21 @@ export const LIFESTYLE_SHOT_STYLES_EXTENDED: LifestyleShotStyle[] = [
   {
     id: "vue-dessus",
     label: "Vue du dessus",
-    image: "/image-studio/templates/lifestyle/shot-vue-dessus.jpg",
+    image: `${IMAGE_STUDIO_TEMPLATES_BASE}/lifestyle/shot-vue-dessus.jpg`,
     promptValue: LIFESTYLE_SHOT_VUE_DESSUS,
     templateVariant: "standalone",
   },
   {
     id: "zoom-produit",
     label: "Zoom sur le produit",
-    image: "/image-studio/templates/lifestyle/shot-zoom-produit.jpg",
+    image: `${IMAGE_STUDIO_TEMPLATES_BASE}/lifestyle/shot-zoom-produit.jpg`,
     promptValue: LIFESTYLE_SHOT_ZOOM_PRODUIT,
     templateVariant: "standalone",
   },
   {
     id: "deux-mains",
     label: "Produit en main, en mouvement",
-    image: "/image-studio/templates/lifestyle/shot-deux-mains.jpg",
+    image: `${IMAGE_STUDIO_TEMPLATES_BASE}/lifestyle/shot-deux-mains.jpg`,
     promptValue: LIFESTYLE_SHOT_DEUX_MAINS,
     templateVariant: "body-continuity",
   },
@@ -526,7 +528,7 @@ export const IMAGE_STUDIO_PROMPT_TEMPLATES: PromptTemplateDefinition[] = [
     label: "Photo produit studio",
     summary: "Boisson en héros studio — marque, format canette/bouteille et ingrédients.",
     icon: "product",
-    heroImage: "/image-studio/templates/product-photography-beverage.png",
+    heroImage: `${IMAGE_STUDIO_TEMPLATES_BASE}/product-photography-beverage.png`,
     guideMode: "studio-product",
     extractorId: "beverage-hero",
     botIntro:
@@ -596,7 +598,7 @@ STYLE: ${PRODUCT_PHOTOGRAPHY_PLACEHOLDERS.styleSection}`,
     label: "Produit en lifestyle",
     summary: "Produit tenu en main dans un décor réel — marque et environnement.",
     icon: "product",
-    heroImage: "/image-studio/templates/lifestyle-product-photography.png",
+    heroImage: `${IMAGE_STUDIO_TEMPLATES_BASE}/lifestyle-product-photography.png`,
     guideMode: "lifestyle-product",
     extractorId: "generic-product",
     botIntro: "Quel est le nom de votre produit ?",
@@ -629,7 +631,7 @@ STYLE: ${PRODUCT_PHOTOGRAPHY_PLACEHOLDERS.styleSection}`,
     label: "Selfie produit UGC",
     summary: "Selfie naturel : la personne présente un produit, style smartphone.",
     icon: "product",
-    heroImage: "/image-studio/templates/ugc-selfie/Selfie_Femme_60ans.png",
+    heroImage: `${IMAGE_STUDIO_TEMPLATES_BASE}/ugc-selfie/Selfie_Femme_60ans.png`,
     guideMode: "ugc-selfie",
     extractorId: "generic-product",
     botIntro: "Quel sexe ?",
@@ -677,7 +679,7 @@ STYLE: ${PRODUCT_PHOTOGRAPHY_PLACEHOLDERS.styleSection}`,
     label: "Présentation produit UGC",
     summary: "Face caméra fixe : produit tenu en main ou porté sur le corps.",
     icon: "product",
-    heroImage: "/image-studio/templates/ugc-presentation/presentation-produit-ugc.png",
+    heroImage: `${IMAGE_STUDIO_TEMPLATES_BASE}/ugc-presentation/presentation-produit-ugc.png`,
     guideMode: "ugc-presentation",
     extractorId: "generic-product",
     botIntro: "Le produit est-il tenu en main ou porté sur le corps ?",
@@ -724,7 +726,7 @@ STYLE: ${PRODUCT_PHOTOGRAPHY_PLACEHOLDERS.styleSection}`,
     label: "Shooting campagne",
     summary: "Style campagne premium — pose, décor narratif et cadrage éditorial.",
     icon: "product",
-    heroImage: "/image-studio/templates/brand-campaign/brand-campaign-shoot.png",
+    heroImage: `${IMAGE_STUDIO_TEMPLATES_BASE}/brand-campaign/brand-campaign-shoot.png`,
     guideMode: "brand-campaign-shoot",
     extractorId: "generic-product",
     botIntro: "Qui présente le produit ?",
@@ -766,7 +768,7 @@ STYLE: ${PRODUCT_PHOTOGRAPHY_PLACEHOLDERS.styleSection}`,
     summary:
       "Packshot produit mis en scène — posture (posé ou lévitation) et effet dynamique optionnel.",
     icon: "product",
-    heroImage: "/image-studio/templates/packshot-dynamique/packshot-dynamique.png",
+    heroImage: `${IMAGE_STUDIO_TEMPLATES_BASE}/packshot-dynamique/packshot-dynamique.png`,
     guideMode: "packshot-dynamique",
     extractorId: "generic-product",
     botIntro: "Décris ton produit (nom, matière visible, couleur dominante)",
@@ -833,7 +835,7 @@ STYLE: ${PRODUCT_PHOTOGRAPHY_PLACEHOLDERS.styleSection}`,
     summary:
       "Bijou porté ou produit tenu — rendu éditorial haute couture, cadrage macro à corps entier.",
     icon: "product",
-    heroImage: "/image-studio/templates/editorial-worn-held/editorial-worn-held.png",
+    heroImage: `${IMAGE_STUDIO_TEMPLATES_BASE}/editorial-worn-held/editorial-worn-held.png`,
     guideMode: "editorial-worn-held",
     extractorId: "generic-product",
     botIntro: "Quel type de mise en scène ?",
@@ -924,7 +926,7 @@ STYLE: ${PRODUCT_PHOTOGRAPHY_PLACEHOLDERS.styleSection}`,
     summary:
       "Texture ou objet en contact avec le corps — geste d'application, zone ciblée et rendu photoréaliste.",
     icon: "product",
-    heroImage: "/image-studio/templates/produit-en-application/produit-en-application.png",
+    heroImage: `${IMAGE_STUDIO_TEMPLATES_BASE}/produit-en-application/produit-en-application.png`,
     guideMode: "produit-en-application",
     extractorId: "generic-product",
     botIntro: "Quel type de produit ?",
