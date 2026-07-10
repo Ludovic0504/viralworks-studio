@@ -25,6 +25,21 @@ export default defineConfig(({ mode }) => {
       injectRegister: null,
       workbox: {
         cleanupOutdatedCaches: true,
+        // index.html hors precache : navigations en network-first (évite shell SW obsolète).
+        globPatterns: ['**/*.{js,css,ico,png,svg,webp,woff,woff2,webmanifest,json,txt}'],
+        globIgnores: ['**/index.html', '**/recover.html'],
+        navigateFallback: null,
+        runtimeCaching: [
+          {
+            urlPattern: ({ request }) => request.mode === 'navigate',
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'vws-html-navigate',
+              networkTimeoutSeconds: 5,
+              expiration: { maxEntries: 8, maxAgeSeconds: 86400 },
+            },
+          },
+        ],
       },
       includeAssets: ['logo.png', 'Logo_VWS_sans_bordure.png', 'pwa-192x192.png', 'pwa-512x512.png'],
       manifest: {

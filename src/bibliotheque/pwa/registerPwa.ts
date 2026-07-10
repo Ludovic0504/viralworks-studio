@@ -1,4 +1,10 @@
 import { registerSW } from "virtual:pwa-register";
+import {
+  clearServiceWorkerAndCaches,
+  clearSwRecoveryPending,
+  isSwRecoveryPending,
+  markSwRecoveryPending,
+} from "@/bibliotheque/pwa/clearServiceWorkerCaches";
 import { showPwaUpdateToast } from "@/bibliotheque/pwa/pwaUpdateToast";
 
 /** Fenêtre après chargement document où un reload auto est acceptable (navigation fraîche). */
@@ -16,7 +22,9 @@ export function isFreshDocumentNavigation(): boolean {
   if (typeof window === "undefined") return false;
 
   const params = new URLSearchParams(window.location.search);
-  if (params.get("payment") === "success") return true;
+  if (params.get("payment") === "success" || params.get("vws_recover") === "1") {
+    return true;
+  }
 
   const nav = performance.getEntriesByType("navigation")[0] as
     | PerformanceNavigationTiming
@@ -34,6 +42,25 @@ function applyPwaRefresh(reloadPage: boolean): void {
   if (!updateSw) return;
   if (reloadPage) showPwaUpdateToast();
   void updateSw(reloadPage);
+}
+
+/**
+ * Récupération forcée : désinstalle le SW + vide les caches puis recharge.
+ * Utilisé au retour Stripe si un precache obsolète bloque encore le shell.
+ */
+export async function recoverFromStaleServiceWorker(): Promise<boolean> {
+  if (isSwRecoveryPending()) {
+    clearSwRecoveryPending();
+    return false;
+  }
+
+  const cleared = await clearServiceWorkerAndCaches();
+  if (!cleared) return false;
+
+  markSwRecoveryPending();
+  showPwaUpdateToast();
+  window.location.reload();
+  return true;
 }
 
 /** Enregistre le SW (mode prompt) avec reload auto uniquement sur navigation fraîche. */
@@ -66,6 +93,8 @@ export async function requestPwaUpdateCheck(options?: {
 
   if (options?.forceReload) {
     forceReloadOnNextRefresh = true;
+    const recovered = await recoverFromStaleServiceWorker();
+    if (recovered) return;
   }
 
   try {
