@@ -15,7 +15,7 @@ describe("site-origin", () => {
 
   it("rejette Netlify", () => {
     expect(
-      normalizeAllowedProductionOrigin("https://resonant-lollipop-9ca6ba.netlify.app"),
+      normalizeAllowedProductionOrigin("https://preview-old.netlify.app"),
     ).toBeNull();
   });
 
@@ -29,7 +29,7 @@ describe("site-origin", () => {
   });
 
   it("force viralworks-studio.com en prod même si SITE_URL est Netlify", () => {
-    process.env.SITE_URL = "https://resonant-lollipop-9ca6ba.netlify.app";
+    process.env.SITE_URL = "https://preview-old.netlify.app";
     expect(resolveCheckoutReturnOrigin("https://viralworks-studio.com")).toBe(
       PRODUCTION_CANONICAL_ORIGIN,
     );

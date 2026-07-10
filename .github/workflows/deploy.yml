@@ -59,6 +59,14 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: supabase link --project-ref "$SUPABASE_PROJECT_REF" --yes
 
+      - name: Retirer Netlify de Supabase Auth + forcer SITE_URL
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ env.SUPABASE_PROJECT_REF }}
+        run: |
+          node scripts/sync-canonical-auth-urls.mjs
+          supabase secrets set SITE_URL=https://viralworks-studio.com --project-ref "$SUPABASE_PROJECT_REF"
+
       - name: Push Supabase migrations
         id: db_push
         continue-on-error: true
@@ -163,6 +171,15 @@ jobs:
           fi
           if [ "$VITE_PEXELS_SERVER" = "1" ]; then
             echo "::error::VITE_PEXELS_SERVER=1 est incompatible avec OVH statique (/api/pexels-search renvoie index.html). Supprimer la variable ou la vider dans Settings → Variables."
+            exit 1
+          fi
+
+      - name: Reject Netlify in VITE_SITE_URL
+        env:
+          VITE_SITE_URL: ${{ vars.VITE_SITE_URL }}
+        run: |
+          if [ -n "$VITE_SITE_URL" ] && echo "$VITE_SITE_URL" | grep -qi netlify; then
+            echo "::error::VITE_SITE_URL contient Netlify. GitHub → Settings → Variables : mettre https://viralworks-studio.com"
             exit 1
           fi
 
