@@ -185,6 +185,7 @@ jobs:
 
       - name: Build (Vite)
         env:
+          NODE_OPTIONS: --max-old-space-size=4096
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_SITE_URL: ${{ vars.VITE_SITE_URL }}
