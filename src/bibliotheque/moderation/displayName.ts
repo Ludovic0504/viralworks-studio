@@ -49,7 +49,7 @@ function parseInvokeErrorPayload(parsed: {
   const field = isBlockedNameField(parsed.field) ? parsed.field : "both";
   if (typeof parsed.error === "string" && parsed.error.trim()) {
     return {
-      error: blockedDisplayNameMessage(field),
+      error: parsed.error.trim(),
       field,
     };
   }
@@ -96,7 +96,9 @@ function parseSuccessBody(data: unknown): ValidateDisplayNameResult | null {
     const field = isBlockedNameField(body.field) ? body.field : "both";
     return {
       ok: false,
-      error: blockedDisplayNameMessage(field),
+      error: typeof body.error === "string" && body.error.trim()
+        ? body.error.trim()
+        : blockedDisplayNameMessage(field),
       field,
     };
   }
@@ -106,17 +108,23 @@ function parseSuccessBody(data: unknown): ValidateDisplayNameResult | null {
 export function isBlockedDisplayNameError(message: string | null | undefined): boolean {
   if (!message) return false;
   const normalized = message.toLowerCase();
-  return normalized.includes("pas autorisé") || normalized.includes("pas autorise");
+  return (
+    normalized.includes("pas autorisé") ||
+    normalized.includes("pas autorise") ||
+    normalized.includes("ne semble pas valide") ||
+    normalized.includes("temporaires ou jetables")
+  );
 }
 
-/** Vérifie prénom/nom via la Edge Function (liste côté serveur). */
+/** Vérifie prénom/nom/email via la Edge Function (liste côté serveur). */
 export async function validateDisplayNamesRemote(
   firstName: string,
   lastName: string,
+  email = "",
 ): Promise<ValidateDisplayNameResult> {
   const supabase = getBrowserSupabase();
   const { data, error } = await supabase.functions.invoke("validate-display-name", {
-    body: { firstName, lastName },
+    body: { firstName, lastName, email: email.trim().toLowerCase() },
   });
 
   const fromData = parseSuccessBody(data);

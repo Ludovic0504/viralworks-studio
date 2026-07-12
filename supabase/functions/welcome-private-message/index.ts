@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { notifyOnboardingStep1Delivery } from "../_shared/adminNotify.ts";
 import { COMMUNITY_CORS_HEADERS, jsonResponse } from "../_shared/community/helpers.ts";
 import {
   createAdminClient,
@@ -51,6 +52,7 @@ serve(async (req) => {
   }
 
   const userId = getUserId(payload);
+  const userEmail = String(payload.user?.email ?? payload.record?.email ?? "").trim() || null;
   if (!userId) {
     return jsonResponse({ ok: false, error: "user_id manquant" }, 400);
   }
@@ -58,14 +60,47 @@ serve(async (req) => {
   try {
     const adminClient = createAdminClient();
     const result = await sendWelcomeOnboardingStep1(adminClient, userId);
+
+    const notifyResult = await notifyOnboardingStep1Delivery(adminClient, {
+      userId,
+      userEmail,
+      result,
+      source: "signup_hook",
+    }).catch((notifyError) => {
+      const message = notifyError instanceof Error ? notifyError.message : String(notifyError);
+      console.error("[welcome-private-message] notify failed:", message);
+      return { notified: false, emailed: false, error: message };
+    });
+
     if (!result.ok) {
       console.error("[welcome-private-message] failed:", result.reason);
-      return jsonResponse({ ok: false, error: result.reason }, 500);
+      return jsonResponse(
+        { ok: false, error: result.reason, adminNotified: notifyResult.emailed },
+        500,
+      );
     }
-    return jsonResponse({ ok: true, skipped: result.skipped === true, reason: result.reason });
+    return jsonResponse({
+      ok: true,
+      skipped: result.skipped === true,
+      reason: result.reason,
+      adminNotified: notifyResult.emailed,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erreur serveur.";
     console.error("[welcome-private-message] exception:", message);
+
+    try {
+      const adminClient = createAdminClient();
+      await notifyOnboardingStep1Delivery(adminClient, {
+        userId,
+        userEmail,
+        result: { ok: false, reason: message },
+        source: "signup_hook",
+      });
+    } catch (notifyError) {
+      console.error("[welcome-private-message] notify exception failed:", notifyError);
+    }
+
     return jsonResponse({ ok: false, error: message }, 500);
   }
 });

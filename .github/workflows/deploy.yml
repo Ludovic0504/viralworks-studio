@@ -12,6 +12,8 @@
 #
 # Variables de dépôt (optionnelles, pour le build Vite) :
 #   VITE_SITE_URL, VITE_STRIPE_PUBLISHABLE_KEY, VITE_META_PIXEL_ID, etc.
+# Secret requis pour Turnstile (CAPTCHA inscription) :
+#   VITE_TURNSTILE_SITE_KEY
 # Secrets requis pour les images Pexels (cartes format Campagne VWS) :
 #   VITE_PEXELS_API_KEY
 # Ne pas définir VITE_PEXELS_SERVER=1 sur OVH (pas de /api/pexels-search).
@@ -99,6 +101,16 @@ jobs:
           done
           echo "OK: migrations link_clicks présentes sur le remote."
 
+      - name: Deploy auth edge functions
+        if: steps.db_push.outcome == 'success'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          for fn in auth-before-user-created validate-display-name welcome-private-message ensure-welcome-private-message onboarding-private-quick-reply onboarding-private-followup admin-signup-notify; do
+            echo "Deploying $fn..."
+            supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF" --use-api
+          done
+
       - name: Deploy go-redirect edge function
         if: steps.db_push.outcome == 'success'
         env:
@@ -174,6 +186,15 @@ jobs:
             exit 1
           fi
 
+      - name: Verify Turnstile build config
+        env:
+          VITE_TURNSTILE_SITE_KEY: ${{ secrets.VITE_TURNSTILE_SITE_KEY }}
+        run: |
+          if [ -z "$VITE_TURNSTILE_SITE_KEY" ]; then
+            echo "::error::Secret manquant : définir VITE_TURNSTILE_SITE_KEY dans GitHub Actions (Settings → Secrets). Requis pour le CAPTCHA Turnstile en production."
+            exit 1
+          fi
+
       - name: Reject Netlify in VITE_SITE_URL
         env:
           VITE_SITE_URL: ${{ vars.VITE_SITE_URL }}
@@ -195,6 +216,7 @@ jobs:
           VITE_META_PIXEL_ID: ${{ vars.VITE_META_PIXEL_ID }}
           VITE_POSTHOG_API_KEY: ${{ vars.VITE_POSTHOG_API_KEY }}
           VITE_POSTHOG_HOST: ${{ vars.VITE_POSTHOG_HOST }}
+          VITE_TURNSTILE_SITE_KEY: ${{ secrets.VITE_TURNSTILE_SITE_KEY }}
           VITE_FEATURE_DECORS: ${{ vars.VITE_FEATURE_DECORS }}
           VITE_DEMO_VIDEO_CHANTIER_URL: https://wuvtfhletxieocetzppo.supabase.co/storage/v1/object/public/demo-videos/Artisan.mp4
           VITE_DEMO_VIDEO_MOTEUR_URL: https://wuvtfhletxieocetzppo.supabase.co/storage/v1/object/public/demo-videos/HightTech_Essai_4.mp4

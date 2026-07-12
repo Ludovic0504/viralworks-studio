@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { notifyOnboardingFollowUpMessage } from "../_shared/adminNotify.ts";
 import { COMMUNITY_CORS_HEADERS, jsonResponse } from "../_shared/community/helpers.ts";
 import {
   createAdminClient,
@@ -59,6 +60,48 @@ serve(async (req) => {
       userId,
       responseMethod: message.response_method,
     });
+
+    if (result.skipped && result.reason === "onboarding_skipped") {
+      const { data: flow } = await adminClient
+        .from("community_welcome_flow")
+        .select("step3_message_id, conversation_id")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (flow?.step3_message_id && String(flow.conversation_id) === conversationId) {
+        const { data: step3Message } = await adminClient
+          .from("community_private_messages")
+          .select("created_at")
+          .eq("id", flow.step3_message_id)
+          .maybeSingle();
+
+        const { data: userMessage } = await adminClient
+          .from("community_private_messages")
+          .select("content, created_at, onboarding_step")
+          .eq("id", messageId)
+          .maybeSingle();
+
+        const step3At = String(step3Message?.created_at || "");
+        const userAt = String(userMessage?.created_at || "");
+        const content = String(userMessage?.content || "").trim();
+
+        if (
+          content &&
+          userMessage?.onboarding_step == null &&
+          step3At &&
+          userAt.localeCompare(step3At) > 0
+        ) {
+          await notifyOnboardingFollowUpMessage(adminClient, {
+            userId,
+            messageContent: content,
+          }).catch((notifyError) => {
+            const msg = notifyError instanceof Error ? notifyError.message : String(notifyError);
+            console.error("[onboarding-private-followup] follow-up notify failed:", msg);
+          });
+        }
+      }
+    }
+
     if (!result.ok) {
       console.error("[onboarding-private-followup] failed:", result.reason);
       return jsonResponse({ ok: false, error: result.reason }, 500);

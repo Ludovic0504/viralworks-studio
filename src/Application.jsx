@@ -4,6 +4,7 @@ import { redirectToCanonicalOriginIfNeeded } from "@/bibliotheque/appOrigin";
 import DashboardLayout from "./dispositions/DispositionTableauDeBord.jsx";
 import RappelAuth from "./pages/RappelAuth.jsx";
 import ConfirmerEmail from "./pages/ConfirmerEmail.jsx";
+import AuthEnAttenteConfirmation from "./pages/AuthEnAttenteConfirmation.jsx";
 import Accueil from "./pages/Accueil.jsx";
 import Lab from "./pages/Lab.jsx";
 import Asavoir from "@/pages/Asavoir";
@@ -230,6 +231,7 @@ const router = createBrowserRouter([
       { path: "logout", element: <RouteDeconnexion /> },
       { path: "auth/callback", element: <RappelAuth /> },
       { path: "auth/confirm", element: <ConfirmerEmail /> },
+      { path: "auth/en-attente-confirmation", element: <AuthEnAttenteConfirmation /> },
       { path: "reset-password", element: <ReinitialiserMotDePasse /> },
       {
         element: <DashboardLayout />,

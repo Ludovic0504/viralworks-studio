@@ -60,7 +60,16 @@ export default defineConfig(({ mode }) => {
           },
         ],
       },
-      includeAssets: ['logo.png', 'Logo_VWS_sans_bordure.png', 'pwa-192x192.png', 'pwa-512x512.png'],
+      includeAssets: [
+        'favicon.ico',
+        'favicon-16x16.png',
+        'favicon-48x48.png',
+        'apple-touch-icon.png',
+        'logo.png',
+        'Logo_VWS_sans_bordure.png',
+        'pwa-192x192.png',
+        'pwa-512x512.png',
+      ],
       manifest: {
         name: 'ViralWorks Studio',
         short_name: 'ViralWorks',

@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { notifyOnboardingStep1Delivery } from "../_shared/adminNotify.ts";
 import {
   COMMUNITY_CORS_HEADERS,
   getAuthedClients,
@@ -30,6 +31,19 @@ serve(async (req) => {
     const { userId } = await getAuthedClients(req, accessToken);
     const adminClient = createAdminClient();
     const result = await sendWelcomeOnboardingStep1(adminClient, userId);
+
+    const shouldNotify = !result.ok || !result.skipped;
+
+    if (shouldNotify) {
+      await notifyOnboardingStep1Delivery(adminClient, {
+        userId,
+        result,
+        source: "client_fallback",
+      }).catch((notifyError) => {
+        const message = notifyError instanceof Error ? notifyError.message : String(notifyError);
+        console.error("[ensure-welcome-private-message] notify failed:", message);
+      });
+    }
 
     if (!result.ok) {
       console.error("[ensure-welcome-private-message] failed:", result.reason);

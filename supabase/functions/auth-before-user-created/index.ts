@@ -1,8 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { Webhook } from "https://esm.sh/standardwebhooks@1.0.0";
-import { blockedDisplayNameMessage } from "../_shared/name-moderation/messages.ts";
 import { extractNameFields } from "../_shared/name-moderation/extract-names.ts";
-import { validateDisplayNames } from "../_shared/name-moderation/validate.ts";
+import { validateSignupInput } from "../_shared/signup-guard/validate-signup.ts";
 
 function getHookSecret(): string | undefined {
   const raw =
@@ -17,6 +16,7 @@ type AuthHookPayload = {
     name?: string;
   };
   user?: {
+    email?: string | null;
     user_metadata?: Record<string, unknown>;
     raw_user_meta_data?: Record<string, unknown>;
   };
@@ -48,6 +48,14 @@ async function readHookPayload(req: Request): Promise<AuthHookPayload | null> {
   }
 }
 
+function isLikelyOAuthSignup(userMeta: Record<string, unknown>): boolean {
+  const provider = String(userMeta.provider || userMeta.iss || "").toLowerCase();
+  if (provider.includes("google")) return true;
+  if (userMeta.avatar_url || userMeta.picture) return true;
+  if (userMeta.given_name || userMeta.family_name) return true;
+  return false;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok");
@@ -76,20 +84,20 @@ serve(async (req) => {
     payload.user?.raw_user_meta_data ??
     {};
   const { firstName, lastName } = extractNameFields(userMeta);
+  const email = String(payload.user?.email || "").trim();
 
-  if (!firstName.trim() && !lastName.trim()) {
-    return new Response(JSON.stringify({}), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
+  const result = validateSignupInput({
+    email,
+    firstName,
+    lastName,
+    allowMissingNames: isLikelyOAuthSignup(userMeta),
+  });
 
-  const result = validateDisplayNames(firstName, lastName);
   if (!result.ok) {
     return new Response(
       JSON.stringify({
         error: {
-          message: blockedDisplayNameMessage(result.field),
+          message: result.message,
           http_code: 400,
           field: result.field,
         },

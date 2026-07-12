@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { notifyOnboardingAnswersComplete } from "../adminNotify.ts";
 import { SUPPORT_EMAIL } from "./helpers.ts";
 import {
   ONBOARDING_STEP1_CONTENT,
@@ -216,39 +217,51 @@ async function sendStep3(
   flow: WelcomeFlowRow,
   supportUserId: string,
 ): Promise<string | null> {
-  if (flow.step3_message_id) return flow.step3_message_id;
+  let step3MessageId: string | null = flow.step3_message_id;
 
-  const { data: existingStep3 } = await adminClient
-    .from("community_private_messages")
-    .select("id")
-    .eq("conversation_id", flow.conversation_id)
-    .eq("onboarding_step", 3)
-    .limit(1)
-    .maybeSingle();
-  if (existingStep3?.id) {
-    const id = String(existingStep3.id);
-    await adminClient
-      .from("community_welcome_flow")
-      .update({ step3_message_id: id, completed_at: new Date().toISOString() })
-      .eq("user_id", flow.user_id);
-    return id;
+  if (!step3MessageId) {
+    const { data: existingStep3 } = await adminClient
+      .from("community_private_messages")
+      .select("id")
+      .eq("conversation_id", flow.conversation_id)
+      .eq("onboarding_step", 3)
+      .limit(1)
+      .maybeSingle();
+
+    if (existingStep3?.id) {
+      step3MessageId = String(existingStep3.id);
+      await adminClient
+        .from("community_welcome_flow")
+        .update({ step3_message_id: step3MessageId, completed_at: new Date().toISOString() })
+        .eq("user_id", flow.user_id);
+    }
   }
 
-  const step3MessageId = await insertSystemMessage(adminClient, {
-    conversationId: flow.conversation_id,
-    supportUserId,
-    content: ONBOARDING_STEP3_CONTENT,
-    onboardingStep: 3,
-    quickReplyOptions: null,
-  });
+  if (!step3MessageId) {
+    step3MessageId = await insertSystemMessage(adminClient, {
+      conversationId: flow.conversation_id,
+      supportUserId,
+      content: ONBOARDING_STEP3_CONTENT,
+      onboardingStep: 3,
+      quickReplyOptions: null,
+    });
 
-  await adminClient
-    .from("community_welcome_flow")
-    .update({
-      step3_message_id: step3MessageId,
-      completed_at: new Date().toISOString(),
-    })
-    .eq("user_id", flow.user_id);
+    await adminClient
+      .from("community_welcome_flow")
+      .update({
+        step3_message_id: step3MessageId,
+        completed_at: new Date().toISOString(),
+      })
+      .eq("user_id", flow.user_id);
+  }
+
+  await notifyOnboardingAnswersComplete(adminClient, {
+    userId: flow.user_id,
+    source: "realtime",
+  }).catch((error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[welcome-flow] onboarding answers notify failed:", message);
+  });
 
   return step3MessageId;
 }

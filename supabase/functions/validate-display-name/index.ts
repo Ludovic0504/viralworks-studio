@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { blockedDisplayNameMessage } from "../_shared/name-moderation/messages.ts";
-import { validateDisplayNames } from "../_shared/name-moderation/validate.ts";
+import { validateSignupInput } from "../_shared/signup-guard/validate-signup.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -10,6 +9,7 @@ const corsHeaders = {
 type RequestBody = {
   firstName?: string;
   lastName?: string;
+  email?: string;
 };
 
 serve(async (req) => {
@@ -36,20 +36,16 @@ serve(async (req) => {
 
   const firstName = typeof body.firstName === "string" ? body.firstName : "";
   const lastName = typeof body.lastName === "string" ? body.lastName : "";
+  const email = typeof body.email === "string" ? body.email : "";
 
-  if (!firstName.trim() && !lastName.trim()) {
-    return new Response(JSON.stringify({ ok: true }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
-  const result = validateDisplayNames(firstName, lastName);
+  const result = validateSignupInput({ email, firstName, lastName });
   if (!result.ok) {
     return new Response(
       JSON.stringify({
         ok: false,
-        error: blockedDisplayNameMessage(result.field),
-        field: result.field,
+        error: result.message,
+        field: result.field ?? "both",
+        reason: result.reason,
       }),
       {
         status: 400,

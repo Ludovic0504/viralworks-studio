@@ -54,6 +54,14 @@ verify_jwt = false
 [functions.welcome-private-message]
 verify_jwt = false
 
+# Rattrapage : emails récap des réponses onboarding.
+[functions.backfill-onboarding-answers-notify]
+verify_jwt = false
+
+# Rattrapage : emails de confirmation onboarding pour inscriptions passées.
+[functions.backfill-onboarding-notify]
+verify_jwt = false
+
 # Rattrapage client : message de bienvenue dès la 1re session (JWT).
 [functions.ensure-welcome-private-message]
 verify_jwt = true

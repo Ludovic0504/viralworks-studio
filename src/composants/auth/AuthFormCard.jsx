@@ -8,6 +8,9 @@ import {
 } from "@/bibliotheque/supabase/client-navigateur";
 import { syncSignupProfileNamesFromMetadata, updateUserProfile } from "@/bibliotheque/supabase/profil";
 import { validateDisplayNamesRemote, isBlockedDisplayNameError, BLOCKED_DISPLAY_NAME_MESSAGE, inferBlockedNameFieldFromMessage, blockedDisplayNameMessage } from "@/bibliotheque/moderation/displayName";
+import { validateSignupFieldsClient } from "@/bibliotheque/moderation/signupGuard";
+import { isAccountEmailVerified } from "@/bibliotheque/auth/emailVerified";
+import TurnstileWidget, { isTurnstileEnabled } from "@/composants/auth/TurnstileWidget.jsx";
 import { track } from "@/bibliotheque/meta/pixel";
 import { capturePostHog, trackPostHogError } from "@/bibliotheque/posthog/client";
 
@@ -62,6 +65,7 @@ function analyzeRecoveryEmailError(error) {
  */
 function analyzeConfirmationEmailError(error) {
   const raw = (error?.message || "").toLowerCase();
+  const hookAuthFailure =
     raw.includes("hook requires authorization token") ||
     raw.includes("invalid payload sent to hook") ||
     raw.includes("invalid hook signature") ||
@@ -168,7 +172,19 @@ export default function AuthFormCard({
   /** Email du dernier signup en attente de confirmation (active le bouton « renvoyer »). */
   const [pendingConfirmEmail, setPendingConfirmEmail] = useState("");
   const [resendStatus, setResendStatus] = useState("idle");
+  const [captchaToken, setCaptchaToken] = useState("");
+  const turnstileEnabled = useMemo(() => isTurnstileEnabled(), []);
+  const needsSignupCaptcha = turnstileEnabled && mode === "signup";
   const redirectTo = useMemo(() => getRedirectTo(), []);
+
+  const resetCaptcha = () => setCaptchaToken("");
+
+  const requireSignupCaptchaOrError = () => {
+    if (!needsSignupCaptcha) return true;
+    if (captchaToken) return true;
+    reportAuthError("Complète la vérification anti-bot avant de continuer.", "validation");
+    return false;
+  };
 
   useEffect(() => {
     if (showConfirmedBanner) {
@@ -213,6 +229,7 @@ export default function AuthFormCard({
 
   const handleResendConfirmation = async () => {
     if (!pendingConfirmEmail || resendStatus === "sending") return;
+    if (!requireSignupCaptchaOrError()) return;
     setResendStatus("sending");
     setRecoveryDashboardUrls(null);
     try {
@@ -220,6 +237,7 @@ export default function AuthFormCard({
       const { error } = await supabase.auth.resend({
         type: "signup",
         email: pendingConfirmEmail,
+        options: captchaToken ? { captchaToken } : undefined,
       });
       if (error) {
         const a = analyzeConfirmationEmailError(error);
@@ -250,7 +268,9 @@ export default function AuthFormCard({
 
     try {
       const supabase = getBrowserSupabase({ remember });
-      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo,
+      });
 
       if (error) {
         const a = analyzeRecoveryEmailError(error);
@@ -316,6 +336,11 @@ export default function AuthFormCard({
     setInfoMsg(null);
     setRecoveryDashboardUrls(null);
 
+    if (mode === "signup" && !requireSignupCaptchaOrError()) {
+      setLoading(false);
+      return;
+    }
+
     if (!email || !email.includes("@")) {
       reportAuthError("Veuillez entrer une adresse email valide.", "validation");
       setLoading(false);
@@ -356,7 +381,10 @@ export default function AuthFormCard({
       }
 
       if (mode === "signin") {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
 
         if (error) {
           if (error.message?.toLowerCase().includes("email not confirmed")) {
@@ -400,6 +428,18 @@ export default function AuthFormCard({
           return;
         }
 
+        const {
+          data: { user: signedInUser },
+        } = await supabase.auth.getUser();
+        if (!isAccountEmailVerified(signedInUser)) {
+          await supabase.auth.signOut();
+          const cleaned = email.trim().toLowerCase();
+          setPendingConfirmEmail(cleaned);
+          setInfoMsg("Confirme ton email avant de te connecter. Vérifie ta boîte mail.");
+          setLoading(false);
+          return;
+        }
+
         void syncSignupProfileNamesFromMetadata();
         handleSuccess({ next });
         return;
@@ -407,8 +447,31 @@ export default function AuthFormCard({
 
       const trimmedFirstName = firstName.trim();
       const trimmedLastName = lastName.trim();
+      const cleanedEmail = email.trim().toLowerCase();
 
-      const nameCheck = await validateDisplayNamesRemote(trimmedFirstName, trimmedLastName);
+      const localSignupCheck = validateSignupFieldsClient({
+        email: cleanedEmail,
+        firstName: trimmedFirstName,
+        lastName: trimmedLastName,
+      });
+      if (!localSignupCheck.ok) {
+        if (localSignupCheck.field === "email") {
+          reportAuthError(localSignupCheck.message, "validation");
+        } else {
+          reportNameFieldError(
+            localSignupCheck.message,
+            localSignupCheck.field === "email" ? "both" : localSignupCheck.field,
+          );
+        }
+        setLoading(false);
+        return;
+      }
+
+      const nameCheck = await validateDisplayNamesRemote(
+        trimmedFirstName,
+        trimmedLastName,
+        cleanedEmail,
+      );
       if (!nameCheck.ok) {
         reportNameFieldError(nameCheck.error, nameCheck.field);
         setLoading(false);
@@ -420,10 +483,11 @@ export default function AuthFormCard({
       capturePostHog("signup_started", { method: "email" });
       track("Lead");
       const signUpResult = await supabase.auth.signUp({
-        email: email.trim().toLowerCase(),
+        email: cleanedEmail,
         password,
         options: {
           emailRedirectTo: redirectTo,
+          captchaToken: captchaToken || undefined,
           data: {
             first_name: trimmedFirstName,
             last_name: trimmedLastName,
@@ -453,6 +517,17 @@ export default function AuthFormCard({
       }
 
       if (signUpResult.data?.session) {
+        const signedUpUser = signUpResult.data.user;
+        if (!isAccountEmailVerified(signedUpUser)) {
+          await supabase.auth.signOut();
+          setPendingConfirmEmail(cleanedEmail);
+          setResendStatus("idle");
+          capturePostHog("signup_completed", { method: "email", confirmed: false });
+          setInfoMsg("Compte créé ! Clique sur le lien reçu par email pour confirmer ton adresse.");
+          setLoading(false);
+          return;
+        }
+
         capturePostHog("signup_completed", { method: "email", confirmed: true });
         await updateUserProfile({
           first_name: trimmedFirstName,
@@ -463,8 +538,8 @@ export default function AuthFormCard({
         return;
       }
 
-      const cleanedEmail = email.trim().toLowerCase();
-      setPendingConfirmEmail(cleanedEmail);
+      const cleanedEmailPending = email.trim().toLowerCase();
+      setPendingConfirmEmail(cleanedEmailPending);
       setResendStatus("idle");
       capturePostHog("signup_completed", { method: "email", confirmed: false });
       setInfoMsg("Compte créé ! Clique sur le lien reçu par email.");
@@ -492,6 +567,7 @@ export default function AuthFormCard({
     setRecoveryDashboardUrls(null);
     setPendingConfirmEmail("");
     setResendStatus("idle");
+    resetCaptcha();
   };
 
   const googleSignInButton = (
@@ -740,6 +816,14 @@ export default function AuthFormCard({
               Mot de passe oublié ?
             </button>
           </div>
+        ) : null}
+
+        {needsSignupCaptcha ? (
+          <TurnstileWidget
+            onToken={setCaptchaToken}
+            onExpire={resetCaptcha}
+            onError={resetCaptcha}
+          />
         ) : null}
 
         <button
