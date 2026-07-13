@@ -33,6 +33,7 @@ import BannerInstallPWA from "@/composants/BannerInstallPWA";
 import PromoImagesModal from "@/components/PromoImagesModal";
 import PromoImagesBanner from "@/components/PromoImagesBanner";
 import { requestPwaUpdateCheck } from "@/bibliotheque/pwa/registerPwa";
+import { notifySpaNavigationForDeferredReload } from "@/bibliotheque/pwa/deferredPwaReload";
 import { invalidatePremiumAccessCache } from "@/bibliotheque/supabase/premiumAccess";
 
 class RouteErrorBoundary extends Component {
@@ -80,6 +81,7 @@ class RouteErrorBoundary extends Component {
 
 function AnalyticsRouteListener() {
   const location = useLocation();
+  const previousPathRef = useRef(null);
 
   useEffect(() => {
     initMetaPixel();
@@ -90,6 +92,11 @@ function AnalyticsRouteListener() {
     const path = `${location.pathname}${location.search}`;
     trackPageView(path);
     trackPostHogPageView(path);
+
+    if (previousPathRef.current !== null && previousPathRef.current !== path) {
+      notifySpaNavigationForDeferredReload();
+    }
+    previousPathRef.current = path;
   }, [location.pathname, location.search]);
 
   return null;

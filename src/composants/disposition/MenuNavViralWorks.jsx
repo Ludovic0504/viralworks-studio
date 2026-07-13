@@ -12,8 +12,8 @@ const VIDEO_ITEMS = [
 ];
 
 const IMAGE_ITEMS = [
-  { to: "/studio", label: "Avatar IA", matchAvatar: true, showNew: true },
-  { to: "/image-studio", label: "Image Studio", matchImageStudio: true, showNew: true },
+  { to: "/studio", label: "Avatar IA", matchAvatar: true },
+  { to: "/image-studio", label: "Image Studio", matchImageStudio: true },
 ];
 
 function useViralWorksNavState() {

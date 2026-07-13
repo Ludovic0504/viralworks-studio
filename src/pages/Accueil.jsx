@@ -224,7 +224,7 @@ export default function Accueil() {
                 Génère des visuels produits avec NanaBanana Pro
               </h2>
               <p className="accueil-fade-up accueil-fade-up-d2 mb-8 max-w-[560px] text-left text-sm leading-relaxed text-white/[0.36] sm:mb-10 sm:text-[15px] md:mb-8">
-                7 jours gratuits — 30 images offertes, puis 150 / mois. E-commerce, UGC, artisans.
+                7 jours gratuits — E-commerce, UGC, artisans.
               </p>
 
               <div className="accueil-fade-up accueil-fade-up-d4 flex justify-start">
@@ -232,7 +232,7 @@ export default function Accueil() {
                   to="/image-studio"
                   className="group inline-flex items-center gap-2 rounded-[11px] bg-[#21f3b9] px-5 py-3 text-sm font-extrabold text-[#07090f] shadow-[0_0_28px_rgba(33,243,185,0.26)] transition-all duration-200 hover:-translate-y-px hover:shadow-[0_0_44px_rgba(33,243,185,0.42)] max-md:px-4 max-md:py-2.5 max-md:text-[13px]"
                 >
-                  <span>Démarrer l&apos;essai gratuit →</span>
+                  <span>Essayer Image Studio →</span>
                 </LienNavSync>
               </div>
             </div>

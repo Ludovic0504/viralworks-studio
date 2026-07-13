@@ -8,6 +8,10 @@ import {
   splitPromptForMentionHighlight,
 } from "@/bibliotheque/imageStudio/promptMentions";
 import { getTextareaCaretClientRect } from "@/bibliotheque/imageStudio/textareaCaret";
+import {
+  detectPromptAssistSlash,
+  stripPromptAssistSlash,
+} from "@/bibliotheque/imageStudio/promptAssistSlash";
 
 const MENTION_MENU_GAP_PX = 6;
 
@@ -31,13 +35,17 @@ export default function ImageStudioPromptInput({
   onOpenAvatarPicker,
   onOpenProductPicker,
   onOpenImage1Upload,
+  onOpenPromptAssist,
   onResize,
 }) {
   const mentionMenuRef = useRef(null);
+  const promptAssistChipRef = useRef(null);
   const highlightRef = useRef(null);
   const [mentionState, setMentionState] = useState(null);
   const [mentionHighlight, setMentionHighlight] = useState(0);
   const [menuStyle, setMenuStyle] = useState(null);
+  const [promptAssistChipStyle, setPromptAssistChipStyle] = useState(null);
+  const [promptAssistSlash, setPromptAssistSlash] = useState(null);
 
   const availability = useMemo(() => getMentionAssetAvailability(assets), [assets]);
 
@@ -63,12 +71,15 @@ export default function ImageStudioPromptInput({
     const el = inputRef.current;
     if (!el) {
       setMentionState(null);
+      setPromptAssistSlash(null);
       return;
     }
 
-    const next = detectMentionQuery(el.value, el.selectionStart ?? el.value.length);
+    const caret = el.selectionStart ?? el.value.length;
+    const next = detectMentionQuery(el.value, caret);
     setMentionState(next);
     setMentionHighlight(0);
+    setPromptAssistSlash(next ? null : detectPromptAssistSlash(el.value, caret));
   }, [inputRef]);
 
   useLayoutEffect(() => {
@@ -98,18 +109,84 @@ export default function ImageStudioPromptInput({
     });
   }, [mentionState, filteredOptions.length, value, inputRef]);
 
+  const syncPromptAssistChipPosition = useCallback(() => {
+    if (!promptAssistSlash) {
+      setPromptAssistChipStyle(null);
+      return;
+    }
+
+    const el = inputRef.current;
+    if (!el) return;
+
+    const startRect = getTextareaCaretClientRect(el, promptAssistSlash.replaceStart);
+    const endRect = getTextareaCaretClientRect(el, promptAssistSlash.replaceEnd);
+    if (!startRect || !endRect) return;
+
+    const chipWidth = promptAssistChipRef.current?.offsetWidth ?? 120;
+    const viewportPadding = 12;
+    const halfWidth = chipWidth / 2;
+    const commandCenterX = (startRect.left + endRect.left) / 2;
+    const clampedCenterX = Math.min(
+      Math.max(viewportPadding + halfWidth, commandCenterX),
+      window.innerWidth - viewportPadding - halfWidth,
+    );
+
+    setPromptAssistChipStyle({
+      position: "fixed",
+      left: `${clampedCenterX}px`,
+      top: `${Math.max(viewportPadding, startRect.top - 4)}px`,
+      transform: "translate(-50%, -100%)",
+      zIndex: 220,
+    });
+  }, [inputRef, promptAssistSlash]);
+
+  useLayoutEffect(() => {
+    syncPromptAssistChipPosition();
+    if (!promptAssistSlash) return undefined;
+
+    const frame = window.requestAnimationFrame(() => {
+      syncPromptAssistChipPosition();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [syncPromptAssistChipPosition, value, promptAssistSlash]);
+
   useEffect(() => {
     const onDown = (event) => {
-      if (!mentionState) return;
-      const inMenu = mentionMenuRef.current?.contains(event.target);
       const inInput = inputRef.current?.contains(event.target);
-      if (!inMenu && !inInput) {
+      const inMenu = mentionMenuRef.current?.contains(event.target);
+      const inPromptAssistChip = promptAssistChipRef.current?.contains(event.target);
+
+      if (mentionState && !inMenu && !inInput) {
         setMentionState(null);
+      }
+      if (promptAssistSlash && !inPromptAssistChip && !inInput) {
+        setPromptAssistSlash(null);
       }
     };
     document.addEventListener("pointerdown", onDown, true);
     return () => document.removeEventListener("pointerdown", onDown, true);
-  }, [mentionState, inputRef]);
+  }, [mentionState, promptAssistSlash, inputRef]);
+
+  const openPromptAssist = useCallback(() => {
+    const el = inputRef.current;
+    if (!el) return;
+
+    const caret = el.selectionStart ?? value.length;
+    const slashMatch = detectPromptAssistSlash(value, caret) ?? promptAssistSlash;
+    if (slashMatch) {
+      const nextValue = stripPromptAssistSlash(value, slashMatch);
+      onChange(nextValue);
+      window.requestAnimationFrame(() => {
+        el.focus();
+        el.setSelectionRange(slashMatch.replaceStart, slashMatch.replaceStart);
+        onResize?.();
+      });
+    }
+
+    setPromptAssistSlash(null);
+    setMentionState(null);
+    onOpenPromptAssist?.();
+  }, [inputRef, onChange, onOpenPromptAssist, onResize, promptAssistSlash, value]);
 
   const insertMentionToken = useCallback(
     (token, replaceState = mentionState) => {
@@ -197,6 +274,7 @@ export default function ImageStudioPromptInput({
 
   const handleScroll = () => {
     syncHighlightScroll();
+    syncPromptAssistChipPosition();
   };
 
   const handleSelect = () => {
@@ -204,6 +282,19 @@ export default function ImageStudioPromptInput({
   };
 
   const handleKeyDown = (event) => {
+    if (promptAssistSlash && onOpenPromptAssist) {
+      if (event.key === "Enter" || event.key === "Tab") {
+        event.preventDefault();
+        openPromptAssist();
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setPromptAssistSlash(null);
+        return;
+      }
+    }
+
     if (mentionState && filteredOptions.length > 0) {
       if (event.key === "ArrowDown") {
         event.preventDefault();
@@ -236,6 +327,7 @@ export default function ImageStudioPromptInput({
   };
 
   const showMentionMenu = Boolean(mentionState && filteredOptions.length > 0);
+  const showPromptAssistChip = Boolean(promptAssistSlash && onOpenPromptAssist);
 
   const mentionMenu = showMentionMenu ? (
     <div
@@ -287,6 +379,29 @@ export default function ImageStudioPromptInput({
     </div>
   ) : null;
 
+  const promptAssistChip = showPromptAssistChip ? (
+    <div
+      ref={promptAssistChipRef}
+      className="image-studio-prompt-assist-chip-bar"
+      style={promptAssistChipStyle ?? undefined}
+      role="listbox"
+      aria-label="Commandes disponibles"
+    >
+      <button
+        type="button"
+        role="option"
+        aria-selected="true"
+        className="image-studio-prompt-assist-chip"
+        onMouseDown={(event) => {
+          event.preventDefault();
+          openPromptAssist();
+        }}
+      >
+        PromptAssists
+      </button>
+    </div>
+  ) : null;
+
   return (
     <>
       <div className="image-studio-prompt-input-wrap min-w-0 flex-1">
@@ -335,6 +450,9 @@ export default function ImageStudioPromptInput({
       </div>
 
       {mentionMenu && menuStyle ? createPortal(mentionMenu, document.body) : null}
+      {promptAssistChip && promptAssistChipStyle
+        ? createPortal(promptAssistChip, document.body)
+        : null}
     </>
   );
 }

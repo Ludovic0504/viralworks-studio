@@ -31,6 +31,7 @@ import IndicateurCreditsImageStudio from "@/composants/image/IndicateurCreditsIm
 import ImageStudioModelIcon from "@/composants/image/ImageStudioModelIcon";
 import ModalAbonnementImageStudio from "@/composants/image/ModalAbonnementImageStudio";
 import ModalPromptsImageStudio from "@/composants/image/ModalPromptsImageStudio";
+import ModalPromptAssistImageStudio from "@/composants/image/ModalPromptAssistImageStudio";
 import SheetReglagesImageStudio from "@/composants/image/SheetReglagesImageStudio";
 import ImageStudioFeedPanel, {
   scrollImageStudioFeedToItem,
@@ -519,6 +520,7 @@ export default function ImageStudio() {
   const [quotaAlert, setQuotaAlert] = useState(null);
   const [subscribeModalOpen, setSubscribeModalOpen] = useState(false);
   const [promptsModalOpen, setPromptsModalOpen] = useState(false);
+  const [promptAssistModalOpen, setPromptAssistModalOpen] = useState(false);
   const [previewState, setPreviewState] = useState(null);
   const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
   const [historySheetOpen, setHistorySheetOpen] = useState(false);
@@ -991,6 +993,14 @@ export default function ImageStudio() {
     }
   }, []);
 
+  const handlePromptAssistApply = useCallback((nextPrompt) => {
+    setPrompt(nextPrompt);
+    window.requestAnimationFrame(() => {
+      resizePromptTextarea();
+      promptInputRef.current?.focus();
+    });
+  }, [resizePromptTextarea]);
+
   const handleFeedScroll = useCallback(
     (scrollTop) => {
       feedScrollTopRef.current = scrollTop;
@@ -1374,6 +1384,7 @@ export default function ImageStudio() {
                   onOpenAvatarPicker={openAvatarLibrary}
                   onOpenProductPicker={openProductLibrary}
                   onOpenImage1Upload={openPromptImport}
+                  onOpenPromptAssist={() => setPromptAssistModalOpen(true)}
                   onResize={resizePromptTextarea}
                 />
               </div>
@@ -1498,6 +1509,12 @@ export default function ImageStudio() {
         open={promptsModalOpen}
         onClose={() => setPromptsModalOpen(false)}
         onApplyPrompt={handleGuideApplyPrompt}
+      />
+
+      <ModalPromptAssistImageStudio
+        open={promptAssistModalOpen}
+        onClose={() => setPromptAssistModalOpen(false)}
+        onApplyPrompt={handlePromptAssistApply}
       />
 
       <ModalImageStudioPreview

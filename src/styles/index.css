@@ -4190,6 +4190,78 @@
     flex: 1;
   }
 
+  .image-studio-prompt-assist-chip-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    width: max-content;
+    pointer-events: none;
+    animation: image-studio-prompt-assist-chip-enter 0.16s ease-out;
+  }
+
+  .image-studio-prompt-assist-chip {
+    pointer-events: auto;
+    display: inline-flex;
+    align-items: center;
+    min-height: 1.75rem;
+    padding: 0.3rem 0.7rem;
+    border-radius: 9999px;
+    border: 1px solid rgba(42, 245, 152, 0.35);
+    background: rgba(22, 16, 28, 0.96);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--is-accent);
+    transition: background 0.12s, border-color 0.12s, transform 0.12s;
+  }
+
+  .image-studio-prompt-assist-chip:hover {
+    background: rgba(42, 245, 152, 0.12);
+    border-color: rgba(42, 245, 152, 0.55);
+    transform: translateY(-1px);
+  }
+
+  .image-studio-prompt-assist-chip:focus-visible {
+    outline: 2px solid rgba(42, 245, 152, 0.55);
+    outline-offset: 2px;
+  }
+
+  @keyframes image-studio-prompt-assist-chip-enter {
+    from {
+      opacity: 0;
+    }
+
+    to {
+      opacity: 1;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .image-studio-prompt-assist-chip-bar {
+      animation: none;
+    }
+  }
+
+  .image-studio-prompt-assist-apply-row {
+    flex-shrink: 0;
+    padding: 0 1rem 0.35rem;
+  }
+
+  .image-studio-prompts-modal--prompt-assist {
+    width: min(100%, 42rem);
+    height: min(72vh, 44rem);
+    max-height: min(78vh, 44rem);
+  }
+
+  .image-studio-prompt-assist-apply-row .image-studio-prompt-guide-apply {
+    width: 100%;
+    min-height: 2.5rem;
+    border-radius: 0.65rem;
+    font-size: 0.8125rem;
+    font-weight: 700;
+  }
+
   .image-studio-prompt-highlight,
   .image-studio-prompt-input {
     font-size: 0.9375rem;
