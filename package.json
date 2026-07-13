@@ -29,7 +29,8 @@
     "supabase:login": "supabase login",
     "supabase:link": "supabase link --project-ref wuvtfhletxieocetzppo",
     "supabase:dashboard-auth": "node scripts/open-supabase-auth-dashboard.mjs",
-    "deploy:ovh-ftp": "node scripts/upload-dist-ftp.mjs"
+    "deploy:ovh-ftp": "node scripts/upload-dist-ftp.mjs",
+    "strip:demo-audio": "node scripts/strip-demo-video-audio.mjs"
   },
   "dependencies": {
     "@ffmpeg/ffmpeg": "^0.12.15",

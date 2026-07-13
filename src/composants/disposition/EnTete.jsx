@@ -9,8 +9,6 @@ import MenuProfilConnecte from "@/composants/disposition/MenuProfilConnecte";
 import { MenuNavViralWorksDesktop } from "@/composants/disposition/MenuNavViralWorks";
 import PrivateMessagePreviewBubble from "@/composants/communaute/PrivateMessagePreviewBubble";
 import { isAdmin } from "@/bibliotheque/supabase/credits";
-import { hasSeedancePlan } from "@/bibliotheque/supabase/premiumAccess";
-import { usePremiumAccess } from "@/hooks/usePremiumAccess";
 import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
 import { PAGE_SHELL_INNER_CLASS } from "@/bibliotheque/disposition/dashboardShellLayout";
 
@@ -40,7 +38,6 @@ function MessageBubbleIcon({ className }) {
 
 export default function Header({ onOpenMenu }) {
   const { session, signOut, loading } = useAuth();
-  const { plan } = usePremiumAccess();
   const { openAuthModal } = useRequireAuthAction();
   const hasSession = Boolean(session?.user?.id);
   const {
@@ -175,9 +172,7 @@ export default function Header({ onOpenMenu }) {
   const navItems = (
     <>
       {navLinks.slice(0, 2).map(navLinkItem)}
-      <MenuNavViralWorksDesktop
-        showEditVideo={hasSeedancePlan(plan) || adminBar.isAdmin}
-      />
+      <MenuNavViralWorksDesktop />
       {navLinks.slice(2).map(navLinkItem)}
     </>
   );

@@ -8,17 +8,13 @@ import { prefetchImageStudioHistory } from "@/bibliotheque/imageStudio/imageStud
 
 const VIDEO_ITEMS = [
   { to: "/viralworks", label: "Créer ma vidéo", matchCreator: true },
-  { to: "/edit-video", label: "Éditer ma vidéo", matchEditVideo: true, requiresSeedance: true },
+  { to: "/edit-video", label: "Éditer ma vidéo", matchEditVideo: true },
 ];
 
 const IMAGE_ITEMS = [
   { to: "/studio", label: "Avatar IA", matchAvatar: true, showNew: true },
   { to: "/image-studio", label: "Image Studio", matchImageStudio: true, showNew: true },
 ];
-
-function visibleVideoItems(showEditVideo) {
-  return VIDEO_ITEMS.filter((item) => !item.requiresSeedance || showEditVideo);
-}
 
 function useViralWorksNavState() {
   const location = useLocation();
@@ -159,13 +155,12 @@ function NavDropdownDesktop({ label, items, isTriggerActive, isNavItemActive, on
 }
 
 /** Dropdowns desktop : "ViralWorks Vidéo" puis "ViralWorks Image". */
-export function MenuNavViralWorksDesktop({ showEditVideo = false }) {
+export function MenuNavViralWorksDesktop() {
   const { session } = useAuth();
   const { isNavItemActive, isVideoTriggerActive, isImageTriggerActive } =
     useViralWorksNavState();
-  const videoItems = visibleVideoItems(showEditVideo);
   const prefetchEditVideo = () => {
-    if (showEditVideo) prefetchPremiumAccess(session?.user?.id);
+    prefetchPremiumAccess(session?.user?.id);
   };
   const prefetchImageStudio = () => {
     prefetchPremiumAccess(session?.user?.id);
@@ -176,7 +171,7 @@ export function MenuNavViralWorksDesktop({ showEditVideo = false }) {
     <>
       <NavDropdownDesktop
         label="ViralWorks Vidéo"
-        items={videoItems}
+        items={VIDEO_ITEMS}
         isTriggerActive={isVideoTriggerActive}
         isNavItemActive={isNavItemActive}
         onPrefetch={prefetchEditVideo}
@@ -271,13 +266,12 @@ function NavAccordionMobile({
 }
 
 /** Sections mobile : accordéons "ViralWorks Vidéo" puis "ViralWorks Image". */
-export function MenuNavViralWorksMobile({ onNavigate, showEditVideo = false, compact = false }) {
+export function MenuNavViralWorksMobile({ onNavigate, compact = false }) {
   const { session } = useAuth();
   const { isNavItemActive, isVideoTriggerActive, isImageTriggerActive } =
     useViralWorksNavState();
-  const videoItems = visibleVideoItems(showEditVideo);
   const prefetchEditVideo = () => {
-    if (showEditVideo) prefetchPremiumAccess(session?.user?.id);
+    prefetchPremiumAccess(session?.user?.id);
   };
   const prefetchImageStudio = () => {
     prefetchPremiumAccess(session?.user?.id);
@@ -289,7 +283,7 @@ export function MenuNavViralWorksMobile({ onNavigate, showEditVideo = false, com
       <NavAccordionMobile
         label="ViralWorks Vidéo"
         icon={Video}
-        items={videoItems}
+        items={VIDEO_ITEMS}
         isTriggerActive={isVideoTriggerActive}
         isNavItemActive={isNavItemActive}
         onNavigate={onNavigate}

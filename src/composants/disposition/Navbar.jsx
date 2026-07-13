@@ -1,14 +1,10 @@
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useLocation } from "react-router-dom";
 import { Home, Sparkles, FileText, Info } from "lucide-react";
 import LienNavSync from "@/composants/disposition/LienNavSync";
 import { MenuNavViralWorksMobile } from "@/composants/disposition/MenuNavViralWorks";
-import { useAuth } from "@/contexte/FournisseurAuth";
-import { usePremiumAccess } from "@/hooks/usePremiumAccess";
-import { hasSeedancePlan } from "@/bibliotheque/supabase/premiumAccess";
-import { isAdmin } from "@/bibliotheque/supabase/credits";
 import {
   clearMobileNavDrawerScrollLock,
   setMobileNavDrawerScrollLock,
@@ -29,39 +25,6 @@ export default function SidebarShell({
   const panelRef = useRef(null);
   const location = useLocation();
   const previousPathRef = useRef(location.pathname);
-  const { session } = useAuth();
-  const { plan } = usePremiumAccess();
-  const [showEditVideo, setShowEditVideo] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function checkEditVideoAccess() {
-      if (!session?.user?.id) {
-        if (!cancelled) setShowEditVideo(false);
-        return;
-      }
-
-      if (hasSeedancePlan(plan)) {
-        if (!cancelled) setShowEditVideo(true);
-        return;
-      }
-
-      try {
-        const admin = await isAdmin();
-        if (!cancelled) setShowEditVideo(admin);
-      } catch (err) {
-        console.error("Erreur vérification accès Éditer ma vidéo:", err);
-        if (!cancelled) setShowEditVideo(false);
-      }
-    }
-
-    checkEditVideoAccess();
-    return () => {
-      cancelled = true;
-    };
-  }, [session?.user?.id, plan]);
-
   useEffect(() => {
     // Close only after a real route change (not when `open` flips to true).
     const prev = previousPathRef.current;
@@ -141,7 +104,6 @@ export default function SidebarShell({
                     <Item path={links[0].path} label={links[0].label} icon={links[0].icon} />
                     <Item path={links[1].path} label={links[1].label} icon={links[1].icon} />
                     <MenuNavViralWorksMobile
-                      showEditVideo={showEditVideo}
                       compact
                       onNavigate={() => onCloseMenu?.()}
                     />

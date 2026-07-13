@@ -1,9 +1,7 @@
 import { useMemo, useSyncExternalStore } from "react";
-import { useNavigate } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
-import { useAuth } from "@/contexte/FournisseurAuth";
-import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import LienNavSync from "@/composants/disposition/LienNavSync";
+import AccueilDemoVideo from "@/composants/accueil/AccueilDemoVideo";
 import { PROMO_ACQUISITION_IMAGES } from "@/bibliotheque/promo/imagesPromo";
 
 function subscribeMobileMax767(cb) {
@@ -24,40 +22,6 @@ function blockMediaSave(event) {
   event.preventDefault();
 }
 
-function AccueilDemoVideo({ src, preload, label, className }) {
-  return (
-    <div
-      className={className}
-      onContextMenu={blockMediaSave}
-      onDragStart={blockMediaSave}
-    >
-      <video
-        src={src}
-        autoPlay
-        loop
-        muted
-        playsInline
-        preload={preload}
-        draggable={false}
-        controls={false}
-        controlsList="nodownload noplaybackrate noremoteplayback"
-        disablePictureInPicture
-        disableRemotePlayback
-        className="accueil-demo-video h-full w-full object-cover"
-      />
-      <div
-        className="absolute inset-0 z-[1]"
-        onContextMenu={blockMediaSave}
-        onDragStart={blockMediaSave}
-        aria-hidden
-      />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[2] bg-gradient-to-t from-black/70 to-transparent px-2 pb-2 pt-8 text-center text-[8px] font-bold uppercase tracking-widest text-white/45">
-        {label}
-      </div>
-    </div>
-  );
-}
-
 function AccueilPromoImageCard({ src, alt, className }) {
   return (
     <div className={className}>
@@ -74,11 +38,6 @@ function AccueilPromoImageCard({ src, alt, className }) {
 }
 
 export default function Accueil() {
-  const { session } = useAuth();
-  const navigate = useNavigate();
-  const { runWithAuth } = useRequireAuthAction();
-  const hasSession = Boolean(session?.user?.id);
-
   const isMobileLayout = useSyncExternalStore(
     subscribeMobileMax767,
     getMobileMax767Snapshot,
@@ -100,15 +59,6 @@ export default function Accueil() {
 
   const preloadSide = isMobileLayout ? "none" : "metadata";
   const preloadCenter = isMobileLayout ? "metadata" : "auto";
-
-  const handleCreateVideoClick = (event) => {
-    if (hasSession) return;
-    event.preventDefault();
-    void runWithAuth(async () => {
-      navigate("/viralworks");
-      return true;
-    });
-  };
 
   return (
     <div className="relative flex w-full min-w-0 flex-col">
@@ -142,7 +92,6 @@ export default function Accueil() {
                 <div className="accueil-fade-up accueil-fade-up-d4 relative z-20 mb-2 flex flex-wrap items-center gap-2 max-md:mb-1.5 max-md:gap-2 md:mb-3 md:gap-2.5 max-[580px]:justify-center">
                   <LienNavSync
                     to="/viralworks"
-                    onClick={handleCreateVideoClick}
                     className="group inline-flex items-center gap-2 rounded-[11px] bg-[#21f3b9] px-5 py-3 text-sm font-extrabold text-[#07090f] shadow-[0_0_28px_rgba(33,243,185,0.26)] transition-all duration-200 hover:-translate-y-px hover:shadow-[0_0_44px_rgba(33,243,185,0.42)] max-md:px-4 max-md:py-2.5 max-md:text-[13px]"
                   >
                     <span>Créer ma vidéo</span>
@@ -321,10 +270,21 @@ export default function Accueil() {
         .accueil-vcard:hover {
           border-color: rgba(255, 255, 255, 0.2);
         }
-        .accueil-demo-video {
+        .accueil-demo-video,
+        .accueil-demo-video-source {
           -webkit-user-drag: none;
           user-select: none;
           pointer-events: none;
+        }
+        .accueil-demo-video-source {
+          position: absolute;
+          width: 1px;
+          height: 1px;
+          opacity: 0;
+          overflow: hidden;
+          clip: rect(0 0 0 0);
+          clip-path: inset(50%);
+          white-space: nowrap;
         }
         .accueil-vcard-media {
           display: block;

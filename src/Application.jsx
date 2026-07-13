@@ -248,14 +248,7 @@ const router = createBrowserRouter([
           { path: "video", element: <Navigate to="/viralworks" replace /> },
           { path: "studio", element: <Studio /> },
           { path: "image-studio", element: <ImageStudio /> },
-          {
-            path: "edit-video",
-            element: (
-              <ProtectedRoute>
-                <EditVideo />
-              </ProtectedRoute>
-            ),
-          },
+          { path: "edit-video", element: <EditVideo /> },
           {
             path: "profil",
             element: (
