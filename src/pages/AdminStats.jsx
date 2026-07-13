@@ -199,18 +199,15 @@ export default function AdminStats() {
             <ArrowLeft className="w-4 h-4" />
             Administration
           </Link>
-          <div className="flex flex-col items-end gap-1">
-            <button
-              type="button"
-              onClick={handleRefresh}
-              disabled={refreshing}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-[#2af598]/30 bg-[#2af598]/10 text-[#2af598] hover:bg-[#2af598]/20 transition-all text-sm disabled:opacity-50"
-            >
-              <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
-              Actualiser
-            </button>
-            <p className="text-[10px] text-gray-500 leading-none">Mise à jour auto • 30s</p>
-          </div>
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-[#2af598]/30 bg-[#2af598]/10 text-[#2af598] hover:bg-[#2af598]/20 transition-all text-sm disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
+            Actualiser
+          </button>
         </div>
       </div>
 
