@@ -1,14 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { SendHorizontal } from "lucide-react";
-import { anthropicMessages } from "@/bibliotheque/anthropic/anthropicMessages";
+import { ImageUp, SendHorizontal, X } from "lucide-react";
+import { promptAssistChatCompletion } from "@/bibliotheque/imageStudio/catalog/glossary/promptAssistChat";
+import { buildPromptAssistSystemPrompt } from "@/bibliotheque/imageStudio/catalog/glossary";
+import { buildLocalPromptAssistReply } from "@/bibliotheque/imageStudio/catalog/glossary/assembleLocalPrompt";
+import {
+  PROMPT_ASSIST_MISSING_IMAGE_REPLY,
+  shouldAskForMissingReferenceImage,
+} from "@/bibliotheque/imageStudio/catalog/glossary/detectMissingReferenceImage";
+import { extractPromptFromAssistantText } from "@/bibliotheque/imageStudio/catalog/glossary/parsePromptAssistMessage";
+import { readGuideProductImageFile } from "@/bibliotheque/imageStudio/guideProductImage";
+import { IMAGE_STUDIO_PRODUCT_MENTION_TOKEN } from "@/bibliotheque/imageStudio/imageStudioGuideApply";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
+import PromptAssistAssistantContent from "@/composants/image/PromptAssistAssistantContent";
 
 function nextMessageId() {
   return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function ConversationBubble({ role, children }) {
+function ConversationBubble({ role, children, imageUrl }) {
   if (role === "bot") {
     return (
       <div className="image-studio-prompt-guide-turn image-studio-prompt-guide-turn--bot">
@@ -25,7 +35,12 @@ function ConversationBubble({ role, children }) {
   return (
     <div className="image-studio-prompt-guide-turn image-studio-prompt-guide-turn--user">
       <div className="image-studio-prompt-guide-bubble image-studio-prompt-guide-bubble--user image-studio-prompt-guide-bubble--enter">
-        {children}
+        {imageUrl ? (
+          <div className="image-studio-prompt-assist-message-image">
+            <img src={imageUrl} alt="Image jointe" />
+          </div>
+        ) : null}
+        {children ? <p className="image-studio-prompt-assist-message-text">{children}</p> : null}
       </div>
     </div>
   );
@@ -50,30 +65,38 @@ function TypingIndicator() {
   );
 }
 
-function extractPromptFromAssistantText(text) {
-  const tagged = text.match(/<prompt>([\s\S]*?)<\/prompt>/i);
-  if (tagged?.[1]?.trim()) return tagged[1].trim();
-  return null;
+function ensureProductMentionInPrompt(prompt, hasReferenceImage) {
+  if (!hasReferenceImage) return prompt;
+  const token = IMAGE_STUDIO_PRODUCT_MENTION_TOKEN;
+  if (prompt.includes(token)) return prompt;
+  return `${prompt} ${token}`;
+}
+
+function formatPromptAssistError(error) {
+  const message = error instanceof Error ? error.message : "";
+  if (/connecté|connecter|authentification|autorisé|401/i.test(message)) {
+    return "Connectez-vous pour utiliser le Prompt Assistant.";
+  }
+  if (/OPENAI|Configuration OpenAI|OPENAI_API_KEY/i.test(message)) {
+    return "Le service IA n'est pas disponible pour le moment. Réessayez plus tard.";
+  }
+  if (message) return `Une erreur est survenue : ${message}`;
+  return "Une erreur est survenue. Vérifie ta connexion ou reconnecte-toi.";
 }
 
 export default function ModalPromptAssistImageStudio({ open, onClose, onApplyPrompt }) {
   const { runWithAuth } = useRequireAuthAction();
   const messagesRef = useRef(null);
   const inputRef = useRef(null);
+  const imageInputRef = useRef(null);
   const loadingRef = useRef(false);
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [attachedImageUrl, setAttachedImageUrl] = useState(null);
+  const [imageError, setImageError] = useState(null);
 
-  const systemPrompt = useMemo(
-    () => `Tu es PromptAssist, l'assistant Image Studio de ViralWorks Studio.
-L'utilisateur décrit l'image qu'il souhaite générer. Pose des questions courtes et utiles (style, cadrage, lumière, ambiance, produit) pour affiner sa demande.
-Quand tu as assez d'informations, propose un prompt final en anglais, optimisé pour la génération d'image IA.
-Réponds en français, sauf le prompt final qui doit être en anglais.
-Entoure le prompt final de balises <prompt>...</prompt>.
-Reste concis : 2-3 phrases max par message.`,
-    [],
-  );
+  const systemPrompt = useMemo(() => buildPromptAssistSystemPrompt(), []);
 
   const latestPrompt = useMemo(() => {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -85,12 +108,19 @@ Reste concis : 2-3 phrases max par message.`,
     return null;
   }, [messages]);
 
+  const clearAttachedImage = useCallback(() => {
+    setAttachedImageUrl(null);
+    setImageError(null);
+    if (imageInputRef.current) imageInputRef.current.value = "";
+  }, []);
+
   useEffect(() => {
     if (!open) {
       setDraft("");
       setMessages([]);
       setLoading(false);
       loadingRef.current = false;
+      clearAttachedImage();
       return;
     }
 
@@ -99,11 +129,11 @@ Reste concis : 2-3 phrases max par message.`,
         id: nextMessageId(),
         role: "assistant",
         content:
-          "Bonjour ! Que souhaitez-vous créer aujourd'hui ? Décrivez votre idée en quelques mots.",
+          "Bonjour ! Décrivez l'image que vous voulez — vous pouvez joindre une photo et utiliser des termes comme croquis, vue plongeante, packshot, UGC, lumière douce… Je traduirai votre demande en prompt précis.",
       },
     ]);
     window.requestAnimationFrame(() => inputRef.current?.focus());
-  }, [open]);
+  }, [open, clearAttachedImage]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -125,28 +155,52 @@ Reste concis : 2-3 phrases max par message.`,
     el.scrollTop = el.scrollHeight;
   }, [messages, loading]);
 
+  const handleImagePick = useCallback(async (file) => {
+    if (!file) return;
+    setImageError(null);
+    const result = await readGuideProductImageFile(file);
+    if (!result.ok) {
+      setImageError(result.error);
+      return;
+    }
+    setAttachedImageUrl(result.dataUrl);
+  }, []);
+
   const handleSend = useCallback(async () => {
     if (loadingRef.current) return;
     const text = draft.trim();
-    if (!text) return;
+    if (!text && !attachedImageUrl) return;
 
-    const userMessage = { id: nextMessageId(), role: "user", content: text };
+    const sentImageUrl = attachedImageUrl;
+    const userMessage = {
+      id: nextMessageId(),
+      role: "user",
+      content: text || "Image jointe pour contexte.",
+      imageUrl: sentImageUrl ?? undefined,
+    };
     const nextMessages = [...messages, userMessage];
     setMessages(nextMessages);
     setDraft("");
+    clearAttachedImage();
+
+    if (shouldAskForMissingReferenceImage(text, nextMessages, { currentMessageHasImage: Boolean(sentImageUrl) })) {
+      setMessages((current) => [
+        ...current,
+        {
+          id: nextMessageId(),
+          role: "assistant",
+          content: PROMPT_ASSIST_MISSING_IMAGE_REPLY,
+        },
+      ]);
+      window.requestAnimationFrame(() => inputRef.current?.focus());
+      return;
+    }
+
     setLoading(true);
     loadingRef.current = true;
 
     try {
-      const reply = await anthropicMessages({
-        system: systemPrompt,
-        messages: nextMessages.map((message) => ({
-          role: message.role,
-          content: message.content,
-        })),
-        max_tokens: 900,
-        model: "claude-sonnet-4-20250514",
-      });
+      const reply = await promptAssistChatCompletion(nextMessages, systemPrompt);
       setMessages((current) => [
         ...current,
         {
@@ -155,21 +209,35 @@ Reste concis : 2-3 phrases max par message.`,
           content: reply || "Peux-tu reformuler ta demande ?",
         },
       ]);
-    } catch {
-      setMessages((current) => [
-        ...current,
-        {
-          id: nextMessageId(),
-          role: "assistant",
-          content: "Une erreur est survenue. Vérifie ta connexion ou reconnecte-toi.",
-        },
-      ]);
+    } catch (error) {
+      const localReply = buildLocalPromptAssistReply(text, {
+        hasReferenceImage: Boolean(sentImageUrl),
+      });
+      if (localReply) {
+        setMessages((current) => [
+          ...current,
+          {
+            id: nextMessageId(),
+            role: "assistant",
+            content: localReply,
+          },
+        ]);
+      } else {
+        setMessages((current) => [
+          ...current,
+          {
+            id: nextMessageId(),
+            role: "assistant",
+            content: formatPromptAssistError(error),
+          },
+        ]);
+      }
     } finally {
       setLoading(false);
       loadingRef.current = false;
       window.requestAnimationFrame(() => inputRef.current?.focus());
     }
-  }, [draft, messages, systemPrompt]);
+  }, [attachedImageUrl, clearAttachedImage, draft, messages, systemPrompt]);
 
   const send = useCallback(() => {
     void runWithAuth(handleSend);
@@ -177,9 +245,19 @@ Reste concis : 2-3 phrases max par message.`,
 
   const handleApply = useCallback(() => {
     if (!latestPrompt) return;
-    onApplyPrompt?.(latestPrompt);
+
+    const hasReferenceImage = messages.some((message) => Boolean(message.imageUrl));
+    const prompt = ensureProductMentionInPrompt(latestPrompt, hasReferenceImage);
+    const productImageUrl =
+      [...messages].reverse().find((message) => message.imageUrl)?.imageUrl ?? null;
+
+    if (productImageUrl) {
+      onApplyPrompt?.({ prompt, productImageUrl });
+    } else {
+      onApplyPrompt?.(prompt);
+    }
     onClose?.();
-  }, [latestPrompt, onApplyPrompt, onClose]);
+  }, [latestPrompt, messages, onApplyPrompt, onClose]);
 
   if (!open) return null;
 
@@ -188,6 +266,8 @@ Reste concis : 2-3 phrases max par message.`,
     event.stopPropagation();
     window.setTimeout(onClose, 0);
   };
+
+  const canSend = Boolean(draft.trim() || attachedImageUrl);
 
   return createPortal(
     <div
@@ -207,8 +287,16 @@ Reste concis : 2-3 phrases max par message.`,
           className="image-studio-prompt-guide-messages image-studio-prompt-guide-messages--conversation studio-subtle-scrollbar"
         >
           {messages.map((message) => (
-            <ConversationBubble key={message.id} role={message.role === "user" ? "user" : "bot"}>
-              {message.content}
+            <ConversationBubble
+              key={message.id}
+              role={message.role === "user" ? "user" : "bot"}
+              imageUrl={message.imageUrl}
+            >
+              {message.role === "assistant" ? (
+                <PromptAssistAssistantContent content={message.content} />
+              ) : (
+                message.content
+              )}
             </ConversationBubble>
           ))}
           {loading ? <TypingIndicator /> : null}
@@ -226,32 +314,79 @@ Reste concis : 2-3 phrases max par message.`,
           </div>
         ) : null}
 
-        <form
-          className="image-studio-prompt-guide-compose"
-          onSubmit={(event) => {
-            event.preventDefault();
-            send();
-          }}
-        >
-          <input
-            ref={inputRef}
-            type="text"
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            placeholder="Décrivez ce que vous voulez créer…"
-            className="image-studio-prompt-guide-input"
-            aria-label="Votre message"
-            disabled={loading}
-          />
-          <button
-            type="submit"
-            className="image-studio-prompt-guide-send"
-            disabled={loading || !draft.trim()}
-            aria-label="Envoyer"
+        <div className="image-studio-prompt-assist-compose-wrap">
+          {attachedImageUrl ? (
+            <div className="image-studio-prompt-assist-attach-preview">
+              <div className="image-studio-prompt-assist-attach-thumb">
+                <img src={attachedImageUrl} alt="Aperçu de l'image jointe" />
+              </div>
+              <span className="image-studio-prompt-assist-attach-label">Image jointe</span>
+              <button
+                type="button"
+                className="image-studio-prompt-assist-attach-remove"
+                onClick={clearAttachedImage}
+                aria-label="Retirer l'image"
+              >
+                <X className="h-3.5 w-3.5" strokeWidth={2.25} />
+              </button>
+            </div>
+          ) : null}
+
+          {imageError ? (
+            <p className="image-studio-prompt-assist-attach-error" role="alert">
+              {imageError}
+            </p>
+          ) : null}
+
+          <form
+            className="image-studio-prompt-guide-compose image-studio-prompt-assist-compose"
+            onSubmit={(event) => {
+              event.preventDefault();
+              send();
+            }}
           >
-            <SendHorizontal className="h-4 w-4" strokeWidth={2.25} />
-          </button>
-        </form>
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+              className="hidden"
+              aria-hidden
+              tabIndex={-1}
+              onChange={(event) => {
+                const file = event.target.files?.[0] ?? null;
+                void handleImagePick(file);
+              }}
+            />
+            <button
+              type="button"
+              className="image-studio-prompt-assist-attach-btn"
+              onClick={() => imageInputRef.current?.click()}
+              disabled={loading}
+              aria-label="Joindre une image"
+              title="Joindre une image"
+            >
+              <ImageUp className="h-4 w-4" strokeWidth={2.25} />
+            </button>
+            <input
+              ref={inputRef}
+              type="text"
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              placeholder="Décrivez ce que vous voulez créer…"
+              className="image-studio-prompt-guide-input"
+              aria-label="Votre message"
+              disabled={loading}
+            />
+            <button
+              type="submit"
+              className="image-studio-prompt-guide-send"
+              disabled={loading || !canSend}
+              aria-label="Envoyer"
+            >
+              <SendHorizontal className="h-4 w-4" strokeWidth={2.25} />
+            </button>
+          </form>
+        </div>
       </div>
     </div>,
     document.body,

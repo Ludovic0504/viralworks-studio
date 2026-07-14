@@ -993,8 +993,27 @@ export default function ImageStudio() {
     }
   }, []);
 
-  const handlePromptAssistApply = useCallback((nextPrompt) => {
+  const handlePromptAssistApply = useCallback((payload) => {
+    const {
+      prompt: nextPrompt,
+      productImageUrl,
+      productFocus: nextProductFocus,
+      importedRefImageUrl,
+    } = resolveImageStudioGuideApplyPayload(payload);
     setPrompt(nextPrompt);
+    if (productImageUrl) {
+      setProductImage(productImageUrl);
+      setProductPreview(productImageUrl);
+      setProductFocus(nextProductFocus);
+      setError(null);
+    } else if (nextProductFocus) {
+      setProductFocus(nextProductFocus);
+    }
+    if (importedRefImageUrl) {
+      setImportedRefImage(importedRefImageUrl);
+      setImportedRefPreview(importedRefImageUrl);
+      setError(null);
+    }
     window.requestAnimationFrame(() => {
       resizePromptTextarea();
       promptInputRef.current?.focus();
