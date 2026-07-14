@@ -97,3 +97,11 @@ export function getAlternativeSubscriptionPlans(
     (plan) => normalizeSubscriptionPlan(plan.id) !== current,
   );
 }
+
+/** Abonnements avec quota vidéo mensuel (Pro, Studio). Image = images uniquement. */
+export function subscriptionIncludesVideoCredits(
+  planKey: string | null | undefined,
+): boolean {
+  const plan = normalizeSubscriptionPlan(planKey);
+  return plan === "pro_59" || plan === "premium_129";
+}

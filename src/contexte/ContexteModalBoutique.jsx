@@ -6,6 +6,7 @@ import {
   hasCachedUserSubscriptionDetails,
   invalidateUserSubscriptionDetailsCache,
   readCachedUserSubscriptionDetails,
+  syncSubscriptionFromStripe,
 } from "@/bibliotheque/supabase/stripe";
 
 const BoutiqueModalContext = createContext(null);
@@ -46,6 +47,7 @@ export function BoutiqueModalProvider({ children }) {
       }
 
       try {
+        await syncSubscriptionFromStripe();
         const details = await getUserSubscriptionDetails({ skipCache, userId });
         setSubscriptionDetails(details);
         return details;

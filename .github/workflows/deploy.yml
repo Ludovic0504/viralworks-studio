@@ -106,7 +106,7 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
-          for fn in auth-before-user-created validate-display-name welcome-private-message ensure-welcome-private-message onboarding-private-quick-reply onboarding-private-followup admin-signup-notify; do
+          for fn in auth-before-user-created auth-email-sign-in validate-display-name welcome-private-message ensure-welcome-private-message onboarding-private-quick-reply onboarding-private-followup admin-signup-notify; do
             echo "Deploying $fn..."
             supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF" --use-api
           done

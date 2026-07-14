@@ -1,9 +1,16 @@
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { AlertTriangle, Crown, X } from "lucide-react";
-import {
-  getAlternativeSubscriptionPlans,
-  subscriptionPlanLabel,
-} from "@/bibliotheque/supabase/subscriptionPlans";
+import { X } from "lucide-react";
+import { subscriptionPlanLabel } from "@/bibliotheque/supabase/subscriptionPlans";
+
+export const CANCELLATION_REASONS = [
+  { id: "too_expensive", label: "Trop cher pour mon usage" },
+  { id: "not_using_enough", label: "Je n'utilise pas assez le service" },
+  { id: "features_mismatch", label: "Les fonctionnalités ne me conviennent pas" },
+  { id: "switching_tool", label: "Je passe à un autre outil" },
+  { id: "quality_issues", label: "Problème technique ou qualité insuffisante" },
+  { id: "other", label: "Autre raison" },
+];
 
 export default function ModalConfirmAnnulationAbonnement({
   open,
@@ -11,14 +18,36 @@ export default function ModalConfirmAnnulationAbonnement({
   currentPlanKey,
   currentPlanName,
   onConfirmCancel,
-  onChooseAlternativePlan,
   cancelling = false,
 }) {
+  const [selectedReasonId, setSelectedReasonId] = useState("");
+  const [customReason, setCustomReason] = useState("");
+
+  useEffect(() => {
+    if (!open) {
+      setSelectedReasonId("");
+      setCustomReason("");
+    }
+  }, [open]);
+
   if (!open) return null;
 
   const planLabel =
     currentPlanName || subscriptionPlanLabel(currentPlanKey) || "votre abonnement";
-  const alternatives = getAlternativeSubscriptionPlans(currentPlanKey);
+  const selectedReason = CANCELLATION_REASONS.find((r) => r.id === selectedReasonId);
+  const customTrimmed = customReason.trim();
+  const needsCustomText = selectedReasonId === "other";
+  const canConfirm =
+    Boolean(selectedReason) && (!needsCustomText || customTrimmed.length >= 3);
+
+  const handleConfirm = () => {
+    if (!canConfirm || cancelling) return;
+    onConfirmCancel({
+      reason: selectedReason.label,
+      reasonId: selectedReasonId,
+      reasonDetail: customTrimmed || undefined,
+    });
+  };
 
   return createPortal(
     <div
@@ -43,54 +72,59 @@ export default function ModalConfirmAnnulationAbonnement({
           <X className="h-4 w-4" />
         </button>
 
-        <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full border border-red-500/30 bg-red-500/10">
-          <AlertTriangle className="h-6 w-6 text-red-400" strokeWidth={1.75} />
-        </div>
-
         <h2 id="cancel-subscription-title" className="image-studio-quota-title">
-          Arrêter votre abonnement ?
+          Pourquoi arrêter {planLabel} ?
         </h2>
         <p className="image-studio-quota-message">
-          Vous êtes sur le point d&apos;annuler{" "}
-          <strong className="font-semibold text-white">{planLabel}</strong>.
-          Votre accès restera actif jusqu&apos;à la fin de la période en cours, puis
-          l&apos;abonnement s&apos;arrêtera définitivement.
+          Votre retour nous aide à améliorer ViralWorks. Choisissez une raison avant de
+          confirmer.
         </p>
 
-        {alternatives.length > 0 ? (
-          <div className="mb-4 rounded-xl border border-violet-500/25 bg-violet-500/5 p-3 text-left">
-            <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-violet-200">
-              <Crown className="h-3.5 w-3.5 shrink-0" />
-              Votre formule ne vous convient pas ?
-            </p>
-            <p className="mb-3 text-xs leading-relaxed text-gray-400">
-              Vous pouvez changer de plan sans résilier : l&apos;abonnement actuel sera
-              remplacé automatiquement.
-            </p>
-            <ul className="space-y-2">
-              {alternatives.map((plan) => (
-                <li key={plan.id}>
-                  <button
-                    type="button"
-                    disabled={cancelling}
-                    className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2.5 text-left transition-colors hover:border-violet-500/30 hover:bg-violet-500/10 disabled:opacity-50"
-                    onClick={() => onChooseAlternativePlan(plan.id)}
-                  >
-                    <span className="min-w-0">
-                      <span className="block text-sm font-medium text-gray-100">
-                        {plan.name}
-                      </span>
-                      <span className="block text-xs text-gray-400">{plan.summary}</span>
-                    </span>
-                    <span className="shrink-0 text-xs font-semibold text-violet-300">
-                      {plan.priceLabel}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
+        <div className="mb-4 space-y-2 text-left">
+          {CANCELLATION_REASONS.map((reason) => {
+            const selected = selectedReasonId === reason.id;
+            return (
+              <button
+                key={reason.id}
+                type="button"
+                disabled={cancelling}
+                onClick={() => setSelectedReasonId(reason.id)}
+                className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left text-sm transition-colors disabled:opacity-50 ${
+                  selected
+                    ? "border-violet-500/50 bg-violet-500/15 text-gray-100"
+                    : "border-white/10 bg-white/[0.04] text-gray-300 hover:border-white/20 hover:bg-white/[0.06]"
+                }`}
+              >
+                <span
+                  className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
+                    selected ? "border-violet-400 bg-violet-500" : "border-white/25"
+                  }`}
+                  aria-hidden
+                >
+                  {selected ? <span className="h-1.5 w-1.5 rounded-full bg-white" /> : null}
+                </span>
+                <span>{reason.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <label className="mb-4 block text-left">
+          <span className="mb-1.5 block text-xs text-gray-400">
+            {needsCustomText
+              ? "Précisez votre raison (obligatoire)"
+              : "Précisez si vous le souhaitez (optionnel)"}
+          </span>
+          <textarea
+            value={customReason}
+            onChange={(e) => setCustomReason(e.target.value)}
+            disabled={cancelling}
+            rows={3}
+            maxLength={500}
+            placeholder="Votre message…"
+            className="w-full resize-none rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:border-violet-500/40 focus:outline-none disabled:opacity-50"
+          />
+        </label>
 
         <div className="image-studio-quota-actions">
           <button
@@ -103,11 +137,11 @@ export default function ModalConfirmAnnulationAbonnement({
           </button>
           <button
             type="button"
-            className="image-studio-quota-cta-secondary !border-red-500/30 !text-red-300 hover:!bg-red-500/10"
-            onClick={onConfirmCancel}
-            disabled={cancelling}
+            className="image-studio-quota-cta-secondary !border-red-500/30 !text-red-300 hover:!bg-red-500/10 disabled:opacity-40"
+            onClick={handleConfirm}
+            disabled={cancelling || !canConfirm}
           >
-            {cancelling ? "Annulation…" : "Confirmer l'arrêt de l'abonnement"}
+            {cancelling ? "Annulation…" : "Confirmer"}
           </button>
         </div>
       </div>

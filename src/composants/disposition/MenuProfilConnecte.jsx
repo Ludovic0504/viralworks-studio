@@ -7,6 +7,7 @@ import { getUserWorkflowVideoWallet, USER_CREDITS_UPDATED_EVENT } from "@/biblio
 import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
 import { getUserProfile, readCachedUserProfile } from "@/bibliotheque/supabase/profil";
 import { getUserSubscriptionDetails, readCachedUserSubscriptionDetails } from "@/bibliotheque/supabase/stripe";
+import { subscriptionIncludesVideoCredits } from "@/bibliotheque/supabase/subscriptionPlans";
 import { useBoutiqueModal } from "@/contexte/ContexteModalBoutique";
 
 const RING_R = 17;
@@ -55,6 +56,9 @@ export default function MenuProfilConnecte({ onLogout, signingOut }) {
   const [hasSubscription, setHasSubscription] = useState(() =>
     Boolean(readCachedUserSubscriptionDetails(userId)?.subscription),
   );
+  const [subscriptionPlanKey, setSubscriptionPlanKey] = useState(
+    () => readCachedUserSubscriptionDetails(userId)?.planKey ?? null,
+  );
   const [profile, setProfile] = useState(() => readCachedUserProfile(userId));
 
   const loadWallet = useCallback(async () => {
@@ -68,11 +72,13 @@ export default function MenuProfilConnecte({ onLogout, signingOut }) {
       setCreditsRemaining(typeof wallet.balance === "number" ? wallet.balance : Number(wallet.balance) || 0);
       setVideoDisplayCap(typeof wallet.cap === "number" ? wallet.cap : Number(wallet.cap) || 30);
       setHasSubscription(Boolean(subDetails?.subscription));
+      setSubscriptionPlanKey(subDetails?.planKey ?? null);
       setProfile(prof);
     } catch {
       setCreditsRemaining(0);
       setVideoDisplayCap(30);
       setHasSubscription(false);
+      setSubscriptionPlanKey(null);
     }
   }, [userId]);
 
@@ -154,9 +160,15 @@ export default function MenuProfilConnecte({ onLogout, signingOut }) {
   const strokeDashoffset = RING_C * (1 - ratio);
 
   const exhausted = remaining <= 0;
+  const includesVideoCredits = subscriptionIncludesVideoCredits(subscriptionPlanKey);
+  const showVideoDepleted = exhausted && includesVideoCredits;
   const ringStrokeColor = "#3ef5c0";
-  const barFillColor = exhausted ? "#f0605a" : "#3ef5c0";
-  const barFillPercent = exhausted && total > 0 ? 100 : ratio * 100;
+  const barFillColor = showVideoDepleted
+    ? "#f0605a"
+    : exhausted && !includesVideoCredits
+      ? "rgba(255,255,255,0.35)"
+      : "#3ef5c0";
+  const barFillPercent = showVideoDepleted && total > 0 ? 100 : ratio * 100;
 
   const closeMenu = () => setMenuOpen(false);
 
@@ -302,9 +314,9 @@ export default function MenuProfilConnecte({ onLogout, signingOut }) {
 
           <div className="mx-2.5 my-2">
             <div
-              className={`mb-[5px] flex justify-between text-[11px] ${exhausted ? "text-[#f0605a]" : "text-white/50"}`}
+              className={`mb-[5px] flex justify-between text-[11px] ${showVideoDepleted ? "text-[#f0605a]" : "text-white/50"}`}
             >
-              <span>{exhausted ? "Vidéos épuisées" : "Vidéos"}</span>
+              <span>{showVideoDepleted ? "Vidéos épuisées" : "Vidéos"}</span>
               <span>
                 {remaining} / {total}
               </span>

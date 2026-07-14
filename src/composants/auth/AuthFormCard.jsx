@@ -10,6 +10,7 @@ import { syncSignupProfileNamesFromMetadata, updateUserProfile } from "@/bibliot
 import { validateDisplayNamesRemote, isBlockedDisplayNameError, BLOCKED_DISPLAY_NAME_MESSAGE, inferBlockedNameFieldFromMessage, blockedDisplayNameMessage } from "@/bibliotheque/moderation/displayName";
 import { validateSignupFieldsClient } from "@/bibliotheque/moderation/signupGuard";
 import { isAccountEmailVerified } from "@/bibliotheque/auth/emailVerified";
+import { signInWithEmailPassword } from "@/bibliotheque/supabase/authSession";
 import TurnstileWidget, { isTurnstileEnabled } from "@/composants/auth/TurnstileWidget.jsx";
 import { track } from "@/bibliotheque/meta/pixel";
 import { capturePostHog, trackPostHogError } from "@/bibliotheque/posthog/client";
@@ -381,27 +382,29 @@ export default function AuthFormCard({
       }
 
       if (mode === "signin") {
-        const { error } = await supabase.auth.signInWithPassword({
+        const result = await signInWithEmailPassword({
           email,
           password,
+          remember,
         });
 
-        if (error) {
-          if (error.message?.toLowerCase().includes("email not confirmed")) {
+        if (!result.success) {
+          const message = result.error || "Erreur lors de la connexion";
+          if (message.toLowerCase().includes("email not confirmed")) {
             reportAuthError(
               "Ton email n'est pas confirmé. Clique sur le lien reçu lors de l'inscription.",
               "auth"
             );
           } else if (
-            error.message?.toLowerCase().includes("invalid login") ||
-            error.message?.toLowerCase().includes("invalid credentials")
+            message.toLowerCase().includes("invalid login") ||
+            message.toLowerCase().includes("invalid credentials")
           ) {
             reportAuthError(
               "Email ou mot de passe incorrect. Si vous êtes admin, utilisez 'Mot de passe oublié' pour réinitialiser votre mot de passe.",
               "auth"
             );
           } else {
-            reportAuthError(error.message, "auth");
+            reportAuthError(message, "auth");
           }
           setLoading(false);
           return;

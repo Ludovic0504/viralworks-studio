@@ -427,14 +427,45 @@ export async function getUserSubscriptionDetails(options?: {
 }
 
 /**
+ * Synchronise le statut d'abonnement depuis Stripe (cancel_at_period_end, période, etc.).
+ */
+export async function syncSubscriptionFromStripe(): Promise<{ synced: boolean; error?: string }> {
+  const supabase = getBrowserSupabase();
+  const session = await supabase.auth.getSession();
+  const accessToken = session.data.session?.access_token;
+  if (!accessToken) return { synced: false, error: "Session expirée" };
+
+  try {
+    const { data, error } = await supabase.functions.invoke("sync-subscription-from-stripe", {
+      body: {},
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (error) return { synced: false, error: error.message };
+    if (data?.error) return { synced: false, error: data.error };
+    return { synced: data?.synced === true };
+  } catch (err) {
+    console.warn("syncSubscriptionFromStripe:", err);
+    return { synced: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
  * Annule l'abonnement de l'utilisateur
  */
-export async function cancelSubscription(): Promise<{ success: boolean; error?: string; message?: string; cancel_at_period_end?: boolean; current_period_end?: string }> {
+export async function cancelSubscription(params?: {
+  cancellationReason: string;
+  cancellationReasonDetail?: string;
+}): Promise<{ success: boolean; error?: string; message?: string; cancel_at_period_end?: boolean; current_period_end?: string }> {
   const supabase = getBrowserSupabase();
 
   const { data: { user }, error: userErr } = await supabase.auth.getUser();
   if (userErr || !user) {
     return { success: false, error: "Utilisateur non connecté" };
+  }
+
+  const cancellationReason = String(params?.cancellationReason || "").trim();
+  if (!cancellationReason) {
+    return { success: false, error: "Merci d'indiquer une raison d'annulation." };
   }
 
   try {
@@ -447,7 +478,10 @@ export async function cancelSubscription(): Promise<{ success: boolean; error?: 
     }
 
     const { data, error } = await supabase.functions.invoke("cancel-subscription", {
-      body: {},
+      body: {
+        cancellation_reason: cancellationReason,
+        cancellation_reason_detail: params?.cancellationReasonDetail?.trim() || "",
+      },
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },

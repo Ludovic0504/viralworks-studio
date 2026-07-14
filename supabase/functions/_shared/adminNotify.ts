@@ -491,3 +491,78 @@ export async function notifyOnboardingStep1Delivery(
     error: emailResult.error,
   };
 }
+
+const SUBSCRIPTION_PLAN_LABELS: Record<string, string> = {
+  image_9: "ViralWorks Image",
+  pro_59: "ViralWorks Pro",
+  premium_129: "ViralWorks Studio",
+  monthly: "ViralWorks Studio",
+  yearly: "Abonnement Annuel",
+};
+
+function subscriptionPlanLabel(planKey: string | null | undefined): string {
+  const key = String(planKey || "").trim();
+  if (!key) return "Abonnement";
+  return SUBSCRIPTION_PLAN_LABELS[key] ?? key;
+}
+
+export async function notifySubscriptionCancelled(
+  adminClient: SupabaseClient,
+  input: {
+    userId: string;
+    planKey?: string | null;
+    planName?: string | null;
+    reason: string;
+    reasonDetail?: string | null;
+    isTrialing?: boolean;
+    periodEnd?: string | null;
+  },
+): Promise<{ emailed: boolean; error?: string }> {
+  const userId = String(input.userId || "").trim();
+  const reason = String(input.reason || "").trim();
+  if (!userId || !reason) {
+    return { emailed: false, error: "payload_incomplete" };
+  }
+
+  const { email, displayName } = await loadUserContext(adminClient, userId);
+  const adminEmail = (Deno.env.get("ADMIN_NOTIFY_EMAIL") ?? "jean.limonta06@gmail.com").trim();
+  const planName =
+    String(input.planName || "").trim() ||
+    subscriptionPlanLabel(input.planKey) ||
+    "Abonnement";
+  const reasonDetail = String(input.reasonDetail || "").trim();
+  const periodEnd = String(input.periodEnd || "").trim();
+
+  const subject = `[ViralWorks Studio] Annulation abonnement — ${displayName || email || "Utilisateur"}`;
+  const body = [
+    "Un utilisateur a demandé l'arrêt de son abonnement.",
+    "",
+    `Nom affiché: ${displayName || "(inconnu)"}`,
+    `Email: ${email || "(inconnu)"}`,
+    `User ID: ${userId}`,
+    `Abonnement: ${planName}`,
+    input.isTrialing ? "Statut: essai gratuit" : "",
+    periodEnd ? `Fin d'accès prévue: ${periodEnd}` : "",
+    "",
+    "--- Raison d'annulation ---",
+    `Motif: ${reason}`,
+    reasonDetail ? `Détail: ${reasonDetail}` : "Détail: (aucun)",
+    "",
+    `Date: ${new Date().toISOString()}`,
+  ]
+    .filter((line, index, arr) => !(line === "" && arr[index - 1] === ""))
+    .join("\n");
+
+  const emailResult = await sendAdminEmail({
+    to: adminEmail,
+    subject,
+    text: body,
+  });
+
+  if (!emailResult.ok) {
+    console.error("[admin-notify] send subscription cancellation email failed:", emailResult.error);
+    return { emailed: false, error: emailResult.error };
+  }
+
+  return { emailed: true };
+}

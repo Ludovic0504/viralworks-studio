@@ -4,12 +4,27 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getStripeSecretKeyForCheckout } from "../_shared/stripe-keys.ts";
 import { ENTITLED_SUBSCRIPTION_STATUSES } from "../_shared/subscription-status.ts";
 import { subscriptionPeriodToIso } from "../_shared/subscription-period.ts";
+import { notifySubscriptionCancelled } from "../_shared/adminNotify.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
 };
+
+const SUBSCRIPTION_PLAN_LABELS: Record<string, string> = {
+  image_9: "ViralWorks Image",
+  pro_59: "ViralWorks Pro",
+  premium_129: "ViralWorks Studio",
+  monthly: "ViralWorks Studio",
+  yearly: "Abonnement Annuel",
+};
+
+function subscriptionPlanLabel(planKey: string | null | undefined): string {
+  const key = String(planKey || "").trim();
+  if (!key) return "Abonnement";
+  return SUBSCRIPTION_PLAN_LABELS[key] ?? key;
+}
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -49,6 +64,20 @@ serve(async (req) => {
       }
     );
 
+    const body = await req.json().catch(() => ({}));
+    const cancellationReason = String(body?.cancellation_reason || "").trim();
+    const cancellationReasonDetail = String(body?.cancellation_reason_detail || "").trim();
+
+    if (!cancellationReason) {
+      return new Response(
+        JSON.stringify({ error: "Merci d'indiquer une raison d'annulation." }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
     // Récupérer l'utilisateur
     const {
       data: { user },
@@ -85,6 +114,25 @@ serve(async (req) => {
       );
     }
 
+    const serviceRoleKey = Deno.env.get("SERVICE_ROLE_KEY");
+    const supabaseAdminClient = serviceRoleKey
+      ? createClient(
+          Deno.env.get("SUPABASE_URL") ?? "",
+          serviceRoleKey
+        )
+      : null;
+
+    const { data: cycleRow } = supabaseAdminClient
+      ? await supabaseAdminClient
+          .from("subscription_credit_cycles")
+          .select("plan_key")
+          .eq("stripe_subscription_id", subscriptionData.stripe_subscription_id)
+          .maybeSingle()
+      : { data: null };
+
+    const planKey = cycleRow?.plan_key ?? null;
+    const planName = subscriptionPlanLabel(planKey);
+
     // Annuler l'abonnement dans Stripe (annulation à la fin de la période)
     const canceledSubscription = await stripe.subscriptions.update(
       subscriptionData.stripe_subscription_id,
@@ -94,14 +142,6 @@ serve(async (req) => {
     );
 
     // Mettre à jour l'abonnement dans la base de données
-    const serviceRoleKey = Deno.env.get("SERVICE_ROLE_KEY");
-    const supabaseAdminClient = serviceRoleKey
-      ? createClient(
-          Deno.env.get("SUPABASE_URL") ?? "",
-          serviceRoleKey
-        )
-      : null;
-
     if (supabaseAdminClient) {
       await supabaseAdminClient
         .from("stripe_subscriptions")
@@ -115,6 +155,25 @@ serve(async (req) => {
     console.log(`✅ Abonnement ${subscriptionData.stripe_subscription_id} sera annulé à la fin de la période`);
 
     const periodIso = subscriptionPeriodToIso(canceledSubscription);
+
+    if (supabaseAdminClient) {
+      const notifyResult = await notifySubscriptionCancelled(supabaseAdminClient, {
+        userId: user.id,
+        planKey,
+        planName,
+        reason: cancellationReason,
+        reasonDetail: cancellationReasonDetail || null,
+        isTrialing: canceledSubscription.status === "trialing",
+        periodEnd: periodIso?.current_period_end ?? null,
+      });
+
+      if (!notifyResult.emailed) {
+        console.warn(
+          "⚠️ Email admin annulation non envoyé:",
+          notifyResult.error || "inconnu",
+        );
+      }
+    }
 
     return new Response(
       JSON.stringify({

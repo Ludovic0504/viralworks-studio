@@ -9,6 +9,7 @@ import {
   fetchWelcomeGiftNeedsChoice,
   cancelSubscription,
   invalidateUserSubscriptionDetailsCache,
+  syncSubscriptionFromStripe,
 } from "@/bibliotheque/supabase/stripe";
 import {
   isSameSubscriptionPlan,
@@ -18,7 +19,7 @@ import { useStripePayment, payImage9, payPro59, payPremium129, payVideoPack } fr
 import ModalCadeauBienvenue from "@/composants/ModalCadeauBienvenue";
 import ModalConfirmAnnulationAbonnement from "@/composants/boutique/ModalConfirmAnnulationAbonnement";
 import "./BoutiqueSubCard.css";
-import { CreditCard, Check, Crown, Loader2, CheckCircle, ShoppingBag, ImageIcon, Zap, XCircle } from "lucide-react";
+import { CreditCard, Check, Crown, Loader2, CheckCircle, ShoppingBag, ImageIcon, Zap } from "lucide-react";
 
 const CREDIT_PACKAGES = [
   {
@@ -277,12 +278,15 @@ export default function ContenuBoutique({
     setCancelModalOpen(true);
   };
 
-  const executeCancelSubscription = async () => {
+  const executeCancelSubscription = async ({ reason, reasonDetail }) => {
     if (!subscriptionDetails?.subscription) return;
 
     setCancellingSubscription(true);
     try {
-      const result = await cancelSubscription();
+      const result = await cancelSubscription({
+        cancellationReason: reason,
+        cancellationReasonDetail: reasonDetail,
+      });
       if (result.success) {
         setCancelModalOpen(false);
         invalidateUserSubscriptionDetailsCache();
@@ -302,24 +306,11 @@ export default function ContenuBoutique({
     }
   };
 
-  const handleChooseAlternativePlan = (planId) => {
-    setCancelModalOpen(false);
-    setActiveTab("subscription");
-    void runWithAuth(() =>
-      startPayment(
-        planId === "image_9"
-          ? payImage9()
-          : planId === "pro_59"
-            ? payPro59()
-            : payPremium129(),
-      ),
-    );
-  };
-
   const refreshCredits = async () => {
     setRefreshing(true);
     try {
       invalidatePremiumAccessCache();
+      await syncSubscriptionFromStripe();
       await refreshSubscriptionDetails({ skipCache: true });
     } catch (err) {
       console.error("Erreur rafraîchissement abonnement:", err);
@@ -327,6 +318,13 @@ export default function ContenuBoutique({
       setRefreshing(false);
     }
   };
+
+  const formatSubscriptionPeriodEnd = (iso) =>
+    new Date(iso).toLocaleDateString("fr-FR", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
 
   const handleGiftFlowComplete = () => {
     setGiftModalDismissed(false);
@@ -440,60 +438,6 @@ export default function ContenuBoutique({
             </p>
           </div>
         </div>
-
-        <div className={m.statusRow}>
-          {subscriptionLoading ? (
-            <div className={`bg-white/5 border border-white/10 ${m.statusBadge}`}>
-              <Loader2 className={`animate-spin text-gray-400 ${m.statusBadgeIcon}`} />
-              <span className={`text-gray-400 ${m.statusBadgeText}`}>Chargement…</span>
-            </div>
-          ) : subscriptionDetails ? (
-            <div className={`bg-violet-500/10 border border-violet-500/30 ${m.statusBadge}`}>
-              <Crown className={`text-violet-400 ${m.statusBadgeIcon}`} />
-              <span className={m.statusBadgeText}>
-                {subscriptionDetails.planName}
-                {subscriptionDetails.isTrialing ? " — essai gratuit" : ""}
-                {subscriptionDetails.subscription.cancel_at_period_end ? " — fin prochaine" : ""}
-              </span>
-            </div>
-          ) : null}
-        </div>
-
-        {subscriptionDetails?.subscription && activeTab === "subscription" && !subscriptionLoading && (
-          <div
-            className={`mb-4 rounded-xl border border-violet-500/25 bg-violet-500/5 p-3 sm:p-4 ${isModal ? "max-md:mb-3 max-md:p-3" : ""}`}
-          >
-            <p className="text-sm text-gray-300">
-              Abonnement actuel :{" "}
-              <strong className="text-violet-200">{subscriptionDetails.planName}</strong>
-              {subscriptionDetails.subscription.cancel_at_period_end ? (
-                <span className="text-yellow-400">
-                  {" "}
-                  — se termine le{" "}
-                  {new Date(subscriptionDetails.subscription.current_period_end).toLocaleDateString(
-                    "fr-FR",
-                    { day: "numeric", month: "long", year: "numeric" },
-                  )}
-                </span>
-              ) : null}
-            </p>
-            {!subscriptionDetails.subscription.cancel_at_period_end ? (
-              <button
-                type="button"
-                onClick={handleCancelSubscription}
-                disabled={cancellingSubscription}
-                className="mt-3 inline-flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-300 transition-colors hover:bg-red-500/20 disabled:opacity-50"
-              >
-                {cancellingSubscription ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <XCircle className="h-4 w-4" />
-                )}
-                Annuler l&apos;abonnement
-              </button>
-            ) : null}
-          </div>
-        )}
       </div>
 
       {paymentStatus === "success" && (
@@ -592,6 +536,52 @@ export default function ContenuBoutique({
       )}
 
       {activeTab === "subscription" && (
+        <>
+          {subscriptionLoading ? (
+            <div
+              className={`mb-4 flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-gray-400 ${isModal ? "max-md:mb-3" : ""}`}
+            >
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Chargement de l&apos;abonnement…
+            </div>
+          ) : subscriptionDetails?.subscription ? (
+            <div
+              className={`mb-4 rounded-xl border border-violet-500/25 bg-violet-500/5 p-3 sm:p-4 ${isModal ? "max-md:mb-3 max-md:p-3" : ""}`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm text-gray-300">
+                  Abonnement actuel :{" "}
+                  <strong className="text-violet-200">{subscriptionDetails.planName}</strong>
+                  {subscriptionDetails.isTrialing ? (
+                    <span className="text-emerald-400"> (essai gratuit)</span>
+                  ) : null}
+                  <span className="text-gray-400">
+                    {" "}
+                    — {subscriptionDetails.isTrialing ? "fin de l'essai le" : "renouvellement le"}{" "}
+                    {formatSubscriptionPeriodEnd(
+                      subscriptionDetails.subscription.current_period_end,
+                    )}
+                  </span>
+                </p>
+                <button
+                  type="button"
+                  onClick={handleCancelSubscription}
+                  disabled={cancellingSubscription}
+                  className="inline-flex shrink-0 items-center rounded-lg border border-red-500/40 bg-red-500/15 px-3 py-1.5 text-xs font-semibold text-red-200 transition-colors hover:bg-red-500/25 disabled:opacity-50"
+                >
+                  {cancellingSubscription ? (
+                    <>
+                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                      Annulation…
+                    </>
+                  ) : (
+                    "Annuler"
+                  )}
+                </button>
+              </div>
+            </div>
+          ) : null}
+
         <div className={m.gridSubs}>
           {SUBSCRIPTION_PLANS.map((plan) => {
             const isHighlighted = highlightPlanId === plan.id;
@@ -729,6 +719,7 @@ export default function ContenuBoutique({
             );
           })}
         </div>
+        </>
       )}
       </div>
 
@@ -746,7 +737,6 @@ export default function ContenuBoutique({
         currentPlanKey={subscriptionDetails?.planKey ?? null}
         currentPlanName={subscriptionDetails?.planName ?? null}
         onConfirmCancel={executeCancelSubscription}
-        onChooseAlternativePlan={handleChooseAlternativePlan}
         cancelling={cancellingSubscription}
       />
 

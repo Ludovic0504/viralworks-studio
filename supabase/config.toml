@@ -42,6 +42,10 @@ verify_jwt = false
 [functions.validate-display-name]
 verify_jwt = false
 
+# Connexion email sans CAPTCHA navigateur (service role côté serveur ; inscription garde Turnstile).
+[functions.auth-email-sign-in]
+verify_jwt = false
+
 # Auth Hook Supabase : before-user-created (secret AUTH_HOOK_SECRET).
 [functions.auth-before-user-created]
 verify_jwt = false

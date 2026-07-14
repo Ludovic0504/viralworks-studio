@@ -484,12 +484,15 @@ export default function Profil() {
     setCancelModalOpen(true);
   };
 
-  const executeCancelSubscription = async () => {
+  const executeCancelSubscription = async ({ reason, reasonDetail }) => {
     if (!subscription) return;
 
     setCancellingSubscription(true);
     try {
-      const result = await cancelSubscription();
+      const result = await cancelSubscription({
+        cancellationReason: reason,
+        cancellationReasonDetail: reasonDetail,
+      });
       if (result.success) {
         setCancelModalOpen(false);
         alert(result.message || "Abonnement annulé avec succès. Il restera actif jusqu'à la fin de la période.");
@@ -503,19 +506,6 @@ export default function Profil() {
     } finally {
       setCancellingSubscription(false);
     }
-  };
-
-  const handleChooseAlternativePlan = (planId) => {
-    setCancelModalOpen(false);
-    void runWithAuth(() =>
-      startPayment(
-        planId === "image_9"
-          ? payImage9()
-          : planId === "pro_59"
-            ? payPro59()
-            : payPremium129(),
-      ),
-    );
   };
 
   const handleDownloadImage = async (url, format = "png") => {
@@ -2015,7 +2005,6 @@ export default function Profil() {
         currentPlanKey={subscriptionPlanKey}
         currentPlanName={subscriptionPlanName}
         onConfirmCancel={executeCancelSubscription}
-        onChooseAlternativePlan={handleChooseAlternativePlan}
         cancelling={cancellingSubscription}
       />
     </div>
