@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { X } from "lucide-react";
 import AuthFormCard from "@/composants/auth/AuthFormCard";
+import { useT } from "@/contexte/FournisseurLocale";
 
 export default function AuthModal({
   open,
@@ -8,6 +9,8 @@ export default function AuthModal({
   onAuthSuccess,
   initialMode = "signin",
 }) {
+  const t = useT();
+
   useEffect(() => {
     if (!open) return undefined;
     const onKeyDown = (event) => {
@@ -32,13 +35,13 @@ export default function AuthModal({
         onClick={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-label="Connexion"
+        aria-label={t("auth.login")}
       >
         <button
           type="button"
           onClick={() => onClose?.()}
           className="absolute right-3 top-3 p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-gray-200 transition-colors"
-          aria-label="Fermer"
+          aria-label={t("common.close")}
         >
           <X className="w-4 h-4" />
         </button>

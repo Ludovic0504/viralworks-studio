@@ -25,6 +25,11 @@ import { fillTemplateSlotDefaults } from "@/bibliotheque/imageStudio/promptTempl
 import { IMAGE_STUDIO_PRODUCT_MENTION_TOKEN } from "@/bibliotheque/imageStudio/imageStudioGuideApply";
 import { readGuideProductImageFile } from "@/bibliotheque/imageStudio/guideProductImage";
 import GuideProductImagePicker from "@/composants/image/GuideProductImagePicker";
+import { useImageStudioChatbotTr } from "@/bibliotheque/i18n/useImageStudioChatbotTr";
+import {
+  translateHintOption,
+  translateLabeledOptions,
+} from "@/bibliotheque/i18n/chatbotTranslate";
 
 /** @typedef {'gender' | 'ambiance' | 'cameraAngle' | 'gaze' | 'distance' | 'action' | 'environment' | 'product' | 'physical' | 'format' | 'ready'} BrandCampaignGuideStep */
 
@@ -63,7 +68,7 @@ function ConversationBubble({ role, children, wide = false, visible = true }) {
   );
 }
 
-function TypingIndicator({ visible = true }) {
+function TypingIndicator({ visible = true, typingLabel = "Le guide écrit…" }) {
   if (!visible) return null;
 
   return (
@@ -73,7 +78,7 @@ function TypingIndicator({ visible = true }) {
       </span>
       <div
         className="image-studio-prompt-guide-typing image-studio-prompt-guide-bubble--enter"
-        aria-label="Le guide écrit…"
+        aria-label={typingLabel}
         role="status"
       >
         <span />
@@ -117,10 +122,10 @@ function useConversationBotVisibility(botTurnKeys) {
   return { isBotVisible, isTyping };
 }
 
-function AmbianceButtons({ selectedId, disabled, onSelect }) {
+function AmbianceButtons({ options, selectedId, disabled, onSelect, ariaLabel = "Ambiance" }) {
   return (
-    <div className="image-studio-prompt-ugc-option-row" role="radiogroup" aria-label="Ambiance">
-      {BRAND_CAMPAIGN_AMBIANCE_OPTIONS.map((option) => (
+    <div className="image-studio-prompt-ugc-option-row" role="radiogroup" aria-label={ariaLabel}>
+      {options.map((option) => (
         <button
           key={option.id}
           type="button"
@@ -139,14 +144,14 @@ function AmbianceButtons({ selectedId, disabled, onSelect }) {
   );
 }
 
-function CameraAngleButtons({ selectedId, disabled, onSelect }) {
+function CameraAngleButtons({ options, selectedId, disabled, onSelect, ariaLabel = "Angle de la caméra" }) {
   return (
     <div
       className="image-studio-prompt-brand-camera-angle-list"
       role="radiogroup"
-      aria-label="Angle de la caméra"
+      aria-label={ariaLabel}
     >
-      {BRAND_CAMPAIGN_CAMERA_ANGLE_OPTIONS.map((option) => {
+      {options.map((option) => {
         const selected = selectedId === option.id;
         return (
           <button
@@ -211,6 +216,38 @@ export default function BrandCampaignShootPromptGuideChat({
   onApplyPrompt,
   onClose,
 }) {
+  const { ui, tr, template: localizeTemplate, locale } = useImageStudioChatbotTr();
+  const localizedTemplate = useMemo(
+    () => localizeTemplate(template),
+    [localizeTemplate, template, locale],
+  );
+  const localizedAmbianceOptions = useMemo(
+    () => translateLabeledOptions(BRAND_CAMPAIGN_AMBIANCE_OPTIONS, tr, "chatbot.brand.ambiance"),
+    [tr],
+  );
+  const localizedCameraAngleOptions = useMemo(
+    () =>
+      BRAND_CAMPAIGN_CAMERA_ANGLE_OPTIONS.map((option) =>
+        translateHintOption(option, tr, "chatbot.brand.cameraAngle"),
+      ),
+    [tr],
+  );
+  const localizedDistanceOptions = useMemo(
+    () => translateLabeledOptions(BRAND_CAMPAIGN_DISTANCE_OPTIONS, tr, "chatbot.brand.distance"),
+    [tr],
+  );
+  const localizedMorphologyOptions = useMemo(
+    () => translateLabeledOptions(BRAND_CAMPAIGN_MORPHOLOGY_OPTIONS, tr, "chatbot.brand.morphology"),
+    [tr],
+  );
+  const localizedFormatOptions = useMemo(
+    () => [
+      { id: "feed", label: ui("brandFormatFeed", "Feed (4:5)") },
+      { id: "story", label: ui("brandFormatStory", "Story/Reel (9:16)") },
+    ],
+    [ui],
+  );
+
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -237,22 +274,35 @@ export default function BrandCampaignShootPromptGuideChat({
   const [guideProductImageError, setGuideProductImageError] = useState(null);
 
   const ambiance = useMemo(
-    () => BRAND_CAMPAIGN_AMBIANCE_OPTIONS.find((item) => item.id === ambianceId) ?? null,
-    [ambianceId],
+    () => localizedAmbianceOptions.find((item) => item.id === ambianceId) ?? null,
+    [ambianceId, localizedAmbianceOptions],
   );
 
   const actionOptions = useMemo(
-    () => (ambianceId ? buildBankOptions(BRAND_CAMPAIGN_ACTION_BANKS[ambianceId], "action") : []),
-    [ambianceId],
+    () =>
+      ambianceId
+        ? translateLabeledOptions(
+            buildBankOptions(BRAND_CAMPAIGN_ACTION_BANKS[ambianceId], "action"),
+            tr,
+            `chatbot.brand.action.${ambianceId}`,
+          )
+        : [],
+    [ambianceId, tr],
   );
 
   const environmentOptions = useMemo(
     () =>
-      ambianceId ? buildBankOptions(BRAND_CAMPAIGN_ENVIRONMENT_BANKS[ambianceId], "env") : [],
-    [ambianceId],
+      ambianceId
+        ? translateLabeledOptions(
+            buildBankOptions(BRAND_CAMPAIGN_ENVIRONMENT_BANKS[ambianceId], "env"),
+            tr,
+            `chatbot.brand.environment.${ambianceId}`,
+          )
+        : [],
+    [ambianceId, tr],
   );
 
-  const filledSlots = useMemo(() => fillTemplateSlotDefaults(template, slots), [template, slots]);
+  const filledSlots = useMemo(() => fillTemplateSlotDefaults(localizedTemplate, slots), [localizedTemplate, slots]);
 
   const assembledPrompt = useMemo(() => {
     if (!ready) return "";
@@ -493,57 +543,63 @@ export default function BrandCampaignShootPromptGuideChat({
           type="text"
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
-          placeholder="Ex. navy Lacoste polo with yellow shoulder stripes…"
+          placeholder={ui("brandOutfitPlaceholder", "Ex. navy Lacoste polo with yellow shoulder stripes…")}
           className="image-studio-prompt-guide-input"
-          aria-label="Tenue ou produit"
+          aria-label={ui("brandOutfitAria", "Tenue ou produit")}
         />
         <button
           type="submit"
           className="image-studio-prompt-guide-send"
           disabled={!canSubmitGuideProduct}
-          aria-label="Envoyer"
+          aria-label={ui("send", "Envoyer")}
         >
           <SendHorizontal className="h-4 w-4" strokeWidth={2.25} />
         </button>
       </form>
     ) : null;
 
-  const genderLabel = gender === "homme" ? "Homme" : gender === "femme" ? "Femme" : null;
+  const genderLabel =
+    gender === "homme"
+      ? ui("ugcGenderHomme", "Homme")
+      : gender === "femme"
+        ? ui("ugcGenderFemme", "Femme")
+        : null;
   const cameraAngleLabel =
-    BRAND_CAMPAIGN_CAMERA_ANGLE_OPTIONS.find((item) => item.id === cameraAngleId)?.label ?? null;
+    localizedCameraAngleOptions.find((item) => item.id === cameraAngleId)?.label ?? null;
   const gazeLabel =
     gazeId === "vers-camera"
-      ? "Oui, vers la caméra"
+      ? ui("brandGazeYes", "Oui, vers la caméra")
       : gazeId === "regard-ailleurs"
-        ? "Non, regard ailleurs"
+        ? ui("brandGazeNo", "Non, regard ailleurs")
         : null;
   const distanceLabel =
-    BRAND_CAMPAIGN_DISTANCE_OPTIONS.find((item) => item.id === distanceId)?.label ?? null;
+    localizedDistanceOptions.find((item) => item.id === distanceId)?.label ?? null;
+  const surpriseLabel = ui("surpriseMe", "Surprends-moi");
   const actionLabel =
     actionChoiceId === "surprise"
-      ? "Surprends-moi"
+      ? surpriseLabel
       : actionOptions.find((item) => item.id === actionChoiceId)?.label ?? null;
   const environmentLabel =
     environmentChoiceId === "surprise"
-      ? "Surprends-moi"
+      ? surpriseLabel
       : environmentOptions.find((item) => item.id === environmentChoiceId)?.label ?? null;
   const productOutfit = slots.productOutfit?.trim() ?? "";
   const physicalAnswerLabel = useMemo(() => {
     if (guideStep === "physical") return null;
-    if (slots.physicalMode === "random") return "Garder aléatoire";
+    if (slots.physicalMode === "random") return ui("brandKeepRandom", "Garder aléatoire");
     if (slots.physicalMode === "manual" && physicalAge && physicalMorphology) {
       const morphologyLabel =
-        BRAND_CAMPAIGN_MORPHOLOGY_OPTIONS.find((item) => item.id === physicalMorphology)?.label ??
+        localizedMorphologyOptions.find((item) => item.id === physicalMorphology)?.label ??
         physicalMorphology;
-      return `${physicalAge} ans, ${morphologyLabel}`;
+      return `${physicalAge} ${ui("brandAgeYears", "ans")}, ${morphologyLabel}`;
     }
     return null;
-  }, [guideStep, physicalAge, physicalMorphology, slots.physicalMode]);
+  }, [guideStep, localizedMorphologyOptions, physicalAge, physicalMorphology, slots.physicalMode, ui]);
   const formatLabel =
     outputFormat === "story"
-      ? "Story/Reel (9:16)"
+      ? localizedFormatOptions.find((item) => item.id === "story")?.label ?? null
       : outputFormat === "feed"
-        ? "Feed (4:5)"
+        ? localizedFormatOptions.find((item) => item.id === "feed")?.label ?? null
         : null;
 
   const physicalStepActive = guideStep === "physical";
@@ -596,7 +652,7 @@ export default function BrandCampaignShootPromptGuideChat({
         onClick={() => setAdjustOpen((open) => !open)}
         aria-expanded={adjustOpen}
       >
-        Ajuster les champs
+        {ui("adjustFields", "Ajuster les champs")}
         {adjustOpen ? (
           <ChevronUp className="h-3.5 w-3.5 shrink-0" strokeWidth={2.25} />
         ) : (
@@ -606,7 +662,7 @@ export default function BrandCampaignShootPromptGuideChat({
 
       {adjustOpen ? (
         <div className="image-studio-prompt-guide-fields">
-          {template.variables.map((variable) => (
+          {localizedTemplate.variables.map((variable) => (
             <label key={variable.key} className="image-studio-prompt-guide-field">
               <span>{variable.label}</span>
               <input
@@ -625,7 +681,7 @@ export default function BrandCampaignShootPromptGuideChat({
         className="image-studio-prompt-guide-apply btn-vws-primary"
         onClick={handleApply}
       >
-        Appliquer au prompt
+        {ui("applyPrompt", "Appliquer au prompt")}
       </button>
     </div>
   ) : null;
@@ -637,12 +693,12 @@ export default function BrandCampaignShootPromptGuideChat({
           type="button"
           className="image-studio-prompt-guide-back"
           onClick={onBack}
-          aria-label="Retour aux modèles"
+          aria-label={ui("back", "Retour aux modèles")}
         >
           <ArrowLeft className="h-4 w-4" strokeWidth={2.25} />
         </button>
         <div className="image-studio-prompt-guide-chat-title-row">
-          <p className="image-studio-prompt-guide-chat-title">{template.label}</p>
+          <p className="image-studio-prompt-guide-chat-title">{localizedTemplate.label}</p>
           <span className="pulse-dot pulse-dot--online shrink-0" aria-hidden="true" />
         </div>
       </div>
@@ -653,26 +709,28 @@ export default function BrandCampaignShootPromptGuideChat({
         aria-live="polite"
       >
         <ConversationBubble role="bot" visible={isBotVisible("gender")}>
-          <p className="image-studio-prompt-guide-bubble-text">Qui présente le produit ?</p>
+          <p className="image-studio-prompt-guide-bubble-text">
+            {ui("brandPresenterQuestion", "Qui présente le produit ?")}
+          </p>
           {guideStep === "gender" ? (
             <div
               className="image-studio-prompt-guide-elements-actions image-studio-prompt-guide-bubble-actions"
               role="group"
-              aria-label="Sexe"
+              aria-label={ui("ugcGenderAria", "Sexe")}
             >
               <button
                 type="button"
                 className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
                 onClick={() => handleGenderSelect("homme")}
               >
-                Homme
+                {ui("ugcGenderHomme", "Homme")}
               </button>
               <button
                 type="button"
                 className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
                 onClick={() => handleGenderSelect("femme")}
               >
-                Femme
+                {ui("ugcGenderFemme", "Femme")}
               </button>
             </div>
           ) : null}
@@ -686,12 +744,16 @@ export default function BrandCampaignShootPromptGuideChat({
 
         {gender ? (
           <ConversationBubble role="bot" visible={isBotVisible("ambiance")}>
-            <p className="image-studio-prompt-guide-bubble-text">Quelle ambiance pour ce shooting ?</p>
+            <p className="image-studio-prompt-guide-bubble-text">
+              {ui("brandAmbianceQuestion", "Quelle ambiance pour ce shooting ?")}
+            </p>
             {guideStep === "ambiance" ? (
               <AmbianceButtons
+                options={localizedAmbianceOptions}
                 selectedId={ambianceId}
                 disabled={false}
                 onSelect={handleAmbianceSelect}
+                ariaLabel={ui("ambianceQuestion", "Ambiance")}
               />
             ) : null}
           </ConversationBubble>
@@ -705,12 +767,16 @@ export default function BrandCampaignShootPromptGuideChat({
 
         {ambianceId ? (
           <ConversationBubble role="bot" wide visible={isBotVisible("cameraAngle")}>
-            <p className="image-studio-prompt-guide-bubble-text">D&apos;où vient le regard de la caméra ?</p>
+            <p className="image-studio-prompt-guide-bubble-text">
+              {ui("brandCameraQuestion", "D'où vient le regard de la caméra ?")}
+            </p>
             {guideStep === "cameraAngle" ? (
               <CameraAngleButtons
+                options={localizedCameraAngleOptions}
                 selectedId={cameraAngleId}
                 disabled={false}
                 onSelect={handleCameraAngleSelect}
+                ariaLabel={ui("brandCameraAria", "Angle de la caméra")}
               />
             ) : null}
           </ConversationBubble>
@@ -725,27 +791,27 @@ export default function BrandCampaignShootPromptGuideChat({
         {cameraAngleId && cameraAngleId !== "face-a-face" ? (
           <ConversationBubble role="bot" visible={isBotVisible("gaze")}>
             <p className="image-studio-prompt-guide-bubble-text">
-              La personne regarde-t-elle la caméra ?
+              {ui("brandGazeQuestion", "La personne regarde-t-elle la caméra ?")}
             </p>
             {guideStep === "gaze" ? (
               <div
                 className="image-studio-prompt-guide-elements-actions image-studio-prompt-guide-bubble-actions"
                 role="group"
-                aria-label="Regard"
+                aria-label={ui("brandGazeAria", "Regard")}
               >
                 <button
                   type="button"
                   className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
                   onClick={() => handleGazeSelect("vers-camera")}
                 >
-                  Oui, vers la caméra
+                  {ui("brandGazeYes", "Oui, vers la caméra")}
                 </button>
                 <button
                   type="button"
                   className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
                   onClick={() => handleGazeSelect("regard-ailleurs")}
                 >
-                  Non, regard ailleurs
+                  {ui("brandGazeNo", "Non, regard ailleurs")}
                 </button>
               </div>
             ) : null}
@@ -760,14 +826,16 @@ export default function BrandCampaignShootPromptGuideChat({
 
         {cameraAngleId ? (
           <ConversationBubble role="bot" visible={isBotVisible("distance")}>
-            <p className="image-studio-prompt-guide-bubble-text">À quelle distance de la personne ?</p>
+            <p className="image-studio-prompt-guide-bubble-text">
+              {ui("brandDistanceQuestion", "À quelle distance de la personne ?")}
+            </p>
             {guideStep === "distance" ? (
               <div
                 className="image-studio-prompt-guide-elements-actions image-studio-prompt-guide-bubble-actions"
                 role="group"
-                aria-label="Distance"
+                aria-label={ui("brandDistanceAria", "Distance")}
               >
-                {BRAND_CAMPAIGN_DISTANCE_OPTIONS.map((option) => (
+                {localizedDistanceOptions.map((option) => (
                   <button
                     key={option.id}
                     type="button"
@@ -790,7 +858,9 @@ export default function BrandCampaignShootPromptGuideChat({
 
         {distanceId ? (
           <ConversationBubble role="bot" wide visible={isBotVisible("action")}>
-            <p className="image-studio-prompt-guide-bubble-text">Quelle pose ou action ?</p>
+            <p className="image-studio-prompt-guide-bubble-text">
+              {ui("brandActionQuestion", "Quelle pose ou action ?")}
+            </p>
             {guideStep === "action" ? (
               <BankOptionGrid
                 options={actionOptions}
@@ -798,6 +868,7 @@ export default function BrandCampaignShootPromptGuideChat({
                 disabled={false}
                 onSelect={handleActionSelect}
                 onSurprise={handleActionSurprise}
+                surpriseLabel={surpriseLabel}
               />
             ) : null}
           </ConversationBubble>
@@ -811,7 +882,9 @@ export default function BrandCampaignShootPromptGuideChat({
 
         {slots.action ? (
           <ConversationBubble role="bot" wide visible={isBotVisible("environment")}>
-            <p className="image-studio-prompt-guide-bubble-text">Où se déroule la scène ?</p>
+            <p className="image-studio-prompt-guide-bubble-text">
+              {ui("brandEnvironmentQuestion", "Où se déroule la scène ?")}
+            </p>
             {guideStep === "environment" ? (
               <BankOptionGrid
                 options={environmentOptions}
@@ -819,6 +892,7 @@ export default function BrandCampaignShootPromptGuideChat({
                 disabled={false}
                 onSelect={handleEnvironmentSelect}
                 onSurprise={handleEnvironmentSurprise}
+                surpriseLabel={surpriseLabel}
               />
             ) : null}
           </ConversationBubble>
@@ -833,7 +907,7 @@ export default function BrandCampaignShootPromptGuideChat({
         {slots.environment ? (
           <ConversationBubble role="bot" visible={isBotVisible("product")}>
             <p className="image-studio-prompt-guide-bubble-text">
-              Décris la tenue ou le produit à mettre en avant
+              {ui("brandOutfitQuestion", "Décris la tenue ou le produit à mettre en avant")}
             </p>
             {guideStep === "product" ? (
               <>
@@ -851,7 +925,7 @@ export default function BrandCampaignShootPromptGuideChat({
 
         {productValidationShown ? (
           <ConversationBubble role="bot" visible={isBotVisible("product-validation")}>
-            <p className="image-studio-prompt-guide-bubble-text">{template.botAskRequired}</p>
+            <p className="image-studio-prompt-guide-bubble-text">{localizedTemplate.botAskRequired}</p>
           </ConversationBubble>
         ) : null}
 
@@ -875,13 +949,13 @@ export default function BrandCampaignShootPromptGuideChat({
         {productOutfit ? (
           <ConversationBubble role="bot" wide visible={isBotVisible("physical")}>
             <p className="image-studio-prompt-guide-bubble-text">
-              Veux-tu préciser l&apos;apparence physique ?
+              {ui("brandPhysicalQuestion", "Veux-tu préciser l'apparence physique ?")}
             </p>
             {physicalStepActive ? (
               <>
                 <div className="image-studio-prompt-ugc-option-group">
-                  <p className="image-studio-prompt-ugc-option-group-label">Âge</p>
-                  <div className="image-studio-prompt-ugc-option-row" role="group" aria-label="Âge">
+                  <p className="image-studio-prompt-ugc-option-group-label">{ui("ugcAgeQuestion", "Âge")}</p>
+                  <div className="image-studio-prompt-ugc-option-row" role="group" aria-label={ui("ugcAgeAria", "Âge")}>
                     {BRAND_CAMPAIGN_AGE_OPTIONS.map((age) => (
                       <button
                         key={age}
@@ -891,19 +965,21 @@ export default function BrandCampaignShootPromptGuideChat({
                         }`}
                         onClick={() => setPhysicalAge(age)}
                       >
-                        {age} ans
+                        {age} {ui("brandAgeYears", "ans")}
                       </button>
                     ))}
                   </div>
                 </div>
                 <div className="image-studio-prompt-ugc-option-group">
-                  <p className="image-studio-prompt-ugc-option-group-label">Morphologie</p>
+                  <p className="image-studio-prompt-ugc-option-group-label">
+                    {ui("brandMorphology", "Morphologie")}
+                  </p>
                   <div
                     className="image-studio-prompt-ugc-option-row"
                     role="group"
-                    aria-label="Morphologie"
+                    aria-label={ui("brandMorphology", "Morphologie")}
                   >
-                    {BRAND_CAMPAIGN_MORPHOLOGY_OPTIONS.map((option) => (
+                    {localizedMorphologyOptions.map((option) => (
                       <button
                         key={option.id}
                         type="button"
@@ -923,7 +999,7 @@ export default function BrandCampaignShootPromptGuideChat({
                     className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
                     onClick={handlePhysicalRandom}
                   >
-                    Garder aléatoire
+                    {ui("brandKeepRandom", "Garder aléatoire")}
                   </button>
                   {canConfirmPhysical ? (
                     <button
@@ -931,7 +1007,7 @@ export default function BrandCampaignShootPromptGuideChat({
                       className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
                       onClick={handlePhysicalConfirm}
                     >
-                      Valider
+                      {ui("ugcConfirm", "Valider")}
                     </button>
                   ) : null}
                 </div>
@@ -948,33 +1024,31 @@ export default function BrandCampaignShootPromptGuideChat({
 
         {guideStep === "format" || ready ? (
           <ConversationBubble role="bot" visible={isBotVisible("format")}>
-            <p className="image-studio-prompt-guide-bubble-text">Feed ou Story ?</p>
+            <p className="image-studio-prompt-guide-bubble-text">
+              {ui("brandFormatQuestion", "Feed ou Story ?")}
+            </p>
             {guideStep === "format" && !ready ? (
               <div
                 className="image-studio-prompt-guide-elements-actions image-studio-prompt-guide-bubble-actions"
                 role="group"
-                aria-label="Format de sortie"
+                aria-label={ui("brandFormatAria", "Format de sortie")}
               >
-                <button
-                  type="button"
-                  className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
-                  onClick={() => handleFormatSelect("feed")}
-                >
-                  Feed (4:5)
-                </button>
-                <button
-                  type="button"
-                  className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
-                  onClick={() => handleFormatSelect("story")}
-                >
-                  Story/Reel (9:16)
-                </button>
+                {localizedFormatOptions.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
+                    onClick={() => handleFormatSelect(option.id)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
                 <button
                   type="button"
                   className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
                   onClick={handleFormatSkip}
                 >
-                  Passer
+                  {ui("pass", "Passer")}
                 </button>
               </div>
             ) : null}
@@ -993,7 +1067,7 @@ export default function BrandCampaignShootPromptGuideChat({
           </ConversationBubble>
         ) : null}
 
-        <TypingIndicator visible={isTyping} />
+        <TypingIndicator visible={isTyping} typingLabel={ui("typing", "Le guide écrit…")} />
         <div ref={messagesEndRef} />
       </div>
     </div>

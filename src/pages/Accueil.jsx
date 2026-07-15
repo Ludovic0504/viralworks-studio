@@ -3,6 +3,7 @@ import { ArrowRight } from "lucide-react";
 import LienNavSync from "@/composants/disposition/LienNavSync";
 import AccueilDemoVideo from "@/composants/accueil/AccueilDemoVideo";
 import { PROMO_ACQUISITION_IMAGES } from "@/bibliotheque/promo/imagesPromo";
+import { useT } from "@/contexte/FournisseurLocale";
 
 function subscribeMobileMax767(cb) {
   const mq = window.matchMedia("(max-width: 767px)");
@@ -38,6 +39,7 @@ function AccueilPromoImageCard({ src, alt, className }) {
 }
 
 export default function Accueil() {
+  const t = useT();
   const isMobileLayout = useSyncExternalStore(
     subscribeMobileMax767,
     getMobileMax767Snapshot,
@@ -50,11 +52,11 @@ export default function Accueil() {
 
   const demoVideos = useMemo(
     () => [
-      { src: demoVideoChantierUrl || "/videos/chantier.mp4", label: "Artisan" },
-      { src: demoVideoMoteurUrl || "/videos/moteur.mp4", label: "E-commerçant" },
-      { src: demoVideoYachtUrl || "/videos/yacht.mp4", label: "UGC" },
+      { src: demoVideoChantierUrl || "/videos/chantier.mp4", label: t("accueil.demoArtisan") },
+      { src: demoVideoMoteurUrl || "/videos/moteur.mp4", label: t("accueil.demoEcom") },
+      { src: demoVideoYachtUrl || "/videos/yacht.mp4", label: t("accueil.demoUgc") },
     ],
-    [demoVideoChantierUrl, demoVideoMoteurUrl, demoVideoYachtUrl]
+    [demoVideoChantierUrl, demoVideoMoteurUrl, demoVideoYachtUrl, t]
   );
 
   const preloadSide = isMobileLayout ? "none" : "metadata";
@@ -71,22 +73,22 @@ export default function Accueil() {
                   <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5">
                     <span className="accueil-badge-dot h-1.5 w-1.5 shrink-0 rounded-full bg-[#34d399]" />
                     <span className="text-[9px] font-bold uppercase tracking-[0.13em] text-emerald-300/90">
-                      Vidéos IA · TikTok · Reels · Shorts
+                      {t("accueil.badge")}
                     </span>
                   </div>
                 </div>
 
                 <h1 className="accueil-fade-up accueil-fade-up-d2 mb-2 font-black tracking-tight text-white/[0.93] max-md:text-[clamp(24px,7.2vw,32px)] max-md:leading-[0.92] text-[clamp(30px,5.2vw,52px)] leading-[0.9] md:mb-3">
-                  <span className="block">Créez des vidéos</span>
-                  <span className="block">qui attirent</span>
+                  <span className="block">{t("accueil.titleLine1")}</span>
+                  <span className="block">{t("accueil.titleLine2")}</span>
                   <span className="block bg-gradient-to-br from-[#21f3b9] from-0% via-[#818cf8] via-[42%] to-[#facc15] to-100% bg-clip-text text-transparent">
-                    l'attention.
+                    {t("accueil.titleLine3")}
                   </span>
                 </h1>
 
                 <p className="accueil-fade-up accueil-fade-up-d3 mb-3 max-w-[440px] max-md:mb-2 max-md:text-[12px] max-md:leading-snug text-sm leading-relaxed text-white/[0.36] max-[580px]:mx-auto md:mb-4">
-                  L&apos;outil IA des entrepreneurs qui veulent publier tous les jours sur TikTok, Reels et Shorts —{" "}
-                  <strong className="font-medium text-white/[0.58]">sans y passer des heures.</strong>
+                  {t("accueil.subtitle")}{" "}
+                  <strong className="font-medium text-white/[0.58]">{t("accueil.subtitleStrong")}</strong>
                 </p>
 
                 <div className="accueil-fade-up accueil-fade-up-d4 relative z-20 mb-2 flex flex-wrap items-center gap-2 max-md:mb-1.5 max-md:gap-2 md:mb-3 md:gap-2.5 max-[580px]:justify-center">
@@ -94,28 +96,28 @@ export default function Accueil() {
                     to="/viralworks"
                     className="group inline-flex items-center gap-2 rounded-[11px] bg-[#21f3b9] px-5 py-3 text-sm font-extrabold text-[#07090f] shadow-[0_0_28px_rgba(33,243,185,0.26)] transition-all duration-200 hover:-translate-y-px hover:shadow-[0_0_44px_rgba(33,243,185,0.42)] max-md:px-4 max-md:py-2.5 max-md:text-[13px]"
                   >
-                    <span>Créer ma vidéo</span>
+                    <span>{t("accueil.ctaCreate")}</span>
                     <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5" />
                   </LienNavSync>
                   <LienNavSync
                     to="/lab"
                     className="relative z-20 inline-flex items-center rounded-[11px] border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-[13px] font-semibold text-white/35 transition-all duration-200 hover:bg-white/[0.06] hover:text-white/60 max-md:px-3.5 max-md:py-2.5 max-md:text-xs"
                   >
-                    Voir les nouveautés
+                    {t("accueil.ctaLab")}
                   </LienNavSync>
                 </div>
 
                 <div className="accueil-fade-up accueil-fade-up-d4 mb-2 flex flex-wrap items-center gap-2 text-[10px] font-medium text-white/25 max-md:mb-0 max-[580px]:justify-center md:mb-0 md:gap-3">
                   <span className="inline-flex items-center gap-1.5">
-                    <span className="text-[#21f3b9]">✓</span> Sans abonnement caché
+                    <span className="text-[#21f3b9]">✓</span> {t("accueil.perkNoHidden")}
                   </span>
                   <span className="hidden h-2.5 w-px bg-white/10 sm:block" aria-hidden />
                   <span className="inline-flex items-center gap-1.5">
-                    <span className="text-[#21f3b9]">✓</span> Prêt en 60 secondes
+                    <span className="text-[#21f3b9]">✓</span> {t("accueil.perkFast")}
                   </span>
                   <span className="hidden h-2.5 w-px bg-white/10 sm:block" aria-hidden />
                   <span className="inline-flex items-center gap-1.5">
-                    <span className="text-[#21f3b9]">✓</span> Qualité pro
+                    <span className="text-[#21f3b9]">✓</span> {t("accueil.perkPro")}
                   </span>
                 </div>
               </div>
@@ -221,10 +223,10 @@ export default function Accueil() {
                 id="accueil-image-promo-title"
                 className="accueil-fade-up accueil-fade-up-d1 mb-3 text-left font-black tracking-tight text-white/[0.93] text-[clamp(22px,4.5vw,36px)] leading-[1.05] md:mb-4"
               >
-                Génère des visuels produits avec NanaBanana Pro
+                {t("promo.accueilTitle")}
               </h2>
               <p className="accueil-fade-up accueil-fade-up-d2 mb-8 max-w-[560px] text-left text-sm leading-relaxed text-white/[0.36] sm:mb-10 sm:text-[15px] md:mb-8">
-                7 jours gratuits — E-commerce, UGC, artisans.
+                {t("promo.accueilSubtitle")}
               </p>
 
               <div className="accueil-fade-up accueil-fade-up-d4 flex justify-start">
@@ -232,7 +234,7 @@ export default function Accueil() {
                   to="/image-studio"
                   className="group inline-flex items-center gap-2 rounded-[11px] bg-[#21f3b9] px-5 py-3 text-sm font-extrabold text-[#07090f] shadow-[0_0_28px_rgba(33,243,185,0.26)] transition-all duration-200 hover:-translate-y-px hover:shadow-[0_0_44px_rgba(33,243,185,0.42)] max-md:px-4 max-md:py-2.5 max-md:text-[13px]"
                 >
-                  <span>Essayer Image Studio →</span>
+                  <span>{t("promo.accueilCta")}</span>
                 </LienNavSync>
               </div>
             </div>

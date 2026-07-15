@@ -2,8 +2,10 @@ import { Link, useLocation } from "react-router-dom";
 import { FileText } from "lucide-react";
 import { PAGE_SHELL_INNER_CLASS } from "@/bibliotheque/disposition/dashboardShellLayout";
 import { useStudioLayoutOptions } from "@/contexte/StudioLayoutOptionsContext";
+import { useT } from "@/contexte/FournisseurLocale";
 
 export default function Footer({ compact = false }) {
+  const t = useT();
   const currentYear = new Date().getFullYear();
   const { hideGlobalFooterOnMobile } = useStudioLayoutOptions();
   const location = useLocation();
@@ -37,11 +39,11 @@ export default function Footer({ compact = false }) {
               }`}
             >
               <FileText className={isAccueilCompact ? "w-3 h-3" : "w-3.5 h-3.5"} />
-              <span>Mentions légales</span>
+              <span>{t("footer.legal")}</span>
             </Link>
           </div>
           <div className={`text-gray-400 ${isAccueilCompact ? "text-[11px] sm:text-xs" : "text-sm"}`}>
-            © {currentYear} ViralWorks Studio. Tous droits réservés.
+            {t("footer.copyright", { year: currentYear })}
           </div>
         </div>
       </div>

@@ -9,6 +9,7 @@ import { getUserProfile, readCachedUserProfile } from "@/bibliotheque/supabase/p
 import { getUserSubscriptionDetails, readCachedUserSubscriptionDetails } from "@/bibliotheque/supabase/stripe";
 import { subscriptionIncludesVideoCredits } from "@/bibliotheque/supabase/subscriptionPlans";
 import { useBoutiqueModal } from "@/contexte/ContexteModalBoutique";
+import { useT } from "@/contexte/FournisseurLocale";
 
 const RING_R = 17;
 const RING_C = 2 * Math.PI * RING_R;
@@ -32,7 +33,7 @@ function initialsFromNameOrEmail(displayName, email) {
   return "?";
 }
 
-function resolveDisplayName(profile, session) {
+function resolveDisplayName(profile, session, fallbackUser) {
   if (profile?.full_name?.trim()) return profile.full_name.trim();
   const meta = session?.user?.user_metadata?.full_name;
   if (typeof meta === "string" && meta.trim()) return meta.trim();
@@ -41,10 +42,11 @@ function resolveDisplayName(profile, session) {
   if (first || last) return [first, last].filter(Boolean).join(" ");
   const email = session?.user?.email;
   if (email) return email.split("@")[0];
-  return "Utilisateur";
+  return fallbackUser;
 }
 
 export default function MenuProfilConnecte({ onLogout, signingOut }) {
+  const t = useT();
   const { session } = useAuth();
   const userId = session?.user?.id;
   const { openBoutiqueModal, refreshSubscriptionDetails } = useBoutiqueModal();
@@ -142,8 +144,8 @@ export default function MenuProfilConnecte({ onLogout, signingOut }) {
   }, [coachingOpen]);
 
   const displayName = useMemo(
-    () => resolveDisplayName(profile, session),
-    [profile, session]
+    () => resolveDisplayName(profile, session, t("common.user")),
+    [profile, session, t]
   );
 
   const initials = useMemo(
@@ -151,7 +153,7 @@ export default function MenuProfilConnecte({ onLogout, signingOut }) {
     [displayName, session?.user?.email]
   );
 
-  const planLabel = hasSubscription ? "Premium" : "Free Plan";
+  const planLabel = hasSubscription ? t("profile.premium") : t("profile.freePlan");
 
   const remaining = creditsRemaining ?? 0;
   const total = Math.max(1, videoDisplayCap ?? 30);
@@ -316,7 +318,7 @@ export default function MenuProfilConnecte({ onLogout, signingOut }) {
             <div
               className={`mb-[5px] flex justify-between text-[11px] ${showVideoDepleted ? "text-[#f0605a]" : "text-white/50"}`}
             >
-              <span>{showVideoDepleted ? "Vidéos épuisées" : "Vidéos"}</span>
+              <span>{showVideoDepleted ? t("shop.videosDepleted") : t("shop.videos")}</span>
               <span>
                 {remaining} / {total}
               </span>
@@ -337,7 +339,7 @@ export default function MenuProfilConnecte({ onLogout, signingOut }) {
               <span className="text-sm" aria-hidden>
                 👑
               </span>
-              <span>Go Premium</span>
+              <span>{t("shop.goPremium")}</span>
             </div>
             <button
               type="button"
@@ -347,7 +349,7 @@ export default function MenuProfilConnecte({ onLogout, signingOut }) {
                 openBoutiqueModal("subscription");
               }}
             >
-              Upgrade
+              {t("shop.upgrade")}
             </button>
           </div>
 
@@ -368,7 +370,7 @@ export default function MenuProfilConnecte({ onLogout, signingOut }) {
                 strokeLinecap="round"
               />
             </svg>
-            <span>Voir mon profil</span>
+            <span>{t("profile.viewProfile")}</span>
           </LienNavSync>
 
           <button
@@ -384,7 +386,7 @@ export default function MenuProfilConnecte({ onLogout, signingOut }) {
               <circle cx="8" cy="8" r="5.5" stroke="rgba(255,255,255,0.7)" strokeWidth="1.2" />
               <circle cx="8" cy="8" r="2" stroke="rgba(255,255,255,0.7)" strokeWidth="1.2" />
             </svg>
-            <span>Acheter des vidéos</span>
+            <span>{t("shop.buyVideos")}</span>
           </button>
 
           <button
@@ -406,7 +408,7 @@ export default function MenuProfilConnecte({ onLogout, signingOut }) {
               <circle cx="13" cy="11" r="2.5" stroke="#3ef5c0" strokeWidth="1.2" />
               <path d="M13 13.5v1.5" stroke="#3ef5c0" strokeWidth="1.2" strokeLinecap="round" />
             </svg>
-            <span>Coaching personnalisé</span>
+            <span>{t("profile.personalizedCoaching")}</span>
           </button>
 
           <div className="my-[5px] h-px bg-white/[0.07]" />
@@ -436,7 +438,7 @@ export default function MenuProfilConnecte({ onLogout, signingOut }) {
                 strokeLinecap="round"
               />
             </svg>
-            <span>{signingOut ? "Déconnexion…" : "Déconnexion"}</span>
+            <span>{signingOut ? t("auth.signingOut") : t("auth.signOut")}</span>
           </button>
         </div>
       </div>

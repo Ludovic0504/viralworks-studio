@@ -14,6 +14,7 @@ import { signInWithEmailPassword } from "@/bibliotheque/supabase/authSession";
 import TurnstileWidget, { isTurnstileEnabled } from "@/composants/auth/TurnstileWidget.jsx";
 import { track } from "@/bibliotheque/meta/pixel";
 import { capturePostHog, trackPostHogError } from "@/bibliotheque/posthog/client";
+import { useT } from "@/contexte/FournisseurLocale";
 
 /**
  * Erreurs côté projet Supabase (SMTP, restriction SMTP intégré, redirect URL).
@@ -154,6 +155,7 @@ export default function AuthFormCard({
   /** Évite le chevauchement avec un bouton fermer en haut à droite (ex. modal). */
   reserveHeaderSpaceForCloseButton = false,
 }) {
+  const t = useT();
   const navigate = useNavigate();
   const [mode, setMode] = useState(initialMode === "signup" ? "signup" : "signin");
   const [email, setEmail] = useState("");
@@ -583,7 +585,7 @@ export default function AuthFormCard({
       {oauthLoading ? (
         <>
           <div className="w-4 h-4 border-2 border-[#1f1f1f]/20 border-t-[#1f1f1f] rounded-full animate-spin" />
-          <span>Connexion Google...</span>
+          <span>{t("auth.googleLoading")}</span>
         </>
       ) : (
         <>
@@ -605,16 +607,16 @@ export default function AuthFormCard({
               d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
             />
           </svg>
-          <span>Continuer avec Google</span>
+          <span>{t("auth.continueGoogle")}</span>
         </>
       )}
     </button>
   );
 
   const authDivider = (
-    <div className="my-4 flex items-center gap-4" role="separator" aria-label="ou">
+    <div className="my-4 flex items-center gap-4" role="separator" aria-label={t("common.or")}>
       <div className="flex-1 h-px bg-white/10" />
-      <span className="text-xs text-gray-500 uppercase tracking-wide">ou</span>
+      <span className="text-xs text-gray-500 uppercase tracking-wide">{t("common.or")}</span>
       <div className="flex-1 h-px bg-white/10" />
     </div>
   );
@@ -704,23 +706,23 @@ export default function AuthFormCard({
         onClick={switchAuthMode}
         className="mt-2.5 w-full rounded-lg border border-emerald-500/30 bg-emerald-500/5 text-emerald-400 font-medium py-2.5 text-sm hover:bg-emerald-500/10 transition-colors"
       >
-        {mode === "signin" ? "Créer un compte" : "Déjà inscrit ?"}
+        {mode === "signin" ? t("auth.signup") : t("auth.alreadyRegistered")}
       </button>
 
       <p className="mt-3 text-xs text-center text-gray-400 opacity-60">
-        Données protégées
+        {t("auth.protectedData")}
       </p>
 
       {authDivider}
 
-      <form onSubmit={onSubmit} className="space-y-4">
+      <form onSubmit={onSubmit} className="space-y-4" aria-label={mode === "signin" ? t("auth.login") : t("auth.signup")}>
         {mode === "signup" ? (
           <div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label htmlFor="firstName" className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
                   <User className="w-4 h-4 text-gray-400" />
-                  Prénom
+                  {t("auth.firstName")}
                 </label>
                 <input
                   id="firstName"
@@ -740,7 +742,7 @@ export default function AuthFormCard({
               </div>
               <div>
                 <label htmlFor="lastName" className="block text-sm font-medium text-gray-300 mb-2">
-                  Nom
+                  {t("auth.lastName")}
                 </label>
                 <input
                   id="lastName"
@@ -770,7 +772,7 @@ export default function AuthFormCard({
         <div>
           <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
             <Mail className="w-4 h-4 text-gray-400" />
-            Email
+            {t("auth.email")}
           </label>
           <input
             id="email"
@@ -786,7 +788,7 @@ export default function AuthFormCard({
         <div>
           <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
             <Lock className="w-4 h-4 text-gray-400" />
-            {mode === "signin" ? "Mot de passe" : "Choisis un mot de passe"}
+            {mode === "signin" ? t("auth.password") : t("auth.choosePassword")}
           </label>
           <div className="relative">
             <input
@@ -816,7 +818,7 @@ export default function AuthFormCard({
               disabled={loading}
               className="shrink-0 whitespace-nowrap text-sm text-emerald-400 hover:text-emerald-300 transition-colors underline disabled:opacity-50"
             >
-              Mot de passe oublié ?
+              {t("auth.forgotPassword")}
             </button>
           </div>
         ) : null}
@@ -837,12 +839,12 @@ export default function AuthFormCard({
           {loading ? (
             <>
               <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              <span>Connexion...</span>
+              <span>{t("auth.signingIn")}</span>
             </>
           ) : (
             <>
               {mode === "signin" ? <LogIn className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
-              <span>{mode === "signin" ? "Se connecter" : "Créer le compte"}</span>
+              <span>{mode === "signin" ? t("auth.signIn") : t("auth.createAccount")}</span>
             </>
           )}
         </button>

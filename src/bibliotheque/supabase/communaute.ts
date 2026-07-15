@@ -980,7 +980,8 @@ export async function getProfilePreferredLocale(): Promise<CommunityLocale> {
   const { user } = await ensureAuthUser();
   const profile = await getUserProfile(user.id);
   const raw = String(profile?.preferred_locale || "fr").toLowerCase();
-  return raw === "en" || raw === "es" ? raw : "fr";
+  if (raw === "en" || raw === "es") return raw;
+  return "fr";
 }
 
 export async function updateProfilePreferredLocale(locale: CommunityLocale): Promise<void> {

@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexte/FournisseurAuth";
+import { useT } from "@/contexte/FournisseurLocale";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { useBoutiqueModal } from "@/contexte/ContexteModalBoutique";
 import { capturePostHog, trackPostHogError } from "@/bibliotheque/posthog/client";
@@ -21,91 +22,6 @@ import ModalConfirmAnnulationAbonnement from "@/composants/boutique/ModalConfirm
 import "./BoutiqueSubCard.css";
 import { CreditCard, Check, Crown, Loader2, CheckCircle, ShoppingBag, ImageIcon, Zap } from "lucide-react";
 
-const CREDIT_PACKAGES = [
-  {
-    id: "starter",
-    name: "+3 vidéos",
-    subtitle: "Pour un besoin ponctuel",
-    credits: 3,
-    price: 14.99,
-    popular: false,
-    icon: "🎯",
-    pricePerUnit: "5 € / vidéo",
-  },
-  {
-    id: "pro",
-    name: "+10 vidéos",
-    subtitle: "Pour un sprint de contenu",
-    credits: 10,
-    price: 49.99,
-    popular: true,
-    icon: "⚡",
-    pricePerUnit: "5,00 € / vidéo",
-  },
-  {
-    id: "expert",
-    name: "+30 vidéos",
-    subtitle: "Pour un gros mois / lancement",
-    credits: 30,
-    price: 149.99,
-    popular: false,
-    icon: "🚀",
-    pricePerUnit: "5,00 € / vidéo",
-  },
-];
-
-const SUBSCRIPTION_PLANS = [
-  {
-    id: "image_9",
-    name: "ViralWorks Image",
-    credits: 0,
-    price: 9,
-    period: "mois",
-    popular: false,
-    features: [
-      "7 jours gratuits — 30 images offertes",
-      "Puis 150 générations / mois",
-      "NanoBanana Pro + GPT 2.0",
-    ],
-    savings: null,
-  },
-  {
-    id: "pro_59",
-    name: "ViralWorks Pro",
-    credits: 10,
-    price: 59,
-    period: "mois",
-    popular: false,
-    features: [
-      "Image Studio — 200 générations NanaBanana Pro / mois",
-      "Génération vidéo IA complète — 10 / mois",
-      "Édition vidéo IA — 5 / mois",
-      "Avatars IA — 5 / mois",
-      "Scripts Gagnant inclus",
-      "Visuels d'accroche inclus",
-    ],
-    savings: null,
-  },
-  {
-    id: "premium_129",
-    name: "ViralWorks Studio",
-    credits: 30,
-    price: 129,
-    period: "mois",
-    popular: true,
-    features: [
-      "Génération vidéo IA complète — 30 / mois",
-      "Édition vidéo IA — 15 / mois",
-      "Image Studio — 200 générations NanaBanana Pro / mois",
-      "Avatars IA — 5 / mois",
-      "Scripts Gagnant inclus",
-      "Visuels d'accroche inclus",
-      "Support prioritaire",
-    ],
-    savings: null,
-  },
-];
-
 function resolveSectionTab(section) {
   if (section === "subscription") return "subscription";
   if (section === "packs-videos") return "credits";
@@ -117,7 +33,99 @@ export default function ContenuBoutique({
   initialSection = null,
   initialPaymentReturn = null,
 }) {
+  const t = useT();
   const { session, loading: authLoading } = useAuth();
+
+  const creditPackages = useMemo(
+    () => [
+      {
+        id: "starter",
+        name: t("shop.packStarter"),
+        subtitle: t("shop.packStarterSub"),
+        credits: 3,
+        price: 14.99,
+        popular: false,
+        icon: "🎯",
+        pricePerUnit: "5 € / vidéo",
+      },
+      {
+        id: "pro",
+        name: t("shop.packPro"),
+        subtitle: t("shop.packProSub"),
+        credits: 10,
+        price: 49.99,
+        popular: true,
+        icon: "⚡",
+        pricePerUnit: "5,00 € / vidéo",
+      },
+      {
+        id: "expert",
+        name: t("shop.packExpert"),
+        subtitle: t("shop.packExpertSub"),
+        credits: 30,
+        price: 149.99,
+        popular: false,
+        icon: "🚀",
+        pricePerUnit: "5,00 € / vidéo",
+      },
+    ],
+    [t],
+  );
+
+  const subscriptionPlans = useMemo(
+    () => [
+      {
+        id: "image_9",
+        name: t("shop.planImage"),
+        credits: 0,
+        price: 9,
+        period: t("shop.perMonth"),
+        popular: false,
+        features: [
+          "7 jours gratuits — 30 images offertes",
+          "Puis 150 générations / mois",
+          "NanoBanana Pro + GPT 2.0",
+        ],
+        savings: null,
+      },
+      {
+        id: "pro_59",
+        name: t("shop.planPro"),
+        credits: 10,
+        price: 59,
+        period: t("shop.perMonth"),
+        popular: false,
+        features: [
+          "Image Studio — 200 générations NanaBanana Pro / mois",
+          "Génération vidéo IA complète — 10 / mois",
+          "Édition vidéo IA — 5 / mois",
+          "Avatars IA — 5 / mois",
+          "Scripts Gagnant inclus",
+          "Visuels d'accroche inclus",
+        ],
+        savings: null,
+      },
+      {
+        id: "premium_129",
+        name: t("shop.planStudio"),
+        credits: 30,
+        price: 129,
+        period: t("shop.perMonth"),
+        popular: true,
+        features: [
+          "Génération vidéo IA complète — 30 / mois",
+          "Édition vidéo IA — 15 / mois",
+          "Image Studio — 200 générations NanaBanana Pro / mois",
+          "Avatars IA — 5 / mois",
+          "Scripts Gagnant inclus",
+          "Visuels d'accroche inclus",
+          "Support prioritaire",
+        ],
+        savings: null,
+      },
+    ],
+    [t],
+  );
   const { runWithAuth, openAuthModal } = useRequireAuthAction();
   const {
     subscriptionDetails,
@@ -413,7 +421,7 @@ export default function ContenuBoutique({
             style={{ background: "#1a1a2e" }}
           >
             <div className="animate-spin w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full mx-auto mb-4" />
-            <p className="text-white text-sm">Redirection vers le paiement sécurisé…</p>
+            <p className="text-white text-sm">{t("shop.redirecting")}</p>
           </div>
         </div>
       )}
@@ -431,10 +439,10 @@ export default function ContenuBoutique({
           </div>
           <div>
             <h1 id="modal-boutique-title" className={isModal ? m.headerTitle : `font-bold text-gray-200 text-3xl`}>
-              Boutique
+              {t("shop.title")}
             </h1>
             <p className={m.headerSubtitle}>
-              Choisis un pack vidéo ou un abonnement
+              {t("shop.subtitle")}
             </p>
           </div>
         </div>
@@ -444,7 +452,7 @@ export default function ContenuBoutique({
         <div className={`bg-emerald-500/10 border border-emerald-500/30 ${m.alertBox}`}>
           <CheckCircle className={`text-emerald-400 ${m.alertIcon}`} />
           <div className="flex-1">
-            <p className={`text-emerald-300 font-medium${isModal ? " max-md:text-sm" : ""}`}>Paiement réussi !</p>
+            <p className={`text-emerald-300 font-medium${isModal ? " max-md:text-sm" : ""}`}>{t("shop.paymentSuccess")}</p>
             <p className={m.alertBody}>
               Ton achat est en cours de prise en compte.
             </p>
@@ -461,7 +469,7 @@ export default function ContenuBoutique({
               : "text-gray-400 hover:text-gray-200"
           }`}
         >
-          Packs vidéos
+          {t("shop.tabPacks")}
           {activeTab === "credits" && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-400" />
           )}
@@ -474,7 +482,7 @@ export default function ContenuBoutique({
               : "text-gray-400 hover:text-gray-200"
           }`}
         >
-          Abonnements
+          {t("shop.tabSubscriptions")}
           {activeTab === "subscription" && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-400" />
           )}
@@ -484,7 +492,7 @@ export default function ContenuBoutique({
       <div className={isModal ? "flex min-h-0 flex-1 flex-col" : undefined}>
       {activeTab === "credits" && (
         <div className={m.gridCredits}>
-          {CREDIT_PACKAGES.map((pkg) => (
+          {creditPackages.map((pkg) => (
             <div
               key={pkg.id}
               className={`${m.creditCard} ${
@@ -495,7 +503,7 @@ export default function ContenuBoutique({
             >
               {pkg.popular && (
                 <div className={`bg-emerald-500 text-white ${m.popularBadge}`}>
-                  Populaire
+                  {t("shop.popular")}
                 </div>
               )}
               <div className={m.creditCardBody}>
@@ -527,7 +535,7 @@ export default function ContenuBoutique({
                 {paymentLoading ? (
                   <Loader2 className="w-5 h-5 mx-auto animate-spin" />
                 ) : (
-                  "Acheter"
+                  t("shop.buy")
                 )}
               </button>
             </div>
@@ -542,7 +550,7 @@ export default function ContenuBoutique({
               className={`mb-4 flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-gray-400 ${isModal ? "max-md:mb-3" : ""}`}
             >
               <Loader2 className="h-4 w-4 animate-spin" />
-              Chargement de l&apos;abonnement…
+              {t("shop.loadingSubscription")}
             </div>
           ) : subscriptionDetails?.subscription ? (
             <div
@@ -575,7 +583,7 @@ export default function ContenuBoutique({
                       Annulation…
                     </>
                   ) : (
-                    "Annuler"
+                    t("shop.cancelSubscription")
                   )}
                 </button>
               </div>
@@ -583,7 +591,7 @@ export default function ContenuBoutique({
           ) : null}
 
         <div className={m.gridSubs}>
-          {SUBSCRIPTION_PLANS.map((plan) => {
+          {subscriptionPlans.map((plan) => {
             const isHighlighted = highlightPlanId === plan.id;
             const PlanIcon =
               plan.id === "image_9" ? ImageIcon : plan.id === "pro_59" ? Zap : Crown;
@@ -615,7 +623,7 @@ export default function ContenuBoutique({
             const currentPlanKey = subscriptionDetails?.planKey ?? null;
             const isCurrentPlan = isSameSubscriptionPlan(currentPlanKey, plan.id);
             const subscribeLabel = isCurrentPlan
-              ? "Déjà abonné"
+              ? t("shop.alreadySubscribed")
               : plan.id === "image_9"
                 ? "Démarrer l'essai gratuit"
                 : "S'abonner";
@@ -634,7 +642,7 @@ export default function ContenuBoutique({
             >
               {(plan.popular || isHighlighted) && (
                 <div className={`${badgeClass} text-white ${m.popularBadge}`}>
-                  {isHighlighted ? "Pour vous" : "Recommandé"}
+                  {isHighlighted ? t("shop.forYou") : t("shop.recommended")}
                 </div>
               )}
               <div className={m.subCardBody}>
@@ -656,7 +664,7 @@ export default function ContenuBoutique({
                   ) : plan.id === "pro_59" ? (
                     <>
                       59,00 €
-                      <span className={m.subPriceNote}>/ mois</span>
+                      <span className={m.subPriceNote}>/ {t("shop.perMonth")}</span>
                     </>
                   ) : (
                     <>
@@ -746,8 +754,7 @@ export default function ContenuBoutique({
             <CreditCard className={m.secureIcon} />
             <div>
               <p className={m.secureTitle}>
-                <strong className="text-gray-200">Paiement sécurisé</strong> - Tous les paiements sont
-                traités de manière sécurisée via Stripe.
+                <strong className="text-gray-200">{t("shop.securePayment")}</strong>
               </p>
               <p className={m.secureNote}>
                 Vos informations de paiement ne sont jamais stockées sur nos serveurs.

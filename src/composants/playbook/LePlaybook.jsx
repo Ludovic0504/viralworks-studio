@@ -21,25 +21,11 @@ import {
   usePwaNestedBack,
 } from "@/contexte/PwaNavigationContext";
 import { isStandalonePwa } from "@/bibliotheque/pwa/isStandalonePwa";
-import rawGuides from "./playbookGuides.json";
+import { useLocale, useT } from "@/contexte/FournisseurLocale";
+import { getPlaybookGuides } from "./getPlaybookGuides";
 import "./LePlaybook.css";
 
 const HERO_ID = 6;
-
-const HERO_KICKER = "Retour d'expérience";
-
-const HERO_STATS = [
-  { value: "1M+", label: "vues / vidéo" },
-  { value: "600k", label: "avant le million" },
-  { value: "3", label: "formats testés" },
-];
-
-const SECTIONS = [
-  { cat: "social", label: "Réseaux sociaux" },
-  { cat: "creation", label: "Création IA" },
-  { cat: "avatar", label: "Avatar & Produit" },
-  { cat: "montage", label: "Montage & Voix" },
-];
 
 const CREATION_IDS_ORDER = [7, 8, 9, 12];
 
@@ -48,31 +34,9 @@ const CREATION_ICONS = [Monitor, Sparkles, Terminal, Video];
 const AVATAR_ICONS = [UserCircle2, ImageIcon];
 const MONTAGE_ICONS = [Film, Mic];
 
-const GUIDE_VIEW_LABELS = {
-  social: "RÉSEAUX SOCIAUX",
-  creation: "CRÉATION IA",
-  avatar: "AVATAR & PRODUIT",
-  montage: "MONTAGE & VOIX",
-};
-
-function normalizeGuide(g) {
-  return {
-    ...g,
-    featured: Boolean(g.featured),
-    type: g.type ?? "ext",
-  };
-}
-
-const PLAYBOOK_GUIDES = rawGuides.map(normalizeGuide);
-
 function guideViewCategoryClass(g) {
   if (g.id === HERO_ID) return "lp-guide-cat--hero";
   return `lp-guide-cat--${g.cat}`;
-}
-
-function guideViewCategoryText(g) {
-  if (g.id === HERO_ID) return HERO_KICKER;
-  return GUIDE_VIEW_LABELS[g.cat] ?? g.label.toUpperCase();
 }
 
 function PlaybookCardIcon({ cat, id }) {
@@ -101,17 +65,58 @@ function PlaybookCardIcon({ cat, id }) {
 }
 
 export default function LePlaybook() {
+  const { locale } = useLocale();
+  const t = useT();
   const [view, setView] = useState("list");
   const [activeId, setActiveId] = useState(null);
 
+  const playbookGuides = useMemo(() => getPlaybookGuides(locale), [locale]);
+
+  const sections = useMemo(
+    () => [
+      { cat: "social", label: t("playbook.sections.social") },
+      { cat: "creation", label: t("playbook.sections.creation") },
+      { cat: "avatar", label: t("playbook.sections.avatar") },
+      { cat: "montage", label: t("playbook.sections.montage") },
+    ],
+    [t],
+  );
+
+  const heroStats = useMemo(
+    () => [
+      { value: "1M+", label: t("playbook.heroStats.views") },
+      { value: "600k", label: t("playbook.heroStats.beforeMillion") },
+      { value: "3", label: t("playbook.heroStats.formats") },
+    ],
+    [t],
+  );
+
+  const guideViewLabels = useMemo(
+    () => ({
+      social: t("playbook.viewLabels.social"),
+      creation: t("playbook.viewLabels.creation"),
+      avatar: t("playbook.viewLabels.avatar"),
+      montage: t("playbook.viewLabels.montage"),
+    }),
+    [t],
+  );
+
+  const guideViewCategoryText = useCallback(
+    (g) => {
+      if (g.id === HERO_ID) return t("playbook.heroKicker");
+      return guideViewLabels[g.cat] ?? g.label.toUpperCase();
+    },
+    [guideViewLabels, t],
+  );
+
   const heroGuide = useMemo(
-    () => PLAYBOOK_GUIDES.find((g) => g.id === HERO_ID) ?? null,
-    []
+    () => playbookGuides.find((g) => g.id === HERO_ID) ?? null,
+    [playbookGuides],
   );
 
   const guidesBySection = useMemo(() => {
     const map = { social: [], creation: [], avatar: [], montage: [] };
-    for (const g of PLAYBOOK_GUIDES) {
+    for (const g of playbookGuides) {
       if (g.id === HERO_ID) continue;
       if (map[g.cat]) map[g.cat].push(g);
     }
@@ -119,17 +124,17 @@ export default function LePlaybook() {
       map[k].sort((a, b) => a.id - b.id);
     }
     return map;
-  }, []);
+  }, [playbookGuides]);
 
   const activeGuide = useMemo(
-    () => (activeId == null ? null : PLAYBOOK_GUIDES.find((g) => g.id === activeId) ?? null),
-    [activeId]
+    () => (activeId == null ? null : playbookGuides.find((g) => g.id === activeId) ?? null),
+    [activeId, playbookGuides],
   );
 
   const nextGuide = useMemo(() => {
     if (activeId == null) return null;
-    return PLAYBOOK_GUIDES.find((g) => g.id === activeId + 1) ?? null;
-  }, [activeId]);
+    return playbookGuides.find((g) => g.id === activeId + 1) ?? null;
+  }, [activeId, playbookGuides]);
 
   const backToList = useCallback(() => {
     setView("list");
@@ -150,11 +155,16 @@ export default function LePlaybook() {
     setView("guide");
   };
 
+  const guideCountLabel = (count) =>
+    count > 1
+      ? t("playbook.guideCountPlural", { count })
+      : t("playbook.guideCount", { count });
+
   if (view === "guide" && activeGuide) {
     return (
       <div className="le-playbook w-full max-w-[860px] mx-auto playbook-root-padding">
         <button type="button" className="playbook-back-btn" onClick={handleGuideBack}>
-          ← Le Playbook
+          {t("playbook.back")}
         </button>
 
         <p className={`lp-guide-cat-label ${guideViewCategoryClass(activeGuide)}`}>
@@ -162,7 +172,9 @@ export default function LePlaybook() {
         </p>
 
         <h1 className="lp-guide-h1">{activeGuide.title}</h1>
-        <p className="lp-guide-meta">{activeGuide.read} de lecture</p>
+        <p className="lp-guide-meta">
+          {activeGuide.read} {t("playbook.readSuffix")}
+        </p>
 
         <div className="playbook-sep playbook-sep--guide-top" aria-hidden />
 
@@ -174,14 +186,14 @@ export default function LePlaybook() {
         <div className="playbook-sep" aria-hidden />
 
         <p className="playbook-next-link">
-          Guide suivant →{" "}
+          {t("playbook.nextGuide")}{" "}
           {nextGuide ? (
             <button type="button" onClick={() => openGuide(nextGuide.id)}>
               {nextGuide.title} →
             </button>
           ) : (
             <button type="button" onClick={handleGuideBack}>
-              ← Retour au Playbook
+              {t("playbook.backToPlaybook")}
             </button>
           )}
         </p>
@@ -191,10 +203,8 @@ export default function LePlaybook() {
 
   return (
     <div className="le-playbook w-full max-w-[860px] mx-auto playbook-root-padding">
-      <h1 className="lp-page-title">Le Playbook</h1>
-      <p className="lp-intro">
-        Ce que j&apos;ai appris en créant du contenu IA — condensé en guides courts, directs, utilisables tout de suite.
-      </p>
+      <h1 className="lp-page-title">{t("playbook.pageTitle")}</h1>
+      <p className="lp-intro">{t("playbook.intro")}</p>
 
       {heroGuide && (
         <button
@@ -212,14 +222,16 @@ export default function LePlaybook() {
               />
             </div>
             <div className="playbook-hero-copy">
-              <p className="playbook-hero-kicker">{HERO_KICKER}</p>
+              <p className="playbook-hero-kicker">{t("playbook.heroKicker")}</p>
               <p className="playbook-hero-title">{heroGuide.title}</p>
               <p className="playbook-hero-desc">{heroGuide.desc}</p>
-              <span className="playbook-hero-read">{heroGuide.read} de lecture</span>
+              <span className="playbook-hero-read">
+                {heroGuide.read} {t("playbook.readSuffix")}
+              </span>
             </div>
           </div>
           <div className="playbook-hero-stats-col">
-            {HERO_STATS.map((s) => (
+            {heroStats.map((s) => (
               <div key={s.label} className="playbook-hero-stat">
                 <span className="playbook-hero-stat-value">{s.value}</span>
                 <span className="playbook-hero-stat-label">{s.label}</span>
@@ -231,7 +243,7 @@ export default function LePlaybook() {
 
       {(() => {
         let firstRendered = true;
-        return SECTIONS.map((section) => {
+        return sections.map((section) => {
           const items = guidesBySection[section.cat];
           if (!items?.length) return null;
 
@@ -245,9 +257,7 @@ export default function LePlaybook() {
               <div className="playbook-section-head">
                 <span className={`playbook-dot playbook-dot--${section.cat}`} aria-hidden />
                 <span className="playbook-section-title">{section.label}</span>
-                <span className="playbook-section-count">
-                  {items.length} guide{items.length > 1 ? "s" : ""}
-                </span>
+                <span className="playbook-section-count">{guideCountLabel(items.length)}</span>
               </div>
 
               <div className="playbook-grid">

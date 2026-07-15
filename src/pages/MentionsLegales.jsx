@@ -1,11 +1,14 @@
 
-import { Link } from "react-router-dom";
 import PageTitle from "../composants/interface/TitrePage";
-import { ArrowLeft, Shield, FileText, Mail, Building2, Globe } from "lucide-react";
+import { Shield, Globe } from "lucide-react";
+import { useT } from "@/contexte/FournisseurLocale";
 
 export default function MentionsLegales() {
+  const t = useT();
+
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <PageTitle green={t("studio.legalTitle")} className="mb-6" />
       <div className="glass-strong rounded-2xl border border-white/10 p-8 space-y-8">
         <section>
           <h2 className="text-xl font-semibold text-gray-200 mb-4 flex items-center gap-2">

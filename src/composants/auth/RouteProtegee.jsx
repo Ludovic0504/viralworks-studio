@@ -2,13 +2,15 @@ import { useAuth } from "../../contexte/FournisseurAuth";
 import FullScreenLoader from "../interface/ChargeurPleinEcran";
 import { Navigate, useLocation } from "react-router-dom";
 import { isAccountEmailVerified } from "@/bibliotheque/auth/emailVerified";
+import { useT } from "@/contexte/FournisseurLocale";
 
 export default function ProtectedRoute({ children }) {
+  const t = useT();
   const { loading, session } = useAuth();
   const location = useLocation();
 
   if (loading) {
-    return <FullScreenLoader label="Vérification de la session…" />;
+    return <FullScreenLoader label={t("auth.verifySession")} />;
   }
 
   if (!session) {

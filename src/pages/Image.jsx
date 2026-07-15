@@ -7,6 +7,7 @@ import { hasEnoughCredits, getUserCredits } from "@/bibliotheque/supabase/credit
 import { uploadImagesFromUrls } from "@/bibliotheque/supabase/storage";
 import { usePremiumAccess } from "@/hooks/usePremiumAccess";
 import { useBoutiqueModal } from "@/contexte/ContexteModalBoutique";
+import { useT } from "@/contexte/FournisseurLocale";
 import {
   canUseImageGeneration,
   canUseImageModification,
@@ -190,6 +191,7 @@ const NON_SUBSCRIBER_BLOCKED_MESSAGE =
   "Prenez un abonnement pour profiter de ViralWorks Studio et lancer vos générations.";
 
 function QuotaBlockedModal({ open, title, message, actionLabel, onClose, onGoToShop }) {
+  const t = useT();
   if (!open) return null;
   return (
     <div
@@ -201,12 +203,12 @@ function QuotaBlockedModal({ open, title, message, actionLabel, onClose, onGoToS
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
-          <h2 className="text-base font-semibold text-gray-200">{title || "Quota mensuel épuisé"}</h2>
+          <h2 className="text-base font-semibold text-gray-200">{title || t("studio.quotaExhausted")}</h2>
           <button
             type="button"
             onClick={onClose}
             className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-gray-200 transition-colors"
-            aria-label="Fermer"
+            aria-label={t("common.close")}
           >
             <X className="w-4 h-4" />
           </button>
@@ -221,14 +223,14 @@ function QuotaBlockedModal({ open, title, message, actionLabel, onClose, onGoToS
               onClick={onClose}
               className="px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10 transition-all"
             >
-              Fermer
+              {t("common.close")}
             </button>
             <button
               type="button"
               onClick={onGoToShop}
               className="px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-500 to-teal-500 text-white font-semibold hover:from-cyan-400 hover:to-teal-400 transition-all"
             >
-              {actionLabel || "Aller vers Packs vidéos"}
+              {actionLabel || t("studio.goToPacks")}
             </button>
           </div>
         </div>
@@ -1108,6 +1110,7 @@ export default function ImagePage({
   const [quotaModalMessage, setQuotaModalMessage] = useState(VIDEO_QUOTA_EXHAUSTED_MESSAGE);
   const { hasAccess } = usePremiumAccess();
   const { openBoutiqueModal } = useBoutiqueModal();
+  const t = useT();
   const historyPanelRef = useRef(null);
   /** Valeur réelle du champ au clic (évite instruction vide si le state parent n’est pas encore recalé). */
   const bottomFieldInputRef = useRef(null);
@@ -2293,9 +2296,9 @@ export default function ImagePage({
     <>
       <QuotaBlockedModal
         open={showQuotaModal}
-        title={hasAccess ? "Quota mensuel épuisé" : "Accès abonnement requis"}
+        title={hasAccess ? t("studio.quotaExhausted") : t("studio.subscriptionRequired")}
         message={quotaModalMessage}
-        actionLabel={hasAccess ? "Aller vers Packs vidéos" : "Voir les abonnements"}
+        actionLabel={hasAccess ? t("studio.goToPacks") : t("studio.seeSubscriptions")}
         onClose={() => setShowQuotaModal(false)}
         onGoToShop={() => {
           setShowQuotaModal(false);
@@ -2311,7 +2314,7 @@ export default function ImagePage({
           <div className="flex min-w-0 w-full flex-col gap-3 max-[640px]:gap-3">
             <h2 className="flex min-w-0 items-center gap-2 text-sm font-semibold text-gray-200">
               <Sparkles className="h-4 w-4 shrink-0 text-cyan-400" />
-              <span className="truncate">Étape 2 – Votre visuel d&apos;accroche</span>
+              <span className="truncate">{t("common.stepOf", { current: 2, total: 3 })} – {t("studio.hookVisual")}</span>
             </h2>
             <div
               className="relative grid w-full min-w-0 max-w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5 min-[640px]:inline-flex min-[640px]:w-auto min-[640px]:max-w-full min-[640px]:grid-cols-none min-[640px]:flex-row min-[640px]:flex-nowrap min-[640px]:items-center min-[640px]:justify-start min-[640px]:gap-1"
@@ -2392,7 +2395,7 @@ export default function ImagePage({
           <div className="flex min-w-0 w-full flex-col gap-3">
             <h2 className="flex min-w-0 items-center gap-2 text-sm font-semibold text-gray-200">
               <Sparkles className="h-4 w-4 shrink-0 text-cyan-400" />
-              <span className="truncate">Étape 2 – Votre visuel d&apos;accroche</span>
+              <span className="truncate">{t("common.stepOf", { current: 2, total: 3 })} – {t("studio.hookVisual")}</span>
             </h2>
             <div
               className="relative grid w-full min-w-0 max-w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5 min-[640px]:inline-flex min-[640px]:w-auto min-[640px]:max-w-full min-[640px]:grid-cols-none min-[640px]:flex-row min-[640px]:flex-nowrap min-[640px]:items-center min-[640px]:justify-start min-[640px]:gap-1"

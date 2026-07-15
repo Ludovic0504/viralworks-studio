@@ -18,6 +18,7 @@ import {
 import { hasEnoughCredits, debitCredits, getUserCredits, isAdmin } from "@/bibliotheque/supabase/credits";
 import { usePremiumAccess } from "@/hooks/usePremiumAccess";
 import { useBoutiqueModal } from "@/contexte/ContexteModalBoutique";
+import { useT } from "@/contexte/FournisseurLocale";
 import {
   capturePostHog,
   classifyErrorType,
@@ -217,6 +218,7 @@ function isAcceptedImageFile(file) {
 }
 
 function QuotaExhaustedNotice({ open, title, message, actionLabel, onClose, onGoToPacks }) {
+  const t = useT();
   if (!open) return null;
   return (
     <div
@@ -228,12 +230,12 @@ function QuotaExhaustedNotice({ open, title, message, actionLabel, onClose, onGo
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
-          <h2 className="text-base font-semibold text-gray-200">{title || "Quota mensuel épuisé"}</h2>
+          <h2 className="text-base font-semibold text-gray-200">{title || t("studio.quotaExhausted")}</h2>
           <button
             type="button"
             onClick={onClose}
             className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-gray-200 transition-colors"
-            aria-label="Fermer"
+            aria-label={t("common.close")}
           >
             <X className="w-4 h-4" />
           </button>
@@ -248,14 +250,14 @@ function QuotaExhaustedNotice({ open, title, message, actionLabel, onClose, onGo
               onClick={onClose}
               className="px-4 py-2 rounded-lg btn-vws-secondary"
             >
-              Fermer
+              {t("common.close")}
             </button>
             <button
               type="button"
               onClick={onGoToPacks}
               className="px-4 py-2 rounded-lg btn-vws-primary font-semibold"
             >
-              {actionLabel || "Aller vers Packs vidéos"}
+              {actionLabel || t("studio.goToPacks")}
             </button>
           </div>
         </div>
@@ -794,6 +796,7 @@ const Video = forwardRef(function Video(
   } = {},
   ref
 ) {
+  const t = useT();
   const [tab, setTab] = useState("veo3");
   const isStudioPage = Boolean(studioCampaignData || studioCampaignGenerationSpec);
   const { session } = useAuth();
@@ -845,7 +848,7 @@ const Video = forwardRef(function Video(
         <div className="mb-6 space-y-3 md:mb-8">
           <h2 className="flex min-w-0 items-center gap-2 text-sm font-semibold text-gray-200 sm:text-base">
             <Sparkles className="h-4 w-4 shrink-0 text-cyan-400" />
-            <span className="truncate">Étape 3 – Votre vidéo virale</span>
+            <span className="truncate">{t("common.stepOf", { current: 3, total: 3 })} – {t("studio.viralVideo")}</span>
           </h2>
           <div className="relative grid w-full min-w-0 max-w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5 overflow-visible min-[640px]:inline-flex min-[640px]:w-auto min-[640px]:max-w-full min-[640px]:grid-cols-none min-[640px]:flex-row min-[640px]:flex-nowrap min-[640px]:items-center min-[640px]:justify-start min-[640px]:gap-1 min-[640px]:overflow-visible">
             <button
@@ -879,7 +882,7 @@ const Video = forwardRef(function Video(
           <div className="w-full space-y-3 sm:w-[340px]">
             <div>
               <div className="mb-2 flex items-center justify-between">
-                <span className="text-xs font-medium text-gray-300">Étape 3 sur 3 · Vidéo finale</span>
+                <span className="text-xs font-medium text-gray-300">{t("common.stepOf", { current: 3, total: 3 })} · Vidéo finale</span>
               </div>
               <div className="w-full studio-step-rail">
                 <div className="h-full w-full studio-step-rail-fill" />
@@ -1153,6 +1156,7 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
   const [showQuotaNotice, setShowQuotaNotice] = useState(false);
   const [quotaNoticeMessage, setQuotaNoticeMessage] = useState(VIDEO_QUOTA_EXHAUSTED_MESSAGE);
   const { hasAccess } = usePremiumAccess();
+  const t = useT();
   const [validatedHookImage, setValidatedHookImage] = useState(null);
   const [customHookImage, setCustomHookImage] = useState(null);
   const studioHookImage = useMemo(() => getHookImageFromStudioStep(studioImageStep), [studioImageStep]);
@@ -2655,9 +2659,9 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
     <>
       <QuotaExhaustedNotice
         open={showQuotaNotice}
-        title={hasAccess ? "Quota mensuel épuisé" : "Accès abonnement requis"}
+        title={hasAccess ? t("studio.quotaExhausted") : t("studio.subscriptionRequired")}
         message={quotaNoticeMessage}
-        actionLabel={hasAccess ? "Aller vers Packs vidéos" : "Voir les abonnements"}
+        actionLabel={hasAccess ? t("studio.goToPacks") : t("studio.seeSubscriptions")}
         onClose={() => setShowQuotaNotice(false)}
         onGoToPacks={goToVideoPacks}
       />
@@ -3050,7 +3054,7 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
               ) : (
                 <>
                   <Sparkles className="w-4 h-4" />
-                  Générer la vidéo
+                  {t("studio.generateVideo")}
                 </>
               )}
             </button>
@@ -3138,7 +3142,7 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
                 onClick={() => setGenerationError("")}
                 className="text-xs font-medium text-gray-400 hover:text-gray-200 transition-colors"
               >
-                Fermer
+                {t("common.close")}
               </button>
               {needsReloadFromCache ? (
                 <button
@@ -3360,7 +3364,7 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
                     className="mt-2 inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium btn-vws-secondary"
                   >
                     <Download className="w-3.5 h-3.5 shrink-0" />
-                    Télécharger la vidéo 24 s assemblée (admin)
+                    {t("studio.downloadVideo")} 24 s assemblée (admin)
                   </button>
                 ) : null}
               </div>
@@ -3411,7 +3415,7 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
               className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-all btn-vws-primary"
             >
               <Download className="w-4 h-4 shrink-0" />
-              Télécharger la vidéo
+              {t("studio.downloadVideo")}
             </button>
             <button
               onClick={handleDelete}
@@ -3831,7 +3835,7 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
                         className="inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium btn-vws-secondary"
                       >
                         <Download className="w-3.5 h-3.5 shrink-0" />
-                        Télécharger la vidéo 24 s assemblée (admin)
+                        {t("studio.downloadVideo")} 24 s assemblée (admin)
                       </button>
                     ) : null}
                   </>
@@ -3853,7 +3857,7 @@ const VEO3VideoForm = forwardRef(function VEO3VideoForm(
                   type="button"
                   onClick={() => setHistoryDrawerOpen(false)}
                   className="rounded-lg border border-white/10 p-2 text-gray-400 hover:text-white"
-                  aria-label="Fermer"
+                  aria-label={t("common.close")}
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -3928,6 +3932,7 @@ function HailuoVideoForm({
   onWorkflowVideoStateChange,
   initialWorkflowVideoState,
 }) {
+  const t = useT();
   const { session } = useAuth();
   const { openBoutiqueModal } = useBoutiqueModal();
   const [scripts, setScripts] = useState(initialVeo3Scripts);
@@ -4530,9 +4535,9 @@ function HailuoVideoForm({
     <>
       <QuotaExhaustedNotice
         open={showQuotaNotice}
-        title={hasAccess ? "Quota mensuel épuisé" : "Accès abonnement requis"}
+        title={hasAccess ? t("studio.quotaExhausted") : t("studio.subscriptionRequired")}
         message={quotaNoticeMessage}
-        actionLabel={hasAccess ? "Aller vers Packs vidéos" : "Voir les abonnements"}
+        actionLabel={hasAccess ? t("studio.goToPacks") : t("studio.seeSubscriptions")}
         onClose={() => setShowQuotaNotice(false)}
         onGoToPacks={goToVideoPacks}
       />
@@ -4757,7 +4762,7 @@ function HailuoVideoForm({
           ) : (
             <>
               <Sparkles className="w-4 h-4" />
-              Générer la vidéo
+              {t("studio.generateVideo")}
             </>
           )}
         </button>
@@ -4869,7 +4874,7 @@ function HailuoVideoForm({
               className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-all btn-vws-primary"
             >
               <Download className="w-4 h-4 shrink-0" />
-              Télécharger la vidéo
+              {t("studio.downloadVideo")}
             </button>
             <button
               onClick={handleDelete}

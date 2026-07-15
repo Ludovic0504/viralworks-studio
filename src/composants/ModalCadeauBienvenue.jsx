@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { getEnabledWelcomeGifts } from "@welcome-gifts";
 import { submitWelcomeGiftChoice } from "@/bibliotheque/supabase/stripe";
+import { useT } from "@/contexte/FournisseurLocale";
 
 const GIFT_ICON = {
   tshirt: Shirt,
@@ -24,6 +25,7 @@ const GIFT_FALLBACK_EMOJI = {
 };
 
 export default function ModalCadeauBienvenue({ open, onConfirmed, onClose }) {
+  const t = useT();
   const choices = getEnabledWelcomeGifts();
   const [selected, setSelected] = useState(() => choices[0]?.id ?? "");
   const [selectedSize, setSelectedSize] = useState("");
@@ -59,7 +61,7 @@ export default function ModalCadeauBienvenue({ open, onConfirmed, onClose }) {
   const handleConfirm = async () => {
     if (!selected) return;
     if (selectedGiftSizes.length > 0 && !selectedSize) {
-      setErr("Choisis une taille pour ce vêtement.");
+      setErr(t("welcomeGift.sizeRequired"));
       return;
     }
     setSubmitting(true);
@@ -90,8 +92,8 @@ export default function ModalCadeauBienvenue({ open, onConfirmed, onClose }) {
               type="button"
               onClick={() => onClose?.()}
               className="ml-auto -mr-2 -mt-2 w-8 h-8 rounded-lg border border-white/10 bg-white/5 text-gray-400 hover:text-gray-200 hover:bg-white/10 transition-colors flex items-center justify-center"
-              aria-label="Fermer"
-              title="Fermer"
+              aria-label={t("common.close")}
+              title={t("common.close")}
             >
               <X className="w-4 h-4" />
             </button>
@@ -102,10 +104,10 @@ export default function ModalCadeauBienvenue({ open, onConfirmed, onClose }) {
             </div>
             <div>
               <h2 id="cadeau-bienvenue-titre" className="text-xl font-bold text-gray-100">
-                Un cadeau t’attend
+                {t("welcomeGift.title")}
               </h2>
               <p className="text-sm text-gray-400">
-                Paiement validé — choisis ton article de bienvenue.
+                {t("welcomeGift.subtitle")}
               </p>
             </div>
           </div>
@@ -114,7 +116,7 @@ export default function ModalCadeauBienvenue({ open, onConfirmed, onClose }) {
         <div className="p-6">
           {choices.length === 0 ? (
             <p className="text-sm text-gray-400 text-center">
-              Aucun article disponible pour le moment.
+              {t("welcomeGift.noItems")}
             </p>
           ) : (
             <div className="grid grid-cols-2 gap-4">
@@ -162,7 +164,7 @@ export default function ModalCadeauBienvenue({ open, onConfirmed, onClose }) {
 
           {selectedGiftSizes.length > 0 ? (
             <div className="mt-4">
-              <p className="text-sm text-gray-300 mb-2">Choisis ta taille</p>
+              <p className="text-sm text-gray-300 mb-2">{t("welcomeGift.chooseSize")}</p>
               <div className="flex flex-wrap gap-2">
                 {selectedGiftSizes.map((size) => {
                   const active = selectedSize === size;
@@ -202,10 +204,10 @@ export default function ModalCadeauBienvenue({ open, onConfirmed, onClose }) {
             {submitting ? (
               <>
                 <Loader2 className="w-5 h-5 animate-spin" />
-                Envoi en cours…
+                {t("welcomeGift.submitting")}
               </>
             ) : (
-              "Valider mon choix"
+              t("welcomeGift.confirm")
             )}
           </button>
         </div>

@@ -22,6 +22,7 @@ import {
 } from "@/bibliotheque/campaignGenerationSpec";
 import { SS_BRAIN_V2_LAST_KEY } from "@/bibliotheque/viralWorksStudioStorage";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
+import { useT } from "@/contexte/FournisseurLocale";
 import { capturePostHog, trackPostHogError } from "@/bibliotheque/posthog/client";
 import { useProfilStudio } from "@/contexte/FournisseurProfilStudio";
 import { getIntentFromFormatCategory } from "@/bibliotheque/sectorDefaults";
@@ -295,6 +296,7 @@ export default function CampagneVWS({
   /** `studioOverlay` : panneau format in-tree (ViralWorks ≤640px) au lieu du portal plein écran */
   formatPickerPresentation = "portal",
 }) {
+  const t = useT();
   const { runWithAuth } = useRequireAuthAction();
 
   const [isDesktop, setIsDesktop] = useState(
@@ -1925,7 +1927,7 @@ Réponds uniquement en JSON :
       <div className="mb-8 hidden min-[641px]:flex flex-col gap-3 md:mb-10">
         <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-200 sm:text-base">
           <Sparkles className="h-4 w-4 shrink-0 text-cyan-400" />
-          Étape 1 – Votre campagne vidéo
+          {t("common.stepOf", { current: 1, total: 3 })} – {t("studio.campaign")}
         </h2>
         <div className="flex justify-start">
           <button
@@ -1946,7 +1948,7 @@ Réponds uniquement en JSON :
       <div className="mb-6 flex min-[641px]:hidden flex-col gap-3 px-4">
         <h2 className="flex min-w-0 items-center gap-2 text-sm font-semibold text-gray-200">
           <Sparkles className="h-4 w-4 shrink-0 text-cyan-400" />
-          <span className="truncate">Étape 1 – Votre campagne vidéo</span>
+          <span className="truncate">{t("common.stepOf", { current: 1, total: 3 })} – {t("studio.campaign")}</span>
         </h2>
         <div className="flex min-w-0 justify-start">
           <button

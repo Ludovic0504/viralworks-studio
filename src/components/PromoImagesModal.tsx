@@ -5,7 +5,8 @@ import { useAuth } from "@/contexte/FournisseurAuth";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { useBoutiqueModal } from "@/contexte/ContexteModalBoutique";
 import { usePremiumAccess } from "@/hooks/usePremiumAccess";
-import { PROMO_ACQUISITION_IMAGES, IMAGE_STUDIO_TRIAL_OFFER } from "@/bibliotheque/promo/imagesPromo";
+import { PROMO_ACQUISITION_IMAGES } from "@/bibliotheque/promo/imagesPromo";
+import { useT } from "@/contexte/FournisseurLocale";
 import {
   hasSeenPromoVariant,
   isPromoModalSuppressed,
@@ -27,22 +28,8 @@ function markVariantSeen(variant: Variant): void {
   markPromoVariantSeen(variant);
 }
 
-const CONTENT = {
-  acquisition: {
-    title: "Génère des visuels produits avec l'IA",
-    subtitle: IMAGE_STUDIO_TRIAL_OFFER,
-    cta: "Créer mon compte et démarrer l'essai",
-    dismiss: "Explorer Image Studio d'abord",
-  },
-  conversion: {
-    title: "Essaie Image Studio gratuitement",
-    subtitle: IMAGE_STUDIO_TRIAL_OFFER,
-    cta: "Démarrer mon essai gratuit",
-    dismiss: "Explorer Image Studio d'abord",
-  },
-} as const;
-
 export default function PromoImagesModal() {
+  const t = useT();
   const navigate = useNavigate();
   const location = useLocation();
   const promoSuppressed = isPromoModalSuppressed(location.pathname);
@@ -197,7 +184,10 @@ export default function PromoImagesModal() {
 
   const displayVariant = manualOpen ?? variant;
   const isAcquisition = displayVariant === "acquisition";
-  const { title, subtitle, cta, dismiss: dismissLabel } = CONTENT[displayVariant];
+  const title = isAcquisition ? t("promo.modalTitle") : "Essaie Image Studio gratuitement";
+  const subtitle = t("promo.trialOffer");
+  const cta = isAcquisition ? t("promo.modalCtaSignup") : t("promo.modalCtaTrial");
+  const dismissLabel = t("promo.modalExplore");
 
   const handleCta = () => {
     if (displayVariant === "acquisition") {

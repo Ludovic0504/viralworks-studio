@@ -17,6 +17,8 @@ import {
 } from "@/bibliotheque/imageStudio/outfitStudioConfig";
 import { fillTemplateSlotDefaults } from "@/bibliotheque/imageStudio/promptTemplateEngine";
 import { readGuideProductImageFile } from "@/bibliotheque/imageStudio/guideProductImage";
+import { useImageStudioChatbotTr } from "@/bibliotheque/i18n/useImageStudioChatbotTr";
+import { translateLabeledOptions } from "@/bibliotheque/i18n/chatbotTranslate";
 
 /** @typedef {'gender' | 'clothing' | 'sceneType' | 'subContext' | 'framing' | 'ratio' | 'pose' | 'ready'} OutfitStudioGuideStep */
 
@@ -56,7 +58,7 @@ function ConversationBubble({ role, children, wide = false, visible = true }) {
   );
 }
 
-function TypingIndicator({ visible = true }) {
+function TypingIndicator({ visible = true, typingLabel = "Le guide écrit…" }) {
   if (!visible) return null;
 
   return (
@@ -66,7 +68,7 @@ function TypingIndicator({ visible = true }) {
       </span>
       <div
         className="image-studio-prompt-guide-typing image-studio-prompt-guide-bubble--enter"
-        aria-label="Le guide écrit…"
+        aria-label={typingLabel}
         role="status"
       >
         <span />
@@ -158,9 +160,9 @@ function OptionGrid({ options, selectedId, disabled, onSelect, ariaLabel }) {
   );
 }
 
-function SceneTypeTileGrid({ options, selectedId, disabled, onSelect }) {
+function SceneTypeTileGrid({ options, selectedId, disabled, onSelect, ariaLabel = "Type de scène" }) {
   return (
-    <div className="image-studio-prompt-shot-grid" role="radiogroup" aria-label="Type de scène">
+    <div className="image-studio-prompt-shot-grid" role="radiogroup" aria-label={ariaLabel}>
       {options.map((option) => {
         const selected = selectedId === option.id;
         return (
@@ -213,6 +215,9 @@ function GuideOutfitImagePicker({
   errorMessage,
   onPickFiles,
   onRemove,
+  addGarmentImagesLabel = "Ajouter une ou plusieurs images de vêtements",
+  addMoreGarmentLabel = "Ajouter un vêtement",
+  removeImageLabel = "Retirer l'image",
 }) {
   const inputRef = useRef(null);
 
@@ -240,8 +245,8 @@ function GuideOutfitImagePicker({
         <ImageUp className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden="true" />
         <span>
           {previews.length > 0
-            ? `Ajouter un vêtement (${previews.length}/${MAX_CLOTHING_IMAGES})`
-            : "Ajouter une ou plusieurs images de vêtements"}
+            ? `${addMoreGarmentLabel} (${previews.length}/${MAX_CLOTHING_IMAGES})`
+            : addGarmentImagesLabel}
         </span>
       </button>
       {previews.length > 0 ? (
@@ -252,7 +257,7 @@ function GuideOutfitImagePicker({
               <button
                 type="button"
                 className="image-studio-prompt-ugc-product-image-remove"
-                aria-label="Retirer l'image"
+                aria-label={removeImageLabel}
                 disabled={disabled}
                 onClick={() => onRemove(preview.id)}
               >
@@ -272,6 +277,28 @@ function GuideOutfitImagePicker({
 }
 
 export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyPrompt, onClose }) {
+  const { ui, tr, template: localizeTemplate, locale } = useImageStudioChatbotTr();
+  const localizedTemplate = useMemo(
+    () => localizeTemplate(template),
+    [localizeTemplate, template, locale],
+  );
+  const localizedGenderOptions = useMemo(
+    () => translateLabeledOptions(OUTFIT_STUDIO_GENDER_OPTIONS, tr, "chatbot.outfit.gender"),
+    [tr],
+  );
+  const localizedSceneTypeOptions = useMemo(
+    () => translateLabeledOptions(OUTFIT_STUDIO_SCENE_TYPE_OPTIONS, tr, "chatbot.outfit.sceneType"),
+    [tr],
+  );
+  const localizedFramingOptions = useMemo(
+    () => translateLabeledOptions(OUTFIT_STUDIO_FRAMING_OPTIONS, tr, "chatbot.outfit.framing"),
+    [tr],
+  );
+  const localizedRatioOptions = useMemo(
+    () => translateLabeledOptions(OUTFIT_STUDIO_RATIO_OPTIONS, tr, "chatbot.outfit.ratio"),
+    [tr],
+  );
+
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -292,16 +319,33 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
   const [clothingPreviews, setClothingPreviews] = useState([]);
 
   const poseOptions = useMemo(
-    () => (genderId ? getOutfitStudioPoseOptions(genderId) : []),
-    [genderId],
+    () =>
+      genderId
+        ? translateLabeledOptions(getOutfitStudioPoseOptions(genderId), tr, "chatbot.outfit.pose")
+        : [],
+    [genderId, tr],
   );
+
+  const subContextKeyPrefix = useMemo(() => {
+    if (sceneTypeId === "lifestyle-exterieur") return "chatbot.outfit.lifestyleSub";
+    if (sceneTypeId === "interieur-commercial") return "chatbot.outfit.interiorSub";
+    if (sceneTypeId === "mirror-selfie") return "chatbot.outfit.mirrorSub";
+    return "chatbot.outfit.lifestyleSub";
+  }, [sceneTypeId]);
 
   const subContextOptions = useMemo(
-    () => (sceneTypeId ? getOutfitStudioSubContextOptions(sceneTypeId) : []),
-    [sceneTypeId],
+    () =>
+      sceneTypeId
+        ? translateLabeledOptions(
+            getOutfitStudioSubContextOptions(sceneTypeId),
+            tr,
+            subContextKeyPrefix,
+          )
+        : [],
+    [sceneTypeId, subContextKeyPrefix, tr],
   );
 
-  const filledSlots = useMemo(() => fillTemplateSlotDefaults(template, slots), [template, slots]);
+  const filledSlots = useMemo(() => fillTemplateSlotDefaults(localizedTemplate, slots), [localizedTemplate, slots]);
 
   const assembledPrompt = useMemo(() => {
     if (!ready) return "";
@@ -490,11 +534,11 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
     onClose();
   }, [assembledPrompt, clothingPreviews, onApplyPrompt, onClose, slots.clothingNotes]);
 
-  const genderLabel = findOptionLabel(OUTFIT_STUDIO_GENDER_OPTIONS, genderId);
-  const sceneTypeLabel = findOptionLabel(OUTFIT_STUDIO_SCENE_TYPE_OPTIONS, sceneTypeId);
+  const genderLabel = findOptionLabel(localizedGenderOptions, genderId);
+  const sceneTypeLabel = findOptionLabel(localizedSceneTypeOptions, sceneTypeId);
   const subContextLabel = findOptionLabel(subContextOptions, subContextId);
-  const framingLabel = findOptionLabel(OUTFIT_STUDIO_FRAMING_OPTIONS, framingId);
-  const ratioLabel = findOptionLabel(OUTFIT_STUDIO_RATIO_OPTIONS, ratioId);
+  const framingLabel = findOptionLabel(localizedFramingOptions, framingId);
+  const ratioLabel = findOptionLabel(localizedRatioOptions, ratioId);
   const poseLabel = findOptionLabel(poseOptions, poseId);
   const clothingNotes = slots.clothingNotes?.trim() ?? "";
 
@@ -508,12 +552,14 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
     const parts = [];
     if (imageCount > 0) {
       parts.push(
-        imageCount === 1 ? "1 vêtement uploadé" : `${imageCount} vêtements uploadés`,
+        imageCount === 1
+          ? ui("outfitOneGarmentUploaded", "1 vêtement uploadé")
+          : `${imageCount} ${ui("outfitGarmentsUploadedSuffix", "vêtements uploadés")}`,
       );
     }
     if (notes) parts.push(notes);
     return parts.join(" — ");
-  }, [guideStep, slots.clothingImageCount, slots.clothingNotes]);
+  }, [guideStep, slots.clothingImageCount, slots.clothingNotes, ui]);
 
   const poseAnswerLabel = useMemo(() => {
     if (!poseId && guideStep !== "pose" && !ready) return null;
@@ -522,10 +568,10 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
       slots.poseId &&
       guideStep !== "pose"
     ) {
-      return "Debout statique (par défaut)";
+      return ui("outfitStandingDefault", "Debout statique (par défaut)");
     }
     return poseLabel;
-  }, [genderId, guideStep, poseId, poseLabel, ready, slots.poseId]);
+  }, [genderId, guideStep, poseId, poseLabel, ready, slots.poseId, ui]);
 
   const botTurnKeys = useMemo(() => {
     const keys = ["gender"];
@@ -570,7 +616,7 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
         onClick={() => setAdjustOpen((open) => !open)}
         aria-expanded={adjustOpen}
       >
-        Ajuster les champs
+        {ui("adjustFields", "Ajuster les champs")}
         {adjustOpen ? (
           <ChevronUp className="h-3.5 w-3.5 shrink-0" strokeWidth={2.25} />
         ) : (
@@ -580,7 +626,7 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
 
       {adjustOpen ? (
         <div className="image-studio-prompt-guide-fields">
-          {template.variables.map((variable) => (
+          {localizedTemplate.variables.map((variable) => (
             <label key={variable.key} className="image-studio-prompt-guide-field">
               <span>{variable.label}</span>
               <input
@@ -599,7 +645,7 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
         className="image-studio-prompt-guide-apply btn-vws-primary"
         onClick={handleApply}
       >
-        Appliquer au prompt
+        {ui("applyPrompt", "Appliquer au prompt")}
       </button>
     </div>
   ) : null;
@@ -611,12 +657,12 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
           type="button"
           className="image-studio-prompt-guide-back"
           onClick={onBack}
-          aria-label="Retour aux modèles"
+          aria-label={ui("back", "Retour aux modèles")}
         >
           <ArrowLeft className="h-4 w-4" strokeWidth={2.25} />
         </button>
         <div className="image-studio-prompt-guide-chat-title-row">
-          <p className="image-studio-prompt-guide-chat-title">{template.label}</p>
+          <p className="image-studio-prompt-guide-chat-title">{localizedTemplate.label}</p>
           <span className="pulse-dot pulse-dot--online shrink-0" aria-hidden="true" />
         </div>
       </div>
@@ -627,14 +673,16 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
         aria-live="polite"
       >
         <ConversationBubble role="bot" visible={isBotVisible("gender")}>
-          <p className="image-studio-prompt-guide-bubble-text">Sexe du modèle</p>
+          <p className="image-studio-prompt-guide-bubble-text">
+            {ui("outfitModelGender", "Sexe du modèle")}
+          </p>
           {guideStep === "gender" ? (
             <OptionButtonRow
-              options={OUTFIT_STUDIO_GENDER_OPTIONS}
+              options={localizedGenderOptions}
               selectedId={genderId}
               disabled={false}
               onSelect={handleGenderSelect}
-              ariaLabel="Sexe du modèle"
+              ariaLabel={ui("outfitModelGender", "Sexe du modèle")}
             />
           ) : null}
         </ConversationBubble>
@@ -648,8 +696,10 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
         {genderId ? (
           <ConversationBubble role="bot" visible={isBotVisible("clothing")} wide>
             <p className="image-studio-prompt-guide-bubble-text">
-              Uploadez un ou plusieurs vêtements à styliser sur le mannequin. Vous pouvez aussi
-              préciser librement la pièce à mettre en avant ou le cadrage souhaité.
+              {ui(
+                "outfitClothingIntro",
+                "Uploadez un ou plusieurs vêtements à styliser sur le mannequin. Vous pouvez aussi préciser librement la pièce à mettre en avant ou le cadrage souhaité.",
+              )}
             </p>
             {guideStep === "clothing" ? (
               <>
@@ -659,11 +709,20 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
                   errorMessage={clothingImageError}
                   onPickFiles={handleClothingImagePick}
                   onRemove={handleClothingImageRemove}
+                  addGarmentImagesLabel={ui(
+                    "outfitAddGarmentImages",
+                    "Ajouter une ou plusieurs images de vêtements",
+                  )}
+                  addMoreGarmentLabel={ui("outfitAddGarment", "Ajouter un vêtement")}
+                  removeImageLabel={ui("outfitRemoveImage", "Retirer l'image")}
                 />
                 {clothingPreviews.length > 0 ? (
                   <>
                     <p className="image-studio-prompt-guide-bubble-hint">
-                      Précisez la pièce à mettre en avant si besoin, ou continuez sans précision.
+                      {ui(
+                        "outfitClothingHint",
+                        "Précisez la pièce à mettre en avant si besoin, ou continuez sans précision.",
+                      )}
                     </p>
                     <div className="image-studio-prompt-guide-bubble-compose">
                       <form
@@ -675,16 +734,19 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
                           type="text"
                           value={draft}
                           onChange={(event) => setDraft(event.target.value)}
-                          placeholder="Ex. focus sur la veste, plan buste… (optionnel)"
+                          placeholder={ui(
+                            "outfitClothingNotesPlaceholder",
+                            "Ex. focus sur la veste, plan buste… (optionnel)",
+                          )}
                           className="image-studio-prompt-guide-input"
-                          aria-label="Précisions sur les vêtements"
+                          aria-label={ui("outfitClothingNotesAria", "Précisions sur les vêtements")}
                         />
                         {draft.length > 0 ? (
                           <button
                             type="submit"
                             className="image-studio-prompt-guide-send"
-                            aria-label="Valider la précision"
-                            title="Valider"
+                            aria-label={ui("outfitValidateNotes", "Valider la précision")}
+                            title={ui("outfitValidateNotesTitle", "Valider")}
                           >
                             <SendHorizontal className="h-4 w-4" strokeWidth={2.25} />
                           </button>
@@ -694,7 +756,7 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
                     <SkipButton
                       disabled={false}
                       onClick={handleClothingSkip}
-                      label="Continuer sans précision"
+                      label={ui("outfitContinueWithoutNotes", "Continuer sans précision")}
                     />
                   </>
                 ) : null}
@@ -712,20 +774,26 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
         {clothingValidationShown ? (
           <ConversationBubble role="bot" visible={isBotVisible("clothing-validation")}>
             <p className="image-studio-prompt-guide-bubble-text" role="alert">
-              Ajoutez au moins une image de vêtement ou quelques mots de description.
+              {ui(
+                "outfitClothingValidation",
+                "Ajoutez au moins une image de vêtement ou quelques mots de description.",
+              )}
             </p>
           </ConversationBubble>
         ) : null}
 
         {clothingAnswerLabel ? (
           <ConversationBubble role="bot" visible={isBotVisible("sceneType")} wide>
-            <p className="image-studio-prompt-guide-bubble-text">Type de scène</p>
+            <p className="image-studio-prompt-guide-bubble-text">
+              {ui("outfitSceneTypeQuestion", "Type de scène")}
+            </p>
             {guideStep === "sceneType" ? (
               <SceneTypeTileGrid
-                options={OUTFIT_STUDIO_SCENE_TYPE_OPTIONS}
+                options={localizedSceneTypeOptions}
                 selectedId={sceneTypeId}
                 disabled={false}
                 onSelect={handleSceneTypeSelect}
+                ariaLabel={ui("outfitSceneType", "Type de scène")}
               />
             ) : null}
           </ConversationBubble>
@@ -739,14 +807,16 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
 
         {sceneTypeId && sceneTypeId !== "studio-blanc" ? (
           <ConversationBubble role="bot" visible={isBotVisible("subContext")} wide>
-            <p className="image-studio-prompt-guide-bubble-text">Sous-contexte</p>
+            <p className="image-studio-prompt-guide-bubble-text">
+              {ui("outfitSubContext", "Sous-contexte")}
+            </p>
             {guideStep === "subContext" ? (
               <OptionGrid
                 options={subContextOptions}
                 selectedId={subContextId}
                 disabled={false}
                 onSelect={handleSubContextSelect}
-                ariaLabel="Sous-contexte"
+                ariaLabel={ui("outfitSubContext", "Sous-contexte")}
               />
             ) : null}
           </ConversationBubble>
@@ -761,14 +831,16 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
         {(framingId || guideStep === "framing" || (sceneTypeId && (subContextId || sceneTypeId === "studio-blanc"))) &&
         (subContextLabel || sceneTypeId === "studio-blanc") ? (
           <ConversationBubble role="bot" visible={isBotVisible("framing")}>
-            <p className="image-studio-prompt-guide-bubble-text">Cadrage</p>
+            <p className="image-studio-prompt-guide-bubble-text">
+              {ui("outfitFraming", "Cadrage")}
+            </p>
             {guideStep === "framing" ? (
               <OptionButtonRow
-                options={OUTFIT_STUDIO_FRAMING_OPTIONS}
+                options={localizedFramingOptions}
                 selectedId={framingId}
                 disabled={false}
                 onSelect={handleFramingSelect}
-                ariaLabel="Cadrage"
+                ariaLabel={ui("outfitFraming", "Cadrage")}
               />
             ) : null}
           </ConversationBubble>
@@ -782,14 +854,16 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
 
         {(ratioId || guideStep === "ratio" || framingId) && framingLabel ? (
           <ConversationBubble role="bot" visible={isBotVisible("ratio")}>
-            <p className="image-studio-prompt-guide-bubble-text">Ratio de sortie</p>
+            <p className="image-studio-prompt-guide-bubble-text">
+              {ui("outfitRatio", "Ratio de sortie")}
+            </p>
             {guideStep === "ratio" ? (
               <OptionButtonRow
-                options={OUTFIT_STUDIO_RATIO_OPTIONS}
+                options={localizedRatioOptions}
                 selectedId={ratioId}
                 disabled={false}
                 onSelect={handleRatioSelect}
-                ariaLabel="Ratio de sortie"
+                ariaLabel={ui("outfitRatio", "Ratio de sortie")}
               />
             ) : null}
           </ConversationBubble>
@@ -804,7 +878,10 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
         {(guideStep === "pose" || poseAnswerLabel) && ratioLabel ? (
           <ConversationBubble role="bot" visible={isBotVisible("pose")} wide>
             <p className="image-studio-prompt-guide-bubble-text">
-              Pose / attitude <span className="image-studio-prompt-guide-optional">(optionnel)</span>
+              {ui("outfitPose", "Pose / attitude")}{" "}
+              <span className="image-studio-prompt-guide-optional">
+                {ui("ugcOptional", "(optionnel)")}
+              </span>
             </p>
             {guideStep === "pose" ? (
               <>
@@ -813,9 +890,13 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
                   selectedId={poseId}
                   disabled={false}
                   onSelect={handlePoseSelect}
-                  ariaLabel="Pose"
+                  ariaLabel={ui("outfitPose", "Pose")}
                 />
-                <SkipButton disabled={false} onClick={handlePoseSkip} label="Passer (défaut)" />
+                <SkipButton
+                  disabled={false}
+                  onClick={handlePoseSkip}
+                  label={ui("outfitSkipDefault", "Passer (défaut)")}
+                />
               </>
             ) : null}
           </ConversationBubble>
@@ -829,12 +910,14 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
 
         {ready ? (
           <ConversationBubble role="bot" visible={isBotVisible("result")} wide>
-            <p className="image-studio-prompt-guide-bubble-text">{template.botReady}</p>
+            <p className="image-studio-prompt-guide-bubble-text">{localizedTemplate.botReady}</p>
             {promptResultBlock}
           </ConversationBubble>
         ) : null}
 
-        {isTyping ? <TypingIndicator /> : null}
+        {isTyping ? (
+          <TypingIndicator visible typingLabel={ui("typing", "Le guide écrit…")} />
+        ) : null}
         <div ref={messagesEndRef} />
       </div>
     </div>

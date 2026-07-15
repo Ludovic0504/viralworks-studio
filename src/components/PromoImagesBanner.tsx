@@ -4,7 +4,7 @@ import { useAuth } from "@/contexte/FournisseurAuth";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { useBoutiqueModal } from "@/contexte/ContexteModalBoutique";
 import { usePremiumAccess } from "@/hooks/usePremiumAccess";
-import { PROMO_NANOBANANA_OFFER } from "@/bibliotheque/promo/imagesPromo";
+import { useT } from "@/contexte/FournisseurLocale";
 
 const BANNER_HEIGHT_VAR = "--promo-images-banner-height";
 
@@ -13,6 +13,7 @@ function setBannerHeight(px: number) {
 }
 
 export default function PromoImagesBanner() {
+  const t = useT();
   const { session, loading: authLoading } = useAuth();
   const { hasAccess, loading: premiumLoading } = usePremiumAccess();
   const { openAuthModal } = useRequireAuthAction();
@@ -63,7 +64,7 @@ export default function PromoImagesBanner() {
       ref={bannerRef}
       className="fixed left-0 right-0 z-40 border-b border-black/10 bg-[#f5d84e] text-[#1a1400] max-md:top-[calc(4rem+var(--pwa-install-banner-height,0px))] md:top-16"
       role="region"
-      aria-label="Offre ViralWorks Images"
+      aria-label={t("promo.bannerAria")}
     >
       <div className="mx-auto flex w-full min-w-0 max-w-7xl items-center px-4 py-2 sm:px-6 lg:px-8 md:justify-center md:py-2.5">
         <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3 md:flex-none">
@@ -73,14 +74,14 @@ export default function PromoImagesBanner() {
             aria-hidden
           />
           <p className="min-w-0 flex-1 text-[11px] font-semibold leading-snug sm:text-sm md:flex-none">
-            {PROMO_NANOBANANA_OFFER}
+            {t("promo.nanobananaOffer")}
           </p>
           <button
             type="button"
             onClick={handleCta}
             className="shrink-0 rounded-md bg-[#1a1400] px-2.5 py-1.5 text-[10px] font-bold text-[#f5d84e] transition-opacity hover:opacity-90 sm:px-3 sm:text-xs"
           >
-            {session ? "Essayer" : "Essai gratuit"}
+            {session ? t("promo.bannerCtaShort") : t("promo.bannerCta")}
           </button>
         </div>
       </div>

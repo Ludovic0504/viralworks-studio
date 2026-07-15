@@ -21,13 +21,15 @@ import { usePremiumAccess } from "@/hooks/usePremiumAccess";
 import { hasAvatarPlan } from "@/bibliotheque/supabase/premiumAccess";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { capturePostHog, trackPostHogError } from "@/bibliotheque/posthog/client";
+import { useT } from "@/contexte/FournisseurLocale";
 
 const AVATAR_MODES = [
-  { id: "from_scratch", label: "Créer depuis zéro" },
+  { id: "from_scratch", labelKey: "studio.createFromScratch" },
   { id: "from_photo", label: "À partir de ma photo" },
 ];
 
 export default function Studio() {
+  const t = useT();
   const { session } = useAuth();
   const { runWithAuth } = useRequireAuthAction();
   const { setStudioLayout } = useStudioLayoutOptions();
@@ -220,7 +222,7 @@ export default function Studio() {
                       : "text-gray-400 hover:text-gray-200"
                   } disabled:opacity-50`}
                 >
-                  {mode.label}
+                  {mode.labelKey ? t(mode.labelKey) : mode.label}
                 </button>
               ))}
             </div>

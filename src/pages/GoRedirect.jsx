@@ -1,12 +1,14 @@
 import { useEffect } from "react";
 import { useParams } from "react-router-dom";
 import Loading from "@/composants/interface/Chargement";
+import { useT } from "@/contexte/FournisseurLocale";
 import { isLinkClickSource, logLinkClick } from "@/bibliotheque/linkClickGoRedirect";
 
 /**
  * Route /go/:source — log clic puis redirection accueil (SPA).
  */
 export default function GoRedirect({ source: sourceProp }) {
+  const t = useT();
   const { source: sourceParam } = useParams();
   const source = String(sourceProp ?? sourceParam ?? "").trim().toLowerCase();
 
@@ -48,5 +50,5 @@ export default function GoRedirect({ source: sourceProp }) {
     })();
   }, [source]);
 
-  return <Loading fullScreen text="Redirection…" />;
+  return <Loading fullScreen text={t("redirect.loading")} />;
 }

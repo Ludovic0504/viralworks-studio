@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexte/FournisseurAuth";
-import { listHistory, getHistoryCounts } from "@/bibliotheque/supabase/historique";
+import { listHistory } from "@/bibliotheque/supabase/historique";
 import {
   getProfilCreditsSnapshot,
   readCachedProfilCreditsSnapshot,
@@ -19,13 +19,14 @@ import {
 import { getUserPayments, cancelSubscription } from "@/bibliotheque/supabase/stripe";
 import { getUserProfile, readCachedUserProfile, updateUserProfile, uploadAvatar, deleteAvatar } from "@/bibliotheque/supabase/profil";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
+import { useT } from "@/contexte/FournisseurLocale";
 import { useBoutiqueModal } from "@/contexte/ContexteModalBoutique";
 import ModalConfirmAnnulationAbonnement from "@/composants/boutique/ModalConfirmAnnulationAbonnement";
 import { useStripePayment, payImage9, payPro59, payPremium129 } from "@/hooks/useStripePayment";
 import { SECTORS, getSectorLabelForDisplay } from "@/bibliotheque/sectorDefaults";
 import { 
   User, Mail, Calendar, Settings, LogOut, Edit2, Save, X, 
-  FileText, Image as ImageIcon, Video, Sparkles, TrendingUp,
+  FileText, Image as ImageIcon, Video, Sparkles,
   Clock, ExternalLink, Coins, Shield, ShoppingBag, CreditCard, CheckCircle, XCircle, AlertCircle, ChevronDown, ChevronUp, Upload, Briefcase, Trash2, Crown, AlertTriangle,
   Download, Share2, Link as LinkIcon, Copy, Check, Info
 } from "lucide-react";
@@ -129,35 +130,35 @@ function resolveInitialCreditBuckets(session) {
   );
 }
 
-function resolveInitialStats(session) {
-  const userId = session?.user?.id;
-  if (!userId || typeof sessionStorage === "undefined") {
-    return { prompts: 0, images: 0, videos: 0, total: 0 };
-  }
-  try {
-    const raw = sessionStorage.getItem(`vws:history-counts:${userId}`);
-    if (!raw) return { prompts: 0, images: 0, videos: 0, total: 0 };
-    const parsed = JSON.parse(raw);
-    if (!parsed?.counts) return { prompts: 0, images: 0, videos: 0, total: 0 };
-    return parsed.counts;
-  } catch {
-    return { prompts: 0, images: 0, videos: 0, total: 0 };
-  }
+function ProfilSection({ title, icon: Icon, iconClass = "text-emerald-400", action, children, className = "" }) {
+  return (
+    <section className={`profil-section${className ? ` ${className}` : ""}`}>
+      <div className="profil-section-head">
+        <div className="profil-section-head-main">
+          {Icon ? <Icon className={`profil-section-icon ${iconClass}`} strokeWidth={2} aria-hidden /> : null}
+          <h3 className="profil-section-title">{title}</h3>
+        </div>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
 }
 
-function persistHistoryCounts(userId, counts) {
-  if (typeof sessionStorage === "undefined") return;
-  try {
-    sessionStorage.setItem(
-      `vws:history-counts:${userId}`,
-      JSON.stringify({ fetchedAt: Date.now(), counts }),
-    );
-  } catch {
-    // no-op
-  }
+function ProfilInfoRow({ icon: Icon, label, children, tone = "default" }) {
+  return (
+    <div className={`profil-info-row${tone !== "default" ? ` profil-info-row--${tone}` : ""}`}>
+      {Icon ? <Icon className="profil-info-icon" strokeWidth={2} aria-hidden /> : null}
+      <div className="profil-info-content">
+        <p className="profil-info-label">{label}</p>
+        <div className="profil-info-value">{children}</div>
+      </div>
+    </div>
+  );
 }
 
 export default function Profil() {
+  const t = useT();
   const { session, signOut } = useAuth();
   const { openBoutiqueModal, subscriptionDetails, refreshSubscriptionDetails } = useBoutiqueModal();
   const subscription = subscriptionDetails?.subscription ?? null;
@@ -166,17 +167,7 @@ export default function Profil() {
   const { runWithAuth } = useRequireAuthAction();
   const { startPayment } = useStripePayment();
   const [isEditing, setIsEditing] = useState(false);
-  const [stats, setStats] = useState(() => resolveInitialStats(session));
   const [recentHistory, setRecentHistory] = useState([]);
-  const [statsLoading, setStatsLoading] = useState(() => {
-    const userId = session?.user?.id;
-    if (!userId || typeof sessionStorage === "undefined") return false;
-    try {
-      return !sessionStorage.getItem(`vws:history-counts:${userId}`);
-    } catch {
-      return true;
-    }
-  });
   const [historyLoading, setHistoryLoading] = useState(false);
   const [credits, setCredits] = useState(() => resolveInitialCredits(session));
   const [transactions, setTransactions] = useState([]);
@@ -224,8 +215,8 @@ export default function Profil() {
     void loadProfile(userId);
     void loadCredits(userId);
 
-    const statsTimer = window.setTimeout(() => {
-      void loadStats(userId);
+    const historyTimer = window.setTimeout(() => {
+      void loadRecentHistory(userId);
     }, 0);
 
     const paymentsTimer = window.setTimeout(() => {
@@ -234,7 +225,7 @@ export default function Profil() {
     }, 250);
 
     return () => {
-      window.clearTimeout(statsTimer);
+      window.clearTimeout(historyTimer);
       window.clearTimeout(paymentsTimer);
     };
   }, [session?.user?.id]);
@@ -242,7 +233,7 @@ export default function Profil() {
   useEffect(() => {
     if (!session) return;
     const refresh = () => {
-      void loadStats();
+      void loadRecentHistory();
     };
     const refreshCreditsOnly = () => {
       void loadCredits();
@@ -250,7 +241,7 @@ export default function Profil() {
     };
     const onVisibility = () => {
       if (document.visibilityState === "visible") {
-        loadStats();
+        loadRecentHistory();
         loadCredits();
       }
     };
@@ -331,21 +322,6 @@ export default function Profil() {
     }, 1000);
     return () => window.clearInterval(id);
   }, [showQuotaDetails]);
-
-  const loadStats = async (userId = session?.user?.id) => {
-    if (!userId) return;
-    setStatsLoading(true);
-    try {
-      const counts = await getHistoryCounts(userId);
-      setStats(counts);
-      persistHistoryCounts(userId, counts);
-    } catch (err) {
-      console.error("Erreur chargement stats:", err);
-    } finally {
-      setStatsLoading(false);
-    }
-    void loadRecentHistory(userId);
-  };
 
   const loadRecentHistory = async (userId = session?.user?.id) => {
     if (!userId) return;
@@ -868,7 +844,7 @@ export default function Profil() {
     quotaVidVarCap === null ? null : Math.max(0, quotaVidVarCap - Math.max(0, vAttempts - 1));
 
   return (
-    <div className="mx-auto w-full min-w-0 max-w-6xl px-3 py-6 sm:px-6 sm:py-8 lg:px-8">
+    <div className="profil-page mx-auto w-full min-w-0 max-w-5xl px-3 py-4 sm:px-5 sm:py-6 lg:px-6">
       {showQuotaDetails && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
@@ -965,111 +941,25 @@ export default function Profil() {
           </div>
         </div>
       )}
-      <div className="mb-6 grid min-w-0 grid-cols-6 gap-2 sm:grid-cols-5 sm:gap-3 lg:gap-4">
-        <div className="glass-strong col-span-3 min-w-0 rounded-lg border border-white/10 p-2 sm:col-span-1 sm:rounded-xl sm:p-4 lg:p-6">
-          <div className="mb-1 flex items-center justify-between gap-0.5 sm:mb-2">
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-emerald-500/30 bg-emerald-500/20 sm:h-10 sm:w-10 sm:rounded-lg">
-              <Video className="h-3.5 w-3.5 text-emerald-400 sm:h-5 sm:w-5" />
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowQuotaDetails(true)}
-              className="shrink-0 rounded-md border border-white/10 bg-white/5 p-1 text-gray-300 transition-all hover:bg-white/10 hover:text-emerald-300 sm:rounded-lg sm:p-1.5"
-              title="Voir workflow vidéo et autres quotas"
-            >
-              <Info className="h-3 w-3 sm:h-4 sm:w-4" />
-            </button>
-          </div>
-          <p className="truncate text-base font-bold tabular-nums text-gray-200 sm:text-2xl">
-            {credits !== null ? credits : "..."}
-          </p>
-          <p className="mt-0.5 text-[9px] leading-tight text-gray-400 sm:mt-1 sm:text-xs">
-            Vidéos disponibles
-          </p>
-          <button
-            type="button"
-            onClick={() => openBoutiqueModal("packs-videos")}
-            className="mt-1.5 flex w-full items-center justify-center gap-0.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-1 py-1 text-center text-[9px] font-medium leading-tight text-emerald-300 transition-all hover:bg-emerald-500/20 sm:mt-3 sm:gap-2 sm:rounded-lg sm:px-3 sm:py-1.5 sm:text-sm"
-          >
-            <ShoppingBag className="h-3 w-3 shrink-0 sm:h-4 sm:w-4" />
-            <span className="line-clamp-2 sm:line-clamp-none">Acheter des vidéos</span>
-          </button>
-        </div>
-
-        <div className="glass-strong col-span-3 min-w-0 rounded-lg border border-white/10 p-2 sm:col-span-1 sm:rounded-xl sm:p-4 lg:p-6">
-          <div className="mb-1 flex items-center justify-between gap-0.5 sm:mb-2">
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-cyan-500/30 bg-cyan-500/20 sm:h-10 sm:w-10 sm:rounded-lg">
-              <FileText className="h-3.5 w-3.5 text-cyan-400 sm:h-5 sm:w-5" />
-            </div>
-            <TrendingUp className="h-3 w-3 shrink-0 text-gray-400 sm:h-4 sm:w-4" />
-          </div>
-          <p className="truncate text-base font-bold tabular-nums text-gray-200 sm:text-2xl">
-            {statsLoading ? "..." : stats.prompts}
-          </p>
-          <p className="mt-0.5 text-[9px] leading-tight text-gray-400 sm:mt-1 sm:text-xs">Textes créés</p>
-        </div>
-
-        <div className="glass-strong col-span-2 min-w-0 rounded-lg border border-white/10 p-2 sm:col-span-1 sm:rounded-xl sm:p-4 lg:p-6">
-          <div className="mb-1 flex items-center justify-between gap-0.5 sm:mb-2">
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-violet-500/30 bg-violet-500/20 sm:h-10 sm:w-10 sm:rounded-lg">
-              <ImageIcon className="h-3.5 w-3.5 text-violet-400 sm:h-5 sm:w-5" />
-            </div>
-            <TrendingUp className="h-3 w-3 shrink-0 text-gray-400 sm:h-4 sm:w-4" />
-          </div>
-          <p className="truncate text-base font-bold tabular-nums text-gray-200 sm:text-2xl">
-            {statsLoading ? "..." : stats.images}
-          </p>
-          <p className="mt-0.5 text-[9px] leading-tight text-gray-400 sm:mt-1 sm:text-xs">Images créées</p>
-        </div>
-
-        <div className="glass-strong col-span-2 min-w-0 rounded-lg border border-white/10 p-2 sm:col-span-1 sm:rounded-xl sm:p-4 lg:p-6">
-          <div className="mb-1 flex items-center justify-between gap-0.5 sm:mb-2">
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-yellow-500/30 bg-yellow-500/20 sm:h-10 sm:w-10 sm:rounded-lg">
-              <Video className="h-3.5 w-3.5 text-yellow-400 sm:h-5 sm:w-5" />
-            </div>
-            <TrendingUp className="h-3 w-3 shrink-0 text-gray-400 sm:h-4 sm:w-4" />
-          </div>
-          <p className="truncate text-base font-bold tabular-nums text-gray-200 sm:text-2xl">
-            {statsLoading ? "..." : stats.videos}
-          </p>
-          <p className="mt-0.5 text-[9px] leading-tight text-gray-400 sm:mt-1 sm:text-xs">Vidéos créées</p>
-        </div>
-
-        <div className="glass-strong col-span-2 min-w-0 rounded-lg border border-white/10 p-2 sm:col-span-1 sm:rounded-xl sm:p-4 lg:p-6">
-          <div className="mb-1 flex items-center justify-between gap-0.5 sm:mb-2">
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-emerald-500/30 bg-emerald-500/20 sm:h-10 sm:w-10 sm:rounded-lg">
-              <Sparkles className="h-3.5 w-3.5 text-emerald-400 sm:h-5 sm:w-5" />
-            </div>
-            <TrendingUp className="h-3 w-3 shrink-0 text-gray-400 sm:h-4 sm:w-4" />
-          </div>
-          <p className="truncate text-base font-bold tabular-nums text-gray-200 sm:text-2xl">
-            {statsLoading ? "..." : stats.total}
-          </p>
-          <p className="mt-0.5 text-[9px] leading-tight text-gray-400 sm:mt-1 sm:text-xs">Total créations</p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-3">
-        <div className="glass-strong rounded-2xl border border-white/10 p-4 sm:p-6 lg:p-8">
-          <div className="mb-4 flex min-w-0 items-center justify-between gap-3 sm:mb-6">
-            <h3 className="flex min-w-0 items-center gap-2 text-base font-semibold text-gray-200 sm:text-lg">
-              <User className="h-5 w-5 shrink-0 text-emerald-400" />
-              Profil
-              {profileRefreshing ? (
-                <span className="text-xs font-normal text-gray-500">Mise à jour…</span>
-              ) : null}
-            </h3>
-            {!isEditing && (
+      <div className="profil-layout">
+        <ProfilSection
+          title={t("profile.title")}
+          icon={User}
+          action={
+            !isEditing ? (
               <button
                 onClick={() => setIsEditing(true)}
-                className="shrink-0 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2 text-emerald-300 transition-all hover:bg-emerald-500/20"
+                className="profil-edit-btn"
                 title="Modifier le profil"
               >
-                <Edit2 className="h-4 w-4" />
+                <Edit2 className="h-3.5 w-3.5" />
               </button>
-            )}
-          </div>
-
+            ) : null
+          }
+        >
+          {profileRefreshing ? (
+            <p className="mb-2 text-xs text-gray-500">Mise à jour…</p>
+          ) : null}
           {isEditing ? (
             <div className="space-y-4">
               {/* Avatar */}
@@ -1123,7 +1013,7 @@ export default function Profil() {
               {/* Formulaire */}
               <div className="space-y-4">
                 <div>
-                  <label className="block text-xs text-gray-400 mb-1.5">Prénom</label>
+                  <label className="block text-xs text-gray-400 mb-1.5">{t("auth.firstName")}</label>
                   <input
                     type="text"
                     value={formData.first_name}
@@ -1134,7 +1024,7 @@ export default function Profil() {
                 </div>
 
                 <div>
-                  <label className="block text-xs text-gray-400 mb-1.5">Nom</label>
+                  <label className="block text-xs text-gray-400 mb-1.5">{t("auth.lastName")}</label>
                   <input
                     type="text"
                     value={formData.last_name}
@@ -1145,7 +1035,7 @@ export default function Profil() {
                 </div>
 
                 <div>
-                  <label className="block text-xs text-gray-400 mb-1.5">Email</label>
+                  <label className="block text-xs text-gray-400 mb-1.5">{t("auth.email")}</label>
                   <input
                     type="email"
                     value={email}
@@ -1213,12 +1103,12 @@ export default function Profil() {
                   {saving ? (
                     <>
                       <div className="w-4 h-4 border-2 border-emerald-300 border-t-transparent rounded-full animate-spin" />
-                      Enregistrement...
+                      {t("profile.saving")}
                     </>
                   ) : (
                     <>
                       <Save className="w-4 h-4" />
-                      Enregistrer
+                      {t("profile.save")}
                     </>
                   )}
                 </button>
@@ -1234,157 +1124,119 @@ export default function Profil() {
               </div>
             </div>
           ) : (
-            <div className="space-y-4">
-              {/* Avatar */}
-              <div className="flex justify-center mb-4">
+            <>
+              <div className="profil-profile-header">
                 {profile?.avatar_url ? (
-                  <img
-                    src={profile.avatar_url}
-                    alt="Avatar"
-                    className="w-20 h-20 rounded-full object-cover border-2 border-emerald-500/30"
-                  />
+                  <img src={profile.avatar_url} alt="Avatar" className="profil-avatar" />
                 ) : (
-                  <div className="w-20 h-20 rounded-full bg-emerald-500/20 border-2 border-emerald-500/30 flex items-center justify-center">
-                    <User className="w-10 h-10 text-emerald-400" />
+                  <div className="profil-avatar-fallback">
+                    <User className="h-5 w-5" />
                   </div>
                 )}
-              </div>
-
-              {/* Informations */}
-              <div className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/5 p-3 sm:items-center sm:gap-4 sm:p-4">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/20">
-                  <User className="h-5 w-5 text-emerald-400" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="mb-1 text-xs text-gray-400">Nom complet</p>
-                  <p className="break-words text-sm font-medium text-gray-200">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-gray-100">
                     {profile?.full_name || profile?.first_name || profile?.last_name
                       ? `${profile?.first_name || ""} ${profile?.last_name || ""}`.trim() || profile?.full_name
                       : profileRefreshing
                         ? "Chargement…"
-                        : "Non renseigné"}
+                        : t("profile.notProvided")}
                   </p>
+                  <p className="truncate text-xs text-gray-500">{email}</p>
                 </div>
               </div>
 
-              <div className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/5 p-3 sm:items-center sm:gap-4 sm:p-4">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/20">
-                  <Mail className="h-5 w-5 text-emerald-400" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="mb-1 text-xs text-gray-400">Email</p>
-                  <p className="break-all text-sm font-medium text-gray-200">{email}</p>
-                </div>
-              </div>
+              <div className="profil-info-list">
+                <ProfilInfoRow icon={Mail} label={t("auth.email")}>
+                  {email}
+                </ProfilInfoRow>
 
-              {profile?.job && (
-                <div className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/5 p-3 sm:items-center sm:gap-4 sm:p-4">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/20">
-                    <Briefcase className="h-5 w-5 text-emerald-400" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="mb-1 text-xs text-gray-400">Métier</p>
-                    <p className="break-words text-sm font-medium text-gray-200">{profile.job}</p>
-                  </div>
-                </div>
-              )}
+                {profile?.job ? (
+                  <ProfilInfoRow icon={Briefcase} label="Métier">
+                    {profile.job}
+                  </ProfilInfoRow>
+                ) : null}
 
-              {profile?.secteur && String(profile.secteur).trim() ? (
-                <div className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/5 p-3 sm:items-center sm:gap-4 sm:p-4">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/20">
-                    <Sparkles className="h-5 w-5 text-emerald-400" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="mb-1 text-xs text-gray-400">Secteur (Studio)</p>
-                    <p className="break-words text-sm font-medium text-gray-200">
-                      {getSectorLabelForDisplay(String(profile.secteur))}
-                    </p>
-                  </div>
-                </div>
-              ) : null}
+                {profile?.secteur && String(profile.secteur).trim() ? (
+                  <ProfilInfoRow icon={Sparkles} label="Secteur (Studio)">
+                    {getSectorLabelForDisplay(String(profile.secteur))}
+                  </ProfilInfoRow>
+                ) : null}
 
-              {profile?.birth_date && (
-                <div className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/5 p-3 sm:items-center sm:gap-4 sm:p-4">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/20">
-                    <Calendar className="h-5 w-5 text-emerald-400" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="mb-1 text-xs text-gray-400">Date de naissance</p>
-                    <p className="break-words text-sm font-medium text-gray-200">
-                      {new Date(profile.birth_date).toLocaleDateString("fr-FR", {
-                        year: "numeric",
-                        month: "long",
-                        day: "numeric"
-                      })}
-                    </p>
-                  </div>
-                </div>
-              )}
+                {profile?.birth_date ? (
+                  <ProfilInfoRow icon={Calendar} label="Date de naissance">
+                    {new Date(profile.birth_date).toLocaleDateString("fr-FR", {
+                      year: "numeric",
+                      month: "long",
+                      day: "numeric",
+                    })}
+                  </ProfilInfoRow>
+                ) : null}
 
-              <div className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/5 p-3 sm:items-center sm:gap-4 sm:p-4">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/20">
-                  <Calendar className="h-5 w-5 text-emerald-400" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="mb-1 text-xs text-gray-400">Compte créé le</p>
-                  <p className="break-words text-sm font-medium text-gray-200">{createdAt}</p>
-                </div>
-              </div>
+                <ProfilInfoRow icon={Calendar} label={t("profile.accountCreated")}>
+                  {createdAt}
+                </ProfilInfoRow>
 
-              {userRole === 'admin' && (
-                <div className="flex items-start gap-3 rounded-lg border border-violet-500/30 bg-violet-500/10 p-3 sm:items-center sm:gap-4 sm:p-4">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-violet-500/30 bg-violet-500/20">
-                    <Shield className="h-5 w-5 text-violet-400" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="mb-1 text-xs text-gray-400">Rôle</p>
-                    <div className="flex flex-col items-start gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-                      <p className="text-sm font-semibold text-violet-300">Administrateur</p>
-                      <Link
-                        to="/admin"
-                        className="text-xs text-violet-400 underline hover:text-violet-300"
-                      >
-                        Accéder au panel admin
+                {userRole === "admin" ? (
+                  <ProfilInfoRow icon={Shield} label="Rôle" tone="accent">
+                    <div className="flex flex-col items-start gap-1 sm:flex-row sm:flex-wrap sm:items-center">
+                      <span>{t("profile.administrator")}</span>
+                      <Link to="/admin" className="text-xs text-violet-400 underline hover:text-violet-300">
+                        {t("profile.adminPanel")}
                       </Link>
                     </div>
+                  </ProfilInfoRow>
+                ) : null}
+
+                <div className="profil-info-row profil-info-row--videos">
+                  <Video className="profil-info-icon" strokeWidth={2} aria-hidden />
+                  <div className="profil-info-value profil-info-value--videos min-w-0 flex-1">
+                    <span className="profil-videos-count">{credits !== null ? credits : "…"}</span>
+                    <span className="profil-videos-label">{t("profile.videosAvailable")}</span>
+                    <div className="profil-videos-credit-actions">
+                        <button
+                          type="button"
+                          onClick={() => setShowQuotaDetails(true)}
+                          className="profil-videos-credit-btn profil-videos-credit-btn--info"
+                          title="Voir workflow vidéo et autres quotas"
+                          aria-label="Voir workflow vidéo et autres quotas"
+                        >
+                          <Info className="h-3.5 w-3.5" strokeWidth={2} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openBoutiqueModal("packs-videos")}
+                          className="profil-videos-credit-btn profil-videos-credit-btn--buy"
+                          aria-label={t("shop.buyVideos")}
+                          title={t("shop.buyVideos")}
+                        >
+                          <ShoppingBag className="h-3.5 w-3.5" strokeWidth={2} />
+                        </button>
+                      </div>
                   </div>
                 </div>
-              )}
-            </div>
+              </div>
+            </>
           )}
-        </div>
+        </ProfilSection>
 
-        <div className="space-y-4 sm:space-y-6 lg:col-span-2">
-          <div className="glass-strong rounded-2xl border border-white/10 p-4 sm:p-6">
-            <h3 className="text-lg font-semibold text-gray-200 mb-4 flex items-center gap-2">
-              <Settings className="w-5 h-5 text-emerald-400" />
-              Paramètres
-            </h3>
-            <div className="space-y-3">
-              <button
-                onClick={handleLogout}
-                className="w-full flex items-center justify-between p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 hover:bg-red-500/20 hover:border-red-500/50 transition-all"
-              >
-                <div className="flex items-center gap-3">
-                  <LogOut className="w-5 h-5" />
-                  <span className="font-medium">Se déconnecter</span>
-                </div>
-              </button>
-            </div>
-          </div>
+        <div className="profil-section-stack">
+          <ProfilSection title="Paramètres" icon={Settings}>
+            <button onClick={handleLogout} className="profil-action-btn" type="button">
+              <div className="flex items-center gap-2">
+                <LogOut className="h-4 w-4" />
+                <span>{t("auth.signOut")}</span>
+              </div>
+            </button>
+          </ProfilSection>
 
-          <div className="glass-strong rounded-2xl border border-white/10 p-4 sm:p-6">
-            <h3 className="text-lg font-semibold text-gray-200 mb-4 flex items-center gap-2">
-              <CreditCard className="w-5 h-5 text-emerald-400" />
-              Historique des paiements
-            </h3>
+          <ProfilSection title="Historique des paiements" icon={CreditCard}>
             {payments.length > 0 ? (
               <>
-                <div className="space-y-2">
+                <div>
                   {(showAllPayments ? payments : payments.slice(0, 3)).map((payment) => (
                     <div
                       key={payment.id}
-                      className="flex flex-col gap-2 rounded-lg border border-white/10 bg-white/5 p-3 sm:flex-row sm:items-center sm:justify-between"
+                      className="profil-list-row flex-col sm:flex-row sm:items-center sm:justify-between"
                     >
                       <div className="min-w-0 flex-1">
                         <div className="mb-1 flex flex-wrap items-center gap-2">
@@ -1407,48 +1259,35 @@ export default function Profil() {
                 {payments.length > 3 && (
                   <button
                     onClick={() => setShowAllPayments(!showAllPayments)}
-                    className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 text-sm font-medium transition-all"
+                    className="profil-expand-btn"
+                    type="button"
                   >
                     {showAllPayments ? (
                       <>
                         <ChevronUp className="w-4 h-4" />
-                        Voir moins
+                        {t("profile.seeLess")}
                       </>
                     ) : (
                       <>
                         <ChevronDown className="w-4 h-4" />
-                        Voir tout ({payments.length})
+                        {t("profile.seeAll")} ({payments.length})
                       </>
                     )}
                   </button>
                 )}
               </>
             ) : (
-              <div className="text-center py-8 text-gray-400">Aucun paiement</div>
+              <div className="profil-empty">Aucun paiement</div>
             )}
-          </div>
+          </ProfilSection>
 
-          {/* Section Abonnement */}
-          <div className="glass-strong rounded-2xl border border-white/10 p-4 sm:p-6">
-            <h3 className="text-lg font-semibold text-gray-200 mb-4 flex items-center gap-2">
-              <Crown className="w-5 h-5 text-violet-400" />
-              Mon abonnement
-            </h3>
+          <ProfilSection title={t("profile.mySubscription")} icon={Crown} iconClass="text-violet-400">
             {subscription ? (
-              <div className="space-y-4">
-                <div className="rounded-lg border border-violet-500/30 bg-violet-500/10 p-3 sm:p-4">
-                  <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <Crown className="h-5 w-5 shrink-0 text-violet-400" />
-                      <span className="text-sm font-semibold text-violet-300">
-                        {subscriptionPlanName ?? "Abonnement actif"}
-                      </span>
-                    </div>
-                    {subscription.cancel_at_period_end && (
-                      <span className="w-fit rounded border border-yellow-500/30 bg-yellow-500/20 px-2 py-1 text-xs font-medium text-yellow-400">
-                        Annulé
-                      </span>
-                    )}
+              <div className="profil-subpanel profil-subpanel--violet">
+                  <div className="mb-3">
+                    <span className="text-sm font-semibold text-violet-300">
+                      {subscriptionPlanName ?? "Abonnement actif"}
+                    </span>
                   </div>
                   
                   <div className="space-y-2 text-sm">
@@ -1505,37 +1344,29 @@ export default function Profil() {
                       )}
                     </button>
                   )}
-                </div>
               </div>
             ) : (
-              <div className="text-center py-8">
-                <Crown className="w-12 h-12 text-gray-600 mx-auto mb-3" />
-                <p className="text-gray-400 mb-4">Vous n'avez pas d'abonnement actif</p>
+              <div className="profil-empty">
+                <Crown className="mx-auto mb-2 h-8 w-8 text-gray-600" />
+                <p className="mb-3">Vous n&apos;avez pas d&apos;abonnement actif</p>
                 <button
                   type="button"
                   onClick={() => openBoutiqueModal("subscription")}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-500/20 hover:bg-violet-500/30 border border-violet-500/30 text-violet-300 font-medium transition-all"
+                  className="inline-flex items-center gap-2 rounded-md border border-[#2e2840] bg-[#1a1724] px-3 py-1.5 text-sm font-medium text-violet-300 transition-colors hover:bg-[#211c2c]"
                 >
-                  <Crown className="w-4 h-4" />
+                  <Crown className="h-4 w-4" />
                   Voir les abonnements
                 </button>
               </div>
             )}
-          </div>
+          </ProfilSection>
 
-          <div className="glass-strong rounded-2xl border border-white/10 p-4 sm:p-6">
-            <h3 className="text-lg font-semibold text-gray-200 mb-4 flex items-center gap-2">
-              <Coins className="w-5 h-5 text-emerald-400" />
-              Transactions vidéo
-            </h3>
+          <ProfilSection title="Transactions vidéo" icon={Coins}>
             {transactions.length > 0 ? (
               <>
-                <div className="space-y-2">
+                <div>
                   {(showAllTransactions ? transactions : transactions.slice(0, 3)).map((tx) => (
-                    <div
-                      key={tx.id}
-                      className="flex items-start justify-between gap-3 rounded-lg border border-white/10 bg-white/5 p-3 sm:items-center"
-                    >
+                    <div key={tx.id} className="profil-list-row items-start sm:items-center justify-between">
                       <div className="min-w-0 flex-1">
                         <p className="break-words text-sm font-medium text-gray-200">
                           {tx.reason === "prompt_generation" && "Génération de prompt"}
@@ -1563,51 +1394,51 @@ export default function Profil() {
                 {transactions.length > 3 && (
                   <button
                     onClick={() => setShowAllTransactions(!showAllTransactions)}
-                    className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 text-sm font-medium transition-all"
+                    className="profil-expand-btn"
+                    type="button"
                   >
                     {showAllTransactions ? (
                       <>
                         <ChevronUp className="w-4 h-4" />
-                        Voir moins
+                        {t("profile.seeLess")}
                       </>
                     ) : (
                       <>
                         <ChevronDown className="w-4 h-4" />
-                        Voir tout ({transactions.length})
+                        {t("profile.seeAll")} ({transactions.length})
                       </>
                     )}
                   </button>
                 )}
               </>
             ) : (
-              <div className="text-center py-8 text-gray-400">Aucune transaction</div>
+              <div className="profil-empty">Aucune transaction</div>
             )}
-          </div>
+          </ProfilSection>
 
-          {/* Galerie Photo */}
-          <div className="glass-strong rounded-2xl border border-white/10 p-4 sm:p-6">
-            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <h3 className="flex items-center gap-2 text-lg font-semibold text-gray-200">
-                <ImageIcon className="h-5 w-5 text-violet-400" />
-                Galerie Photo
-              </h3>
+          <ProfilSection
+            title={t("profile.photoGallery")}
+            icon={ImageIcon}
+            iconClass="text-violet-400"
+            action={
               <Link
                 to="/galerie"
-                className="flex w-fit items-center gap-1 text-xs text-emerald-400 transition-colors hover:text-emerald-300"
+                className="flex w-fit items-center gap-1 text-[11px] text-emerald-400 transition-colors hover:text-emerald-300"
               >
                 Voir toute la galerie
-                <ExternalLink className="w-3 h-3" />
+                <ExternalLink className="h-3 w-3" />
               </Link>
-            </div>
+            }
+          >
             {historyLoading ? (
-              <div className="text-center py-8 text-gray-400">Chargement...</div>
+              <div className="profil-empty">Chargement...</div>
             ) : (() => {
               const images = recentHistory
                 .map((h) => ({ ...h, resolvedUrls: getImageUrls(h) }))
                 .filter((h) => h.kind === "image" && h.resolvedUrls.length > 0);
               return images.length > 0 ? (
                 <>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-4">
+                  <div className="mb-3 grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">
                     {images.slice(0, 12).map((item, index) => {
                       const imageUrl = item.resolvedUrls[0];
                       const isSelected = selectedImageUrl === imageUrl;
@@ -1616,10 +1447,8 @@ export default function Profil() {
                         <div
                           key={index}
                           onClick={() => setSelectedImageUrl(isSelected ? null : imageUrl)}
-                          className={`group relative aspect-square rounded-lg overflow-hidden border transition-all bg-white/5 cursor-pointer ${
-                            isSelected
-                              ? "border-emerald-500 ring-2 ring-emerald-500/50"
-                              : "border-white/10 hover:border-emerald-500/50"
+                          className={`profil-gallery-thumb group relative aspect-square cursor-pointer overflow-hidden transition-all ${
+                            isSelected ? "is-selected" : ""
                           }`}
                         >
                           <img
@@ -1660,7 +1489,7 @@ export default function Profil() {
 
                   {/* Panneau d'actions pour l'image sélectionnée */}
                   {selectedImageUrl && (
-                    <div className="glass-strong rounded-xl p-4 border border-emerald-500/30 bg-emerald-500/5 mb-4">
+                    <div className="profil-subpanel profil-subpanel--emerald mb-3">
                       <div className="flex items-center justify-between mb-3">
                         <label className="block text-sm font-medium text-emerald-300 flex items-center gap-2">
                           <ImageIcon className="w-4 h-4" />
@@ -1700,14 +1529,14 @@ export default function Profil() {
                           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-300 text-sm font-medium transition-all"
                         >
                           <Download className="w-4 h-4" />
-                          Télécharger ({downloadFormat.toUpperCase()})
+                          {t("common.download")} ({downloadFormat.toUpperCase()})
                         </button>
                         <button
                           onClick={() => handleCopyUrl(selectedImageUrl)}
                           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 text-blue-300 text-sm font-medium transition-all"
                         >
                           <Copy className="w-4 h-4" />
-                          Copier l'URL
+                          {t("common.copy")}
                         </button>
                         <button
                           onClick={() => {
@@ -1717,7 +1546,7 @@ export default function Profil() {
                           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 text-purple-300 text-sm font-medium transition-all"
                         >
                           <Share2 className="w-4 h-4" />
-                          Partager
+                          {t("common.share")}
                         </button>
                         <button
                           onClick={() => {
@@ -1743,27 +1572,27 @@ export default function Profil() {
                   )}
                 </>
               ) : (
-                <div className="text-center py-8 text-gray-400">Aucune image</div>
+                <div className="profil-empty">Aucune image</div>
               );
             })()}
-          </div>
+          </ProfilSection>
 
-          <div className="glass-strong rounded-2xl border border-white/10 p-4 sm:p-6">
-            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <h3 className="flex items-center gap-2 text-lg font-semibold text-gray-200">
-                <Video className="h-5 w-5 text-yellow-400" />
-                Galerie Vidéo
-              </h3>
+          <ProfilSection
+            title={t("profile.videoGallery")}
+            icon={Video}
+            iconClass="text-yellow-400"
+            action={
               <Link
                 to="/galerie"
-                className="flex w-fit items-center gap-1 text-xs text-emerald-400 transition-colors hover:text-emerald-300"
+                className="flex w-fit items-center gap-1 text-[11px] text-emerald-400 transition-colors hover:text-emerald-300"
               >
                 Voir toute la galerie
-                <ExternalLink className="w-3 h-3" />
+                <ExternalLink className="h-3 w-3" />
               </Link>
-            </div>
+            }
+          >
             {historyLoading ? (
-              <div className="text-center py-8 text-gray-400">Chargement...</div>
+              <div className="profil-empty">Chargement...</div>
             ) : (() => {
               const videos = recentHistory
                 .filter(h => h.kind === "video")
@@ -1776,7 +1605,7 @@ export default function Profil() {
                 .filter((h) => h.videoUrl);
               return videos.length > 0 ? (
                 <>
-                  <div className="space-y-3 mb-4">
+                  <div className="mb-3">
                     {videos.slice(0, 6).map((item, index) => {
                       const isSelected = selectedVideoItem?.id === item.id;
                       const modelLabel = String(item.model || "").toUpperCase();
@@ -1784,13 +1613,11 @@ export default function Profil() {
                         <div
                           key={index}
                           onClick={() => setSelectedVideoItem(isSelected ? null : item)}
-                          className={`flex items-center gap-3 p-3 rounded-lg border transition-all cursor-pointer ${
-                            isSelected
-                              ? "bg-yellow-500/10 border-yellow-500/50 ring-2 ring-yellow-500/30"
-                              : "bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20"
+                          className={`profil-list-row cursor-pointer items-center ${
+                            isSelected ? "text-yellow-200" : ""
                           }`}
                         >
-                          <div className="w-16 h-16 rounded-lg overflow-hidden bg-yellow-500/20 border border-yellow-500/30 flex items-center justify-center flex-shrink-0">
+                          <div className="profil-gallery-thumb flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden">
                             {item.videoImageUrl ? (
                               <img src={item.videoImageUrl} alt="Visuel vidéo" className="w-full h-full object-cover" loading="lazy" />
                             ) : isSelected ? (
@@ -1827,7 +1654,7 @@ export default function Profil() {
 
                   {/* Panneau d'actions pour la vidéo sélectionnée */}
                   {selectedVideoItem && (
-                    <div className="glass-strong rounded-xl p-4 border border-yellow-500/30 bg-yellow-500/5 mb-4">
+                    <div className="profil-subpanel profil-subpanel--yellow mb-3">
                       <div className="flex items-center justify-between mb-3">
                         <label className="block text-sm font-medium text-yellow-300 flex items-center gap-2">
                           <Video className="w-4 h-4" />
@@ -1887,7 +1714,7 @@ export default function Profil() {
                               className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-300 text-sm font-medium transition-all"
                             >
                               <Download className="w-4 h-4" />
-                              Télécharger la vidéo
+                              {t("common.download")}
                             </a>
                           </>
                         ) : (
@@ -1919,7 +1746,7 @@ export default function Profil() {
                           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 text-purple-300 text-sm font-medium transition-all"
                         >
                           <Share2 className="w-4 h-4" />
-                          Partager
+                          {t("common.share")}
                         </button>
                         <button
                           onClick={() => {
@@ -1939,61 +1766,58 @@ export default function Profil() {
                   )}
                 </>
               ) : (
-                <div className="text-center py-8 text-gray-400">Aucune vidéo</div>
+                <div className="profil-empty">Aucune vidéo</div>
               );
             })()}
-          </div>
+          </ProfilSection>
 
-          <div className="glass-strong rounded-2xl border border-white/10 p-4 sm:p-6">
-            <h3 className="text-lg font-semibold text-gray-200 mb-4 flex items-center gap-2">
-              <Clock className="w-5 h-5 text-emerald-400" />
-              Historique récent
-            </h3>
+          <ProfilSection title="Historique récent" icon={Clock}>
             {historyLoading ? (
-              <div className="text-center py-8 text-gray-400">Chargement...</div>
+              <div className="profil-empty">Chargement...</div>
             ) : recentHistory.length > 0 ? (
               <>
-                <div className="space-y-2">
+                <div>
                   {(showAllHistory ? recentHistory : recentHistory.slice(0, 3)).map((item, index) => (
                     <Link
                       key={index}
                       to={getKindPath(item.kind)}
-                      className="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all group"
+                      className="profil-list-row group"
                     >
-                      <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
+                      <div className="profil-list-row-icon">
                         {getKindIcon(item.kind)}
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-200 truncate">{getKindLabel(item.kind)}</p>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-gray-200">{getKindLabel(item.kind)}</p>
                         <p className="text-xs text-gray-400">{formatDate(item.created_at)}</p>
                       </div>
-                      <ExternalLink className="w-4 h-4 text-gray-400 group-hover:text-emerald-400 transition-colors" />
+                      <ExternalLink className="h-4 w-4 shrink-0 text-gray-500 transition-colors group-hover:text-emerald-400" />
                     </Link>
                   ))}
                 </div>
                 {recentHistory.length > 3 && (
                   <button
                     onClick={() => setShowAllHistory(!showAllHistory)}
-                    className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 text-sm font-medium transition-all"
+                    className="profil-expand-btn"
+                    type="button"
                   >
                     {showAllHistory ? (
                       <>
                         <ChevronUp className="w-4 h-4" />
-                        Voir moins
+                        {t("profile.seeLess")}
                       </>
                     ) : (
                       <>
                         <ChevronDown className="w-4 h-4" />
-                        Voir tout ({recentHistory.length})
+                        {t("profile.seeAll")} ({recentHistory.length})
                       </>
                     )}
                   </button>
                 )}
               </>
             ) : (
-              <div className="text-center py-8 text-gray-400">Aucun historique</div>
+              <div className="profil-empty">Aucun historique</div>
             )}
-          </div>
+          </ProfilSection>
         </div>
       </div>
 

@@ -4,8 +4,10 @@ import { MailCheck, RefreshCw } from "lucide-react";
 import FondApp from "@/composants/disposition/FondApp";
 import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
 import TurnstileWidget, { isTurnstileEnabled } from "@/composants/auth/TurnstileWidget.jsx";
+import { useT } from "@/contexte/FournisseurLocale";
 
 export default function AuthEnAttenteConfirmation() {
+  const t = useT();
   const [searchParams] = useSearchParams();
   const initialEmail = searchParams.get("email") || "";
   const [email, setEmail] = useState(initialEmail);
@@ -18,11 +20,11 @@ export default function AuthEnAttenteConfirmation() {
   const handleResend = async (e) => {
     e.preventDefault();
     if (!email.includes("@")) {
-      setResendError("Entre une adresse email valide.");
+      setResendError(t("auth.invalidEmail"));
       return;
     }
     if (needsCaptcha && !captchaToken) {
-      setResendError("Complète la vérification anti-bot avant de renvoyer l'email.");
+      setResendError(t("auth.captchaRequired"));
       return;
     }
 
@@ -38,13 +40,13 @@ export default function AuthEnAttenteConfirmation() {
       });
       if (error) {
         setResendStatus("error");
-        setResendError(error.message || "Impossible de renvoyer l'email.");
+        setResendError(error.message || t("auth.resendFailed"));
         return;
       }
       setResendStatus("sent");
     } catch (err) {
       setResendStatus("error");
-      setResendError(err?.message || "Impossible de renvoyer l'email.");
+      setResendError(err?.message || t("auth.resendFailed"));
     }
   };
 
@@ -54,16 +56,15 @@ export default function AuthEnAttenteConfirmation() {
         <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0c1424]/90 p-6 shadow-xl backdrop-blur-md">
           <div className="mb-4 flex items-center gap-3 text-emerald-300">
             <MailCheck className="h-8 w-8 shrink-0" />
-            <h1 className="text-xl font-semibold text-white">Confirme ton email</h1>
+            <h1 className="text-xl font-semibold text-white">{t("auth.confirmEmail")}</h1>
           </div>
           <p className="text-sm leading-relaxed text-gray-300">
-            Ton compte est créé, mais tu dois confirmer ton adresse email avant d&apos;accéder à
-            ViralWorks Studio. Ouvre le lien reçu par email, puis reconnecte-toi.
+            {t("auth.pendingBody")} {t("auth.pendingHint")}
           </p>
 
           <form onSubmit={handleResend} className="mt-6 space-y-3">
             <label className="block text-xs text-gray-400" htmlFor="pending-email">
-              Renvoyer l&apos;email de confirmation
+              {t("auth.resendEmail")}
             </label>
             <input
               id="pending-email"
@@ -73,6 +74,7 @@ export default function AuthEnAttenteConfirmation() {
               className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-gray-200 placeholder-gray-500 focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
               placeholder="ton@email.com"
               autoComplete="email"
+              aria-label={t("auth.email")}
             />
             <TurnstileWidget
               onToken={setCaptchaToken}
@@ -87,12 +89,12 @@ export default function AuthEnAttenteConfirmation() {
               {resendStatus === "sending" ? (
                 <>
                   <RefreshCw className="h-4 w-4 animate-spin" />
-                  Envoi…
+                  {t("auth.sending")}
                 </>
               ) : resendStatus === "sent" ? (
-                "Email renvoyé"
+                t("auth.emailSent")
               ) : (
-                "Renvoyer l'email"
+                t("auth.resendEmail")
               )}
             </button>
             {resendError ? <p className="text-xs text-red-300">{resendError}</p> : null}

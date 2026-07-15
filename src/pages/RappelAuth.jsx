@@ -4,9 +4,11 @@ import { useNavigate } from "react-router-dom";
 import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
 import { syncSignupProfileNamesFromMetadata } from "@/bibliotheque/supabase/profil";
 import FondApp from "@/composants/disposition/FondApp";
+import { useT } from "@/contexte/FournisseurLocale";
 
 export default function AuthCallback() {
   const navigate = useNavigate();
+  const t = useT();
 
   useEffect(() => {
     (async () => {
@@ -112,7 +114,7 @@ export default function AuthCallback() {
   return (
     <div className="relative min-h-screen flex items-center justify-center bg-[#07090f] text-white">
       <FondApp fixed />
-      Validation en cours…
+      {t("authCallback.validating")}
     </div>
   );
 }

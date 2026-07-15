@@ -1,16 +1,20 @@
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { ChevronRight } from "lucide-react";
 import FondApp from "@/composants/disposition/FondApp";
-
-const textSlides = [
-  { text: "Créez des textes puissants", subtext: "avec l'intelligence artificielle" },
-  { text: "Générez des images uniques", subtext: "en quelques secondes" },
-  { text: "Produisez des vidéos", subtext: "sans effort" },
-  { text: "Tout en un seul outil", subtext: "ViralWorks Studio pour tout créer" },
-];
+import { useT } from "@/contexte/FournisseurLocale";
 
 export default function ChargeurInitial({ onEnter }) {
+  const t = useT();
+  const textSlides = useMemo(
+    () => [
+      { text: t("boot.slide1Title"), subtext: t("boot.slide1Sub") },
+      { text: t("boot.slide2Title"), subtext: t("boot.slide2Sub") },
+      { text: t("boot.slide3Title"), subtext: t("boot.slide3Sub") },
+      { text: t("boot.slide4Title"), subtext: t("boot.slide4Sub") },
+    ],
+    [t],
+  );
   const [isReady, setIsReady] = useState(false);
   const [logoScale, setLogoScale] = useState(0);
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -41,7 +45,7 @@ export default function ChargeurInitial({ onEnter }) {
       clearTimeout(buttonTimer);
       clearInterval(slideInterval);
     };
-  }, []);
+  }, [textSlides.length]);
 
   const handleEnter = useCallback(() => {
     if (onEnter) {
@@ -346,7 +350,7 @@ export default function ChargeurInitial({ onEnter }) {
                 letterSpacing: '0.05em'
               }}
             >
-              Entrer directement
+              {t("boot.enterDirect")}
             </button>
           </div>
         )}

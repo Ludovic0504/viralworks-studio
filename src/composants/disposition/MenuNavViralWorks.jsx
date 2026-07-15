@@ -1,20 +1,33 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { ChevronDown, Image, Video } from "lucide-react";
 import LienNavSync from "@/composants/disposition/LienNavSync";
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { prefetchPremiumAccess } from "@/hooks/usePremiumAccess";
 import { prefetchImageStudioHistory } from "@/bibliotheque/imageStudio/imageStudioHistoryCache";
+import { useT } from "@/contexte/FournisseurLocale";
 
-const VIDEO_ITEMS = [
-  { to: "/viralworks", label: "Créer ma vidéo", matchCreator: true },
-  { to: "/edit-video", label: "Éditer ma vidéo", matchEditVideo: true },
-];
+function useVideoItems() {
+  const t = useT();
+  return useMemo(
+    () => [
+      { to: "/viralworks", label: t("nav.createVideo"), matchCreator: true },
+      { to: "/edit-video", label: t("nav.editVideo"), matchEditVideo: true },
+    ],
+    [t],
+  );
+}
 
-const IMAGE_ITEMS = [
-  { to: "/studio", label: "Avatar IA", matchAvatar: true },
-  { to: "/image-studio", label: "Image Studio", matchImageStudio: true },
-];
+function useImageItems() {
+  const t = useT();
+  return useMemo(
+    () => [
+      { to: "/studio", label: t("nav.avatarIa"), matchAvatar: true },
+      { to: "/image-studio", label: t("nav.imageStudio"), matchImageStudio: true },
+    ],
+    [t],
+  );
+}
 
 function useViralWorksNavState() {
   const location = useLocation();
@@ -157,6 +170,9 @@ function NavDropdownDesktop({ label, items, isTriggerActive, isNavItemActive, on
 /** Dropdowns desktop : "ViralWorks Vidéo" puis "ViralWorks Image". */
 export function MenuNavViralWorksDesktop() {
   const { session } = useAuth();
+  const t = useT();
+  const videoItems = useVideoItems();
+  const imageItems = useImageItems();
   const { isNavItemActive, isVideoTriggerActive, isImageTriggerActive } =
     useViralWorksNavState();
   const prefetchEditVideo = () => {
@@ -170,15 +186,15 @@ export function MenuNavViralWorksDesktop() {
   return (
     <>
       <NavDropdownDesktop
-        label="ViralWorks Vidéo"
-        items={VIDEO_ITEMS}
+        label={t("nav.video")}
+        items={videoItems}
         isTriggerActive={isVideoTriggerActive}
         isNavItemActive={isNavItemActive}
         onPrefetch={prefetchEditVideo}
       />
       <NavDropdownDesktop
-        label="ViralWorks Image"
-        items={IMAGE_ITEMS}
+        label={t("nav.image")}
+        items={imageItems}
         isTriggerActive={isImageTriggerActive}
         isNavItemActive={isNavItemActive}
         onPrefetch={prefetchImageStudio}
@@ -268,6 +284,9 @@ function NavAccordionMobile({
 /** Sections mobile : accordéons "ViralWorks Vidéo" puis "ViralWorks Image". */
 export function MenuNavViralWorksMobile({ onNavigate, compact = false }) {
   const { session } = useAuth();
+  const t = useT();
+  const videoItems = useVideoItems();
+  const imageItems = useImageItems();
   const { isNavItemActive, isVideoTriggerActive, isImageTriggerActive } =
     useViralWorksNavState();
   const prefetchEditVideo = () => {
@@ -281,9 +300,9 @@ export function MenuNavViralWorksMobile({ onNavigate, compact = false }) {
   return (
     <div className="flex flex-col gap-1">
       <NavAccordionMobile
-        label="ViralWorks Vidéo"
+        label={t("nav.video")}
         icon={Video}
-        items={VIDEO_ITEMS}
+        items={videoItems}
         isTriggerActive={isVideoTriggerActive}
         isNavItemActive={isNavItemActive}
         onNavigate={onNavigate}
@@ -291,9 +310,9 @@ export function MenuNavViralWorksMobile({ onNavigate, compact = false }) {
         compact={compact}
       />
       <NavAccordionMobile
-        label="ViralWorks Image"
+        label={t("nav.image")}
         icon={Image}
-        items={IMAGE_ITEMS}
+        items={imageItems}
         isTriggerActive={isImageTriggerActive}
         isNavItemActive={isNavItemActive}
         onNavigate={onNavigate}

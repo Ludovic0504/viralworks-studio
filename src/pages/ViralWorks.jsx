@@ -33,6 +33,7 @@ import {
   purgeViralWorksMediaCache,
 } from "@/bibliotheque/viralWorksMediaCache";
 import { useAuth } from "@/contexte/FournisseurAuth";
+import { useT } from "@/contexte/FournisseurLocale";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { useProfilStudio } from "@/contexte/FournisseurProfilStudio";
 import { useStudioLayoutOptions } from "@/contexte/StudioLayoutOptionsContext";
@@ -787,6 +788,7 @@ const SCRIPT_STEP_NON_SUB_MSG =
   "Prenez un abonnement pour profiter de ViralWorks Studio et lancer vos générations.";
 
 function ScriptStepQuotaModal({ open, title, message, actionLabel, onClose, onGoToShop }) {
+  const t = useT();
   if (!open) return null;
   return (
     <div
@@ -798,12 +800,12 @@ function ScriptStepQuotaModal({ open, title, message, actionLabel, onClose, onGo
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
-          <h2 className="text-base font-semibold text-gray-200">{title || "Quota mensuel épuisé"}</h2>
+          <h2 className="text-base font-semibold text-gray-200">{title || t("studio.quotaExhausted")}</h2>
           <button
             type="button"
             onClick={onClose}
             className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-gray-200 transition-colors"
-            aria-label="Fermer"
+            aria-label={t("common.close")}
           >
             <X className="w-4 h-4" />
           </button>
@@ -818,14 +820,14 @@ function ScriptStepQuotaModal({ open, title, message, actionLabel, onClose, onGo
               onClick={onClose}
               className="px-4 py-2 rounded-lg btn-vws-secondary"
             >
-              Fermer
+              {t("common.close")}
             </button>
             <button
               type="button"
               onClick={onGoToShop}
               className="px-4 py-2 rounded-lg btn-vws-primary font-semibold"
             >
-              {actionLabel || "Aller vers Packs vidéos"}
+              {actionLabel || t("studio.goToPacks")}
             </button>
           </div>
         </div>
@@ -835,12 +837,13 @@ function ScriptStepQuotaModal({ open, title, message, actionLabel, onClose, onGo
 }
 
 const steps = [
-  { id: 1, key: "campagne", label: "Campagne VWS", shortLabel: "Campagne" },
-  { id: 2, key: "visuel", label: "Visuel d'accroche", shortLabel: "Visuel" },
-  { id: 3, key: "video", label: "Vidéo virale", shortLabel: "Vidéo" },
+  { id: 1, key: "campagne", labelKey: "studio.campaign", shortLabel: "Campagne" },
+  { id: 2, key: "visuel", labelKey: "studio.hookVisual", shortLabel: "Visuel" },
+  { id: 3, key: "video", labelKey: "studio.viralVideo", shortLabel: "Vidéo" },
 ];
 
 export default function ViralWorks() {
+  const t = useT();
   const location = useLocation();
   const spaUiInitialRef = useRef(undefined);
   const workflowInitialRef = useRef(undefined);
@@ -1647,9 +1650,9 @@ export default function ViralWorks() {
     >
       <ScriptStepQuotaModal
         open={showScriptQuotaModal}
-        title={hasAccess ? "Quota mensuel épuisé" : "Accès abonnement requis"}
+        title={hasAccess ? t("studio.quotaExhausted") : t("studio.subscriptionRequired")}
         message={scriptQuotaModalMessage}
-        actionLabel={hasAccess ? "Aller vers Packs vidéos" : "Voir les abonnements"}
+        actionLabel={hasAccess ? t("studio.goToPacks") : t("studio.seeSubscriptions")}
         onClose={() => setShowScriptQuotaModal(false)}
         onGoToShop={() => {
           setShowScriptQuotaModal(false);
@@ -1707,14 +1710,14 @@ export default function ViralWorks() {
                       {isDone ? <Check className="w-3 h-3" /> : step.id}
                     </span>
                     <span className="sm:hidden">{step.shortLabel}</span>
-                    <span className="hidden sm:inline">{step.label}</span>
+                    <span className="hidden sm:inline">{t(step.labelKey)}</span>
                   </button>
                 );
               })}
             </div>
             <div className="flex w-full max-[640px]:flex-col max-[640px]:items-stretch sm:w-auto sm:flex-row sm:items-center gap-2 sm:justify-end">
               <span className="text-xs text-gray-400 max-[640px]:text-center sm:text-left">
-                Étape {currentStep} sur 3
+                {t("common.stepOf", { current: currentStep, total: STUDIO_STEP_COUNT })}
               </span>
               <button
                 type="button"
@@ -1748,8 +1751,8 @@ export default function ViralWorks() {
                 ) : null}
                 <span className="min-w-0">
                   {currentStep < STUDIO_STEP_COUNT
-                    ? "Valider cette étape et passer à la suivante"
-                    : "Marquer comme terminé"}
+                    ? t("studio.validateStep")
+                    : t("studio.markDone")}
                 </span>
               </button>
             </div>
@@ -1793,14 +1796,14 @@ export default function ViralWorks() {
                   onClick={handleResumeRecoveredWorkflow}
                   className="inline-flex items-center justify-center rounded-lg px-3 py-2 text-xs font-semibold btn-vws-primary"
                 >
-                  Reprendre
+                  {t("studio.resume")}
                 </button>
                 <button
                   type="button"
                   onClick={handleRestartRecoveredWorkflow}
                   className="inline-flex items-center justify-center rounded-lg px-3 py-2 text-xs font-semibold btn-vws-secondary text-gray-200"
                 >
-                  Recommencer
+                  {t("studio.restart")}
                 </button>
               </div>
             </div>
@@ -1924,7 +1927,7 @@ export default function ViralWorks() {
               <span>
                 {workflowVideoState?.status === "done"
                   ? "✦ Générer une nouvelle version"
-                  : "✦ Générer la vidéo"}
+                  : `✦ ${t("studio.generateVideo")}`}
               </span>
             </button>
             {workflowVideoState?.status === "done" ? (
@@ -1938,7 +1941,7 @@ export default function ViralWorks() {
                 className="vws-mobile-flat-download-cta flex w-full items-center justify-center gap-2 text-center"
               >
                 <Download className="h-4 w-4 shrink-0" />
-                <span>Télécharger la vidéo</span>
+                <span>{t("studio.downloadVideo")}</span>
               </button>
             ) : null}
           </div>

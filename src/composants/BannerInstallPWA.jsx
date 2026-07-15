@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronUp, Plus, Share, X } from "lucide-react";
+import { useT } from "@/contexte/FournisseurLocale";
 
 const STORAGE_KEY = "pwa_banner_dismissed";
 const MOBILE_MQ = "(max-width: 768px)";
@@ -30,28 +31,10 @@ function setBannerHeight(px) {
   document.documentElement.style.setProperty(BANNER_HEIGHT_VAR, `${px}px`);
 }
 
-const IOS_INSTALL_STEPS = [
-  {
-    step: 1,
-    Icon: Share,
-    iconClassName: "text-blue-400",
-    text: "Appuie sur le bouton Partager en bas",
-    note: null,
-  },
-  {
-    step: 2,
-    Icon: ChevronUp,
-    iconClassName: "text-gray-200",
-    text: "Appuie sur « Voir plus » si besoin",
-    note: null,
-  },
-  {
-    step: 3,
-    Icon: Plus,
-    iconClassName: "text-gray-100",
-    text: "Appuie sur « Sur l'écran d'accueil »",
-    note: null,
-  },
+const IOS_INSTALL_STEP_KEYS = [
+  { step: 1, Icon: Share, iconClassName: "text-blue-400", textKey: "pwa.iosStep1" },
+  { step: 2, Icon: ChevronUp, iconClassName: "text-gray-200", textKey: "pwa.iosStep2" },
+  { step: 3, Icon: Plus, iconClassName: "text-gray-100", textKey: "pwa.iosStep3" },
 ];
 
 function IosInstallStep({ step, Icon, iconClassName, text, note }) {
@@ -77,6 +60,7 @@ function IosInstallStep({ step, Icon, iconClassName, text, note }) {
 }
 
 function IosInstallSheet({ open, onClose }) {
+  const t = useT();
   if (!open) return null;
 
   return (
@@ -84,7 +68,7 @@ function IosInstallSheet({ open, onClose }) {
       <button
         type="button"
         className="fixed inset-0 z-[65] bg-black/60"
-        aria-label="Fermer les instructions"
+        aria-label={t("pwa.iosCloseInstructions")}
         onClick={onClose}
       />
       <div
@@ -95,20 +79,27 @@ function IosInstallSheet({ open, onClose }) {
       >
         <div className="mb-5 flex items-start justify-between gap-3 border-b border-white/10 pb-4">
           <h2 id="pwa-ios-sheet-title" className="text-lg font-bold text-white">
-            Installer l&apos;app
+            {t("pwa.iosTitle")}
           </h2>
           <button
             type="button"
             onClick={onClose}
             className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-white/10 hover:text-gray-200"
-            aria-label="Fermer"
+            aria-label={t("common.close")}
           >
             <X size={20} />
           </button>
         </div>
         <ol className="space-y-6">
-          {IOS_INSTALL_STEPS.map((item) => (
-            <IosInstallStep key={item.step} {...item} />
+          {IOS_INSTALL_STEP_KEYS.map((item) => (
+            <IosInstallStep
+              key={item.step}
+              step={item.step}
+              Icon={item.Icon}
+              iconClassName={item.iconClassName}
+              text={t(item.textKey)}
+              note={null}
+            />
           ))}
         </ol>
       </div>
@@ -117,6 +108,7 @@ function IosInstallSheet({ open, onClose }) {
 }
 
 export default function BannerInstallPWA() {
+  const t = useT();
   const bannerRef = useRef(null);
   const deferredPromptRef = useRef(null);
 
@@ -237,7 +229,7 @@ export default function BannerInstallPWA() {
       <div
         ref={bannerRef}
         role="region"
-        aria-label="Installer l'application ViralWorks"
+        aria-label={t("pwa.regionAria")}
         className="fixed inset-x-0 top-0 z-[60] border-b border-white/10 bg-[#0C1116] pt-[env(safe-area-inset-top)]"
       >
         <div className="flex items-center gap-2 px-3 py-2.5">
@@ -250,7 +242,7 @@ export default function BannerInstallPWA() {
             decoding="async"
           />
           <p className="min-w-0 flex-1 truncate text-sm text-gray-200">
-            ViralWorks — Accès rapide
+            {t("pwa.tagline")}
           </p>
           {showInstallButton ? (
             <button
@@ -258,14 +250,14 @@ export default function BannerInstallPWA() {
               onClick={handleInstall}
               className="btn-vws-primary shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold"
             >
-              Installer
+              {t("pwa.install")}
             </button>
           ) : null}
           <button
             type="button"
             onClick={dismiss}
             className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-white/10 hover:text-gray-200"
-            aria-label="Fermer définitivement"
+            aria-label={t("pwa.dismissAria")}
           >
             <X size={18} />
           </button>

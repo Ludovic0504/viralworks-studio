@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { subscriptionPlanLabel } from "@/bibliotheque/supabase/subscriptionPlans";
+import { useT } from "@/contexte/FournisseurLocale";
 
 export const CANCELLATION_REASONS = [
   { id: "too_expensive", label: "Trop cher pour mon usage" },
@@ -20,6 +21,7 @@ export default function ModalConfirmAnnulationAbonnement({
   onConfirmCancel,
   cancelling = false,
 }) {
+  const t = useT();
   const [selectedReasonId, setSelectedReasonId] = useState("");
   const [customReason, setCustomReason] = useState("");
 
@@ -67,13 +69,13 @@ export default function ModalConfirmAnnulationAbonnement({
           className="image-studio-quota-modal-close"
           onClick={onClose}
           disabled={cancelling}
-          aria-label="Fermer"
+          aria-label={t("common.cancel")}
         >
           <X className="h-4 w-4" />
         </button>
 
         <h2 id="cancel-subscription-title" className="image-studio-quota-title">
-          Pourquoi arrêter {planLabel} ?
+          {t("shop.cancelReasonTitle", { plan: planLabel })}
         </h2>
         <p className="image-studio-quota-message">
           Votre retour nous aide à améliorer ViralWorks. Choisissez une raison avant de
@@ -133,15 +135,16 @@ export default function ModalConfirmAnnulationAbonnement({
             onClick={onClose}
             disabled={cancelling}
           >
-            Garder mon abonnement
+            {t("shop.keepSubscription")}
           </button>
           <button
             type="button"
             className="image-studio-quota-cta-secondary !border-red-500/30 !text-red-300 hover:!bg-red-500/10 disabled:opacity-40"
             onClick={handleConfirm}
             disabled={cancelling || !canConfirm}
+            aria-label={t("common.confirm")}
           >
-            {cancelling ? "Annulation…" : "Confirmer"}
+            {cancelling ? "Annulation…" : t("shop.cancelSubscription")}
           </button>
         </div>
       </div>

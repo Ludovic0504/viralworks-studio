@@ -2,8 +2,9 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router-dom";
 import PageTitle from "@/composants/interface/TitrePage";
-import { MessageCircle, Users, Send, Paperclip, Plus, X, MoreVertical, Languages, BellOff, ChevronLeft } from "lucide-react";
+import { MessageCircle, Users, Send, Paperclip, Plus, X, MoreVertical, BellOff, ChevronLeft } from "lucide-react";
 import { useAuth } from "@/contexte/FournisseurAuth";
+import { useLocale, useT } from "@/contexte/FournisseurLocale";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { useCommunauteVWSNotif } from "@/contexte/FournisseurCommunauteVWSNotif.jsx";
 import { useAdminAccess } from "@/hooks/useAdminAccess";
@@ -28,9 +29,6 @@ import {
   sendPublicMessage,
   startPrivateConversation,
   isCommunitySupportAccount,
-  COMMUNITY_LOCALES,
-  getProfilePreferredLocale,
-  updateProfilePreferredLocale,
   resolveCommunityMessageTranslations,
   getMemoryCachedTranslation,
 } from "@/bibliotheque/supabase/communaute";
@@ -261,6 +259,7 @@ function MessageItem({
   onQuickReply,
   allowDelete = true,
 }) {
+  const t = useT();
   const canManage = mine && allowDelete;
   const anchorRef = useRef(null);
   const { top, left } = useFloatingMenuCoords(menuOpen && canManage, anchorRef);
@@ -283,7 +282,7 @@ function MessageItem({
           <span className="truncate">{msg.username}</span>
           {msg.isSupport ? (
             <span className="rounded-full border border-cyan-400/40 bg-cyan-500/15 px-2 py-0.5 text-[10px] text-cyan-100 shrink-0">
-              Support officiel
+              {t("community.officialSupport")}
             </span>
           ) : null}
         </span>
@@ -329,7 +328,7 @@ function MessageItem({
                           onDelete();
                         }}
                       >
-                        Supprimer
+                        {t("common.delete")}
                       </button>
                     </div>,
                     document.body
@@ -357,7 +356,7 @@ function MessageItem({
               onClick={() => setShowOriginal(false)}
               className="mt-1 text-[11px] text-gray-500 hover:text-gray-300"
             >
-              Voir la traduction
+              {t("community.seeTranslation")}
             </button>
           ) : null}
         </>
@@ -399,6 +398,7 @@ function PrivateConversationRow({
   onToggleMute,
   muteBusy = false,
 }) {
+  const t = useT();
   const anchorRef = useRef(null);
   const { top, left } = useFloatingMenuCoords(menuOpen, anchorRef);
   const timeLabel = formatConversationTime(c.lastMessageAt || c.updatedAt);
@@ -423,11 +423,11 @@ function PrivateConversationRow({
                 <span className="truncate">{c.otherUsername}</span>
                 {c.isSupport ? (
                   <span className="shrink-0 rounded-full border border-cyan-400/40 bg-cyan-500/15 px-2 py-0.5 text-[10px] text-cyan-100">
-                    Support officiel
+                    {t("community.officialSupport")}
                   </span>
                 ) : null}
                 {isMuted ? (
-                  <BellOff className="h-3.5 w-3.5 shrink-0 text-gray-500" aria-label="Notifications en sourdine" />
+                  <BellOff className="h-3.5 w-3.5 shrink-0 text-gray-500" aria-label={t("community.muteNotifications")} />
                 ) : null}
               </p>
               <div className="flex shrink-0 items-center gap-1.5">
@@ -444,7 +444,7 @@ function PrivateConversationRow({
               </div>
             </div>
             <p className="mt-0.5 text-xs text-gray-500 truncate">
-              {c.lastMessage ? c.lastMessage : "Aucun message — conversation prête"}
+              {c.lastMessage ? c.lastMessage : t("community.noMessages")}
             </p>
           </div>
         </div>
@@ -497,7 +497,7 @@ function PrivateConversationRow({
                     className="flex w-full items-center px-3 py-2.5 text-left text-xs text-red-300 hover:bg-white/5"
                     onClick={() => onRemoveForMe(c.id)}
                   >
-                    Supprimer
+                    {t("common.delete")}
                   </button>
                 )}
               </div>,
@@ -511,6 +511,12 @@ function PrivateConversationRow({
 
 export default function CommunauteVWS() {
   const { session, loading } = useAuth();
+  const t = useT();
+  const { locale: siteLocale } = useLocale();
+  const preferredLocale = useMemo(() => {
+    if (siteLocale === "fr" || siteLocale === "en" || siteLocale === "es") return siteLocale;
+    return "en";
+  }, [siteLocale]);
   const { isAdmin: isAdminUser, loading: adminAccessLoading } = useAdminAccess();
   const { runWithAuth, openAuthModal } = useRequireAuthAction();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -558,15 +564,12 @@ export default function CommunauteVWS() {
   const [muteOverrides, setMuteOverrides] = useState({});
   const [muteBusyConversationId, setMuteBusyConversationId] = useState("");
   const [userSearchOpen, setUserSearchOpen] = useState(false);
-  const [localeMenuOpen, setLocaleMenuOpen] = useState(false);
-  const [preferredLocale, setPreferredLocale] = useState("fr");
   const [messageTranslations, setMessageTranslations] = useState({});
   const [quickReplyInFlightStep, setQuickReplyInFlightStep] = useState(null);
   const quickReplyInFlightRef = useRef(new Set());
 
   const publicEndRef = useRef(null);
   const userSearchRef = useRef(null);
-  const localeMenuRef = useRef(null);
   const privateEndRef = useRef(null);
   const privateMessagesLengthRef = useRef(0);
   const lastPrivateFetchSignatureRef = useRef({ conversationId: "", signature: "" });
@@ -580,13 +583,6 @@ export default function CommunauteVWS() {
   useEffect(() => {
     censorMessageText("");
   }, []);
-
-  useEffect(() => {
-    if (!session?.user?.id) return;
-    void getProfilePreferredLocale()
-      .then(setPreferredLocale)
-      .catch(() => setPreferredLocale("fr"));
-  }, [session?.user?.id]);
 
   useEffect(() => {
     if (preferredLocale === "fr" || tab !== "public") {
@@ -1220,16 +1216,6 @@ export default function CommunauteVWS() {
   }, [userSearchOpen]);
 
   useEffect(() => {
-    if (!localeMenuOpen) return;
-    const onDoc = (e) => {
-      if (localeMenuRef.current?.contains(e.target)) return;
-      setLocaleMenuOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [localeMenuOpen]);
-
-  useEffect(() => {
     if (tabQueryHandledRef.current) return;
     const tabParam = searchParams.get("tab");
     const convParam = searchParams.get("conversation");
@@ -1673,8 +1659,8 @@ export default function CommunauteVWS() {
   return (
     <div className={COMMUNITY_PAGE_ROOT_CLASS}>
       <PageTitle
-        green="Communauté"
-        subtitle="Salon public et conversations privées, simple et persistant."
+        green={t("community.title")}
+        subtitle={t("community.subtitle")}
         className="mb-0 shrink-0 !mb-1 md:!mb-2"
         titleClassName="text-2xl md:text-3xl"
       />
@@ -1688,7 +1674,7 @@ export default function CommunauteVWS() {
           >
             <span className="inline-flex items-center gap-1.5">
               <MessageCircle className="w-4 h-4 shrink-0" />
-              <span>Discussion publique</span>
+              <span>{t("community.publicTab")}</span>
               {hasNewPublicSinceLastVisit ? (
                 <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" aria-hidden />
               ) : null}
@@ -1701,7 +1687,7 @@ export default function CommunauteVWS() {
           >
             <span className="inline-flex items-center gap-1.5">
               <Users className="w-4 h-4 shrink-0" />
-              <span>Conversations privées</span>
+              <span>{t("community.privateTab")}</span>
               {privateTabUnreadCount > 0 ? (
                 <span className="min-w-[1.25rem] rounded-full bg-[#BA7517] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
                   {privateTabUnreadCount > 99 ? "99+" : privateTabUnreadCount}
@@ -1709,58 +1695,6 @@ export default function CommunauteVWS() {
               ) : null}
             </span>
           </button>
-        </div>
-
-        <div ref={localeMenuRef} className="relative">
-          <button
-            type="button"
-            aria-label="Langue des traductions"
-            aria-expanded={localeMenuOpen}
-            title="Langue des traductions"
-            onClick={() => setLocaleMenuOpen((open) => !open)}
-            className={`inline-flex h-10 w-10 items-center justify-center rounded-xl border transition-colors ${
-              localeMenuOpen
-                ? "border-cyan-400/40 bg-cyan-500/15 text-cyan-100"
-                : "border-white/10 bg-white/[0.03] text-gray-400 hover:border-white/20 hover:text-gray-200"
-            }`}
-          >
-            <Languages className="w-4 h-4" />
-          </button>
-          {localeMenuOpen ? (
-            <div
-              role="menu"
-              className="absolute left-0 z-20 mt-1 min-w-[10.5rem] overflow-hidden rounded-lg border border-white/10 bg-[#0f1629] py-1 shadow-xl shadow-black/40"
-            >
-              <p className="px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-gray-500">
-                Langue des traductions
-              </p>
-              {COMMUNITY_LOCALES.map((l) => (
-                <button
-                  key={l.code}
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={preferredLocale === l.code}
-                  onClick={() => {
-                    setPreferredLocale(l.code);
-                    setLocaleMenuOpen(false);
-                    void runWithAuth(async () => {
-                      await updateProfilePreferredLocale(l.code);
-                    });
-                  }}
-                  className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm ${
-                    preferredLocale === l.code
-                      ? "bg-cyan-500/10 text-cyan-100"
-                      : "text-gray-300 hover:bg-white/5"
-                  }`}
-                >
-                  <span>{l.label}</span>
-                  {preferredLocale === l.code ? (
-                    <span className="text-[10px] text-cyan-300">Actif</span>
-                  ) : null}
-                </button>
-              ))}
-            </div>
-          ) : null}
         </div>
       </div>
 
@@ -1787,7 +1721,7 @@ export default function CommunauteVWS() {
                     setUserSearchOpen(true);
                     void refreshUsers(searchUser);
                   }}
-                  placeholder="Chercher un utilisateur pour envoyer un message..."
+                  placeholder={t("community.searchUsers")}
                   className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-gray-200"
                 />
                 {userSearchOpen ? (
@@ -1814,7 +1748,7 @@ export default function CommunauteVWS() {
                         </button>
                       ))
                     ) : (
-                      <p className="px-3 py-2 text-xs text-gray-500">Aucun utilisateur trouvé.</p>
+                      <p className="px-3 py-2 text-xs text-gray-500">{t("community.noUsers")}</p>
                     )}
                   </div>
                 ) : null}
@@ -1908,7 +1842,7 @@ export default function CommunauteVWS() {
                     onFocus={() => {
                       if (!session) openAuthModal();
                     }}
-                    placeholder="Écrire un message public..."
+                    placeholder={t("community.publicPlaceholder")}
                     rows={2}
                     className="flex-1 resize-y min-h-[2.75rem] max-h-40 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-gray-200"
                   />
@@ -1930,6 +1864,7 @@ export default function CommunauteVWS() {
                     type="button"
                     disabled={busy}
                     onClick={() => void runWithAuth(sendToPublic)}
+                    aria-label={t("community.send")}
                     className="px-4 py-2 rounded-lg bg-cyan-500 text-white"
                   >
                     <Send className="w-4 h-4" />
@@ -1944,7 +1879,7 @@ export default function CommunauteVWS() {
                   <button
                     type="button"
                     onClick={backToPrivateConversationList}
-                    aria-label="Retour aux conversations"
+                    aria-label={t("community.backToConversations")}
                     className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 text-gray-300 transition-colors hover:border-white/20 hover:text-white md:hidden"
                   >
                     <ChevronLeft className="h-5 w-5" />
@@ -2043,7 +1978,7 @@ export default function CommunauteVWS() {
                     onFocus={() => {
                       if (!session) openAuthModal();
                     }}
-                    placeholder="Écrire un message privé..."
+                    placeholder={t("community.privatePlaceholder")}
                     rows={2}
                     className="flex-1 resize-y min-h-[2.75rem] max-h-40 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-gray-200"
                   />
@@ -2065,6 +2000,7 @@ export default function CommunauteVWS() {
                     type="button"
                     disabled={busy || !activeConversationId}
                     onClick={() => void runWithAuth(sendToPrivate)}
+                    aria-label={t("community.send")}
                     className="px-4 py-2 rounded-lg bg-cyan-500 text-white disabled:opacity-50"
                   >
                     <Send className="w-4 h-4" />

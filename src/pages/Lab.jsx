@@ -36,6 +36,7 @@ import {
   Star,
   ShoppingBag,
 } from "lucide-react";
+import { useT } from "@/contexte/FournisseurLocale";
 
 const EVENT_TYPES = {
   feature: { 
@@ -90,6 +91,7 @@ const ICON_MAP = {
 };
 
 export default function Lab() {
+  const t = useT();
   const { session } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedType, setSelectedType] = useState("all");
@@ -212,9 +214,8 @@ export default function Lab() {
     <div className="min-h-screen">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <PageTitle
-          green="Journal"
-          white="des Événements"
-          subtitle="Découvrez l'évolution et les nouveautés de la plateforme"
+          green={t("studio.labTitle")}
+          subtitle={t("studio.labSubtitle")}
         />
 
         <div className="hidden mt-6 mb-8 glass-strong rounded-xl border border-white/10 p-5 flex items-start gap-3">
@@ -369,7 +370,7 @@ export default function Lab() {
             {loading ? (
               <div className="text-center py-16 glass-strong rounded-xl border border-white/10">
                 <div className="w-8 h-8 mx-auto border-2 border-white/10 border-t-emerald-500/50 rounded-full animate-spin" />
-                <p className="mt-4 text-gray-400">Chargement des nouveautés...</p>
+                <p className="mt-4 text-gray-400">{t("studio.labLoading")}</p>
               </div>
             ) : filteredEvents.length > 0 ? (
               filteredEvents.map((event, index) => {
@@ -513,7 +514,7 @@ export default function Lab() {
               })
             ) : (
               <div className="text-center py-16 glass-strong rounded-xl border border-white/10">
-                <p className="text-gray-400 text-lg">Aucun événement trouvé</p>
+                <p className="text-gray-400 text-lg">{t("studio.labEmpty")}</p>
                 <p className="text-gray-500 text-sm mt-2">Essayez de modifier vos filtres</p>
               </div>
             )}

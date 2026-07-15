@@ -22,6 +22,8 @@ import { fillTemplateSlotDefaults } from "@/bibliotheque/imageStudio/promptTempl
 import { IMAGE_STUDIO_PRODUCT_MENTION_TOKEN } from "@/bibliotheque/imageStudio/imageStudioGuideApply";
 import { readGuideProductImageFile } from "@/bibliotheque/imageStudio/guideProductImage";
 import GuideProductImagePicker from "@/composants/image/GuideProductImagePicker";
+import { useImageStudioChatbotTr } from "@/bibliotheque/i18n/useImageStudioChatbotTr";
+import { translateLabeledOptions } from "@/bibliotheque/i18n/chatbotTranslate";
 
 /** @typedef {'sceneType' | 'gender' | 'zone' | 'framing' | 'outfit' | 'background' | 'ambiance' | 'customAmbiance' | 'product' | 'pose' | 'format' | 'ready'} EditorialGuideStep */
 
@@ -60,7 +62,7 @@ function ConversationBubble({ role, children, wide = false, visible = true }) {
   );
 }
 
-function TypingIndicator({ visible = true }) {
+function TypingIndicator({ visible = true, typingLabel = "Le guide écrit…" }) {
   if (!visible) return null;
 
   return (
@@ -70,7 +72,7 @@ function TypingIndicator({ visible = true }) {
       </span>
       <div
         className="image-studio-prompt-guide-typing image-studio-prompt-guide-bubble--enter"
-        aria-label="Le guide écrit…"
+        aria-label={typingLabel}
         role="status"
       >
         <span />
@@ -146,6 +148,48 @@ export default function EditorialWornHeldPromptGuideChat({
   onApplyPrompt,
   onClose,
 }) {
+  const { ui, tr, template: localizeTemplate, packshotOptions, locale } = useImageStudioChatbotTr();
+  const localizedTemplate = useMemo(
+    () => localizeTemplate(template),
+    [localizeTemplate, template, locale],
+  );
+  const localizedSceneTypeOptions = useMemo(
+    () => translateLabeledOptions(EDITORIAL_SCENE_TYPE_OPTIONS, tr, "chatbot.editorial.sceneType"),
+    [tr],
+  );
+  const localizedGenderOptions = useMemo(
+    () => translateLabeledOptions(EDITORIAL_GENDER_OPTIONS, tr, "chatbot.editorial.gender"),
+    [tr],
+  );
+  const localizedJewelryZoneOptions = useMemo(
+    () => translateLabeledOptions(EDITORIAL_JEWELRY_ZONE_OPTIONS, tr, "chatbot.editorial.jewelryZone"),
+    [tr],
+  );
+  const localizedHeldZoneOptions = useMemo(
+    () => translateLabeledOptions(EDITORIAL_HELD_ZONE_OPTIONS, tr, "chatbot.editorial.heldZone"),
+    [tr],
+  );
+  const localizedFramingOptions = useMemo(
+    () => translateLabeledOptions(EDITORIAL_FRAMING_OPTIONS, tr, "chatbot.editorial.framing"),
+    [tr],
+  );
+  const localizedBackgroundOptions = useMemo(
+    () => packshotOptions("background", EDITORIAL_BACKGROUND_OPTIONS),
+    [packshotOptions],
+  );
+  const localizedAmbianceOptions = useMemo(
+    () => packshotOptions("ambiance", EDITORIAL_AMBIANCE_OPTIONS),
+    [packshotOptions],
+  );
+  const localizedPostureOptions = useMemo(
+    () => translateLabeledOptions(EDITORIAL_POSTURE_OPTIONS, tr, "chatbot.editorial.posture"),
+    [tr],
+  );
+  const localizedFormatOptions = useMemo(
+    () => packshotOptions("format", EDITORIAL_FORMAT_OPTIONS),
+    [packshotOptions],
+  );
+
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -168,17 +212,18 @@ export default function EditorialWornHeldPromptGuideChat({
   const [guideProductImageError, setGuideProductImageError] = useState(null);
 
   const zoneOptions = useMemo(() => {
-    if (sceneTypeId === "bijou-porte") return EDITORIAL_JEWELRY_ZONE_OPTIONS;
-    if (sceneTypeId === "produit-tenu") return EDITORIAL_HELD_ZONE_OPTIONS;
+    if (sceneTypeId === "bijou-porte") return localizedJewelryZoneOptions;
+    if (sceneTypeId === "produit-tenu") return localizedHeldZoneOptions;
     return [];
-  }, [sceneTypeId]);
+  }, [localizedHeldZoneOptions, localizedJewelryZoneOptions, sceneTypeId]);
 
   const framingOptions = useMemo(() => {
-    if (!sceneTypeId || !zoneId) return EDITORIAL_FRAMING_OPTIONS;
-    return getAvailableEditorialFramingOptions(sceneTypeId, zoneId);
-  }, [sceneTypeId, zoneId]);
+    if (!sceneTypeId || !zoneId) return localizedFramingOptions;
+    const available = getAvailableEditorialFramingOptions(sceneTypeId, zoneId);
+    return translateLabeledOptions(available, tr, "chatbot.editorial.framing");
+  }, [localizedFramingOptions, sceneTypeId, tr, zoneId]);
 
-  const filledSlots = useMemo(() => fillTemplateSlotDefaults(template, slots), [template, slots]);
+  const filledSlots = useMemo(() => fillTemplateSlotDefaults(localizedTemplate, slots), [localizedTemplate, slots]);
 
   const assembledPrompt = useMemo(() => {
     if (!ready) return "";
@@ -421,12 +466,15 @@ export default function EditorialWornHeldPromptGuideChat({
     Boolean(draft.trim()) || Boolean(guideProductImagePreview);
 
   const inputPlaceholder = useMemo(() => {
-    if (guideStep === "outfit") return "Ex. robe fluide blanche et sandales nude…";
-    if (guideStep === "customAmbiance") return "Ex. atelier joaillier, loft industriel…";
-    if (guideStep === "product") return "Ex. bracelet chaîne torsadée en argent poli…";
-    if (guideStep === "pose" && poseCustomizing) return "Ex. main dans les cheveux, regard déporté…";
-    return "Votre réponse…";
-  }, [guideStep, poseCustomizing]);
+    if (guideStep === "outfit") return ui("editorialOutfitPlaceholder", "Ex. robe fluide blanche et sandales nude…");
+    if (guideStep === "customAmbiance")
+      return ui("editorialCustomAmbiancePlaceholder", "Ex. atelier joaillier, loft industriel…");
+    if (guideStep === "product")
+      return ui("editorialProductPlaceholder", "Ex. bracelet chaîne torsadée en argent poli…");
+    if (guideStep === "pose" && poseCustomizing)
+      return ui("editorialGesturePlaceholder", "Ex. main dans les cheveux, regard déporté…");
+    return ui("placeholderYourAnswer", "Votre réponse…");
+  }, [guideStep, poseCustomizing, ui]);
 
   const showComposeForm =
     (guideStep === "outfit" ||
@@ -444,7 +492,7 @@ export default function EditorialWornHeldPromptGuideChat({
         onChange={(event) => setDraft(event.target.value)}
         placeholder={inputPlaceholder}
         className="image-studio-prompt-guide-input"
-        aria-label="Réponse"
+        aria-label={ui("editorialResponseAria", "Réponse")}
       />
       <button
         type="submit"
@@ -456,43 +504,36 @@ export default function EditorialWornHeldPromptGuideChat({
               ? !postureId
               : !draft.trim()
         }
-        aria-label="Envoyer"
+        aria-label={ui("send", "Envoyer")}
       >
         <SendHorizontal className="h-4 w-4" strokeWidth={2.25} />
       </button>
     </form>
   ) : null;
 
-  const sceneTypeLabel = findOptionLabel(EDITORIAL_SCENE_TYPE_OPTIONS, sceneTypeId);
-  const genderLabel = findOptionLabel(EDITORIAL_GENDER_OPTIONS, genderId);
+  const sceneTypeLabel = findOptionLabel(localizedSceneTypeOptions, sceneTypeId);
+  const genderLabel = findOptionLabel(localizedGenderOptions, genderId);
   const zoneLabel = findOptionLabel(zoneOptions, zoneId);
-  const framingLabel = findOptionLabel(EDITORIAL_FRAMING_OPTIONS, framingId);
-  const backgroundLabel = findOptionLabel(EDITORIAL_BACKGROUND_OPTIONS, backgroundId);
-  const ambianceLabel = findOptionLabel(EDITORIAL_AMBIANCE_OPTIONS, ambianceId);
+  const framingLabel = findOptionLabel(framingOptions, framingId);
+  const backgroundLabel = findOptionLabel(localizedBackgroundOptions, backgroundId);
+  const ambianceLabel = findOptionLabel(localizedAmbianceOptions, ambianceId);
   const outfitDescription = slots.outfitDescription?.trim() ?? "";
   const productDescription = slots.productDescription?.trim() ?? "";
   const customAmbiance = slots.customAmbiance?.trim() ?? "";
-  const formatLabel =
-    slots.formatId === "carre-1-1"
-      ? "Post carré (1:1)"
-      : slots.formatId === "story-9-16"
-        ? "Story-Reel (9:16)"
-        : slots.formatId === "banniere-4-5"
-          ? "Bannière-pub (4:5)"
-          : null;
+  const formatLabel = findOptionLabel(localizedFormatOptions, slots.formatId);
 
   const poseAnswerLabel = useMemo(() => {
     if (guideStep === "pose" || !slots.productDescription) return null;
     if (slots.customGesture?.trim() || slots.postureId) {
-      const postureLabel = findOptionLabel(EDITORIAL_POSTURE_OPTIONS, slots.postureId);
+      const postureLabel = findOptionLabel(localizedPostureOptions, slots.postureId);
       const gesture = slots.customGesture?.trim();
       if (postureLabel && gesture) return `${postureLabel}, ${gesture}`;
       if (gesture) return gesture;
       if (postureLabel) return postureLabel;
     }
-    if (guideStep === "format" || ready) return "Pose par défaut";
+    if (guideStep === "format" || ready) return ui("editorialDefaultPose", "Pose par défaut");
     return null;
-  }, [guideStep, ready, slots.customGesture, slots.postureId, slots.productDescription]);
+  }, [guideStep, localizedPostureOptions, ready, slots.customGesture, slots.postureId, slots.productDescription, ui]);
 
   const botTurnKeys = useMemo(() => {
     const keys = ["sceneType"];
@@ -542,7 +583,7 @@ export default function EditorialWornHeldPromptGuideChat({
         onClick={() => setAdjustOpen((open) => !open)}
         aria-expanded={adjustOpen}
       >
-        Ajuster les champs
+        {ui("adjustFields", "Ajuster les champs")}
         {adjustOpen ? (
           <ChevronUp className="h-3.5 w-3.5 shrink-0" strokeWidth={2.25} />
         ) : (
@@ -552,7 +593,7 @@ export default function EditorialWornHeldPromptGuideChat({
 
       {adjustOpen ? (
         <div className="image-studio-prompt-guide-fields">
-          {template.variables.map((variable) => (
+          {localizedTemplate.variables.map((variable) => (
             <label key={variable.key} className="image-studio-prompt-guide-field">
               <span>{variable.label}</span>
               <input
@@ -571,7 +612,7 @@ export default function EditorialWornHeldPromptGuideChat({
         className="image-studio-prompt-guide-apply btn-vws-primary"
         onClick={handleApply}
       >
-        Appliquer au prompt
+        {ui("applyPrompt", "Appliquer au prompt")}
       </button>
     </div>
   ) : null;
@@ -583,12 +624,12 @@ export default function EditorialWornHeldPromptGuideChat({
           type="button"
           className="image-studio-prompt-guide-back"
           onClick={onBack}
-          aria-label="Retour aux modèles"
+          aria-label={ui("back", "Retour aux modèles")}
         >
           <ArrowLeft className="h-4 w-4" strokeWidth={2.25} />
         </button>
         <div className="image-studio-prompt-guide-chat-title-row">
-          <p className="image-studio-prompt-guide-chat-title">{template.label}</p>
+          <p className="image-studio-prompt-guide-chat-title">{localizedTemplate.label}</p>
           <span className="pulse-dot pulse-dot--online shrink-0" aria-hidden="true" />
         </div>
       </div>
@@ -599,14 +640,16 @@ export default function EditorialWornHeldPromptGuideChat({
         aria-live="polite"
       >
         <ConversationBubble role="bot" visible={isBotVisible("sceneType")}>
-          <p className="image-studio-prompt-guide-bubble-text">Quel type de mise en scène ?</p>
+          <p className="image-studio-prompt-guide-bubble-text">
+            {ui("editorialSceneTypeQuestion", "Quel type de mise en scène ?")}
+          </p>
           {guideStep === "sceneType" ? (
             <OptionButtonRow
-              options={EDITORIAL_SCENE_TYPE_OPTIONS}
+              options={localizedSceneTypeOptions}
               selectedId={sceneTypeId}
               disabled={false}
               onSelect={handleSceneTypeSelect}
-              ariaLabel="Type de mise en scène"
+              ariaLabel={ui("editorialSceneTypeAria", "Type de mise en scène")}
             />
           ) : null}
         </ConversationBubble>
@@ -619,14 +662,16 @@ export default function EditorialWornHeldPromptGuideChat({
 
         {sceneTypeId ? (
           <ConversationBubble role="bot" visible={isBotVisible("gender")}>
-            <p className="image-studio-prompt-guide-bubble-text">Genre du modèle</p>
+            <p className="image-studio-prompt-guide-bubble-text">
+              {ui("editorialModelGender", "Genre du modèle")}
+            </p>
             {guideStep === "gender" ? (
               <OptionButtonRow
-                options={EDITORIAL_GENDER_OPTIONS}
+                options={localizedGenderOptions}
                 selectedId={genderId}
                 disabled={false}
                 onSelect={handleGenderSelect}
-                ariaLabel="Genre du modèle"
+                ariaLabel={ui("editorialModelGender", "Genre du modèle")}
               />
             ) : null}
           </ConversationBubble>
@@ -642,8 +687,8 @@ export default function EditorialWornHeldPromptGuideChat({
           <ConversationBubble role="bot" visible={isBotVisible("zone")}>
             <p className="image-studio-prompt-guide-bubble-text">
               {sceneTypeId === "bijou-porte"
-                ? "Quelle partie du corps porte le bijou ?"
-                : "Où le produit est-il tenu ?"}
+                ? ui("editorialJewelryZoneQuestion", "Quelle partie du corps porte le bijou ?")
+                : ui("editorialHeldZoneQuestion", "Où le produit est-il tenu ?")}
             </p>
             {guideStep === "zone" ? (
               <OptionButtonRow
@@ -651,7 +696,7 @@ export default function EditorialWornHeldPromptGuideChat({
                 selectedId={zoneId}
                 disabled={false}
                 onSelect={handleZoneSelect}
-                ariaLabel="Zone du corps"
+                ariaLabel={ui("editorialBodyZoneAria", "Zone du corps")}
               />
             ) : null}
           </ConversationBubble>
@@ -665,14 +710,16 @@ export default function EditorialWornHeldPromptGuideChat({
 
         {zoneId ? (
           <ConversationBubble role="bot" visible={isBotVisible("framing")}>
-            <p className="image-studio-prompt-guide-bubble-text">Quel cadrage veux-tu ?</p>
+            <p className="image-studio-prompt-guide-bubble-text">
+              {ui("editorialFramingQuestion", "Quel cadrage veux-tu ?")}
+            </p>
             {guideStep === "framing" ? (
               <OptionButtonRow
                 options={framingOptions}
                 selectedId={framingId}
                 disabled={false}
                 onSelect={handleFramingSelect}
-                ariaLabel="Cadrage"
+                ariaLabel={ui("editorialFramingAria", "Cadrage")}
               />
             ) : null}
           </ConversationBubble>
@@ -686,7 +733,9 @@ export default function EditorialWornHeldPromptGuideChat({
 
         {framingId === "corps-entier" ? (
           <ConversationBubble role="bot" visible={isBotVisible("outfit")}>
-            <p className="image-studio-prompt-guide-bubble-text">Décris la tenue du modèle</p>
+            <p className="image-studio-prompt-guide-bubble-text">
+              {ui("editorialOutfitQuestion", "Décris la tenue du modèle")}
+            </p>
             {guideStep === "outfit" ? (
               <div className="image-studio-prompt-guide-bubble-compose">{composeForm}</div>
             ) : null}
@@ -701,14 +750,16 @@ export default function EditorialWornHeldPromptGuideChat({
 
         {(framingId && framingId !== "corps-entier") || outfitDescription ? (
           <ConversationBubble role="bot" visible={isBotVisible("background")}>
-            <p className="image-studio-prompt-guide-bubble-text">Type de fond</p>
+            <p className="image-studio-prompt-guide-bubble-text">
+              {ui("editorialBackgroundType", "Type de fond")}
+            </p>
             {guideStep === "background" ? (
               <OptionButtonRow
-                options={EDITORIAL_BACKGROUND_OPTIONS}
+                options={localizedBackgroundOptions}
                 selectedId={backgroundId}
                 disabled={false}
                 onSelect={handleBackgroundSelect}
-                ariaLabel="Type de fond"
+                ariaLabel={ui("editorialBackgroundType", "Type de fond")}
               />
             ) : null}
           </ConversationBubble>
@@ -722,14 +773,14 @@ export default function EditorialWornHeldPromptGuideChat({
 
         {backgroundId === "environnement" ? (
           <ConversationBubble role="bot" visible={isBotVisible("ambiance")}>
-            <p className="image-studio-prompt-guide-bubble-text">Ambiance</p>
+            <p className="image-studio-prompt-guide-bubble-text">{ui("ambianceQuestion", "Ambiance")}</p>
             {guideStep === "ambiance" ? (
               <OptionButtonRow
-                options={EDITORIAL_AMBIANCE_OPTIONS}
+                options={localizedAmbianceOptions}
                 selectedId={ambianceId}
                 disabled={false}
                 onSelect={handleAmbianceSelect}
-                ariaLabel="Ambiance"
+                ariaLabel={ui("ambianceQuestion", "Ambiance")}
               />
             ) : null}
           </ConversationBubble>
@@ -746,7 +797,7 @@ export default function EditorialWornHeldPromptGuideChat({
         {guideStep === "customAmbiance" || (ambianceId === "autre" && customAmbiance) ? (
           <ConversationBubble role="bot" visible={isBotVisible("customAmbiance")}>
             <p className="image-studio-prompt-guide-bubble-text">
-              Décris l&apos;ambiance souhaitée
+              {ui("editorialAmbianceDescribe", "Décris l'ambiance souhaitée")}
             </p>
             {guideStep === "customAmbiance" ? (
               <div className="image-studio-prompt-guide-bubble-compose">{composeForm}</div>
@@ -759,7 +810,9 @@ export default function EditorialWornHeldPromptGuideChat({
           customAmbiance) &&
         (guideStep === "product" || productDescription) ? (
           <ConversationBubble role="bot" visible={isBotVisible("product")}>
-            <p className="image-studio-prompt-guide-bubble-text">Décris le bijou ou le produit</p>
+            <p className="image-studio-prompt-guide-bubble-text">
+              {ui("editorialProductQuestion", "Décris le bijou ou le produit")}
+            </p>
             {guideStep === "product" ? (
               <>
                 <div className="image-studio-prompt-guide-bubble-compose">{composeForm}</div>
@@ -776,7 +829,7 @@ export default function EditorialWornHeldPromptGuideChat({
 
         {productValidationShown ? (
           <ConversationBubble role="bot" visible={isBotVisible("product-validation")}>
-            <p className="image-studio-prompt-guide-bubble-text">{template.botAskRequired}</p>
+            <p className="image-studio-prompt-guide-bubble-text">{localizedTemplate.botAskRequired}</p>
           </ConversationBubble>
         ) : null}
 
@@ -799,39 +852,43 @@ export default function EditorialWornHeldPromptGuideChat({
 
         {productDescription ? (
           <ConversationBubble role="bot" visible={isBotVisible("pose")}>
-            <p className="image-studio-prompt-guide-bubble-text">Posture &amp; pose</p>
+            <p className="image-studio-prompt-guide-bubble-text">
+              {ui("editorialPosturePose", "Posture & pose")}
+            </p>
             {guideStep === "pose" && !poseCustomizing ? (
               <div
                 className="image-studio-prompt-guide-elements-actions image-studio-prompt-guide-bubble-actions"
                 role="group"
-                aria-label="Posture et pose"
+                aria-label={ui("editorialPostureAria", "Posture et pose")}
               >
                 <button
                   type="button"
                   className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
                   onClick={handlePoseSkip}
                 >
-                  Passer
+                  {ui("pass", "Passer")}
                 </button>
                 <button
                   type="button"
                   className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
                   onClick={handlePoseCustomize}
                 >
-                  Personnaliser
+                  {ui("ugcCustomize", "Personnaliser")}
                 </button>
               </div>
             ) : null}
             {guideStep === "pose" && poseCustomizing ? (
               <>
                 <div className="image-studio-prompt-ugc-option-group">
-                  <p className="image-studio-prompt-ugc-option-group-label">Posture</p>
+                  <p className="image-studio-prompt-ugc-option-group-label">
+                    {ui("editorialPostureLabel", "Posture")}
+                  </p>
                   <OptionButtonRow
-                    options={EDITORIAL_POSTURE_OPTIONS}
+                    options={localizedPostureOptions}
                     selectedId={postureId}
                     disabled={false}
                     onSelect={setPostureId}
-                    ariaLabel="Posture"
+                    ariaLabel={ui("editorialPostureLabel", "Posture")}
                   />
                 </div>
                 <div className="image-studio-prompt-guide-bubble-compose">{composeForm}</div>
@@ -848,14 +905,16 @@ export default function EditorialWornHeldPromptGuideChat({
 
         {guideStep === "format" || ready ? (
           <ConversationBubble role="bot" visible={isBotVisible("format")}>
-            <p className="image-studio-prompt-guide-bubble-text">Format</p>
+            <p className="image-studio-prompt-guide-bubble-text">
+              {ui("editorialFormatLabel", "Format")}
+            </p>
             {guideStep === "format" && !ready ? (
               <div
                 className="image-studio-prompt-guide-elements-actions image-studio-prompt-guide-bubble-actions"
                 role="group"
-                aria-label="Format"
+                aria-label={ui("editorialFormatLabel", "Format")}
               >
-                {EDITORIAL_FORMAT_OPTIONS.map((option) => (
+                {localizedFormatOptions.map((option) => (
                   <button
                     key={option.id}
                     type="button"
@@ -870,7 +929,7 @@ export default function EditorialWornHeldPromptGuideChat({
                   className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
                   onClick={handleFormatSkip}
                 >
-                  Passer
+                  {ui("pass", "Passer")}
                 </button>
               </div>
             ) : null}
@@ -889,7 +948,7 @@ export default function EditorialWornHeldPromptGuideChat({
           </ConversationBubble>
         ) : null}
 
-        <TypingIndicator visible={isTyping} />
+        <TypingIndicator visible={isTyping} typingLabel={ui("typing", "Le guide écrit…")} />
         <div ref={messagesEndRef} />
       </div>
     </div>

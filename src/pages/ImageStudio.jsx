@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { useAuth } from "@/contexte/FournisseurAuth";
+import { useT } from "@/contexte/FournisseurLocale";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import { usePremiumAccess } from "@/hooks/usePremiumAccess";
 import { hasImageStudioPlan } from "@/bibliotheque/supabase/premiumAccess";
@@ -33,9 +34,7 @@ import ModalAbonnementImageStudio from "@/composants/image/ModalAbonnementImageS
 import ModalPromptsImageStudio from "@/composants/image/ModalPromptsImageStudio";
 import ModalPromptAssistImageStudio from "@/composants/image/ModalPromptAssistImageStudio";
 import SheetReglagesImageStudio from "@/composants/image/SheetReglagesImageStudio";
-import ImageStudioFeedPanel, {
-  scrollImageStudioFeedToItem,
-} from "@/composants/image/ImageStudioFeedPanel";
+import ImageStudioFeedPanel from "@/composants/image/ImageStudioFeedPanel";
 import SheetHistoriqueImageStudio from "@/composants/image/SheetHistoriqueImageStudio";
 import ImageStudioPromptInput, {
   insertPromptMentionAtCursor,
@@ -206,6 +205,7 @@ function CommandBarDropdownMenu({
 }
 
 function ModelDropdown({ value, onChange, availability, disabled, loading }) {
+  const t = useT();
   const rootRef = useRef(null);
   const menuRef = useRef(null);
   const [open, setOpen] = useState(false);
@@ -222,8 +222,8 @@ function ModelDropdown({ value, onChange, availability, disabled, loading }) {
         aria-haspopup="listbox"
         className="image-studio-setting-pill"
         onClick={() => setOpen((v) => !v)}
-        title={loading ? "Modèle" : selected?.label ?? "Modèle"}
-        aria-label={`Modèle : ${loading ? "chargement" : selected?.label ?? "Modèle"}`}
+        title={loading ? t("common.model") : selected?.label ?? t("common.model")}
+        aria-label={`${t("common.model")} : ${loading ? t("common.loading") : selected?.label ?? t("common.model")}`}
       >
         {loading ? (
           <Wand2 className="image-studio-setting-pill-icon" strokeWidth={2} aria-hidden />
@@ -231,7 +231,7 @@ function ModelDropdown({ value, onChange, availability, disabled, loading }) {
           <ImageStudioModelIcon modelId={value} size="sm" className="image-studio-setting-pill-model-icon" />
         )}
         <span className="image-studio-setting-pill-label max-w-[6.5rem] truncate sm:max-w-[8rem]">
-          {loading ? "…" : selected?.label ?? "Modèle"}
+          {loading ? "…" : selected?.label ?? t("common.model")}
         </span>
         <ChevronDown
           className={`image-studio-setting-pill-chevron h-3.5 w-3.5 shrink-0 opacity-50 transition-transform ${open ? "rotate-180" : ""}`}
@@ -268,7 +268,7 @@ function ModelDropdown({ value, onChange, availability, disabled, loading }) {
                 <span className="image-studio-model-option-desc">{opt.description}</span>
               </span>
               {!available ? (
-                <span className="image-studio-dropdown-soon">Bientôt</span>
+                <span className="image-studio-dropdown-soon">{t("common.soon")}</span>
               ) : (
                 <Check
                   className={`image-studio-model-option-check${isSelected ? " is-visible" : ""}`}
@@ -333,6 +333,7 @@ function AspectRatioDropdown({ value, onChange, disabled }) {
 }
 
 function GenerationCountDropdown({ value, onChange, disabled, maxCount = 4 }) {
+  const t = useT();
   const rootRef = useRef(null);
   const menuRef = useRef(null);
   const [open, setOpen] = useState(false);
@@ -387,7 +388,7 @@ function GenerationCountDropdown({ value, onChange, disabled, maxCount = 4 }) {
             >
               <span>{count}</span>
               {!available ? (
-                <span className="image-studio-dropdown-soon">Quota</span>
+                <span className="image-studio-dropdown-soon">{t("common.quota")}</span>
               ) : (
                 <Check
                   className={`image-studio-dropdown-option-check${selected ? " is-visible" : ""}`}
@@ -404,6 +405,9 @@ function GenerationCountDropdown({ value, onChange, disabled, maxCount = 4 }) {
 }
 
 function PromptImportSlot({ preview, disabled, onPick, onClear }) {
+  const t = useT();
+  const importLabel = t("imageStudio.importRef");
+  const replaceLabel = t("imageStudio.replaceRef");
   return (
     <div className="image-studio-prompt-import shrink-0">
       <button
@@ -411,10 +415,8 @@ function PromptImportSlot({ preview, disabled, onPick, onClear }) {
         disabled={disabled}
         onClick={onPick}
         className={`image-studio-add-btn ${preview ? "has-ref" : ""}`}
-        title={preview ? "Image @Image1 — cliquer pour remplacer" : "Importer une image de référence (@Image1)"}
-        aria-label={
-          preview ? "Image @Image1 — cliquer pour remplacer" : "Importer une image de référence (@Image1)"
-        }
+        title={preview ? replaceLabel : importLabel}
+        aria-label={preview ? replaceLabel : importLabel}
       >
         {preview ? (
           <img src={preview} alt="" className="image-studio-add-btn-img" />
@@ -430,7 +432,7 @@ function PromptImportSlot({ preview, disabled, onPick, onClear }) {
             onClear();
           }}
           className="image-studio-add-btn-clear"
-          aria-label="Retirer l'image importée"
+          aria-label={t("imageStudio.removeRef")}
         >
           <X className="h-2.5 w-2.5" />
         </button>
@@ -486,6 +488,7 @@ function ReferenceSlot({ label, preview, disabled, onPick, onClear, imageClassNa
 }
 
 export default function ImageStudio() {
+  const t = useT();
   const promptInputRef = useRef(null);
   const promptImportInputRef = useRef(null);
   const { session, loading: authLoading } = useAuth();
@@ -531,6 +534,7 @@ export default function ImageStudio() {
   const [restoreThumbScrollTop, setRestoreThumbScrollTop] = useState(undefined);
   const feedScrollTopRef = useRef(0);
   const thumbScrollTopRef = useRef(0);
+  const feedPanelRef = useRef(null);
   const uiStateHydratedRef = useRef(false);
   const scrollPersistTimerRef = useRef(null);
   const [uiPersistReady, setUiPersistReady] = useState(false);
@@ -1042,7 +1046,7 @@ export default function ImageStudio() {
     setActiveHistoryId(item.id);
 
     window.requestAnimationFrame(() => {
-      scrollImageStudioFeedToItem(item, { behavior: "smooth" });
+      feedPanelRef.current?.scrollToItem(item, { behavior: "smooth" });
     });
   }, []);
 
@@ -1305,10 +1309,20 @@ export default function ImageStudio() {
       <div className="flex shrink-0 items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
         <div>
           <h1 className="text-lg font-semibold tracking-tight text-white sm:text-xl">
-            Image <span className="text-[#2af598]">Studio</span>
+            {(() => {
+              const title = t("imageStudio.title");
+              const lastSpace = title.lastIndexOf(" ");
+              if (lastSpace === -1) return title;
+              return (
+                <>
+                  {title.slice(0, lastSpace + 1)}
+                  <span className="text-[#2af598]">{title.slice(lastSpace + 1)}</span>
+                </>
+              );
+            })()}
           </h1>
           <p className="mt-0.5 text-xs text-white/40 sm:text-sm">
-            Décrivez votre scène — l&apos;IA génère l&apos;image
+            {t("imageStudio.subtitle")}
           </p>
         </div>
         {hasImagePlan ? (
@@ -1336,8 +1350,8 @@ export default function ImageStudio() {
               type="button"
               className="image-studio-history-fab sm:hidden"
               onClick={() => setHistorySheetOpen(true)}
-              aria-label={`Historique (${history.length} image${history.length !== 1 ? "s" : ""})`}
-              title="Historique"
+              aria-label={`${t("imageStudio.history")} (${history.length} image${history.length !== 1 ? "s" : ""})`}
+              title={t("imageStudio.history")}
             >
               <Clock className="h-4 w-4" strokeWidth={2} aria-hidden />
               {history.length > 0 ? (
@@ -1348,6 +1362,7 @@ export default function ImageStudio() {
             </button>
 
             <ImageStudioFeedPanel
+              ref={feedPanelRef}
               feedRows={feedRows}
               history={history}
               historyLoading={historyLoading}
@@ -1400,6 +1415,7 @@ export default function ImageStudio() {
                   onSubmit={requestGenerate}
                   disabled={generating || quotaReached}
                   assets={mentionAssets}
+                  placeholder={t("imageStudio.promptPlaceholder")}
                   onOpenAvatarPicker={openAvatarLibrary}
                   onOpenProductPicker={openProductLibrary}
                   onOpenImage1Upload={openPromptImport}
@@ -1418,7 +1434,7 @@ export default function ImageStudio() {
                   aria-label="Choisir un type d'image — l'assistant remplit le prompt"
                 >
                   <Sparkles className="image-studio-prompt-guide-chip-icon" strokeWidth={2} aria-hidden />
-                  <span>Assistant prompt</span>
+                  <span>{t("imageStudio.promptAssistant")}</span>
                 </button>
 
                 <div className="image-studio-settings-desktop">
@@ -1452,14 +1468,14 @@ export default function ImageStudio() {
                   aria-label="Ouvrir les réglages : modèle, format et générations"
                 >
                   <SlidersHorizontal className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
-                  <span>Réglages</span>
+                  <span>{t("imageStudio.settings")}</span>
                 </button>
               </div>
 
               <div className="image-studio-command-aside shrink-0">
                 <div className="image-studio-ref-slots">
                   <ReferenceSlot
-                    label="Avatar"
+                    label={t("imageStudio.avatar")}
                     preview={referencePreview}
                     disabled={generating}
                     onPick={handleAvatarShortcut}
@@ -1468,7 +1484,7 @@ export default function ImageStudio() {
                   />
 
                   <ReferenceSlot
-                    label="Produit"
+                    label={t("imageStudio.product")}
                     preview={productPreview}
                     disabled={generating}
                     onPick={handleProductShortcut}
@@ -1485,7 +1501,7 @@ export default function ImageStudio() {
                   {generating ? (
                     <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
                   ) : (
-                    "Générer"
+                    t("imageStudio.generate")
                   )}
                 </button>
               </div>

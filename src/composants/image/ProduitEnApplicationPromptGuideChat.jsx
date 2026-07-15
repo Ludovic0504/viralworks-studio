@@ -20,6 +20,8 @@ import { fillTemplateSlotDefaults } from "@/bibliotheque/imageStudio/promptTempl
 import { IMAGE_STUDIO_PRODUCT_MENTION_TOKEN } from "@/bibliotheque/imageStudio/imageStudioGuideApply";
 import { readGuideProductImageFile } from "@/bibliotheque/imageStudio/guideProductImage";
 import GuideProductImagePicker from "@/composants/image/GuideProductImagePicker";
+import { useImageStudioChatbotTr } from "@/bibliotheque/i18n/useImageStudioChatbotTr";
+import { translateLabeledOptions } from "@/bibliotheque/i18n/chatbotTranslate";
 
 /** @typedef {'productType' | 'gender' | 'bodyZone' | 'container' | 'textureOrObject' | 'posture' | 'decor' | 'lighting' | 'product' | 'ready'} ProduitApplicationGuideStep */
 
@@ -58,7 +60,7 @@ function ConversationBubble({ role, children, wide = false, visible = true }) {
   );
 }
 
-function TypingIndicator({ visible = true }) {
+function TypingIndicator({ visible = true, typingLabel = "Le guide écrit…" }) {
   if (!visible) return null;
 
   return (
@@ -68,7 +70,7 @@ function TypingIndicator({ visible = true }) {
       </span>
       <div
         className="image-studio-prompt-guide-typing image-studio-prompt-guide-bubble--enter"
-        aria-label="Le guide écrit…"
+        aria-label={typingLabel}
         role="status"
       >
         <span />
@@ -185,6 +187,75 @@ export default function ProduitEnApplicationPromptGuideChat({
   onApplyPrompt,
   onClose,
 }) {
+  const { ui, tr, template: localizeTemplate, locale } = useImageStudioChatbotTr();
+  const localizedTemplate = useMemo(
+    () => localizeTemplate(template),
+    [localizeTemplate, template, locale],
+  );
+  const localizedProductTypeOptions = useMemo(
+    () =>
+      translateLabeledOptions(
+        PRODUIT_APPLICATION_PRODUCT_TYPE_OPTIONS,
+        tr,
+        "chatbot.produitApplication.productType",
+      ),
+    [tr],
+  );
+  const localizedGenderOptions = useMemo(
+    () =>
+      translateLabeledOptions(
+        PRODUIT_APPLICATION_GENDER_OPTIONS,
+        tr,
+        "chatbot.produitApplication.gender",
+      ),
+    [tr],
+  );
+  const localizedContainerOptions = useMemo(
+    () =>
+      translateLabeledOptions(
+        PRODUIT_APPLICATION_CONTAINER_OPTIONS,
+        tr,
+        "chatbot.produitApplication.container",
+      ),
+    [tr],
+  );
+  const localizedTextureTypeOptions = useMemo(
+    () =>
+      translateLabeledOptions(
+        PRODUIT_APPLICATION_TEXTURE_TYPE_OPTIONS,
+        tr,
+        "chatbot.produitApplication.textureType",
+      ),
+    [tr],
+  );
+  const localizedPostureOptions = useMemo(
+    () =>
+      translateLabeledOptions(
+        PRODUIT_APPLICATION_POSTURE_OPTIONS,
+        tr,
+        "chatbot.produitApplication.posture",
+      ),
+    [tr],
+  );
+  const localizedDecorOptions = useMemo(
+    () =>
+      translateLabeledOptions(
+        PRODUIT_APPLICATION_DECOR_OPTIONS,
+        tr,
+        "chatbot.produitApplication.decor",
+      ),
+    [tr],
+  );
+  const localizedLightingOptions = useMemo(
+    () =>
+      translateLabeledOptions(
+        PRODUIT_APPLICATION_LIGHTING_OPTIONS,
+        tr,
+        "chatbot.produitApplication.lighting",
+      ),
+    [tr],
+  );
+
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -209,15 +280,25 @@ export default function ProduitEnApplicationPromptGuideChat({
 
   const isTextureGuide = productTypeId === "texture";
   const bodyZoneOptions = useMemo(
-    () => getProduitApplicationBodyZoneOptions(productTypeId),
-    [productTypeId],
+    () =>
+      translateLabeledOptions(
+        getProduitApplicationBodyZoneOptions(productTypeId),
+        tr,
+        "chatbot.produitApplication.bodyZone",
+      ),
+    [productTypeId, tr],
   );
   const objectOptions = useMemo(
-    () => getProduitApplicationObjectOptionsForZone(bodyZoneId),
-    [bodyZoneId],
+    () =>
+      translateLabeledOptions(
+        getProduitApplicationObjectOptionsForZone(bodyZoneId),
+        tr,
+        "chatbot.produitApplication.objectType",
+      ),
+    [bodyZoneId, tr],
   );
 
-  const filledSlots = useMemo(() => fillTemplateSlotDefaults(template, slots), [template, slots]);
+  const filledSlots = useMemo(() => fillTemplateSlotDefaults(localizedTemplate, slots), [localizedTemplate, slots]);
 
   const assembledPrompt = useMemo(() => {
     if (!ready) return "";
@@ -429,30 +510,30 @@ export default function ProduitEnApplicationPromptGuideChat({
           type="text"
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
-          placeholder="Ex. crème hydratante SPF 50, sérum vitamine C…"
+          placeholder={ui("produitNamePlaceholder", "Ex. crème hydratante SPF 50, sérum vitamine C…")}
           className="image-studio-prompt-guide-input"
-          aria-label="Nom du produit"
+          aria-label={ui("produitNameAria", "Nom du produit")}
         />
         <button
           type="submit"
           className="image-studio-prompt-guide-send"
           disabled={!canSubmitGuideProduct}
-          aria-label="Envoyer"
+          aria-label={ui("send", "Envoyer")}
         >
           <SendHorizontal className="h-4 w-4" strokeWidth={2.25} />
         </button>
       </form>
     ) : null;
 
-  const productTypeLabel = findOptionLabel(PRODUIT_APPLICATION_PRODUCT_TYPE_OPTIONS, productTypeId);
-  const genderLabel = findOptionLabel(PRODUIT_APPLICATION_GENDER_OPTIONS, genderId);
+  const productTypeLabel = findOptionLabel(localizedProductTypeOptions, productTypeId);
+  const genderLabel = findOptionLabel(localizedGenderOptions, genderId);
   const bodyZoneLabel = findOptionLabel(bodyZoneOptions, bodyZoneId);
-  const containerLabel = findOptionLabel(PRODUIT_APPLICATION_CONTAINER_OPTIONS, containerId);
-  const textureLabel = findOptionLabel(PRODUIT_APPLICATION_TEXTURE_TYPE_OPTIONS, textureTypeId);
+  const containerLabel = findOptionLabel(localizedContainerOptions, containerId);
+  const textureLabel = findOptionLabel(localizedTextureTypeOptions, textureTypeId);
   const objectLabel = findOptionLabel(objectOptions, objectTypeId);
-  const postureLabel = findOptionLabel(PRODUIT_APPLICATION_POSTURE_OPTIONS, postureId);
-  const decorLabel = findOptionLabel(PRODUIT_APPLICATION_DECOR_OPTIONS, decorId);
-  const lightingLabel = findOptionLabel(PRODUIT_APPLICATION_LIGHTING_OPTIONS, lightingId);
+  const postureLabel = findOptionLabel(localizedPostureOptions, postureId);
+  const decorLabel = findOptionLabel(localizedDecorOptions, decorId);
+  const lightingLabel = findOptionLabel(localizedLightingOptions, lightingId);
   const resolvedLightingId = lightingId ?? slots.lightingId ?? null;
   const productName = slots.productName?.trim() ?? "";
 
@@ -461,10 +542,12 @@ export default function ProduitEnApplicationPromptGuideChat({
   const postureAnswerLabel = useMemo(() => {
     if (!postureId && guideStep !== "posture" && !ready) return null;
     if (postureId === "debout" && (guideStep === "decor" || guideStep === "lighting" || guideStep === "product" || ready)) {
-      if (slots.postureId === "debout" && guideStep !== "posture") return "Debout (par défaut)";
+      if (slots.postureId === "debout" && guideStep !== "posture") {
+        return ui("produitStandingDefault", "Debout (par défaut)");
+      }
     }
     return postureLabel;
-  }, [guideStep, postureId, postureLabel, ready, slots.postureId]);
+  }, [guideStep, postureId, postureLabel, ready, slots.postureId, ui]);
 
   const botTurnKeys = useMemo(() => {
     const keys = ["productType"];
@@ -519,7 +602,7 @@ export default function ProduitEnApplicationPromptGuideChat({
         onClick={() => setAdjustOpen((open) => !open)}
         aria-expanded={adjustOpen}
       >
-        Ajuster les champs
+        {ui("adjustFields", "Ajuster les champs")}
         {adjustOpen ? (
           <ChevronUp className="h-3.5 w-3.5 shrink-0" strokeWidth={2.25} />
         ) : (
@@ -529,7 +612,7 @@ export default function ProduitEnApplicationPromptGuideChat({
 
       {adjustOpen ? (
         <div className="image-studio-prompt-guide-fields">
-          {template.variables.map((variable) => (
+          {localizedTemplate.variables.map((variable) => (
             <label key={variable.key} className="image-studio-prompt-guide-field">
               <span>{variable.label}</span>
               <input
@@ -548,10 +631,12 @@ export default function ProduitEnApplicationPromptGuideChat({
         className="image-studio-prompt-guide-apply btn-vws-primary"
         onClick={handleApply}
       >
-        Appliquer au prompt
+        {ui("applyPrompt", "Appliquer au prompt")}
       </button>
     </div>
   ) : null;
+
+  const skipLabel = ui("pass", "Passer");
 
   return (
     <div className="image-studio-prompt-guide-chat image-studio-prompt-guide-chat--conversation">
@@ -560,12 +645,12 @@ export default function ProduitEnApplicationPromptGuideChat({
           type="button"
           className="image-studio-prompt-guide-back"
           onClick={onBack}
-          aria-label="Retour aux modèles"
+          aria-label={ui("back", "Retour aux modèles")}
         >
           <ArrowLeft className="h-4 w-4" strokeWidth={2.25} />
         </button>
         <div className="image-studio-prompt-guide-chat-title-row">
-          <p className="image-studio-prompt-guide-chat-title">{template.label}</p>
+          <p className="image-studio-prompt-guide-chat-title">{localizedTemplate.label}</p>
           <span className="pulse-dot pulse-dot--online shrink-0" aria-hidden="true" />
         </div>
       </div>
@@ -576,14 +661,16 @@ export default function ProduitEnApplicationPromptGuideChat({
         aria-live="polite"
       >
         <ConversationBubble role="bot" visible={isBotVisible("productType")}>
-          <p className="image-studio-prompt-guide-bubble-text">Quel type de produit ?</p>
+          <p className="image-studio-prompt-guide-bubble-text">
+            {ui("produitTypeQuestion", "Quel type de produit ?")}
+          </p>
           {guideStep === "productType" ? (
             <OptionButtonRow
-              options={PRODUIT_APPLICATION_PRODUCT_TYPE_OPTIONS}
+              options={localizedProductTypeOptions}
               selectedId={productTypeId}
               disabled={false}
               onSelect={handleProductTypeSelect}
-              ariaLabel="Type de produit"
+              ariaLabel={ui("produitTypeAria", "Type de produit")}
             />
           ) : null}
         </ConversationBubble>
@@ -596,14 +683,16 @@ export default function ProduitEnApplicationPromptGuideChat({
 
         {productTypeId ? (
           <ConversationBubble role="bot" visible={isBotVisible("gender")}>
-            <p className="image-studio-prompt-guide-bubble-text">Sexe du modèle</p>
+            <p className="image-studio-prompt-guide-bubble-text">
+              {ui("produitModelGender", "Sexe du modèle")}
+            </p>
             {guideStep === "gender" ? (
               <OptionButtonRow
-                options={PRODUIT_APPLICATION_GENDER_OPTIONS}
+                options={localizedGenderOptions}
                 selectedId={genderId}
                 disabled={false}
                 onSelect={handleGenderSelect}
-                ariaLabel="Sexe du modèle"
+                ariaLabel={ui("produitModelGender", "Sexe du modèle")}
               />
             ) : null}
           </ConversationBubble>
@@ -617,14 +706,16 @@ export default function ProduitEnApplicationPromptGuideChat({
 
         {genderId ? (
           <ConversationBubble role="bot" visible={isBotVisible("bodyZone")}>
-            <p className="image-studio-prompt-guide-bubble-text">Zone du corps</p>
+            <p className="image-studio-prompt-guide-bubble-text">
+              {ui("produitBodyZone", "Zone du corps")}
+            </p>
             {guideStep === "bodyZone" ? (
               <OptionGrid
                 options={bodyZoneOptions}
                 selectedId={bodyZoneId}
                 disabled={false}
                 onSelect={handleBodyZoneSelect}
-                ariaLabel="Zone du corps"
+                ariaLabel={ui("produitBodyZone", "Zone du corps")}
               />
             ) : null}
           </ConversationBubble>
@@ -638,17 +729,19 @@ export default function ProduitEnApplicationPromptGuideChat({
 
         {bodyZoneId && isTextureGuide ? (
           <ConversationBubble role="bot" visible={isBotVisible("container")}>
-            <p className="image-studio-prompt-guide-bubble-text">Contenant</p>
+            <p className="image-studio-prompt-guide-bubble-text">
+              {ui("produitContainer", "Contenant")}
+            </p>
             {guideStep === "container" ? (
               <>
                 <OptionButtonRow
-                  options={PRODUIT_APPLICATION_CONTAINER_OPTIONS}
+                  options={localizedContainerOptions}
                   selectedId={containerId}
                   disabled={false}
                   onSelect={handleContainerSelect}
-                  ariaLabel="Contenant"
+                  ariaLabel={ui("produitContainer", "Contenant")}
                 />
-                <SkipButton disabled={false} onClick={handleContainerSkip} />
+                <SkipButton disabled={false} onClick={handleContainerSkip} label={skipLabel} />
               </>
             ) : null}
           </ConversationBubble>
@@ -664,15 +757,21 @@ export default function ProduitEnApplicationPromptGuideChat({
         bodyZoneId ? (
           <ConversationBubble role="bot" visible={isBotVisible("textureOrObject")}>
             <p className="image-studio-prompt-guide-bubble-text">
-              {isTextureGuide ? "Type de texture" : "Type d'objet"}
+              {isTextureGuide
+                ? ui("produitTextureType", "Type de texture")
+                : ui("produitObjectType", "Type d'objet")}
             </p>
             {guideStep === "textureOrObject" ? (
               <OptionGrid
-                options={isTextureGuide ? PRODUIT_APPLICATION_TEXTURE_TYPE_OPTIONS : objectOptions}
+                options={isTextureGuide ? localizedTextureTypeOptions : objectOptions}
                 selectedId={isTextureGuide ? textureTypeId : objectTypeId}
                 disabled={false}
                 onSelect={isTextureGuide ? handleTextureTypeSelect : handleObjectTypeSelect}
-                ariaLabel={isTextureGuide ? "Type de texture" : "Type d'objet"}
+                ariaLabel={
+                  isTextureGuide
+                    ? ui("produitTextureType", "Type de texture")
+                    : ui("produitObjectType", "Type d'objet")
+                }
               />
             ) : null}
           </ConversationBubble>
@@ -686,17 +785,19 @@ export default function ProduitEnApplicationPromptGuideChat({
 
         {textureOrObjectAnswerLabel ? (
           <ConversationBubble role="bot" visible={isBotVisible("posture")}>
-            <p className="image-studio-prompt-guide-bubble-text">Posture</p>
+            <p className="image-studio-prompt-guide-bubble-text">
+              {ui("produitPosture", "Posture")}
+            </p>
             {guideStep === "posture" ? (
               <>
                 <OptionButtonRow
-                  options={PRODUIT_APPLICATION_POSTURE_OPTIONS}
+                  options={localizedPostureOptions}
                   selectedId={postureId}
                   disabled={false}
                   onSelect={handlePostureSelect}
-                  ariaLabel="Posture"
+                  ariaLabel={ui("produitPosture", "Posture")}
                 />
-                <SkipButton disabled={false} onClick={handlePostureSkip} />
+                <SkipButton disabled={false} onClick={handlePostureSkip} label={skipLabel} />
               </>
             ) : null}
           </ConversationBubble>
@@ -710,17 +811,17 @@ export default function ProduitEnApplicationPromptGuideChat({
 
         {textureOrObjectAnswerLabel ? (
           <ConversationBubble role="bot" visible={isBotVisible("decor")}>
-            <p className="image-studio-prompt-guide-bubble-text">Décor</p>
+            <p className="image-studio-prompt-guide-bubble-text">{ui("produitDecor", "Décor")}</p>
             {guideStep === "decor" ? (
               <>
                 <OptionButtonRow
-                  options={PRODUIT_APPLICATION_DECOR_OPTIONS}
+                  options={localizedDecorOptions}
                   selectedId={decorId}
                   disabled={false}
                   onSelect={handleDecorSelect}
-                  ariaLabel="Décor"
+                  ariaLabel={ui("produitDecor", "Décor")}
                 />
-                <SkipButton disabled={false} onClick={handleDecorSkip} />
+                <SkipButton disabled={false} onClick={handleDecorSkip} label={skipLabel} />
               </>
             ) : null}
           </ConversationBubble>
@@ -734,17 +835,19 @@ export default function ProduitEnApplicationPromptGuideChat({
 
         {(decorId || guideStep === "lighting") && textureOrObjectAnswerLabel ? (
           <ConversationBubble role="bot" visible={isBotVisible("lighting")}>
-            <p className="image-studio-prompt-guide-bubble-text">Éclairage</p>
+            <p className="image-studio-prompt-guide-bubble-text">
+              {ui("produitLighting", "Éclairage")}
+            </p>
             {guideStep === "lighting" ? (
               <>
                 <OptionButtonRow
-                  options={PRODUIT_APPLICATION_LIGHTING_OPTIONS}
+                  options={localizedLightingOptions}
                   selectedId={resolvedLightingId}
                   disabled={false}
                   onSelect={handleLightingSelect}
-                  ariaLabel="Éclairage"
+                  ariaLabel={ui("produitLighting", "Éclairage")}
                 />
-                <SkipButton disabled={false} onClick={handleLightingSkip} />
+                <SkipButton disabled={false} onClick={handleLightingSkip} label={skipLabel} />
               </>
             ) : null}
           </ConversationBubble>
@@ -758,7 +861,9 @@ export default function ProduitEnApplicationPromptGuideChat({
 
         {(guideStep === "product" || productName) && resolvedLightingId ? (
           <ConversationBubble role="bot" visible={isBotVisible("product")}>
-            <p className="image-studio-prompt-guide-bubble-text">Nom du produit</p>
+            <p className="image-studio-prompt-guide-bubble-text">
+              {ui("produitNameQuestion", "Nom du produit")}
+            </p>
             {guideStep === "product" ? (
               <>
                 <div className="image-studio-prompt-guide-bubble-compose">{composeForm}</div>
@@ -775,7 +880,7 @@ export default function ProduitEnApplicationPromptGuideChat({
 
         {productValidationShown ? (
           <ConversationBubble role="bot" visible={isBotVisible("product-validation")}>
-            <p className="image-studio-prompt-guide-bubble-text">{template.botAskRequired}</p>
+            <p className="image-studio-prompt-guide-bubble-text">{localizedTemplate.botAskRequired}</p>
           </ConversationBubble>
         ) : null}
 
@@ -802,7 +907,7 @@ export default function ProduitEnApplicationPromptGuideChat({
           </ConversationBubble>
         ) : null}
 
-        <TypingIndicator visible={isTyping} />
+        <TypingIndicator visible={isTyping} typingLabel={ui("typing", "Le guide écrit…")} />
         <div ref={messagesEndRef} />
       </div>
     </div>

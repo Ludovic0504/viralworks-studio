@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Upload } from "lucide-react";
+import { useT } from "@/contexte/FournisseurLocale";
 import {
   filterMentionOptions,
   getMentionAssetAvailability,
@@ -32,12 +33,14 @@ export default function ImageStudioPromptInput({
   disabled,
   inputRef,
   assets,
+  placeholder,
   onOpenAvatarPicker,
   onOpenProductPicker,
   onOpenImage1Upload,
   onOpenPromptAssist,
   onResize,
 }) {
+  const t = useT();
   const mentionMenuRef = useRef(null);
   const promptAssistChipRef = useRef(null);
   const highlightRef = useRef(null);
@@ -335,7 +338,7 @@ export default function ImageStudioPromptInput({
       className="image-studio-mention-menu"
       style={menuStyle ?? undefined}
       role="listbox"
-      aria-label="Mentions disponibles"
+      aria-label={t("imageStudio.mentionMenuAria")}
     >
       {filteredOptions.map((option, index) => {
         const isAvailable = availability[option.kind];
@@ -355,7 +358,7 @@ export default function ImageStudioPromptInput({
             <span className="image-studio-mention-option-copy">
               <span className="image-studio-mention-option-label">{option.token}</span>
               <span className="image-studio-mention-option-desc">
-                {isAvailable ? option.description : "Cliquer pour sélectionner ou importer"}
+                {isAvailable ? option.description : t("imageStudio.mentionSelectOrImport")}
               </span>
             </span>
           </button>
@@ -442,8 +445,8 @@ export default function ImageStudioPromptInput({
           autoComplete="off"
           autoCorrect="off"
           autoCapitalize="off"
-          placeholder="Décrivez l'image à générer… (tapez @ pour mentionner)"
-          aria-label="Prompt de génération"
+          placeholder={placeholder ?? t("imageStudio.promptPlaceholder")}
+          aria-label={t("imageStudio.promptAria")}
           rows={1}
           className="image-studio-prompt-input image-studio-prompt-input--overlay min-w-0 flex-1 resize-none py-1 leading-relaxed disabled:opacity-50"
         />

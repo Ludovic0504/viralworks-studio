@@ -11,12 +11,8 @@ import PrivateMessagePreviewBubble from "@/composants/communaute/PrivateMessageP
 import { isAdmin } from "@/bibliotheque/supabase/credits";
 import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
 import { PAGE_SHELL_INNER_CLASS } from "@/bibliotheque/disposition/dashboardShellLayout";
-
-const navLinks = [
-  { path: "/", label: "Accueil" },
-  { path: "/lab", label: "Nouveautés" },
-  { path: "/playbook", label: "Playbook" },
-];
+import { useT } from "@/contexte/FournisseurLocale";
+import BoutonMenuLangue from "@/composants/disposition/BoutonMenuLangue";
 
 function MessageBubbleIcon({ className }) {
   return (
@@ -37,7 +33,14 @@ function MessageBubbleIcon({ className }) {
 }
 
 export default function Header({ onOpenMenu }) {
+  const t = useT();
   const { session, signOut, loading } = useAuth();
+
+  const navLinks = [
+    { path: "/", label: t("nav.home") },
+    { path: "/lab", label: t("nav.lab") },
+    { path: "/playbook", label: t("nav.playbook") },
+  ];
   const { openAuthModal } = useRequireAuthAction();
   const hasSession = Boolean(session?.user?.id);
   const {
@@ -185,7 +188,7 @@ export default function Header({ onOpenMenu }) {
       onClick={() => openAuthModal?.()}
       className="inline-flex items-center justify-center rounded-lg btn-vws-primary px-4 py-2 text-sm font-semibold whitespace-nowrap md:px-6 md:py-2.5"
     >
-      Connexion
+      {t("nav.login")}
     </button>
   );
 
@@ -196,7 +199,7 @@ export default function Header({ onOpenMenu }) {
         <div className="flex h-16 w-full items-center gap-2 md:justify-between">
           <button
             type="button"
-            aria-label="Ouvrir le menu"
+            aria-label={t("nav.openMenu")}
             onClick={() => onOpenMenu?.()}
             className="md:hidden inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-white/5 transition-colors z-10"
           >
@@ -218,16 +221,16 @@ export default function Header({ onOpenMenu }) {
               <LienNavSync
                 to="/admin/stats"
                 className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-300 transition-colors hover:bg-white/10 hover:text-white"
-                aria-label="Analytics réseaux sociaux"
-                title="Analytics réseaux"
+                aria-label={t("nav.analytics")}
+                title={t("nav.analyticsTitle")}
               >
                 <BarChart3 size={18} className="text-gray-300" />
               </LienNavSync>
               <LienNavSync
                 to="/admin?tab=notifications"
                 className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-300 transition-colors hover:bg-white/10 hover:text-white"
-                aria-label="Admin: inscriptions et notifications"
-                title="Admin: inscriptions & notifications"
+                aria-label={t("nav.admin")}
+                title={t("nav.adminTitle")}
               >
                 <div className="relative">
                   <Bell size={18} className="text-gray-300" />
@@ -247,6 +250,7 @@ export default function Header({ onOpenMenu }) {
               </LienNavSync>
               </>
             ) : null}
+            <BoutonMenuLangue />
             {hasSession ? (
               <div className="relative">
                 <LienNavSync
@@ -254,8 +258,8 @@ export default function Header({ onOpenMenu }) {
                   className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-300 transition-colors hover:bg-white/10 hover:text-white"
                   aria-label={
                     headerUnreadPrivateCount > 0
-                      ? `Messages privés, ${headerUnreadPrivateCount} non lus`
-                      : "Messages privés"
+                      ? t("nav.privateMessagesUnread", { count: headerUnreadPrivateCount })
+                      : t("nav.privateMessages")
                   }
                 >
                   <MessageBubbleIcon className="text-gray-300" />

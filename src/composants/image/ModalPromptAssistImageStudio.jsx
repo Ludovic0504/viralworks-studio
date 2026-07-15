@@ -13,6 +13,7 @@ import { readGuideProductImageFile } from "@/bibliotheque/imageStudio/guideProdu
 import { IMAGE_STUDIO_PRODUCT_MENTION_TOKEN } from "@/bibliotheque/imageStudio/imageStudioGuideApply";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import PromptAssistAssistantContent from "@/composants/image/PromptAssistAssistantContent";
+import { useImageStudioChatbotTr } from "@/bibliotheque/i18n/useImageStudioChatbotTr";
 
 function nextMessageId() {
   return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -46,7 +47,7 @@ function ConversationBubble({ role, children, imageUrl }) {
   );
 }
 
-function TypingIndicator() {
+function TypingIndicator({ typingLabel = "PromptAssist écrit…" }) {
   return (
     <div className="image-studio-prompt-guide-turn image-studio-prompt-guide-turn--bot">
       <span className="image-studio-prompt-guide-bot-avatar" aria-hidden="true">
@@ -54,7 +55,7 @@ function TypingIndicator() {
       </span>
       <div
         className="image-studio-prompt-guide-typing image-studio-prompt-guide-bubble--enter"
-        aria-label="PromptAssist écrit…"
+        aria-label={typingLabel}
         role="status"
       >
         <span />
@@ -72,19 +73,28 @@ function ensureProductMentionInPrompt(prompt, hasReferenceImage) {
   return `${prompt} ${token}`;
 }
 
-function formatPromptAssistError(error) {
+function formatPromptAssistError(error, ui) {
   const message = error instanceof Error ? error.message : "";
   if (/connecté|connecter|authentification|autorisé|401/i.test(message)) {
-    return "Connectez-vous pour utiliser le Prompt Assistant.";
+    return ui("promptAssistLoginRequired", "Connectez-vous pour utiliser le Prompt Assistant.");
   }
   if (/OPENAI|Configuration OpenAI|OPENAI_API_KEY/i.test(message)) {
-    return "Le service IA n'est pas disponible pour le moment. Réessayez plus tard.";
+    return ui(
+      "promptAssistUnavailable",
+      "Le service IA n'est pas disponible pour le moment. Réessayez plus tard.",
+    );
   }
-  if (message) return `Une erreur est survenue : ${message}`;
-  return "Une erreur est survenue. Vérifie ta connexion ou reconnecte-toi.";
+  if (message) {
+    return `${ui("promptAssistErrorPrefix", "Une erreur est survenue :")} ${message}`;
+  }
+  return ui(
+    "promptAssistGenericError",
+    "Une erreur est survenue. Vérifie ta connexion ou reconnecte-toi.",
+  );
 }
 
 export default function ModalPromptAssistImageStudio({ open, onClose, onApplyPrompt }) {
+  const { ui } = useImageStudioChatbotTr();
   const { runWithAuth } = useRequireAuthAction();
   const messagesRef = useRef(null);
   const inputRef = useRef(null);
@@ -128,12 +138,14 @@ export default function ModalPromptAssistImageStudio({ open, onClose, onApplyPro
       {
         id: nextMessageId(),
         role: "assistant",
-        content:
+        content: ui(
+          "promptAssistWelcome",
           "Bonjour ! Décrivez l'image que vous voulez — vous pouvez joindre une photo et utiliser des termes comme croquis, vue plongeante, packshot, UGC, lumière douce… Je traduirai votre demande en prompt précis.",
+        ),
       },
     ]);
     window.requestAnimationFrame(() => inputRef.current?.focus());
-  }, [open, clearAttachedImage]);
+  }, [open, clearAttachedImage, ui]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -175,7 +187,7 @@ export default function ModalPromptAssistImageStudio({ open, onClose, onApplyPro
     const userMessage = {
       id: nextMessageId(),
       role: "user",
-      content: text || "Image jointe pour contexte.",
+      content: text || ui("promptAssistImageContext", "Image jointe pour contexte."),
       imageUrl: sentImageUrl ?? undefined,
     };
     const nextMessages = [...messages, userMessage];
@@ -206,7 +218,7 @@ export default function ModalPromptAssistImageStudio({ open, onClose, onApplyPro
         {
           id: nextMessageId(),
           role: "assistant",
-          content: reply || "Peux-tu reformuler ta demande ?",
+          content: reply || ui("promptAssistRephrase", "Peux-tu reformuler ta demande ?"),
         },
       ]);
     } catch (error) {
@@ -228,7 +240,7 @@ export default function ModalPromptAssistImageStudio({ open, onClose, onApplyPro
           {
             id: nextMessageId(),
             role: "assistant",
-            content: formatPromptAssistError(error),
+            content: formatPromptAssistError(error, ui),
           },
         ]);
       }
@@ -237,7 +249,7 @@ export default function ModalPromptAssistImageStudio({ open, onClose, onApplyPro
       loadingRef.current = false;
       window.requestAnimationFrame(() => inputRef.current?.focus());
     }
-  }, [attachedImageUrl, clearAttachedImage, draft, messages, systemPrompt]);
+  }, [attachedImageUrl, clearAttachedImage, draft, messages, systemPrompt, ui]);
 
   const send = useCallback(() => {
     void runWithAuth(handleSend);
@@ -299,7 +311,7 @@ export default function ModalPromptAssistImageStudio({ open, onClose, onApplyPro
               )}
             </ConversationBubble>
           ))}
-          {loading ? <TypingIndicator /> : null}
+          {loading ? <TypingIndicator typingLabel={ui("promptAssistTyping", "PromptAssist écrit…")} /> : null}
         </div>
 
         {latestPrompt ? (
@@ -309,7 +321,7 @@ export default function ModalPromptAssistImageStudio({ open, onClose, onApplyPro
               className="image-studio-prompt-guide-apply"
               onClick={handleApply}
             >
-              Utiliser ce prompt
+              {ui("promptAssistUsePrompt", "Utiliser ce prompt")}
             </button>
           </div>
         ) : null}
@@ -318,14 +330,16 @@ export default function ModalPromptAssistImageStudio({ open, onClose, onApplyPro
           {attachedImageUrl ? (
             <div className="image-studio-prompt-assist-attach-preview">
               <div className="image-studio-prompt-assist-attach-thumb">
-                <img src={attachedImageUrl} alt="Aperçu de l'image jointe" />
+                <img src={attachedImageUrl} alt={ui("promptAssistAttachedPreview", "Aperçu de l'image jointe")} />
               </div>
-              <span className="image-studio-prompt-assist-attach-label">Image jointe</span>
+              <span className="image-studio-prompt-assist-attach-label">
+                {ui("promptAssistAttachLabel", "Image jointe")}
+              </span>
               <button
                 type="button"
                 className="image-studio-prompt-assist-attach-remove"
                 onClick={clearAttachedImage}
-                aria-label="Retirer l'image"
+                aria-label={ui("promptAssistRemoveImage", "Retirer l'image")}
               >
                 <X className="h-3.5 w-3.5" strokeWidth={2.25} />
               </button>
@@ -362,8 +376,8 @@ export default function ModalPromptAssistImageStudio({ open, onClose, onApplyPro
               className="image-studio-prompt-assist-attach-btn"
               onClick={() => imageInputRef.current?.click()}
               disabled={loading}
-              aria-label="Joindre une image"
-              title="Joindre une image"
+              aria-label={ui("promptAssistAttachAria", "Joindre une image")}
+              title={ui("promptAssistAttachTitle", "Joindre une image")}
             >
               <ImageUp className="h-4 w-4" strokeWidth={2.25} />
             </button>
@@ -372,16 +386,16 @@ export default function ModalPromptAssistImageStudio({ open, onClose, onApplyPro
               type="text"
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
-              placeholder="Décrivez ce que vous voulez créer…"
+              placeholder={ui("promptAssistPlaceholder", "Décrivez ce que vous voulez créer…")}
               className="image-studio-prompt-guide-input"
-              aria-label="Votre message"
+              aria-label={ui("yourMessage", "Votre message")}
               disabled={loading}
             />
             <button
               type="submit"
               className="image-studio-prompt-guide-send"
               disabled={loading || !canSend}
-              aria-label="Envoyer"
+              aria-label={ui("send", "Envoyer")}
             >
               <SendHorizontal className="h-4 w-4" strokeWidth={2.25} />
             </button>

@@ -9,12 +9,7 @@ import {
   clearMobileNavDrawerScrollLock,
   setMobileNavDrawerScrollLock,
 } from "@/bibliotheque/pwa/mobileNavDrawerScrollLock";
-
-const links = [
-  { path: "/", label: "Accueil", icon: Home },
-  { path: "/lab", label: "Nouveautés", icon: Sparkles },
-  { path: "/playbook", label: "Playbook", icon: Info },
-];
+import { useT } from "@/contexte/FournisseurLocale";
 
 export default function SidebarShell({
   children,
@@ -22,9 +17,16 @@ export default function SidebarShell({
   onCloseMenu,
   mainClassName = "overflow-y-auto",
 }) {
+  const t = useT();
   const panelRef = useRef(null);
   const location = useLocation();
   const previousPathRef = useRef(location.pathname);
+
+  const links = [
+    { path: "/", label: t("nav.home"), icon: Home },
+    { path: "/lab", label: t("nav.lab"), icon: Sparkles },
+    { path: "/playbook", label: t("nav.playbook"), icon: Info },
+  ];
   useEffect(() => {
     // Close only after a real route change (not when `open` flips to true).
     const prev = previousPathRef.current;
@@ -119,7 +121,7 @@ export default function SidebarShell({
                       className="group flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium text-white/75 transition-colors hover:bg-white/[0.08] hover:text-white"
                     >
                       <FileText className="h-4 w-4 shrink-0 opacity-75" strokeWidth={2} />
-                      <span>Mentions légales</span>
+                      <span>{t("footer.legal")}</span>
                     </LienNavSync>
                   </div>
                 </div>

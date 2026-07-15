@@ -1,8 +1,10 @@
 import { useAuth } from "@/contexte/FournisseurAuth";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import LogoutButton from "./BoutonDeconnexion";
+import { useT } from "@/contexte/FournisseurLocale";
 
 export default function AuthCta() {
+  const t = useT();
   const { session, loading } = useAuth();
   const { openAuthModal } = useRequireAuthAction();
 
@@ -16,7 +18,7 @@ export default function AuthCta() {
         <LogoutButton className="text-sm underline" />
       ) : (
         <button type="button" onClick={() => openAuthModal?.()} className="text-sm underline">
-          Se connecter
+          {t("auth.signIn")}
         </button>
       )}
     </div>

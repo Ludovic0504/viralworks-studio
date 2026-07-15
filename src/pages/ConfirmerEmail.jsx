@@ -4,6 +4,7 @@ import { CheckCircle2, MailCheck, ShieldCheck, XCircle, RefreshCw } from "lucide
 import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
 import { track } from "@/bibliotheque/meta/pixel";
 import FondApp from "@/composants/disposition/FondApp";
+import { useT } from "@/contexte/FournisseurLocale";
 
 /**
  * Page de confirmation d'email basée sur le flux `verifyOtp` Supabase.
@@ -11,11 +12,12 @@ import FondApp from "@/composants/disposition/FondApp";
  * Pourquoi un bouton explicite plutôt qu'un appel automatique au montage :
  * - Beaucoup de filtres anti-phishing (SFR/Neuf, Orange, Outlook Safe Links, antivirus
  *   d'entreprise) font une requête HTTP GET sur les liens des emails entrants pour
- *   vérifier qu'ils ne sont pas malveillants. Si on consomme le token au chargement,
+ *   vérifier qu'ils ne sont pas malveillants. Si on consomme le token au montage,
  *   ces scanners brûlent le token avant que l'humain ne clique → l'utilisateur ne
  *   peut jamais confirmer son compte. L'interaction explicite (clic) verrouille ce cas.
  */
 export default function ConfirmerEmail() {
+  const t = useT();
   const navigate = useNavigate();
 
   const { tokenHash, type } = useMemo(() => {
@@ -35,11 +37,9 @@ export default function ConfirmerEmail() {
   useEffect(() => {
     if (!tokenHash) {
       setStatus("error");
-      setErrorMsg(
-        "Lien invalide : aucun jeton de confirmation détecté. Demande un nouvel email de confirmation depuis la page de connexion."
-      );
+      setErrorMsg(t("auth.invalidConfirmLink"));
     }
-  }, [tokenHash]);
+  }, [tokenHash, t]);
 
   const handleConfirm = async () => {
     if (!tokenHash || status === "verifying") return;
@@ -57,11 +57,9 @@ export default function ConfirmerEmail() {
         setStatus("error");
         const raw = (error.message || "").toLowerCase();
         if (raw.includes("expired") || raw.includes("invalid") || raw.includes("not found")) {
-          setErrorMsg(
-            "Ce lien de confirmation est invalide ou a expiré. Demande un nouvel email avec le formulaire ci-dessous."
-          );
+          setErrorMsg(t("auth.confirmLinkExpired"));
         } else {
-          setErrorMsg(error.message || "Erreur lors de la confirmation.");
+          setErrorMsg(error.message || t("auth.confirmError"));
         }
         return;
       }
@@ -73,14 +71,14 @@ export default function ConfirmerEmail() {
       }, 1500);
     } catch (err) {
       setStatus("error");
-      setErrorMsg(err?.message || "Erreur inattendue. Réessaie ou demande un nouveau lien.");
+      setErrorMsg(err?.message || t("auth.unexpectedError"));
     }
   };
 
   const handleResend = async (e) => {
     e?.preventDefault?.();
     if (!resendEmail || !resendEmail.includes("@")) {
-      setResendError("Entre une adresse email valide.");
+      setResendError(t("auth.invalidEmail"));
       return;
     }
     setResendStatus("sending");
@@ -93,13 +91,13 @@ export default function ConfirmerEmail() {
       });
       if (error) {
         setResendStatus("error");
-        setResendError(error.message || "Impossible de renvoyer l'email.");
+        setResendError(error.message || t("auth.resendFailed"));
         return;
       }
       setResendStatus("sent");
     } catch (err) {
       setResendStatus("error");
-      setResendError(err?.message || "Impossible de renvoyer l'email.");
+      setResendError(err?.message || t("auth.resendFailed"));
     }
   };
 
@@ -110,7 +108,7 @@ export default function ConfirmerEmail() {
         <div className="text-center mb-8">
           <h1 className="text-3xl font-black mb-2">
             <span className="bg-gradient-to-r from-cyan-300 via-violet-300 to-yellow-300 bg-clip-text text-transparent">
-              Confirme ton email
+              {t("auth.confirmEmail")}
             </span>
           </h1>
           <p className="text-sm text-gray-400">
@@ -133,7 +131,7 @@ export default function ConfirmerEmail() {
               className="w-full rounded-lg font-semibold py-3 transition-all duration-300 flex items-center justify-center gap-2 btn-vws-primary"
             >
               <MailCheck className="w-4 h-4" />
-              <span>Confirmer mon compte</span>
+              <span>{t("auth.confirmAccount")}</span>
             </button>
             <p className="text-xs text-gray-500">
               Ce clic n'est demandé qu'une seule fois.
@@ -146,7 +144,7 @@ export default function ConfirmerEmail() {
             <div className="mx-auto w-14 h-14 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
               <div className="w-6 h-6 border-2 border-emerald-300/30 border-t-emerald-300 rounded-full animate-spin" />
             </div>
-            <p className="text-sm text-gray-300">Confirmation en cours…</p>
+            <p className="text-sm text-gray-300">{t("auth.confirming")}</p>
           </div>
         ) : null}
 
@@ -155,7 +153,7 @@ export default function ConfirmerEmail() {
             <div className="mx-auto w-14 h-14 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center">
               <CheckCircle2 className="w-7 h-7 text-emerald-300" />
             </div>
-            <p className="text-emerald-200 font-semibold">Adresse confirmée</p>
+            <p className="text-emerald-200 font-semibold">{t("auth.emailConfirmed")}</p>
             <p className="text-sm text-emerald-200/80">
               Tu vas être redirigé vers la page de connexion…
             </p>
@@ -168,7 +166,7 @@ export default function ConfirmerEmail() {
               <div className="mx-auto w-14 h-14 rounded-full bg-red-500/20 border border-red-500/40 flex items-center justify-center">
                 <XCircle className="w-7 h-7 text-red-300" />
               </div>
-              <p className="text-red-200 font-semibold">Confirmation impossible</p>
+              <p className="text-red-200 font-semibold">{t("auth.confirmFailed")}</p>
               <p className="text-sm text-red-200/80 whitespace-pre-wrap">{errorMsg}</p>
             </div>
 
@@ -186,6 +184,7 @@ export default function ConfirmerEmail() {
                 placeholder="ton@email.com"
                 className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all"
                 required
+                aria-label={t("auth.email")}
               />
               <button
                 type="submit"
@@ -195,17 +194,17 @@ export default function ConfirmerEmail() {
                 {resendStatus === "sending" ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    <span>Envoi…</span>
+                    <span>{t("auth.sending")}</span>
                   </>
                 ) : resendStatus === "sent" ? (
                   <>
                     <CheckCircle2 className="w-4 h-4" />
-                    <span>Email envoyé</span>
+                    <span>{t("auth.emailSent")}</span>
                   </>
                 ) : (
                   <>
                     <RefreshCw className="w-4 h-4" />
-                    <span>Renvoyer un email</span>
+                    <span>{t("auth.resendEmail")}</span>
                   </>
                 )}
               </button>

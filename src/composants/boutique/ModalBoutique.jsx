@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import ContenuBoutique from "@/composants/boutique/ContenuBoutique";
+import { useT } from "@/contexte/FournisseurLocale";
 import "./ModalBoutique.css";
 
 export default function ModalBoutique({
@@ -10,6 +11,7 @@ export default function ModalBoutique({
   paymentReturn = null,
   onClose,
 }) {
+  const t = useT();
   useEffect(() => {
     if (!open) return undefined;
 
@@ -78,7 +80,7 @@ export default function ModalBoutique({
           type="button"
           onClick={() => onClose?.()}
           className="absolute right-3 top-2.5 z-20 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-[#0C1116]/95 text-gray-400 transition-colors hover:bg-white/10 hover:text-gray-200 md:right-3.5 md:top-3"
-          aria-label="Fermer la boutique"
+          aria-label={t("shopModal.closeAria")}
         >
           <X className="h-5 w-5" />
         </button>

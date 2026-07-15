@@ -1,11 +1,25 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
-import { ImageIcon, Loader2, Sparkles } from "lucide-react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { ChevronUp, ImageIcon, Loader2, Sparkles } from "lucide-react";
+import { useT } from "@/contexte/FournisseurLocale";
 import {
   feedRowAspectClass,
+  feedRowContainsHistoryItem,
+  getFeedRowVisibility,
   truncateFeedPrompt,
 } from "@/bibliotheque/imageStudio/imageStudioFeed";
 import { getImageStudioModelLabel } from "@/bibliotheque/imageStudio/imageStudioModels";
 import { getImageUrlFromHistory } from "@/bibliotheque/imageStudio/imageStudioHistory";
+
+const FEED_TOP_THRESHOLD = 48;
 
 function sortHistoryOldestFirst(items) {
   return [...items].sort((a, b) => {
@@ -26,6 +40,11 @@ function isFeedNearBottom(el, threshold = 48) {
   if (!el) return true;
   const max = Math.max(0, el.scrollHeight - el.clientHeight);
   return max - el.scrollTop <= threshold;
+}
+
+function isFeedNearTop(el, threshold = FEED_TOP_THRESHOLD) {
+  if (!el) return true;
+  return el.scrollTop <= threshold;
 }
 
 function scrollFeedToBottom(el, behavior = "auto") {
@@ -53,12 +72,10 @@ function scrollChildIntoView(container, child, { block = "center", behavior = "s
   });
 }
 
-export function scrollImageStudioFeedToItem(item, { behavior = "smooth" } = {}) {
-  if (!item) return;
-  const feedEl = document.querySelector(".image-studio-feed");
-  if (!feedEl) return;
+function scrollFeedToHistoryItem(feedEl, item, { behavior = "smooth" } = {}) {
+  if (!feedEl || !item) return;
 
-  const imageEl = item.id ? document.querySelector(`[data-history-id="${item.id}"]`) : null;
+  const imageEl = item.id ? feedEl.querySelector(`[data-history-id="${item.id}"]`) : null;
   if (imageEl) {
     scrollChildIntoView(feedEl, imageEl, { block: "center", behavior });
     return;
@@ -66,13 +83,13 @@ export function scrollImageStudioFeedToItem(item, { behavior = "smooth" } = {}) 
 
   const batchId = item.metadata?.batchId;
   if (!batchId) return;
-  const batchEl = document.querySelector(`[data-batch-id="${batchId}"]`);
+  const batchEl = feedEl.querySelector(`[data-batch-id="${batchId}"]`);
   if (batchEl) {
     scrollChildIntoView(feedEl, batchEl, { block: "center", behavior });
   }
 }
 
-function FeedRow({ row, activeHistoryId, onImageOpen, loadingHint }) {
+function FeedRow({ row, activeHistoryId, onImageOpen, loadingHint, noDescriptionLabel, openImageAria }) {
   const aspectClass = feedRowAspectClass(row.aspectRatio);
   const promptSnippet = truncateFeedPrompt(row.prompt);
   const modelLabel = row.model ? getImageStudioModelLabel(row.model) : null;
@@ -100,7 +117,7 @@ function FeedRow({ row, activeHistoryId, onImageOpen, loadingHint }) {
                 aspectRatio: row.aspectRatio,
               })
             }
-            aria-label="Ouvrir l'image en grand"
+            aria-label={openImageAria}
           >
             <img
               src={image.url}
@@ -129,7 +146,7 @@ function FeedRow({ row, activeHistoryId, onImageOpen, loadingHint }) {
 
       <div className="image-studio-feed-row-meta">
         <p className="image-studio-feed-row-prompt" title={row.prompt || undefined}>
-          {promptSnippet || "Sans description"}
+          {promptSnippet || noDescriptionLabel}
         </p>
         <div className="image-studio-feed-row-tags">
           {modelLabel ? <span className="image-studio-feed-tag">{modelLabel}</span> : null}
@@ -146,36 +163,109 @@ function FeedRow({ row, activeHistoryId, onImageOpen, loadingHint }) {
   );
 }
 
-export default function ImageStudioFeedPanel({
-  feedRows,
-  history,
-  historyLoading,
-  generating,
-  generationLoadingHint,
-  activeHistoryId,
-  onSelectHistoryItem,
-  onImageOpen,
-  restoreFeedScrollTop,
-  restoreThumbScrollTop,
-  scrollToEndToken,
-  onFeedScroll,
-  onThumbScroll,
-}) {
+const ImageStudioFeedPanel = forwardRef(function ImageStudioFeedPanel(
+  {
+    feedRows,
+    history,
+    historyLoading,
+    generating,
+    generationLoadingHint,
+    activeHistoryId,
+    onSelectHistoryItem,
+    onImageOpen,
+    restoreFeedScrollTop,
+    restoreThumbScrollTop,
+    scrollToEndToken,
+    onFeedScroll,
+    onThumbScroll,
+  },
+  ref,
+) {
+  const t = useT();
   const feedScrollRef = useRef(null);
   const thumbScrollRef = useRef(null);
   const userScrolledRef = useRef(false);
   const restoreTargetsRef = useRef({ feed: undefined, thumb: undefined });
   const prevScrollTokenRef = useRef(scrollToEndToken);
+  const pendingScrollItemRef = useRef(null);
+  const [feedExpanded, setFeedExpanded] = useState(false);
+  const [feedAtTop, setFeedAtTop] = useState(false);
+
   const thumbHistory = useMemo(() => sortHistoryOldestFirst(history), [history]);
   const historyImageCount = useMemo(
     () => history.filter((item) => getImageUrlFromHistory(item)).length,
     [history],
   );
+  const { visibleRows, hiddenCount } = useMemo(
+    () => getFeedRowVisibility(feedRows, feedExpanded),
+    [feedRows, feedExpanded],
+  );
+  const showLoadMore = hiddenCount > 0 && !feedExpanded;
   const showEmptyFeed =
     feedRows.length === 0 &&
     !generating &&
     historyImageCount === 0 &&
     !(historyLoading && history.length === 0);
+
+  const expandFeed = useCallback(() => {
+    const feedEl = feedScrollRef.current;
+    const prevScrollHeight = feedEl?.scrollHeight ?? 0;
+    const prevScrollTop = feedEl?.scrollTop ?? 0;
+
+    setFeedExpanded(true);
+
+    requestAnimationFrame(() => {
+      const el = feedScrollRef.current;
+      if (!el) return;
+      const heightDelta = el.scrollHeight - prevScrollHeight;
+      if (heightDelta > 0) {
+        el.scrollTop = prevScrollTop + heightDelta;
+      }
+    });
+  }, []);
+
+  const scrollToHistoryItem = useCallback(
+    (item, { behavior = "smooth", expandIfNeeded = true } = {}) => {
+      if (!item) return;
+
+      const needsExpand =
+        expandIfNeeded &&
+        !feedExpanded &&
+        hiddenCount > 0 &&
+        !visibleRows.some((row) => feedRowContainsHistoryItem(row, item));
+
+      if (needsExpand) {
+        pendingScrollItemRef.current = { item, behavior };
+        expandFeed();
+        return;
+      }
+
+      requestAnimationFrame(() => {
+        scrollFeedToHistoryItem(feedScrollRef.current, item, { behavior });
+      });
+    },
+    [expandFeed, feedExpanded, hiddenCount, visibleRows],
+  );
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      scrollToItem: (item, options) => scrollToHistoryItem(item, options),
+      expandFeed,
+    }),
+    [expandFeed, scrollToHistoryItem],
+  );
+
+  useEffect(() => {
+    if (!pendingScrollItemRef.current) return;
+    const pending = pendingScrollItemRef.current;
+    pendingScrollItemRef.current = null;
+    requestAnimationFrame(() => {
+      scrollFeedToHistoryItem(feedScrollRef.current, pending.item, {
+        behavior: pending.behavior,
+      });
+    });
+  }, [feedExpanded, feedRows.length]);
 
   useEffect(() => {
     restoreTargetsRef.current = {
@@ -206,6 +296,10 @@ export default function ImageStudioFeedPanel({
     const raf = requestAnimationFrame(tryRestoreScroll);
 
     const feedEl = feedScrollRef.current;
+    if (feedEl) {
+      setFeedAtTop(isFeedNearTop(feedEl));
+    }
+
     const resizeObserver =
       feedEl && typeof ResizeObserver !== "undefined"
         ? new ResizeObserver(() => {
@@ -218,7 +312,7 @@ export default function ImageStudioFeedPanel({
       cancelAnimationFrame(raf);
       resizeObserver?.disconnect();
     };
-  }, [tryRestoreScroll, feedRows.length, history.length]);
+  }, [tryRestoreScroll, feedRows.length, history.length, visibleRows.length]);
 
   useEffect(() => {
     if (scrollToEndToken === prevScrollTokenRef.current) return;
@@ -234,12 +328,14 @@ export default function ImageStudioFeedPanel({
       thumbEl.scrollTo({ top: thumbEl.scrollHeight, behavior: "smooth" });
     }
     userScrolledRef.current = false;
+    setFeedAtTop(false);
   }, [scrollToEndToken]);
 
   const handleFeedScroll = useCallback(
     (event) => {
       const el = event.currentTarget;
       userScrolledRef.current = !isFeedNearBottom(el);
+      setFeedAtTop(isFeedNearTop(el));
       onFeedScroll?.(el.scrollTop);
     },
     [onFeedScroll],
@@ -252,6 +348,10 @@ export default function ImageStudioFeedPanel({
     },
     [onThumbScroll],
   );
+
+  const handleLoadMore = useCallback(() => {
+    expandFeed();
+  }, [expandFeed]);
 
   return (
     <div className="image-studio-feed-shell flex min-h-0 min-w-0 flex-1">
@@ -271,24 +371,41 @@ export default function ImageStudioFeedPanel({
             </div>
             <p className="image-studio-empty-kicker">
               <Sparkles className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
-              Commencez à créer avec
+              {t("imageStudio.emptyKicker")}
             </p>
             <h2 className="image-studio-empty-title">
               Image <span>Studio</span>
             </h2>
             <p className="image-studio-empty-sub">
-              Décrivez une scène — chaque génération apparaît ici, image par image.
+              {t("imageStudio.emptySub")}
             </p>
           </div>
         ) : (
           <div className="image-studio-feed-list">
-            {feedRows.map((row) => (
+            {showLoadMore ? (
+              <div
+                className={`image-studio-feed-load-more${feedAtTop ? " is-visible" : ""}`}
+              >
+                <button
+                  type="button"
+                  className="image-studio-feed-load-more-btn"
+                  onClick={handleLoadMore}
+                  aria-label={t("imageStudio.loadMoreAria")}
+                >
+                  <ChevronUp className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
+                  <span>{t("imageStudio.loadMore")}</span>
+                </button>
+              </div>
+            ) : null}
+            {visibleRows.map((row) => (
               <FeedRow
                 key={row.id}
                 row={row}
                 activeHistoryId={activeHistoryId}
                 onImageOpen={onImageOpen}
                 loadingHint={row.generating ? generationLoadingHint : ""}
+                noDescriptionLabel={t("imageStudio.noDescription")}
+                openImageAria={t("imageStudio.openImageAria")}
               />
             ))}
           </div>
@@ -298,7 +415,7 @@ export default function ImageStudioFeedPanel({
       <aside
         ref={thumbScrollRef}
         className="image-studio-thumb-strip studio-subtle-scrollbar shrink-0"
-        aria-label="Historique des images"
+        aria-label={t("imageStudio.historyAria")}
         onScroll={(e) => handleThumbScroll(e.currentTarget.scrollTop)}
       >
         {historyLoading && history.length === 0 && feedRows.length === 0 ? (
@@ -308,7 +425,7 @@ export default function ImageStudioFeedPanel({
             ))}
           </div>
         ) : thumbHistory.length === 0 ? (
-          <div className="image-studio-thumb-strip-empty" title="Aucune image">
+          <div className="image-studio-thumb-strip-empty" title={t("imageStudio.noImages")}>
             <ImageIcon className="h-3.5 w-3.5 opacity-30" strokeWidth={1.75} aria-hidden />
           </div>
         ) : (
@@ -324,7 +441,7 @@ export default function ImageStudioFeedPanel({
                 onClick={() => {
                   onSelectHistoryItem(item);
                 }}
-                title={item.input?.trim() || "Image générée"}
+                title={item.input?.trim() || t("imageStudio.generatedImage")}
               >
                 <img src={thumbUrl} alt="" className="image-studio-thumb-strip-img" loading="lazy" />
               </button>
@@ -334,4 +451,12 @@ export default function ImageStudioFeedPanel({
       </aside>
     </div>
   );
+});
+
+/** @deprecated Utiliser la ref `scrollToItem` du panneau. */
+export function scrollImageStudioFeedToItem(item, { behavior = "smooth" } = {}) {
+  const feedEl = document.querySelector(".image-studio-feed");
+  scrollFeedToHistoryItem(feedEl, item, { behavior });
 }
+
+export default ImageStudioFeedPanel;

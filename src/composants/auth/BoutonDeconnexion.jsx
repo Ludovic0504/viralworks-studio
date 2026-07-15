@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { LogOut } from "lucide-react";
 import { useAuth } from "@/contexte/FournisseurAuth";
+import { useT } from "@/contexte/FournisseurLocale";
 
 export default function LogoutButton({ className }) {
+  const t = useT();
   const [busy, setBusy] = useState(false);
   const { signOut } = useAuth();
 
@@ -31,7 +33,7 @@ export default function LogoutButton({ className }) {
     >
       <LogOut className="w-4 h-4" />
       <span className="hidden sm:inline">
-        {busy ? "Déconnexion…" : "Se déconnecter"}
+        {busy ? t("auth.signingOut") : t("auth.signOut")}
       </span>
     </button>
   );

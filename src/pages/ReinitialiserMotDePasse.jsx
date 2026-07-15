@@ -3,8 +3,10 @@ import { useNavigate } from "react-router-dom";
 import { getBrowserSupabase } from "@/bibliotheque/supabase/client-navigateur";
 import { Lock, Eye, EyeOff, CheckCircle, XCircle } from "lucide-react";
 import FondApp from "@/composants/disposition/FondApp";
+import { useT } from "@/contexte/FournisseurLocale";
 
 export default function ResetPassword() {
+  const t = useT();
   const navigate = useNavigate();
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -31,7 +33,7 @@ export default function ResetPassword() {
           
           if (sessionError) {
             console.error("[ResetPassword] Session error:", sessionError);
-            setError("Erreur lors du traitement du lien. Veuillez demander un nouveau lien de réinitialisation.");
+            setError(t("auth.resetProcessingError"));
             setCheckingSession(false);
             return;
           }
@@ -41,7 +43,7 @@ export default function ResetPassword() {
             const { data: retryData, error: retryError } = await supabase.auth.getSession();
             
             if (retryError || !retryData?.session) {
-              setError("Le lien de réinitialisation est invalide ou a expiré. Veuillez demander un nouveau lien.");
+              setError(t("auth.resetLinkInvalid"));
               setCheckingSession(false);
               return;
             }
@@ -49,7 +51,7 @@ export default function ResetPassword() {
         } else {
           const { data: { session } } = await supabase.auth.getSession();
           if (!session) {
-            setError("Aucun lien de réinitialisation trouvé. Veuillez demander un nouveau lien depuis la page de connexion.");
+            setError(t("auth.resetLinkMissing"));
             setCheckingSession(false);
             return;
           }
@@ -58,13 +60,13 @@ export default function ResetPassword() {
         setCheckingSession(false);
       } catch (err) {
         console.error("[ResetPassword] Error checking hash:", err);
-        setError("Une erreur est survenue. Veuillez réessayer.");
+        setError(t("auth.genericRetry"));
         setCheckingSession(false);
       }
     };
     
     checkAndProcessHash();
-  }, []);
+  }, [t]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -72,12 +74,12 @@ export default function ResetPassword() {
     setSuccess(false);
 
     if (password.length < 6) {
-      setError("Le mot de passe doit contenir au moins 6 caractères.");
+      setError(t("auth.passwordTooShort"));
       return;
     }
 
     if (password !== confirmPassword) {
-      setError("Les mots de passe ne correspondent pas.");
+      setError(t("auth.passwordMismatch"));
       return;
     }
 
@@ -90,7 +92,7 @@ export default function ResetPassword() {
       
       if (sessionError) {
         console.error("[ResetPassword] Session error:", sessionError);
-        setError("Erreur lors de la vérification de la session. Veuillez demander un nouveau lien de réinitialisation.");
+        setError(t("auth.resetProcessingError"));
         setLoading(false);
         return;
       }
@@ -105,12 +107,12 @@ export default function ResetPassword() {
           const { data: retryData, error: retryError } = await supabase.auth.getSession();
           
           if (retryError || !retryData?.session) {
-            setError("Le lien de réinitialisation est invalide ou a expiré. Le lien peut être utilisé une seule fois. Veuillez demander un nouveau lien.");
+            setError(t("auth.resetLinkInvalid"));
             setLoading(false);
             return;
           }
         } else {
-          setError("Aucune session de réinitialisation trouvée. Veuillez demander un nouveau lien de réinitialisation.");
+          setError(t("auth.resetLinkMissing"));
           setLoading(false);
           return;
         }
@@ -125,9 +127,9 @@ export default function ResetPassword() {
         const errorMsg = updateError.message?.toLowerCase() || "";
         
         if (errorMsg.includes("session") || errorMsg.includes("token") || errorMsg.includes("expired") || errorMsg.includes("invalid")) {
-          setError("Le lien de réinitialisation est invalide ou a expiré. Le lien peut être utilisé une seule fois. Veuillez demander un nouveau lien de réinitialisation.");
+          setError(t("auth.resetLinkInvalid"));
         } else {
-          setError(updateError.message || "Erreur lors de la mise à jour du mot de passe.");
+          setError(updateError.message || t("auth.genericRetry"));
         }
         setLoading(false);
         return;
@@ -141,7 +143,7 @@ export default function ResetPassword() {
       }, 2000);
 
     } catch (err) {
-      setError(err?.message || "Erreur lors de la réinitialisation du mot de passe.");
+      setError(err?.message || t("auth.genericRetry"));
       setLoading(false);
     }
   };
@@ -155,7 +157,7 @@ export default function ResetPassword() {
             <div className="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
               <CheckCircle className="w-8 h-8 text-emerald-400" />
             </div>
-            <h2 className="text-2xl font-bold text-white mb-2">Mot de passe réinitialisé !</h2>
+            <h2 className="text-2xl font-bold text-white mb-2">{t("auth.passwordReset")}</h2>
             <p className="text-gray-400 mb-6">Votre mot de passe a été mis à jour avec succès.</p>
             <p className="text-sm text-gray-500">Redirection vers la page de connexion...</p>
           </div>
@@ -173,7 +175,7 @@ export default function ResetPassword() {
             <div className="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-400"></div>
             </div>
-            <h2 className="text-2xl font-bold text-white mb-2">Vérification du lien...</h2>
+            <h2 className="text-2xl font-bold text-white mb-2">{t("common.loading")}</h2>
             <p className="text-gray-400">Veuillez patienter pendant que nous vérifions votre lien de réinitialisation.</p>
           </div>
         </div>
@@ -190,7 +192,7 @@ export default function ResetPassword() {
             <div className="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
               <Lock className="w-8 h-8 text-emerald-400" />
             </div>
-            <h2 className="text-3xl font-bold text-white mb-2">Réinitialiser le mot de passe</h2>
+            <h2 className="text-3xl font-bold text-white mb-2">{t("auth.resetPassword")}</h2>
             <p className="text-gray-400">Entrez votre nouveau mot de passe</p>
           </div>
 
@@ -205,7 +207,7 @@ export default function ResetPassword() {
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
                 <Lock className="w-4 h-4 text-gray-400" />
-                Nouveau mot de passe
+                {t("auth.newPassword")}
               </label>
               <div className="relative">
                 <input
@@ -214,7 +216,7 @@ export default function ResetPassword() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full rounded-lg px-4 py-3 pr-12 text-gray-200 placeholder-gray-500 focus:outline-none transition-all input-vws"
-                  placeholder="Au moins 6 caractères"
+                  placeholder={t("auth.minPassword")}
                   required
                   minLength={6}
                 />
@@ -231,7 +233,7 @@ export default function ResetPassword() {
             <div>
               <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
                 <Lock className="w-4 h-4 text-gray-400" />
-                Confirmer le mot de passe
+                {t("auth.repeatPassword")}
               </label>
               <div className="relative">
                 <input
@@ -240,7 +242,7 @@ export default function ResetPassword() {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   className="w-full rounded-lg px-4 py-3 pr-12 text-gray-200 placeholder-gray-500 focus:outline-none transition-all input-vws"
-                  placeholder="Répétez le mot de passe"
+                  placeholder={t("auth.repeatPassword")}
                   required
                   minLength={6}
                 />
@@ -262,10 +264,10 @@ export default function ResetPassword() {
               {loading ? (
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  Réinitialisation...
+                  {t("common.loading")}
                 </>
               ) : (
-                "Réinitialiser le mot de passe"
+                t("auth.resetPassword")
               )}
             </button>
           </form>
@@ -283,4 +285,3 @@ export default function ResetPassword() {
     </div>
   );
 }
-

@@ -27,6 +27,7 @@ import { useAdminAccess } from "@/hooks/useAdminAccess";
 import { AuthActionProvider } from "./contexte/ActionAuthModalContext";
 import { BoutiqueModalProvider, useBoutiqueModal } from "./contexte/ContexteModalBoutique";
 import { FournisseurCommunauteVWSNotif } from "./contexte/FournisseurCommunauteVWSNotif.jsx";
+import { FournisseurLocale, useT } from "./contexte/FournisseurLocale";
 import { initMetaPixel, trackPageView } from "./bibliotheque/meta/pixel";
 import { initPostHog, trackPostHogPageView } from "./bibliotheque/posthog/client";
 import BannerInstallPWA from "@/composants/BannerInstallPWA";
@@ -168,18 +169,20 @@ function RootRouteLayout() {
   }, []);
 
   return (
-    <AuthActionProvider>
-      <BoutiqueModalProvider>
-        <FournisseurCommunauteVWSNotif>
-          <AnalyticsRouteListener />
-          <BannerInstallPWA />
-          <BoutiqueStripeReturnHandler />
-          <PromoImagesBanner />
-          <PromoImagesModal />
-          <Outlet />
-        </FournisseurCommunauteVWSNotif>
-      </BoutiqueModalProvider>
-    </AuthActionProvider>
+    <FournisseurLocale>
+      <AuthActionProvider>
+        <BoutiqueModalProvider>
+          <FournisseurCommunauteVWSNotif>
+            <AnalyticsRouteListener />
+            <BannerInstallPWA />
+            <BoutiqueStripeReturnHandler />
+            <PromoImagesBanner />
+            <PromoImagesModal />
+            <Outlet />
+          </FournisseurCommunauteVWSNotif>
+        </BoutiqueModalProvider>
+      </AuthActionProvider>
+    </FournisseurLocale>
   );
 }
 
@@ -193,13 +196,14 @@ function LoginRedirect() {
 
 /** Même logique que AdminStats : isAdmin() sur profiles.role, sinon redirect accueil. */
 function AdminOnlyRoute({ children }) {
+  const t = useT();
   const { session, loading: authLoading } = useAuth();
   const { isAdmin: isAdminUser, loading } = useAdminAccess();
 
   if (authLoading) {
     return (
       <div className="max-w-7xl mx-auto w-full min-w-0 px-4 sm:px-6 lg:px-8 py-4 lg:py-8">
-        <div className="text-center py-12 text-gray-400">Chargement...</div>
+        <div className="text-center py-12 text-gray-400">{t("common.loading")}</div>
       </div>
     );
   }
@@ -215,7 +219,7 @@ function AdminOnlyRoute({ children }) {
   if (loading && !isAdminUser) {
     return (
       <div className="max-w-7xl mx-auto w-full min-w-0 px-4 sm:px-6 lg:px-8 py-4 lg:py-8">
-        <div className="text-center py-12 text-gray-400">Chargement...</div>
+        <div className="text-center py-12 text-gray-400">{t("common.loading")}</div>
       </div>
     );
   }

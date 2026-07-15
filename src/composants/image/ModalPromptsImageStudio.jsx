@@ -61,7 +61,6 @@ import {
   PRODUCT_PHOTOGRAPHY_SHOT_STYLES_EXTENDED,
 } from "@/bibliotheque/imageStudio/promptTemplates";
 import {
-  getLifestyleFramingOptionLabel,
   isLifestyleFramingEligible,
   LIFESTYLE_FRAMING_OPTIONS,
 } from "@/bibliotheque/imageStudio/lifestyleFramingConfig";
@@ -71,6 +70,8 @@ import BrandCampaignShootPromptGuideChat from "@/composants/image/BrandCampaignS
 import EditorialWornHeldPromptGuideChat from "@/composants/image/EditorialWornHeldPromptGuideChat";
 import ProduitEnApplicationPromptGuideChat from "@/composants/image/ProduitEnApplicationPromptGuideChat";
 import OutfitStudioPromptGuideChat from "@/composants/image/OutfitStudioPromptGuideChat";
+import { useImageStudioChatbotTr } from "@/bibliotheque/i18n/useImageStudioChatbotTr";
+import { translateHintOption } from "@/bibliotheque/i18n/chatbotTranslate";
 
 /** @typedef {'drink' | 'packaging_mode' | 'elements_mode' | 'custom_elements' | 'ready'} BeverageGuideStep */
 /** @typedef {'framing' | 'product' | 'environment' | 'ready'} LifestyleGuideStep */
@@ -89,12 +90,12 @@ function TemplateIcon({ icon, className = "" }) {
   return <Sparkles className={className} strokeWidth={2} aria-hidden />;
 }
 
-function ProductShotStyleGrid({ styles, selectedId, onSelect, locked = false }) {
+function ProductShotStyleGrid({ styles, selectedId, onSelect, locked = false, ariaLabel = "Style de shot" }) {
   return (
     <div
       className={`image-studio-prompt-shot-grid${locked ? " image-studio-prompt-shot-grid--locked" : ""}`}
       role="radiogroup"
-      aria-label="Style de shot"
+      aria-label={ariaLabel}
     >
       {styles.map((style) => {
         const selected = selectedId === style.id;
@@ -156,7 +157,7 @@ function ConversationBubble({ role, children, wide = false, visible = true }) {
   );
 }
 
-function TypingIndicator({ visible = true }) {
+function TypingIndicator({ visible = true, typingLabel = "Le guide écrit…" }) {
   if (!visible) return null;
 
   return (
@@ -166,7 +167,7 @@ function TypingIndicator({ visible = true }) {
       </span>
       <div
         className="image-studio-prompt-guide-typing image-studio-prompt-guide-bubble--enter"
-        aria-label="Le guide écrit…"
+        aria-label={typingLabel}
         role="status"
       >
         <span />
@@ -244,6 +245,13 @@ function PromptTemplateChat({
   onApplyPrompt,
   onClose,
 }) {
+  const { ui, tr, shot, template: localizeTemplate, packshotOptions, locale } =
+    useImageStudioChatbotTr();
+  const localizedTemplate = useMemo(
+    () => localizeTemplate(template),
+    [localizeTemplate, template, locale],
+  );
+
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const isStudioGuide = isStudioProductGuideTemplate(template);
@@ -253,18 +261,65 @@ function PromptTemplateChat({
   const showShotStylePicker = isShotStyleGuideTemplate(template);
   const showConversationUI = showShotStylePicker || isPackshotGuide;
 
-  const primaryShotStyles = isLifestyleGuide
-    ? LIFESTYLE_SHOT_STYLES
-    : PRODUCT_PHOTOGRAPHY_SHOT_STYLES;
-  const extendedShotStyles = isLifestyleGuide
-    ? LIFESTYLE_SHOT_STYLES_EXTENDED
-    : PRODUCT_PHOTOGRAPHY_SHOT_STYLES_EXTENDED;
-  const allShotStyles = isLifestyleGuide
-    ? ALL_LIFESTYLE_SHOT_STYLES
-    : ALL_PRODUCT_PHOTOGRAPHY_SHOT_STYLES;
+  const primaryShotStyles = useMemo(
+    () =>
+      (isLifestyleGuide ? LIFESTYLE_SHOT_STYLES : PRODUCT_PHOTOGRAPHY_SHOT_STYLES).map(shot),
+    [isLifestyleGuide, shot],
+  );
+  const extendedShotStyles = useMemo(
+    () =>
+      (isLifestyleGuide ? LIFESTYLE_SHOT_STYLES_EXTENDED : PRODUCT_PHOTOGRAPHY_SHOT_STYLES_EXTENDED).map(
+        shot,
+      ),
+    [isLifestyleGuide, shot],
+  );
+  const allShotStyles = useMemo(
+    () =>
+      (isLifestyleGuide ? ALL_LIFESTYLE_SHOT_STYLES : ALL_PRODUCT_PHOTOGRAPHY_SHOT_STYLES).map(shot),
+    [isLifestyleGuide, shot],
+  );
+  const localizedPositionOptions = useMemo(
+    () => packshotOptions("position", PACKSHOT_POSITION_OPTIONS),
+    [packshotOptions],
+  );
+  const localizedBackgroundOptions = useMemo(
+    () => packshotOptions("background", PACKSHOT_BACKGROUND_OPTIONS),
+    [packshotOptions],
+  );
+  const localizedAmbianceOptions = useMemo(
+    () => packshotOptions("ambiance", PACKSHOT_AMBIANCE_OPTIONS),
+    [packshotOptions],
+  );
+  const localizedInteractionOptions = useMemo(
+    () => packshotOptions("interaction", PACKSHOT_INTERACTION_OPTIONS),
+    [packshotOptions],
+  );
+  const localizedStateOptions = useMemo(
+    () => packshotOptions("state", PACKSHOT_STATE_OPTIONS),
+    [packshotOptions],
+  );
+  const localizedFormatOptions = useMemo(
+    () => packshotOptions("format", PACKSHOT_FORMAT_OPTIONS),
+    [packshotOptions],
+  );
+  const localizedFramingOptions = useMemo(
+    () =>
+      LIFESTYLE_FRAMING_OPTIONS.map((option) =>
+        translateHintOption(option, tr, "chatbot.framing"),
+      ),
+    [tr],
+  );
+  const chooseCanOrBottleMsg = ui(
+    "chooseCanOrBottle",
+    'Choisissez « Canette » ou « Bouteille », ou utilisez les boutons ci-dessus.',
+  );
+  const chooseElementsModeMsg = ui(
+    "chooseElementsMode",
+    'Choisissez une option : « Éléments de référence » ou « Choisir moi-même », ou utilisez les boutons ci-dessus.',
+  );
 
   const [messages, setMessages] = useState(() =>
-    showShotStylePicker ? [] : [{ id: nextMessageId(), role: "bot", text: template.botIntro }],
+    showShotStylePicker ? [] : [{ id: nextMessageId(), role: "bot", text: localizedTemplate.botIntro }],
   );
   const [slots, setSlots] = useState({});
   const [draft, setDraft] = useState("");
@@ -300,8 +355,8 @@ function PromptTemplateChat({
   const shotGridsLocked = Boolean(selectedShotId && selectedFromExtended);
 
   const filledSlots = useMemo(
-    () => fillTemplateSlotDefaults(template, slots),
-    [template, slots],
+    () => fillTemplateSlotDefaults(localizedTemplate, slots),
+    [localizedTemplate, slots],
   );
 
   const assembledPrompt = useMemo(
@@ -333,22 +388,41 @@ function PromptTemplateChat({
 
   const inputPlaceholder = useMemo(() => {
     if (isPackshotGuide) {
-      if (guideStep === "customAmbiance") return "Ex. bohème désertique, industriel brut…";
-      if (guideStep === "product") return "Ex. bougie artisanale en verre ambré, cire végétale…";
-      return "Votre réponse…";
+      if (guideStep === "customAmbiance") {
+        return ui("placeholderPackshotCustomAmbiance", "Ex. bohème désertique, industriel brut…");
+      }
+      if (guideStep === "product") {
+        return ui("placeholderPackshotProduct", "Ex. bougie artisanale en verre ambré, cire végétale…");
+      }
+      return ui("placeholderYourAnswer", "Votre réponse…");
     }
     if (isLifestyleGuide) {
-      if (guideStep === "product") return "Ex. HOLY Hydration Strawberry Kiwi…";
-      if (guideStep === "environment") return "Ex. salle de sport moderne, terrain de tennis…";
-      return "Votre réponse…";
+      if (guideStep === "product") {
+        return ui("placeholderLifestyleProduct", "Ex. HOLY Hydration Strawberry Kiwi…");
+      }
+      if (guideStep === "environment") {
+        return ui("placeholderLifestyleEnvironment", "Ex. salle de sport moderne, terrain de tennis…");
+      }
+      return ui("placeholderYourAnswer", "Votre réponse…");
     }
-    if (!isBeverageGuide) return "Décrivez le produit…";
-    if (guideStep === "drink") return "Ex. Monster Energy ou Monster Energy avec des citrons verts…";
-    if (guideStep === "packaging_mode") return "Ou choisissez une option ci-dessus…";
-    if (guideStep === "elements_mode") return "Ou choisissez une option ci-dessus…";
-    if (guideStep === "custom_elements") return "Décrivez les éléments autour et la saveur…";
-    return "Décrivez la boisson…";
-  }, [guideStep, isBeverageGuide, isLifestyleGuide, isPackshotGuide]);
+    if (!isBeverageGuide) return ui("placeholderDescribeProduct", "Décrivez le produit…");
+    if (guideStep === "drink") {
+      return ui(
+        "placeholderDrink",
+        "Ex. Monster Energy ou Monster Energy avec des citrons verts…",
+      );
+    }
+    if (guideStep === "packaging_mode") {
+      return ui("placeholderPackagingMode", "Ou choisissez une option ci-dessus…");
+    }
+    if (guideStep === "elements_mode") {
+      return ui("placeholderElementsMode", "Ou choisissez une option ci-dessus…");
+    }
+    if (guideStep === "custom_elements") {
+      return ui("placeholderCustomElements", "Décrivez les éléments autour et la saveur…");
+    }
+    return ui("placeholderDescribeDrink", "Décrivez la boisson…");
+  }, [guideStep, isBeverageGuide, isLifestyleGuide, isPackshotGuide, ui]);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -378,10 +452,10 @@ function PromptTemplateChat({
       setReady(true);
       setGuideStep("ready");
       if (!isPackshotGuide) {
-        pushMessage("bot", template.botReady);
+        pushMessage("bot", localizedTemplate.botReady);
       }
     },
-    [isPackshotGuide, pushMessage, template.botReady],
+    [isPackshotGuide, localizedTemplate.botReady, pushMessage],
   );
 
   const advancePackshotAfterBackground = useCallback((backgroundId) => {
@@ -425,7 +499,7 @@ function PromptTemplateChat({
 
       if (product.length < 2 && !hasImage) {
         setReady(false);
-        pushMessage("bot", template.botAskRequired);
+        pushMessage("bot", localizedTemplate.botAskRequired);
         return;
       }
 
@@ -438,7 +512,7 @@ function PromptTemplateChat({
       }));
       setGuideStep("environment");
     },
-    [guideProductImagePreview, pushMessage, template.botAskRequired],
+    [guideProductImagePreview, localizedTemplate.botAskRequired, pushMessage],
   );
 
   const handlePackshotPositionSelect = useCallback((positionId) => {
@@ -527,7 +601,7 @@ function PromptTemplateChat({
 
         if (isWeakRequiredSlot(template, merged)) {
           setReady(false);
-          pushMessage("bot", template.botAskRequired);
+          pushMessage("bot", localizedTemplate.botAskRequired);
           return;
         }
 
@@ -545,17 +619,14 @@ function PromptTemplateChat({
 
         setSlots(merged);
         setGuideStep("elements_mode");
-        pushMessage("bot", template.botAskElementsMode ?? "");
+        pushMessage("bot", localizedTemplate.botAskElementsMode ?? "");
         return;
       }
 
       if (guideStep === "packaging_mode") {
         const choice = parsePackagingChoice(text);
         if (!choice) {
-          pushMessage(
-            "bot",
-            "Choisissez « Canette » ou « Bouteille », ou utilisez les boutons ci-dessus.",
-          );
+          pushMessage("bot", chooseCanOrBottleMsg);
           return;
         }
 
@@ -568,17 +639,14 @@ function PromptTemplateChat({
 
         setSlots(merged);
         setGuideStep("elements_mode");
-        pushMessage("bot", template.botAskElementsMode ?? "");
+        pushMessage("bot", localizedTemplate.botAskElementsMode ?? "");
         return;
       }
 
       if (guideStep === "elements_mode") {
         const mode = parseElementsModeChoice(text);
         if (!mode) {
-          pushMessage(
-            "bot",
-            "Choisissez une option : « Éléments de référence » ou « Choisir moi-même », ou utilisez les boutons ci-dessus.",
-          );
+          pushMessage("bot", chooseElementsModeMsg);
           return;
         }
 
@@ -590,14 +658,14 @@ function PromptTemplateChat({
         }
 
         setGuideStep("custom_elements");
-        pushMessage("bot", template.botAskCustomElements ?? "");
+        pushMessage("bot", localizedTemplate.botAskCustomElements ?? "");
         return;
       }
 
       if (guideStep === "custom_elements") {
         const flavorElements = buildCustomFlavorElements(text);
         if (!flavorElements) {
-          pushMessage("bot", template.botAskCustomElements ?? "");
+          pushMessage("bot", localizedTemplate.botAskCustomElements ?? "");
           return;
         }
 
@@ -605,7 +673,17 @@ function PromptTemplateChat({
         finalizeGuide(merged);
       }
     },
-    [finalizeGuide, guideStep, isStudioGuide, pushMessage, slots, template],
+    [
+      chooseCanOrBottleMsg,
+      chooseElementsModeMsg,
+      finalizeGuide,
+      guideStep,
+      isStudioGuide,
+      localizedTemplate,
+      pushMessage,
+      slots,
+      template,
+    ],
   );
 
   const processLifestyleMessage = useCallback(
@@ -632,13 +710,13 @@ function PromptTemplateChat({
 
       if (isWeakRequiredSlot(template, merged)) {
         setReady(false);
-        pushMessage("bot", template.botAskRequired);
+        pushMessage("bot", localizedTemplate.botAskRequired);
         return;
       }
 
       finalizeGuide(merged);
     },
-    [finalizeGuide, pushMessage, slots, template],
+    [finalizeGuide, localizedTemplate.botAskRequired, pushMessage, slots, template],
   );
 
   const processUserMessage = useCallback(
@@ -668,18 +746,18 @@ function PromptTemplateChat({
     (mode) => {
       const label =
         mode === "reference"
-          ? "Éléments de référence de la marque"
-          : "Choisir moi-même les éléments";
+          ? ui("brandReferenceElements", "Éléments de référence de la marque")
+          : ui("chooseElementsSelf", "Choisir moi-même les éléments");
       processUserMessage(label);
     },
-    [processUserMessage],
+    [processUserMessage, ui],
   );
 
   const handlePackagingChoice = useCallback(
     (choice) => {
-      processUserMessage(choice === "can" ? "Canette" : "Bouteille");
+      processUserMessage(choice === "can" ? ui("can", "Canette") : ui("bottle", "Bouteille"));
     },
-    [processUserMessage],
+    [processUserMessage, ui],
   );
 
   const handleSubmit = useCallback(
@@ -802,7 +880,7 @@ function PromptTemplateChat({
           onChange={(event) => setDraft(event.target.value)}
           placeholder={inputPlaceholder}
           className="image-studio-prompt-guide-input"
-          aria-label="Votre message"
+          aria-label={ui("yourMessage", "Votre message")}
         />
         <button
           type="submit"
@@ -812,7 +890,7 @@ function PromptTemplateChat({
               ? !canSubmitGuideProduct
               : !draft.trim()
           }
-          aria-label="Envoyer"
+          aria-label={ui("send", "Envoyer")}
         >
           <SendHorizontal className="h-4 w-4" strokeWidth={2.25} />
         </button>
@@ -857,17 +935,18 @@ function PromptTemplateChat({
       !isLifestyleFramingEligible(selectedShotId) ||
       Boolean(lifestyleFramingId));
 
-  const lifestyleFramingLabel = getLifestyleFramingOptionLabel(lifestyleFramingId);
+  const lifestyleFramingLabel =
+    localizedFramingOptions.find((option) => option.id === lifestyleFramingId)?.label ?? null;
 
   const productValidationBotMessage = useMemo(
     () =>
       messages.find(
         (message) =>
           message.role === "bot" &&
-          message.text === template.botAskRequired &&
+          message.text === localizedTemplate.botAskRequired &&
           guideStep === "product",
       ) ?? null,
-    [guideStep, messages, template.botAskRequired],
+    [guideStep, localizedTemplate.botAskRequired, messages],
   );
 
   const environmentValidationBotMessage = useMemo(
@@ -875,10 +954,10 @@ function PromptTemplateChat({
       messages.find(
         (message) =>
           message.role === "bot" &&
-          message.text === template.botAskEnvironment &&
+          message.text === localizedTemplate.botAskEnvironment &&
           guideStep === "environment",
       ) ?? null,
-    [guideStep, messages, template.botAskEnvironment],
+    [guideStep, localizedTemplate.botAskEnvironment, messages],
   );
 
   const drinkValidationBotMessage = useMemo(
@@ -886,10 +965,10 @@ function PromptTemplateChat({
       messages.find(
         (message) =>
           message.role === "bot" &&
-          message.text === template.botAskRequired &&
+          message.text === localizedTemplate.botAskRequired &&
           guideStep === "drink",
       ) ?? null,
-    [guideStep, messages, template.botAskRequired],
+    [guideStep, localizedTemplate.botAskRequired, messages],
   );
 
   const elementsValidationBotMessage = useMemo(
@@ -897,10 +976,10 @@ function PromptTemplateChat({
       messages.find(
         (message) =>
           message.role === "bot" &&
-          message.text.startsWith("Choisissez une option") &&
+          message.text === chooseElementsModeMsg &&
           guideStep === "elements_mode",
       ) ?? null,
-    [guideStep, messages],
+    [chooseElementsModeMsg, guideStep, messages],
   );
 
   const packagingValidationBotMessage = useMemo(
@@ -908,10 +987,10 @@ function PromptTemplateChat({
       messages.find(
         (message) =>
           message.role === "bot" &&
-          message.text.startsWith("Choisissez « Canette »") &&
+          message.text === chooseCanOrBottleMsg &&
           guideStep === "packaging_mode",
       ) ?? null,
-    [guideStep, messages],
+    [chooseCanOrBottleMsg, guideStep, messages],
   );
 
   const customValidationBotMessages = useMemo(
@@ -920,10 +999,10 @@ function PromptTemplateChat({
         .filter(
           (message) =>
             message.role === "bot" &&
-            message.text === template.botAskCustomElements,
+            message.text === localizedTemplate.botAskCustomElements,
         )
         .slice(1),
-    [messages, template.botAskCustomElements],
+    [localizedTemplate.botAskCustomElements, messages],
   );
 
   const botTurnKeys = useMemo(() => {
@@ -1012,21 +1091,21 @@ function PromptTemplateChat({
   ]);
 
   const packshotProductDescription = slots.productDescription?.trim() ?? "";
-  const packshotPositionLabel = findPackshotOptionLabel(PACKSHOT_POSITION_OPTIONS, slots.positionId);
+  const packshotPositionLabel = findPackshotOptionLabel(localizedPositionOptions, slots.positionId);
   const packshotBackgroundLabel = findPackshotOptionLabel(
-    PACKSHOT_BACKGROUND_OPTIONS,
+    localizedBackgroundOptions,
     slots.backgroundId,
   );
   const packshotAmbianceLabel =
     slots.ambianceId === "autre"
-      ? slots.customAmbiance?.trim() || "Autre"
-      : findPackshotOptionLabel(PACKSHOT_AMBIANCE_OPTIONS, slots.ambianceId);
+      ? slots.customAmbiance?.trim() || ui("other", "Autre")
+      : findPackshotOptionLabel(localizedAmbianceOptions, slots.ambianceId);
   const packshotInteractionLabel = findPackshotOptionLabel(
-    PACKSHOT_INTERACTION_OPTIONS,
+    localizedInteractionOptions,
     slots.interactionId,
   );
-  const packshotStateLabel = findPackshotOptionLabel(PACKSHOT_STATE_OPTIONS, slots.productStateId);
-  const packshotFormatLabel = findPackshotOptionLabel(PACKSHOT_FORMAT_OPTIONS, slots.formatId);
+  const packshotStateLabel = findPackshotOptionLabel(localizedStateOptions, slots.productStateId);
+  const packshotFormatLabel = findPackshotOptionLabel(localizedFormatOptions, slots.formatId);
 
   const { isBotVisible, isTyping } = useConversationBotVisibility(botTurnKeys);
 
@@ -1049,7 +1128,7 @@ function PromptTemplateChat({
     <div
       className="image-studio-prompt-guide-elements-actions image-studio-prompt-guide-bubble-actions"
       role="group"
-      aria-label="Mode des éléments"
+      aria-label={ui("ariaElementsMode", "Mode des éléments")}
     >
       <button
         type="button"
@@ -1057,7 +1136,7 @@ function PromptTemplateChat({
         disabled={guideStep !== "elements_mode"}
         onClick={() => handleElementsModeChoice("reference")}
       >
-        Éléments de référence de la marque
+        {ui("brandReferenceElements", "Éléments de référence de la marque")}
       </button>
       <button
         type="button"
@@ -1065,7 +1144,7 @@ function PromptTemplateChat({
         disabled={guideStep !== "elements_mode"}
         onClick={() => handleElementsModeChoice("custom")}
       >
-        Choisir moi-même les éléments
+        {ui("chooseElementsSelf", "Choisir moi-même les éléments")}
       </button>
     </div>
   );
@@ -1074,7 +1153,7 @@ function PromptTemplateChat({
     <div
       className="image-studio-prompt-guide-elements-actions image-studio-prompt-guide-bubble-actions"
       role="group"
-      aria-label="Format emballage"
+      aria-label={ui("ariaPackagingFormat", "Format emballage")}
     >
       <button
         type="button"
@@ -1082,7 +1161,7 @@ function PromptTemplateChat({
         disabled={guideStep !== "packaging_mode"}
         onClick={() => handlePackagingChoice("can")}
       >
-        Canette
+        {ui("can", "Canette")}
       </button>
       <button
         type="button"
@@ -1090,7 +1169,7 @@ function PromptTemplateChat({
         disabled={guideStep !== "packaging_mode"}
         onClick={() => handlePackagingChoice("bottle")}
       >
-        Bouteille
+        {ui("bottle", "Bouteille")}
       </button>
     </div>
   );
@@ -1107,7 +1186,7 @@ function PromptTemplateChat({
         onClick={() => setAdjustOpen((open) => !open)}
         aria-expanded={adjustOpen}
       >
-        Ajuster les champs
+        {ui("adjustFields", "Ajuster les champs")}
         {adjustOpen ? (
           <ChevronUp className="h-3.5 w-3.5 shrink-0" strokeWidth={2.25} />
         ) : (
@@ -1117,7 +1196,7 @@ function PromptTemplateChat({
 
       {adjustOpen ? (
         <div className="image-studio-prompt-guide-fields">
-          {template.variables.map((variable) => (
+          {localizedTemplate.variables.map((variable) => (
             <label key={variable.key} className="image-studio-prompt-guide-field">
               <span>{variable.label}</span>
               <input
@@ -1136,7 +1215,7 @@ function PromptTemplateChat({
         className="image-studio-prompt-guide-apply btn-vws-primary"
         onClick={handleApply}
       >
-        Appliquer au prompt
+        {ui("applyPrompt", "Appliquer au prompt")}
       </button>
     </div>
   ) : null;
@@ -1156,13 +1235,13 @@ function PromptTemplateChat({
           type="button"
           className="image-studio-prompt-guide-back"
           onClick={onBack}
-          aria-label="Retour aux modèles"
+          aria-label={ui("back", "Retour aux modèles")}
         >
           <ArrowLeft className="h-4 w-4" strokeWidth={2.25} />
         </button>
         {showConversationUI ? (
           <div className="image-studio-prompt-guide-chat-title-row">
-            <p className="image-studio-prompt-guide-chat-title">{template.label}</p>
+            <p className="image-studio-prompt-guide-chat-title">{localizedTemplate.label}</p>
             <span className="pulse-dot pulse-dot--online shrink-0" aria-hidden="true" />
           </div>
         ) : (
@@ -1170,15 +1249,15 @@ function PromptTemplateChat({
             <div className="image-studio-prompt-guide-chat-title-wrap">
               <TemplateIcon icon={template.icon} className="image-studio-prompt-guide-chat-icon" />
               <div>
-                <p className="image-studio-prompt-guide-chat-title">{template.label}</p>
-                <p className="image-studio-prompt-guide-chat-sub">Guide sans IA — remplissage automatique</p>
+                <p className="image-studio-prompt-guide-chat-title">{localizedTemplate.label}</p>
+                <p className="image-studio-prompt-guide-chat-sub">{ui("guideSub", "Guide sans IA — remplissage automatique")}</p>
               </div>
             </div>
             <button
               type="button"
               className="image-studio-quota-modal-close"
               onClick={onClose}
-              aria-label="Fermer"
+              aria-label={ui("close", "Fermer")}
             >
               <X className="h-4 w-4" />
             </button>
@@ -1196,7 +1275,7 @@ function PromptTemplateChat({
             <>
               <ConversationBubble role="bot" visible={isBotVisible("product")}>
                 <p className="image-studio-prompt-guide-bubble-text">
-                  Décris ton produit (nom, matière visible, couleur dominante)
+                  {ui("describeProduct", "Décris ton produit (nom, matière visible, couleur dominante)")}
                 </p>
                 {guideStep === "product" ? (
                   <>
@@ -1213,7 +1292,7 @@ function PromptTemplateChat({
 
               {packshotProductValidationShown ? (
                 <ConversationBubble role="bot" visible={isBotVisible("product-validation")}>
-                  <p className="image-studio-prompt-guide-bubble-text">{template.botAskRequired}</p>
+                  <p className="image-studio-prompt-guide-bubble-text">{localizedTemplate.botAskRequired}</p>
                 </ConversationBubble>
               ) : null}
 
@@ -1237,15 +1316,15 @@ function PromptTemplateChat({
               {packshotProductDescription ? (
                 <ConversationBubble role="bot" wide visible={isBotVisible("position")}>
                   <p className="image-studio-prompt-guide-bubble-text">
-                    Comment le produit est-il positionné ?
+                    {ui("productPosition", "Comment le produit est-il positionné ?")}
                   </p>
                   {guideStep === "position" ? (
                     <PackshotOptionButtonRow
-                      options={PACKSHOT_POSITION_OPTIONS}
+                      options={localizedPositionOptions}
                       selectedId={slots.positionId}
                       disabled={false}
                       onSelect={handlePackshotPositionSelect}
-                      ariaLabel="Position du produit"
+                      ariaLabel={ui("ariaProductPosition", "Position du produit")}
                     />
                   ) : null}
                 </ConversationBubble>
@@ -1259,14 +1338,14 @@ function PromptTemplateChat({
 
               {slots.positionId ? (
                 <ConversationBubble role="bot" visible={isBotVisible("background")}>
-                  <p className="image-studio-prompt-guide-bubble-text">Quel type de fond veux-tu ?</p>
+                  <p className="image-studio-prompt-guide-bubble-text">{ui("backgroundQuestion", "Quel type de fond veux-tu ?")}</p>
                   {guideStep === "background" ? (
                     <PackshotOptionButtonRow
-                      options={PACKSHOT_BACKGROUND_OPTIONS}
+                      options={localizedBackgroundOptions}
                       selectedId={slots.backgroundId}
                       disabled={false}
                       onSelect={handlePackshotBackgroundSelect}
-                      ariaLabel="Type de fond"
+                      ariaLabel={ui("ariaBackgroundType", "Type de fond")}
                     />
                   ) : null}
                 </ConversationBubble>
@@ -1280,14 +1359,14 @@ function PromptTemplateChat({
 
               {slots.backgroundId === "environnement" ? (
                 <ConversationBubble role="bot" wide visible={isBotVisible("ambiance")}>
-                  <p className="image-studio-prompt-guide-bubble-text">Quelle ambiance ?</p>
+                  <p className="image-studio-prompt-guide-bubble-text">{ui("ambianceQuestion", "Quelle ambiance ?")}</p>
                   {guideStep === "ambiance" ? (
                     <PackshotOptionButtonRow
-                      options={PACKSHOT_AMBIANCE_OPTIONS}
+                      options={localizedAmbianceOptions}
                       selectedId={slots.ambianceId}
                       disabled={false}
                       onSelect={handlePackshotAmbianceSelect}
-                      ariaLabel="Ambiance environnement"
+                      ariaLabel={ui("ariaAmbianceEnv", "Ambiance environnement")}
                     />
                   ) : null}
                 </ConversationBubble>
@@ -1302,7 +1381,7 @@ function PromptTemplateChat({
               {guideStep === "customAmbiance" || (slots.ambianceId === "autre" && slots.customAmbiance) ? (
                 <ConversationBubble role="bot" visible={isBotVisible("customAmbiance")}>
                   <p className="image-studio-prompt-guide-bubble-text">
-                    Précise ton ambiance personnalisée
+                    {ui("customAmbianceQuestion", "Précise ton ambiance personnalisée")}
                   </p>
                   {guideStep === "customAmbiance" ? (
                     <div className="image-studio-prompt-guide-bubble-compose">{composeForm}</div>
@@ -1314,23 +1393,23 @@ function PromptTemplateChat({
               (slots.backgroundId === "neutre" || slots.ambianceId) ? (
                 <ConversationBubble role="bot" wide visible={isBotVisible("interaction")}>
                   <p className="image-studio-prompt-guide-bubble-text">
-                    Veux-tu ajouter un effet dynamique ?
+                    {ui("dynamicEffectQuestion", "Veux-tu ajouter un effet dynamique ?")}
                   </p>
                   {guideStep === "interaction" ? (
                     <div className="image-studio-prompt-guide-elements-actions image-studio-prompt-guide-bubble-actions">
                       <PackshotOptionButtonRow
-                        options={PACKSHOT_INTERACTION_OPTIONS}
+                        options={localizedInteractionOptions}
                         selectedId={slots.interactionId}
                         disabled={false}
                         onSelect={handlePackshotInteractionSelect}
-                        ariaLabel="Effet dynamique"
+                        ariaLabel={ui("ariaDynamicEffect", "Effet dynamique")}
                       />
                       <button
                         type="button"
                         className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
                         onClick={handlePackshotInteractionSkip}
                       >
-                        Passer
+                        {ui("pass", "Passer")}
                       </button>
                     </div>
                   ) : null}
@@ -1346,23 +1425,23 @@ function PromptTemplateChat({
               {(slots.productStateId || guideStep === "state") && slots.interactionId ? (
                 <ConversationBubble role="bot" wide visible={isBotVisible("state")}>
                   <p className="image-studio-prompt-guide-bubble-text">
-                    Produit neuf/fermé ou entamé/ouvert ?
+                    {ui("productState", "Produit neuf/fermé ou entamé/ouvert ?")}
                   </p>
                   {guideStep === "state" ? (
                     <div className="image-studio-prompt-guide-elements-actions image-studio-prompt-guide-bubble-actions">
                       <PackshotOptionButtonRow
-                        options={PACKSHOT_STATE_OPTIONS}
+                        options={localizedStateOptions}
                         selectedId={slots.productStateId}
                         disabled={false}
                         onSelect={handlePackshotStateSelect}
-                        ariaLabel="État du produit"
+                        ariaLabel={ui("ariaProductState", "État du produit")}
                       />
                       <button
                         type="button"
                         className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
                         onClick={handlePackshotStateSkip}
                       >
-                        Passer
+                        {ui("pass", "Passer")}
                       </button>
                     </div>
                   ) : null}
@@ -1377,22 +1456,22 @@ function PromptTemplateChat({
 
               {(guideStep === "format" || ready) && slots.productStateId ? (
                 <ConversationBubble role="bot" wide visible={isBotVisible("format")}>
-                  <p className="image-studio-prompt-guide-bubble-text">Format de destination ?</p>
+                  <p className="image-studio-prompt-guide-bubble-text">{ui("destinationFormat", "Format de destination ?")}</p>
                   {guideStep === "format" && !ready ? (
                     <div className="image-studio-prompt-guide-elements-actions image-studio-prompt-guide-bubble-actions">
                       <PackshotOptionButtonRow
-                        options={PACKSHOT_FORMAT_OPTIONS}
+                        options={localizedFormatOptions}
                         selectedId={slots.formatId}
                         disabled={false}
                         onSelect={handlePackshotFormatSelect}
-                        ariaLabel="Format de destination"
+                        ariaLabel={ui("ariaDestinationFormat", "Format de destination")}
                       />
                       <button
                         type="button"
                         className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
                         onClick={handlePackshotFormatSkip}
                       >
-                        Passer
+                        {ui("pass", "Passer")}
                       </button>
                     </div>
                   ) : null}
@@ -1408,44 +1487,45 @@ function PromptTemplateChat({
           ) : (
             <>
           <ConversationBubble role="bot" wide visible={isBotVisible("shot")}>
-            <p className="image-studio-prompt-guide-bubble-text">Quel style de shot ?</p>
+            <p className="image-studio-prompt-guide-bubble-text">{ui("shotStyleQuestion", "Quel style de shot ?")}</p>
             {showPrimaryShotGrid ? (
               <ProductShotStyleGrid
                 styles={primaryShotStyles}
                 selectedId={selectedShotId}
                 locked={shotGridsLocked}
                 onSelect={(shotId) => handleShotSelect(shotId, false)}
+                ariaLabel={ui("styleOfShot", "Style de shot")}
               />
             ) : null}
             {!selectedShotId && shotStyleError ? (
               <p className="image-studio-prompt-shot-error" role="alert">
-                Choisissez un style de shot pour continuer.
+                {ui("pickShotStyle", "Choisissez un style de shot pour continuer.")}
               </p>
             ) : null}
           </ConversationBubble>
 
           {showMoreStylesBubble ? (
             <ConversationBubble role="bot" visible={isBotVisible("more-styles")}>
-              <p className="image-studio-prompt-guide-bubble-text">Voir plus de styles ?</p>
+              <p className="image-studio-prompt-guide-bubble-text">{ui("seeMoreStyles", "Voir plus de styles ?")}</p>
               {showMoreStylesButtons ? (
                 <div
                   className="image-studio-prompt-guide-elements-actions image-studio-prompt-guide-bubble-actions image-studio-prompt-guide-more-styles-actions"
                   role="group"
-                  aria-label="Voir plus de styles"
+                  aria-label={ui("seeMoreStylesAria", "Voir plus de styles")}
                 >
                   <button
                     type="button"
                     className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
                     onClick={handleMoreStylesYes}
                   >
-                    Oui
+                    {ui("yes", "Oui")}
                   </button>
                   <button
                     type="button"
                     className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
                     onClick={handleMoreStylesNo}
                   >
-                    Non
+                    {ui("no", "Non")}
                   </button>
                 </div>
               ) : null}
@@ -1455,19 +1535,20 @@ function PromptTemplateChat({
           {moreStylesChoice === "yes" || moreStylesChoice === "no" ? (
             <ConversationBubble role="user">
               <p className="image-studio-prompt-guide-bubble-text">
-                {moreStylesChoice === "yes" ? "Oui" : "Non"}
+                {moreStylesChoice === "yes" ? ui("yes", "Oui") : ui("no", "Non")}
               </p>
             </ConversationBubble>
           ) : null}
 
           {showExtendedShotGrid ? (
             <ConversationBubble role="bot" wide visible={isBotVisible("extended-shots")}>
-              <p className="image-studio-prompt-guide-bubble-text">Voici d&apos;autres styles :</p>
+              <p className="image-studio-prompt-guide-bubble-text">{ui("moreStylesShown", "Voici d'autres styles :")}</p>
               <ProductShotStyleGrid
                 styles={extendedShotStyles}
                 selectedId={selectedShotId}
                 locked={shotGridsLocked}
                 onSelect={(shotId) => handleShotSelect(shotId, true)}
+                ariaLabel={ui("styleOfShot", "Style de shot")}
               />
             </ConversationBubble>
           ) : null}
@@ -1480,19 +1561,25 @@ function PromptTemplateChat({
 
           {showLifestyleFramingBot ? (
             <ConversationBubble role="bot" wide visible={isBotVisible("framing")}>
-              <p className="image-studio-prompt-guide-bubble-text">Quel cadrage ?</p>
+              <p className="image-studio-prompt-guide-bubble-text">{ui("framingQuestion", "Quel cadrage ?")}</p>
               <p className="image-studio-prompt-guide-bubble-text image-studio-prompt-guide-bubble-hint">
                 {selectedShotId === "deux-mains"
-                  ? "Serré : produit dominant. Large : plan moyen — mains et action visibles, décor plus présent."
-                  : "Serré : produit dominant. Large : produit intégré dans la scène."}
+                  ? ui(
+                      "framingHintDeuxMains",
+                      "Serré : produit dominant. Large : plan moyen — mains et action visibles, décor plus présent.",
+                    )
+                  : ui(
+                      "framingHintDefault",
+                      "Serré : produit dominant. Large : produit intégré dans la scène.",
+                    )}
               </p>
               {guideStep === "framing" && !lifestyleFramingId ? (
                 <PackshotOptionButtonRow
-                  options={LIFESTYLE_FRAMING_OPTIONS}
+                  options={localizedFramingOptions}
                   selectedId={lifestyleFramingId}
                   disabled={false}
                   onSelect={handleLifestyleFramingSelect}
-                  ariaLabel="Cadrage lifestyle"
+                  ariaLabel={ui("ariaLifestyleFraming", "Cadrage lifestyle")}
                 />
               ) : null}
             </ConversationBubble>
@@ -1507,7 +1594,7 @@ function PromptTemplateChat({
           {showLifestyleProductBot ? (
             <ConversationBubble role="bot" visible={isBotVisible("drink") || isBotVisible("product")}>
               <p className="image-studio-prompt-guide-bubble-text">
-                {isLifestyleGuide ? template.botIntro : "Quelle boisson ?"}
+                {isLifestyleGuide ? localizedTemplate.botIntro : ui("whichDrink", "Quelle boisson ?")}
               </p>
               {(isLifestyleGuide ? guideStep === "product" : guideStep === "drink") ? (
                 <>
@@ -1562,7 +1649,7 @@ function PromptTemplateChat({
           {showEnvironmentBot ? (
             <ConversationBubble role="bot" visible={isBotVisible("environment")}>
               <p className="image-studio-prompt-guide-bubble-text">
-                {template.botAskEnvironment}
+                {localizedTemplate.botAskEnvironment}
               </p>
               {guideStep === "environment" ? (
                 <div className="image-studio-prompt-guide-bubble-compose">{composeForm}</div>
@@ -1587,7 +1674,7 @@ function PromptTemplateChat({
           {showPackagingBot ? (
             <ConversationBubble role="bot" visible={isBotVisible("packaging")}>
               <p className="image-studio-prompt-guide-bubble-text">
-                {template.botAskPackagingMode}
+                {localizedTemplate.botAskPackagingMode}
               </p>
               {packagingChoiceButtons}
             </ConversationBubble>
@@ -1633,7 +1720,7 @@ function PromptTemplateChat({
           (guideStep === "custom_elements" || userMessages[customUserMessageIndex]) ? (
             <ConversationBubble role="bot" visible={isBotVisible("custom")}>
               <p className="image-studio-prompt-guide-bubble-text">
-                {template.botAskCustomElements}
+                {localizedTemplate.botAskCustomElements}
               </p>
               {guideStep === "custom_elements" ? (
                 <div className="image-studio-prompt-guide-bubble-compose">{composeForm}</div>
@@ -1669,7 +1756,7 @@ function PromptTemplateChat({
             </ConversationBubble>
           ) : null}
 
-          <TypingIndicator visible={isTyping} />
+          <TypingIndicator visible={isTyping} typingLabel={ui("typing", "Le guide écrit…")} />
 
           <div ref={messagesEndRef} />
         </div>
@@ -1685,7 +1772,7 @@ function PromptTemplateChat({
             {message.role === "bot" ? (
               <span className="image-studio-prompt-guide-bubble-label">
                 <Sparkles className="h-3 w-3" strokeWidth={2} aria-hidden />
-                Guide
+                {ui("guide", "Guide")}
               </span>
             ) : null}
             <p className="image-studio-prompt-guide-bubble-text">{message.text}</p>
@@ -1694,20 +1781,20 @@ function PromptTemplateChat({
         })}
 
         {guideStep === "elements_mode" ? (
-          <div className="image-studio-prompt-guide-choices" role="group" aria-label="Mode des éléments">
+          <div className="image-studio-prompt-guide-choices" role="group" aria-label={ui("ariaElementsMode", "Mode des éléments")}>
             <button
               type="button"
               className="image-studio-prompt-guide-choice"
               onClick={() => handleElementsModeChoice("reference")}
             >
-              Éléments de référence de la marque
+              {ui("brandReferenceElements", "Éléments de référence de la marque")}
             </button>
             <button
               type="button"
               className="image-studio-prompt-guide-choice"
               onClick={() => handleElementsModeChoice("custom")}
             >
-              Choisir moi-même les éléments
+              {ui("chooseElementsSelf", "Choisir moi-même les éléments")}
             </button>
           </div>
         ) : null}
@@ -1724,7 +1811,7 @@ function PromptTemplateChat({
               onClick={() => setAdjustOpen((open) => !open)}
               aria-expanded={adjustOpen}
             >
-              Ajuster les champs
+              {ui("adjustFields", "Ajuster les champs")}
               {adjustOpen ? (
                 <ChevronUp className="h-3.5 w-3.5 shrink-0" strokeWidth={2.25} />
               ) : (
@@ -1734,7 +1821,7 @@ function PromptTemplateChat({
 
             {adjustOpen ? (
               <div className="image-studio-prompt-guide-fields">
-                {template.variables.map((variable) => (
+                {localizedTemplate.variables.map((variable) => (
                   <label key={variable.key} className="image-studio-prompt-guide-field">
                     <span>{variable.label}</span>
                     <input
@@ -1760,7 +1847,7 @@ function PromptTemplateChat({
             className="image-studio-prompt-guide-apply btn-vws-primary"
             onClick={handleApply}
           >
-            Appliquer au prompt
+            {ui("applyPrompt", "Appliquer au prompt")}
           </button>
         ) : null}
 
@@ -1773,6 +1860,11 @@ function PromptTemplateChat({
 }
 
 export default function ModalPromptsImageStudio({ open, onClose, onApplyPrompt }) {
+  const { ui, template: localizeTemplate, locale } = useImageStudioChatbotTr();
+  const localizedTemplates = useMemo(
+    () => IMAGE_STUDIO_PROMPT_TEMPLATES.map((item) => localizeTemplate(item)),
+    [localizeTemplate, locale],
+  );
   const [view, setView] = useState("hub");
   const [activeTemplate, setActiveTemplate] = useState(null);
 
@@ -1836,42 +1928,42 @@ export default function ModalPromptsImageStudio({ open, onClose, onApplyPrompt }
                   <Sparkles className="h-3.5 w-3.5" strokeWidth={2} />
                 </span>
                 <h2 id="image-studio-prompts-title" className="image-studio-prompts-hub-title">
-                  Type d&apos;image
+                  {ui("imageType", "Type d'image")}
                 </h2>
               </div>
               <button
                 type="button"
                 className="image-studio-prompts-hub-close"
                 onClick={onClose}
-                aria-label="Fermer"
+                aria-label={ui("close", "Fermer")}
               >
                 <X className="h-4 w-4" />
               </button>
             </header>
 
             <div className="image-studio-prompts-list image-studio-prompts-visual-grid studio-subtle-scrollbar">
-              {IMAGE_STUDIO_PROMPT_TEMPLATES.map((template) => (
+              {localizedTemplates.map((item) => (
                 <button
-                  key={template.id}
+                  key={item.id}
                   type="button"
                   className="image-studio-prompt-visual-tile"
-                  onClick={() => openTemplate(template)}
-                  aria-label={`Ouvrir le guide ${template.label}`}
+                  onClick={() => openTemplate(IMAGE_STUDIO_PROMPT_TEMPLATES.find((t) => t.id === item.id))}
+                  aria-label={ui("openGuide", "Ouvrir le guide {label}").replace("{label}", item.label)}
                 >
                   <div className="image-studio-prompt-visual-tile-frame">
-                    {template.heroImage ? (
+                    {item.heroImage ? (
                       <img
-                        src={template.heroImage}
+                        src={item.heroImage}
                         alt=""
                         className="image-studio-prompt-visual-tile-img"
                       />
                     ) : (
                       <span className="image-studio-prompt-visual-tile-fallback">
-                        <TemplateIcon icon={template.icon} className="h-5 w-5" />
+                        <TemplateIcon icon={item.icon} className="h-5 w-5" />
                       </span>
                     )}
                   </div>
-                  <span className="image-studio-prompt-visual-tile-label">{template.label}</span>
+                  <span className="image-studio-prompt-visual-tile-label">{item.label}</span>
                 </button>
               ))}
             </div>
@@ -1879,6 +1971,7 @@ export default function ModalPromptsImageStudio({ open, onClose, onApplyPrompt }
         ) : activeTemplate ? (
           isUgcSelfieGuideTemplate(activeTemplate) ? (
             <UgcSelfiePromptGuideChat
+              key={`${activeTemplate.id}-${locale}`}
               template={activeTemplate}
               onBack={handleBack}
               onApplyPrompt={onApplyPrompt}
@@ -1886,6 +1979,7 @@ export default function ModalPromptsImageStudio({ open, onClose, onApplyPrompt }
             />
           ) : isUgcPresentationGuideTemplate(activeTemplate) ? (
             <UgcPresentationPromptGuideChat
+              key={`${activeTemplate.id}-${locale}`}
               template={activeTemplate}
               onBack={handleBack}
               onApplyPrompt={onApplyPrompt}
@@ -1893,6 +1987,7 @@ export default function ModalPromptsImageStudio({ open, onClose, onApplyPrompt }
             />
           ) : isBrandCampaignShootGuideTemplate(activeTemplate) ? (
             <BrandCampaignShootPromptGuideChat
+              key={`${activeTemplate.id}-${locale}`}
               template={activeTemplate}
               onBack={handleBack}
               onApplyPrompt={onApplyPrompt}
@@ -1900,6 +1995,7 @@ export default function ModalPromptsImageStudio({ open, onClose, onApplyPrompt }
             />
           ) : isEditorialWornHeldGuideTemplate(activeTemplate) ? (
             <EditorialWornHeldPromptGuideChat
+              key={`${activeTemplate.id}-${locale}`}
               template={activeTemplate}
               onBack={handleBack}
               onApplyPrompt={onApplyPrompt}
@@ -1907,6 +2003,7 @@ export default function ModalPromptsImageStudio({ open, onClose, onApplyPrompt }
             />
           ) : isProduitEnApplicationGuideTemplate(activeTemplate) ? (
             <ProduitEnApplicationPromptGuideChat
+              key={`${activeTemplate.id}-${locale}`}
               template={activeTemplate}
               onBack={handleBack}
               onApplyPrompt={onApplyPrompt}
@@ -1914,6 +2011,7 @@ export default function ModalPromptsImageStudio({ open, onClose, onApplyPrompt }
             />
           ) : isOutfitStudioGuideTemplate(activeTemplate) ? (
             <OutfitStudioPromptGuideChat
+              key={`${activeTemplate.id}-${locale}`}
               template={activeTemplate}
               onBack={handleBack}
               onApplyPrompt={onApplyPrompt}
@@ -1921,6 +2019,7 @@ export default function ModalPromptsImageStudio({ open, onClose, onApplyPrompt }
             />
           ) : (
           <PromptTemplateChat
+            key={`${activeTemplate.id}-${locale}`}
             template={activeTemplate}
             onBack={handleBack}
             onApplyPrompt={onApplyPrompt}

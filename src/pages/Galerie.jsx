@@ -4,6 +4,7 @@ import { useAuth } from "@/contexte/FournisseurAuth";
 import { listHistory, updateHistoryMetadata } from "@/bibliotheque/supabase/historique";
 import { uploadImagesFromUrls, getUserImagesFromStorage, ensureGeneratedImagesBucketAvailable } from "@/bibliotheque/supabase/storage";
 import PageTitle from "../composants/interface/TitrePage";
+import { useT } from "@/contexte/FournisseurLocale";
 import {
   Image as ImageIcon,
   Video,
@@ -65,6 +66,7 @@ function getVideoImageUrl(item) {
 }
 
 export default function Galerie() {
+  const t = useT();
   const { session } = useAuth();
   const [loading, setLoading] = useState(true);
   const [history, setHistory] = useState([]);
@@ -519,7 +521,7 @@ export default function Galerie() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-8">
-        <PageTitle green="Galerie" white="Complète" subtitle="Toutes vos créations en un seul endroit" />
+        <PageTitle green={t("studio.galleryTitle")} subtitle={t("studio.gallerySubtitle")} />
 
         <div className="flex items-center gap-3">
           <div className="px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-sm">
@@ -538,7 +540,7 @@ export default function Galerie() {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Rechercher dans vos créations..."
+              placeholder={t("studio.gallerySearch")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2 rounded-lg bg-white/5 border border-white/10 text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all"
@@ -822,7 +824,7 @@ export default function Galerie() {
                                   className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1 px-2 py-1 rounded hover:bg-emerald-500/10 transition-colors"
                                 >
                                   <Copy className="w-3 h-3" />
-                                  Copier
+                                  {t("common.copy")}
                                 </button>
                                 {expandedPrompts.has(`image-${index}`) ? (
                                   <ChevronUp className="w-4 h-4 text-gray-400" />
@@ -927,7 +929,7 @@ export default function Galerie() {
                                 className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-300 text-sm font-medium transition-all"
                               >
                                 <Download className="w-4 h-4" />
-                                Télécharger
+                                {t("common.download")}
                               </a>
                               <button
                                 onClick={() => {
@@ -936,7 +938,7 @@ export default function Galerie() {
                                 className="flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 text-purple-300 text-sm font-medium transition-all"
                               >
                                 <Share2 className="w-4 h-4" />
-                                Partager
+                                {t("common.share")}
                               </button>
                               <button
                                 onClick={() => {
@@ -1039,7 +1041,7 @@ export default function Galerie() {
                             className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 transition-colors"
                           >
                             <Copy className="w-3.5 h-3.5" />
-                            Copier
+                            {t("common.copy")}
                           </button>
                           {expandedImagePrompt ? (
                             <ChevronUp className="w-5 h-5 text-gray-300" />
@@ -1086,7 +1088,7 @@ export default function Galerie() {
                     className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-white font-semibold text-sm transition-all btn-vws-primary"
                   >
                     <Download className="w-5 h-5" />
-                    Télécharger ({downloadFormat.toUpperCase()})
+                    {t("common.download")} ({downloadFormat.toUpperCase()})
                   </button>
                   <div className="grid grid-cols-2 gap-2">
                     <button
@@ -1103,7 +1105,7 @@ export default function Galerie() {
                       className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 text-purple-300 text-xs font-medium transition-all hover:scale-105"
                     >
                       <Share2 className="w-4 h-4" />
-                      Partager
+                      {t("common.share")}
                     </button>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
@@ -1156,13 +1158,13 @@ export default function Galerie() {
                     className="w-full flex items-center justify-center gap-2 px-4 py-3.5 rounded-lg text-white font-semibold text-sm transition-all btn-vws-primary"
                   >
                     <Download className="w-5 h-5" />
-                    Télécharger ({downloadFormat.toUpperCase()})
+                    {t("common.download")} ({downloadFormat.toUpperCase()})
                   </button>
                   <div className="grid grid-cols-4 gap-2">
                     <button
                       onClick={() => handleCopyUrl(imageUrl)}
                       className="flex flex-col items-center justify-center gap-1 px-2 py-2.5 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 text-blue-300 transition-all active:scale-95"
-                      title="Copier l'URL"
+                      title={t("common.copy")}
                     >
                       <Copy className="w-4 h-4" />
                       <span className="text-[10px] font-medium">URL</span>
@@ -1172,10 +1174,10 @@ export default function Galerie() {
                         handleShare(imageUrl, "Image générée", selectedImage.input || "Image générée avec IA");
                       }}
                       className="flex flex-col items-center justify-center gap-1 px-2 py-2.5 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 text-purple-300 transition-all active:scale-95"
-                      title="Partager"
+                      title={t("common.share")}
                     >
                       <Share2 className="w-4 h-4" />
-                      <span className="text-[10px] font-medium">Partager</span>
+                      <span className="text-[10px] font-medium">{t("common.share")}</span>
                     </button>
                     <button
                       onClick={() => {

@@ -18,6 +18,7 @@ import {
   X,
 } from "lucide-react";
 import PageTitle from "@/composants/interface/TitrePage";
+import { useT } from "@/contexte/FournisseurLocale";
 import BadgeQuotaVideo from "@/composants/video/BadgeQuotaVideo";
 import ModalBibliothequeAvatars from "@/composants/studio/avatar/ModalBibliothequeAvatars";
 import ModalAbonnementRequis from "@/composants/studio/avatar/ModalAbonnementRequis";
@@ -1072,6 +1073,7 @@ function VideoPreviewBlock({
   onFile,
   onChangeVideo,
 }) {
+  const t = useT();
   const inputRef = useRef(null);
   const stripGenRef = useRef(0);
   const [dragging, setDragging] = useState(false);
@@ -1248,7 +1250,7 @@ function VideoPreviewBlock({
           <Video className="h-5 w-5 text-[#00E676]/80" strokeWidth={2} aria-hidden />
         </div>
         <div className="edit-video-vzone-copy">
-          <p className="edit-video-vzone-title">Dépose ta vidéo ici</p>
+          <p className="edit-video-vzone-title">{t("studio.dropVideo")}</p>
           <p className="edit-video-vzone-meta">MP4 ou MOV · toute taille · 15 s envoyés à l&apos;IA</p>
         </div>
         <button
@@ -1467,6 +1469,7 @@ function InstructionCard({ instruction, index, canRemove, onChange, onRemove, on
 }
 
 export default function EditVideo() {
+  const t = useT();
   const { session } = useAuth();
   const userId = session?.user?.id ?? null;
   const { runWithAuth } = useRequireAuthAction();
@@ -2040,8 +2043,7 @@ export default function EditVideo() {
     <div className="edit-video-shell">
       <div className="edit-video-page-head">
         <PageTitle
-          green="Éditer"
-          white="ma vidéo"
+          green={t("studio.editVideoTitle")}
           subtitle="Importe ton clip, choisis ce que tu veux modifier, puis lance la génération."
           className="mb-0"
           titleClassName="!text-xl sm:!text-2xl !font-semibold"

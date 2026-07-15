@@ -22,6 +22,34 @@ export type ImageStudioFeedRow = {
 
 export const IMAGE_STUDIO_FEED_PROMPT_MAX = 140;
 
+/** Nombre de lignes de génération visibles par défaut dans le canva central. */
+export const FEED_VISIBLE_ROW_LIMIT = 6;
+
+export function feedRowContainsHistoryItem(
+  row: ImageStudioFeedRow,
+  item: { id?: string; metadata?: { batchId?: string } | null },
+): boolean {
+  if (item.id && row.images.some((image) => image.historyId === item.id)) {
+    return true;
+  }
+  const batchId = item.metadata?.batchId?.trim();
+  return Boolean(batchId && row.id === batchId);
+}
+
+export function getFeedRowVisibility(
+  feedRows: ImageStudioFeedRow[],
+  expanded: boolean,
+  limit = FEED_VISIBLE_ROW_LIMIT,
+): { visibleRows: ImageStudioFeedRow[]; hiddenCount: number } {
+  if (expanded || feedRows.length <= limit) {
+    return { visibleRows: feedRows, hiddenCount: 0 };
+  }
+  return {
+    visibleRows: feedRows.slice(-limit),
+    hiddenCount: feedRows.length - limit,
+  };
+}
+
 export function truncateFeedPrompt(
   text: string,
   max = IMAGE_STUDIO_FEED_PROMPT_MAX,

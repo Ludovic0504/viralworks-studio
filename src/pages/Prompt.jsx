@@ -20,6 +20,7 @@ import {
 } from "@/bibliotheque/supabase/credits";
 import { usePremiumAccess } from "@/hooks/usePremiumAccess";
 import { useBoutiqueModal } from "@/contexte/ContexteModalBoutique";
+import { useT } from "@/contexte/FournisseurLocale";
 import {
   canProceedWithScriptGeneration,
   consumeScriptAttempt,
@@ -61,6 +62,7 @@ const NON_SUBSCRIBER_BLOCKED_MESSAGE =
   "Prenez un abonnement pour profiter de ViralWorks Studio et lancer vos générations.";
 
 function QuotaBlockedModal({ open, title, message, actionLabel, onClose, onGoToShop }) {
+  const t = useT();
   if (!open) return null;
   return (
     <div
@@ -72,12 +74,12 @@ function QuotaBlockedModal({ open, title, message, actionLabel, onClose, onGoToS
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
-          <h2 className="text-base font-semibold text-gray-200">{title || "Quota mensuel épuisé"}</h2>
+          <h2 className="text-base font-semibold text-gray-200">{title || t("studio.quotaExhausted")}</h2>
           <button
             type="button"
             onClick={onClose}
             className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-gray-200 transition-colors"
-            aria-label="Fermer"
+            aria-label={t("common.close")}
           >
             <X className="w-4 h-4" />
           </button>
@@ -92,14 +94,14 @@ function QuotaBlockedModal({ open, title, message, actionLabel, onClose, onGoToS
               onClick={onClose}
               className="px-4 py-2 rounded-lg btn-vws-secondary"
             >
-              Fermer
+              {t("common.close")}
             </button>
             <button
               type="button"
               onClick={onGoToShop}
               className="px-4 py-2 rounded-lg btn-vws-primary font-semibold"
             >
-              {actionLabel || "Aller vers Packs vidéos"}
+              {actionLabel || t("studio.goToPacks")}
             </button>
           </div>
         </div>
@@ -179,6 +181,7 @@ export default function PromptAssistant({
   campaignData = null,
   onScriptOutput,
 }) {
+  const t = useT();
   const [tab, setTab] = useState("script");
   const [showSystemVideo, setShowSystemVideo] = useState(false);
 
@@ -197,7 +200,7 @@ export default function PromptAssistant({
       <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="flex-1">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium text-gray-300">Étape 1 sur 3 · Script gagnant</span>
+            <span className="text-xs font-medium text-gray-300">{t("common.stepOf", { current: 1, total: 3 })} · Script gagnant</span>
           </div>
           <div className="w-full studio-step-rail">
             <div className="h-full w-1/3 studio-step-rail-fill" />
@@ -1081,6 +1084,7 @@ function ScriptPromptGenerator({
   const [quotaModalMessage, setQuotaModalMessage] = useState(VIDEO_QUOTA_EXHAUSTED_MESSAGE);
   const { hasAccess } = usePremiumAccess();
   const { openBoutiqueModal } = useBoutiqueModal();
+  const t = useT();
   const [items, setItems] = useState([]);
   const [selectedItem, setSelectedItem] = useState(null);
   const prevInitialIdeaRef = useRef(initialIdea);
@@ -1329,9 +1333,9 @@ function ScriptPromptGenerator({
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <QuotaBlockedModal
         open={showQuotaModal}
-        title={hasAccess ? "Quota mensuel épuisé" : "Accès abonnement requis"}
+        title={hasAccess ? t("studio.quotaExhausted") : t("studio.subscriptionRequired")}
         message={quotaModalMessage}
-        actionLabel={hasAccess ? "Aller vers Packs vidéos" : "Voir les abonnements"}
+        actionLabel={hasAccess ? t("studio.goToPacks") : t("studio.seeSubscriptions")}
         onClose={() => setShowQuotaModal(false)}
         onGoToShop={() => {
           setShowQuotaModal(false);
