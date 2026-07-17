@@ -51,7 +51,14 @@ export default defineConfig(({ mode }) => {
         clientsClaim: true,
         importScripts: ['sw-activate-reload.js'],
         globPatterns: ['**/*.{js,css,ico,png,svg,webp,woff,woff2,webmanifest,json,txt}'],
-        globIgnores: ['**/index.html', '**/recover.html', '**/sw-activate-reload.js'],
+        // public/assets/image-studio/* n'est pas hashé : Workbox leur met revision:null
+        // (comme les bundles Vite) et peut resservir indéfiniment un vieux PNG/HTML corrompu.
+        globIgnores: [
+          '**/index.html',
+          '**/recover.html',
+          '**/sw-activate-reload.js',
+          '**/assets/image-studio/**',
+        ],
         navigateFallback: null,
         runtimeCaching: [
           {

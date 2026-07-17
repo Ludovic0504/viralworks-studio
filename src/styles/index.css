@@ -872,10 +872,11 @@
     transition:
       border-color 0.15s ease,
       background 0.15s ease,
-      color 0.15s ease;
+      color 0.15s ease,
+      opacity 0.15s ease;
   }
 
-  .image-studio-feed-load-more-btn:hover {
+  .image-studio-feed-load-more-btn:hover:not(:disabled) {
     border-color: rgba(42, 245, 152, 0.45);
     background: rgba(42, 245, 152, 0.14);
     color: #fff;
@@ -884,6 +885,29 @@
   .image-studio-feed-load-more-btn:focus-visible {
     outline: 2px solid rgba(42, 245, 152, 0.55);
     outline-offset: 2px;
+  }
+
+  .image-studio-feed-load-more-btn:disabled,
+  .image-studio-feed-load-more-btn.is-loading {
+    cursor: wait;
+    opacity: 0.85;
+    border-color: rgba(42, 245, 152, 0.22);
+    background: rgba(42, 245, 152, 0.1);
+  }
+
+  .image-studio-feed-load-more-spinner {
+    color: rgba(42, 245, 152, 0.9);
+  }
+
+  .image-studio-feed-images-loading {
+    position: sticky;
+    bottom: 0.75rem;
+    z-index: 2;
+    display: flex;
+    justify-content: center;
+    pointer-events: none;
+    margin-top: 0.5rem;
+    padding: 0.35rem 0;
   }
 
   .image-studio-feed-anchor {

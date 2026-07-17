@@ -50,6 +50,43 @@ export function getFeedRowVisibility(
   };
 }
 
+/** Clés stables pour suivre le chargement pixel des images du feed. */
+export function collectFeedImageKeys(rows: ImageStudioFeedRow[]): string[] {
+  const keys: string[] = [];
+  for (const row of rows) {
+    for (const image of row.images) {
+      const key = image.historyId?.trim() || image.url?.trim();
+      if (key) keys.push(key);
+    }
+  }
+  return keys;
+}
+
+/**
+ * Limite l'historique miniatures aux lignes actuellement visibles dans le canva
+ * (évite de télécharger toutes les images avant « Voir plus »).
+ */
+export function filterHistoryForVisibleFeedRows(
+  history: ImageStudioHistoryItem[],
+  visibleRows: ImageStudioFeedRow[],
+): ImageStudioHistoryItem[] {
+  if (visibleRows.length === 0) return [];
+
+  const allowedIds = new Set<string>();
+  for (const row of visibleRows) {
+    allowedIds.add(row.id);
+    for (const image of row.images) {
+      if (image.historyId) allowedIds.add(image.historyId);
+    }
+  }
+
+  return history.filter((item) => {
+    if (allowedIds.has(item.id)) return true;
+    const batchId = (item.metadata as { batchId?: string } | null)?.batchId?.trim();
+    return Boolean(batchId && allowedIds.has(batchId));
+  });
+}
+
 export function truncateFeedPrompt(
   text: string,
   max = IMAGE_STUDIO_FEED_PROMPT_MAX,

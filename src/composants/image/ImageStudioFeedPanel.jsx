@@ -11,8 +11,10 @@ import {
 import { ChevronUp, ImageIcon, Loader2, Sparkles } from "lucide-react";
 import { useT } from "@/contexte/FournisseurLocale";
 import {
+  collectFeedImageKeys,
   feedRowAspectClass,
   feedRowContainsHistoryItem,
+  filterHistoryForVisibleFeedRows,
   getFeedRowVisibility,
   truncateFeedPrompt,
 } from "@/bibliotheque/imageStudio/imageStudioFeed";
@@ -20,6 +22,7 @@ import { getImageStudioModelLabel } from "@/bibliotheque/imageStudio/imageStudio
 import { getImageUrlFromHistory } from "@/bibliotheque/imageStudio/imageStudioHistory";
 
 const FEED_TOP_THRESHOLD = 48;
+const IMAGE_LOAD_TIMEOUT_MS = 10_000;
 
 function sortHistoryOldestFirst(items) {
   return [...items].sort((a, b) => {
@@ -89,7 +92,83 @@ function scrollFeedToHistoryItem(feedEl, item, { behavior = "smooth" } = {}) {
   }
 }
 
-function FeedRow({ row, activeHistoryId, onImageOpen, loadingHint, noDescriptionLabel, openImageAria }) {
+function FeedImage({ imageKey, src, eager, onSettled }) {
+  const imgRef = useRef(null);
+  const settledRef = useRef(false);
+
+  const settle = useCallback(() => {
+    if (settledRef.current) return;
+    settledRef.current = true;
+    onSettled?.(imageKey);
+  }, [imageKey, onSettled]);
+
+  useEffect(() => {
+    settledRef.current = false;
+    const img = imgRef.current;
+    if (!img) return;
+    if (img.complete && img.naturalWidth > 0) {
+      settle();
+    }
+  }, [src, settle]);
+
+  return (
+    <img
+      ref={imgRef}
+      src={src}
+      alt=""
+      className="image-studio-feed-image"
+      loading={eager ? "eager" : "lazy"}
+      decoding="async"
+      fetchPriority={eager ? "high" : "auto"}
+      onLoad={settle}
+      onError={settle}
+    />
+  );
+}
+
+function ThumbImage({ imageKey, src, onSettled }) {
+  const imgRef = useRef(null);
+  const settledRef = useRef(false);
+
+  const settle = useCallback(() => {
+    if (settledRef.current) return;
+    settledRef.current = true;
+    onSettled?.(imageKey);
+  }, [imageKey, onSettled]);
+
+  useEffect(() => {
+    settledRef.current = false;
+    const img = imgRef.current;
+    if (!img) return;
+    if (img.complete && img.naturalWidth > 0) {
+      settle();
+    }
+  }, [src, settle]);
+
+  return (
+    <img
+      ref={imgRef}
+      src={src}
+      alt=""
+      className="image-studio-thumb-strip-img"
+      loading="lazy"
+      decoding="async"
+      onLoad={settle}
+      onError={settle}
+    />
+  );
+}
+
+function FeedRow({
+  row,
+  activeHistoryId,
+  onImageOpen,
+  loadingHint,
+  noDescriptionLabel,
+  openImageAria,
+  eagerImages,
+  onImageSettled,
+}) {
   const aspectClass = feedRowAspectClass(row.aspectRatio);
   const promptSnippet = truncateFeedPrompt(row.prompt);
   const modelLabel = row.model ? getImageStudioModelLabel(row.model) : null;
@@ -100,35 +179,36 @@ function FeedRow({ row, activeHistoryId, onImageOpen, loadingHint, noDescription
   return (
     <article className="image-studio-feed-row" data-batch-id={row.id}>
       <div className={`image-studio-feed-row-images ${aspectClass}`}>
-        {row.images.map((image) => (
-          <button
-            key={image.historyId ?? image.url}
-            type="button"
-            className={`image-studio-feed-image-card${
-              activeHistoryId && image.historyId === activeHistoryId ? " is-active" : ""
-            }`}
-            data-history-id={image.historyId || undefined}
-            onClick={() =>
-              onImageOpen?.({
-                url: image.url,
-                historyId: image.historyId,
-                prompt: row.prompt,
-                model: row.model,
-                aspectRatio: row.aspectRatio,
-              })
-            }
-            aria-label={openImageAria}
-          >
-            <img
-              src={image.url}
-              alt=""
-              className="image-studio-feed-image"
-              loading="eager"
-              decoding="async"
-              fetchPriority="high"
-            />
-          </button>
-        ))}
+        {row.images.map((image) => {
+          const imageKey = image.historyId?.trim() || image.url;
+          return (
+            <button
+              key={imageKey}
+              type="button"
+              className={`image-studio-feed-image-card${
+                activeHistoryId && image.historyId === activeHistoryId ? " is-active" : ""
+              }`}
+              data-history-id={image.historyId || undefined}
+              onClick={() =>
+                onImageOpen?.({
+                  url: image.url,
+                  historyId: image.historyId,
+                  prompt: row.prompt,
+                  model: row.model,
+                  aspectRatio: row.aspectRatio,
+                })
+              }
+              aria-label={openImageAria}
+            >
+              <FeedImage
+                imageKey={imageKey}
+                src={image.url}
+                eager={eagerImages}
+                onSettled={onImageSettled}
+              />
+            </button>
+          );
+        })}
         {row.generating
           ? Array.from({ length: slots }).map((_, index) => (
               <div
@@ -188,41 +268,137 @@ const ImageStudioFeedPanel = forwardRef(function ImageStudioFeedPanel(
   const restoreTargetsRef = useRef({ feed: undefined, thumb: undefined });
   const prevScrollTokenRef = useRef(scrollToEndToken);
   const pendingScrollItemRef = useRef(null);
+  const initialWaitStartedRef = useRef(false);
+  const expandPendingKeysRef = useRef(null);
+  const loadSessionRef = useRef(0);
+  const loadTimeoutRef = useRef(null);
+  const settleSessionRef = useRef(null);
+  const settledKeysRef = useRef(new Set());
+
   const [feedExpanded, setFeedExpanded] = useState(false);
   const [feedAtTop, setFeedAtTop] = useState(false);
+  const [imagesLoading, setImagesLoading] = useState(false);
+  const [expandLoading, setExpandLoading] = useState(false);
 
-  const thumbHistory = useMemo(() => sortHistoryOldestFirst(history), [history]);
-  const historyImageCount = useMemo(
-    () => history.filter((item) => getImageUrlFromHistory(item)).length,
-    [history],
-  );
   const { visibleRows, hiddenCount } = useMemo(
     () => getFeedRowVisibility(feedRows, feedExpanded),
     [feedRows, feedExpanded],
   );
-  const showLoadMore = hiddenCount > 0 && !feedExpanded;
+
+  const visibleHistory = useMemo(() => {
+    if (feedExpanded) return history;
+    return filterHistoryForVisibleFeedRows(history, visibleRows);
+  }, [feedExpanded, history, visibleRows]);
+
+  const thumbHistory = useMemo(
+    () => sortHistoryOldestFirst(visibleHistory),
+    [visibleHistory],
+  );
+
+  const historyImageCount = useMemo(
+    () => history.filter((item) => getImageUrlFromHistory(item)).length,
+    [history],
+  );
+  const showLoadMore = (hiddenCount > 0 && !feedExpanded) || expandLoading;
   const showEmptyFeed =
     feedRows.length === 0 &&
     !generating &&
     historyImageCount === 0 &&
     !(historyLoading && history.length === 0);
 
-  const expandFeed = useCallback(() => {
-    const feedEl = feedScrollRef.current;
-    const prevScrollHeight = feedEl?.scrollHeight ?? 0;
-    const prevScrollTop = feedEl?.scrollTop ?? 0;
-
-    setFeedExpanded(true);
-
-    requestAnimationFrame(() => {
-      const el = feedScrollRef.current;
-      if (!el) return;
-      const heightDelta = el.scrollHeight - prevScrollHeight;
-      if (heightDelta > 0) {
-        el.scrollTop = prevScrollTop + heightDelta;
-      }
-    });
+  const clearImageLoadWait = useCallback(() => {
+    loadSessionRef.current += 1;
+    if (loadTimeoutRef.current) {
+      clearTimeout(loadTimeoutRef.current);
+      loadTimeoutRef.current = null;
+    }
+    settleSessionRef.current = null;
+    setImagesLoading(false);
+    setExpandLoading(false);
   }, []);
+
+  const startImageLoadWait = useCallback((keys) => {
+    const uniqueKeys = [...new Set(keys.filter(Boolean))];
+    if (loadTimeoutRef.current) {
+      clearTimeout(loadTimeoutRef.current);
+      loadTimeoutRef.current = null;
+    }
+
+    const session = ++loadSessionRef.current;
+    const pending = new Set(
+      uniqueKeys.filter((key) => !settledKeysRef.current.has(key)),
+    );
+
+    if (pending.size === 0) {
+      settleSessionRef.current = null;
+      setImagesLoading(false);
+      setExpandLoading(false);
+      return;
+    }
+
+    settleSessionRef.current = { session, pending };
+    setImagesLoading(true);
+
+    loadTimeoutRef.current = setTimeout(() => {
+      if (session !== loadSessionRef.current) return;
+      settleSessionRef.current = null;
+      setImagesLoading(false);
+      setExpandLoading(false);
+      loadTimeoutRef.current = null;
+    }, IMAGE_LOAD_TIMEOUT_MS);
+  }, []);
+
+  const handleImageSettled = useCallback((key) => {
+    if (!key) return;
+    settledKeysRef.current.add(key);
+
+    const current = settleSessionRef.current;
+    if (!current) return;
+    if (current.session !== loadSessionRef.current) return;
+    if (!current.pending.has(key)) return;
+    current.pending.delete(key);
+    if (current.pending.size === 0) {
+      if (loadTimeoutRef.current) {
+        clearTimeout(loadTimeoutRef.current);
+        loadTimeoutRef.current = null;
+      }
+      settleSessionRef.current = null;
+      setImagesLoading(false);
+      setExpandLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
+    };
+  }, []);
+
+  const expandFeed = useCallback(
+    ({ waitForImages = false } = {}) => {
+      const feedEl = feedScrollRef.current;
+      const prevScrollHeight = feedEl?.scrollHeight ?? 0;
+      const prevScrollTop = feedEl?.scrollTop ?? 0;
+
+      if (waitForImages) {
+        expandPendingKeysRef.current = new Set(collectFeedImageKeys(visibleRows));
+        setExpandLoading(true);
+        setImagesLoading(true);
+      }
+
+      setFeedExpanded(true);
+
+      requestAnimationFrame(() => {
+        const el = feedScrollRef.current;
+        if (!el) return;
+        const heightDelta = el.scrollHeight - prevScrollHeight;
+        if (heightDelta > 0) {
+          el.scrollTop = prevScrollTop + heightDelta;
+        }
+      });
+    },
+    [visibleRows],
+  );
 
   const scrollToHistoryItem = useCallback(
     (item, { behavior = "smooth", expandIfNeeded = true } = {}) => {
@@ -236,7 +412,7 @@ const ImageStudioFeedPanel = forwardRef(function ImageStudioFeedPanel(
 
       if (needsExpand) {
         pendingScrollItemRef.current = { item, behavior };
-        expandFeed();
+        expandFeed({ waitForImages: true });
         return;
       }
 
@@ -251,13 +427,14 @@ const ImageStudioFeedPanel = forwardRef(function ImageStudioFeedPanel(
     ref,
     () => ({
       scrollToItem: (item, options) => scrollToHistoryItem(item, options),
-      expandFeed,
+      expandFeed: () => expandFeed({ waitForImages: true }),
     }),
     [expandFeed, scrollToHistoryItem],
   );
 
   useEffect(() => {
     if (!pendingScrollItemRef.current) return;
+    if (imagesLoading) return;
     const pending = pendingScrollItemRef.current;
     pendingScrollItemRef.current = null;
     requestAnimationFrame(() => {
@@ -265,7 +442,53 @@ const ImageStudioFeedPanel = forwardRef(function ImageStudioFeedPanel(
         behavior: pending.behavior,
       });
     });
-  }, [feedExpanded, feedRows.length]);
+  }, [feedExpanded, feedRows.length, imagesLoading]);
+
+  useEffect(() => {
+    if (!feedExpanded || !expandPendingKeysRef.current) return;
+    const alreadyLoaded = expandPendingKeysRef.current;
+    expandPendingKeysRef.current = null;
+    const newKeys = collectFeedImageKeys(visibleRows).filter(
+      (key) => !alreadyLoaded.has(key),
+    );
+    startImageLoadWait(newKeys);
+  }, [feedExpanded, visibleRows, startImageLoadWait]);
+
+  useEffect(() => {
+    if (initialWaitStartedRef.current) return;
+
+    if (historyLoading && feedRows.length === 0 && history.length === 0) {
+      setImagesLoading(true);
+      return;
+    }
+
+    if (showEmptyFeed) {
+      initialWaitStartedRef.current = true;
+      clearImageLoadWait();
+      return;
+    }
+
+    const feedKeys = collectFeedImageKeys(visibleRows);
+    if (feedKeys.length === 0) {
+      if (!generating && !historyLoading) {
+        initialWaitStartedRef.current = true;
+        clearImageLoadWait();
+      }
+      return;
+    }
+
+    initialWaitStartedRef.current = true;
+    startImageLoadWait(feedKeys);
+  }, [
+    historyLoading,
+    feedRows.length,
+    history.length,
+    showEmptyFeed,
+    visibleRows,
+    generating,
+    startImageLoadWait,
+    clearImageLoadWait,
+  ]);
 
   useEffect(() => {
     restoreTargetsRef.current = {
@@ -350,8 +573,13 @@ const ImageStudioFeedPanel = forwardRef(function ImageStudioFeedPanel(
   );
 
   const handleLoadMore = useCallback(() => {
-    expandFeed();
-  }, [expandFeed]);
+    if (expandLoading || imagesLoading) return;
+    expandFeed({ waitForImages: true });
+  }, [expandFeed, expandLoading, imagesLoading]);
+
+  const showThumbSkeletons =
+    (historyLoading && history.length === 0 && feedRows.length === 0) ||
+    (imagesLoading && thumbHistory.length === 0 && !showEmptyFeed);
 
   return (
     <div className="image-studio-feed-shell flex min-h-0 min-w-0 flex-1">
@@ -359,6 +587,7 @@ const ImageStudioFeedPanel = forwardRef(function ImageStudioFeedPanel(
         ref={feedScrollRef}
         className="studio-subtle-scrollbar image-studio-feed min-h-0 flex-1 overflow-y-auto"
         onScroll={(e) => handleFeedScroll(e)}
+        aria-busy={imagesLoading ? "true" : undefined}
       >
         {showEmptyFeed ? (
           <div className="image-studio-feed-empty">
@@ -384,16 +613,32 @@ const ImageStudioFeedPanel = forwardRef(function ImageStudioFeedPanel(
           <div className="image-studio-feed-list">
             {showLoadMore ? (
               <div
-                className={`image-studio-feed-load-more${feedAtTop ? " is-visible" : ""}`}
+                className={`image-studio-feed-load-more${
+                  feedAtTop || expandLoading ? " is-visible" : ""
+                }`}
               >
                 <button
                   type="button"
-                  className="image-studio-feed-load-more-btn"
+                  className={`image-studio-feed-load-more-btn${
+                    expandLoading ? " is-loading" : ""
+                  }`}
                   onClick={handleLoadMore}
+                  disabled={expandLoading}
+                  aria-busy={expandLoading ? "true" : undefined}
                   aria-label={t("imageStudio.loadMoreAria")}
                 >
-                  <ChevronUp className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
-                  <span>{t("imageStudio.loadMore")}</span>
+                  {expandLoading ? (
+                    <Loader2
+                      className="image-studio-feed-load-more-spinner h-4 w-4 shrink-0 animate-spin"
+                      strokeWidth={2}
+                      aria-hidden
+                    />
+                  ) : (
+                    <ChevronUp className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
+                  )}
+                  <span>
+                    {expandLoading ? t("common.loading") : t("imageStudio.loadMore")}
+                  </span>
                 </button>
               </div>
             ) : null}
@@ -406,8 +651,18 @@ const ImageStudioFeedPanel = forwardRef(function ImageStudioFeedPanel(
                 loadingHint={row.generating ? generationLoadingHint : ""}
                 noDescriptionLabel={t("imageStudio.noDescription")}
                 openImageAria={t("imageStudio.openImageAria")}
+                eagerImages={!feedExpanded || expandLoading}
+                onImageSettled={handleImageSettled}
               />
             ))}
+            {imagesLoading && !expandLoading ? (
+              <div className="image-studio-feed-images-loading" aria-hidden>
+                <Loader2
+                  className="h-6 w-6 animate-spin text-white/40"
+                  strokeWidth={2}
+                />
+              </div>
+            ) : null}
           </div>
         )}
       </div>
@@ -417,8 +672,9 @@ const ImageStudioFeedPanel = forwardRef(function ImageStudioFeedPanel(
         className="image-studio-thumb-strip studio-subtle-scrollbar shrink-0"
         aria-label={t("imageStudio.historyAria")}
         onScroll={(e) => handleThumbScroll(e.currentTarget.scrollTop)}
+        aria-busy={imagesLoading ? "true" : undefined}
       >
-        {historyLoading && history.length === 0 && feedRows.length === 0 ? (
+        {showThumbSkeletons ? (
           <div className="image-studio-thumb-strip-skeletons" aria-hidden>
             {Array.from({ length: 6 }).map((_, index) => (
               <div key={index} className="image-studio-thumb-strip-skeleton" />
@@ -443,7 +699,11 @@ const ImageStudioFeedPanel = forwardRef(function ImageStudioFeedPanel(
                 }}
                 title={item.input?.trim() || t("imageStudio.generatedImage")}
               >
-                <img src={thumbUrl} alt="" className="image-studio-thumb-strip-img" loading="lazy" />
+                <ThumbImage
+                  imageKey={item.id}
+                  src={thumbUrl}
+                  onSettled={handleImageSettled}
+                />
               </button>
             );
           })
