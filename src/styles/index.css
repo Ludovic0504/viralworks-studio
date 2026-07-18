@@ -1060,6 +1060,28 @@
     height: 100%;
   }
 
+  .image-studio-project-canvas .react-flow__pane {
+    cursor: default !important;
+  }
+
+  .image-studio-project-canvas .react-flow__pane.dragging,
+  .image-studio-project-canvas .react-flow__pane.selection {
+    cursor: default !important;
+  }
+
+  .image-studio-project-canvas .react-flow__node {
+    cursor: pointer;
+  }
+
+  .image-studio-project-canvas .react-flow__node.dragging {
+    cursor: grabbing;
+  }
+
+  .image-studio-project-canvas .react-flow__selection {
+    background: rgba(42, 245, 152, 0.08);
+    border: 1px solid rgba(42, 245, 152, 0.55);
+  }
+
   .image-studio-project-canvas .react-flow__controls {
     border-radius: 0.5rem;
     overflow: hidden;
@@ -1105,6 +1127,9 @@
   }
 
   .image-studio-project-node {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     width: 168px;
     border-radius: 0.75rem;
     background: transparent;
@@ -1112,6 +1137,7 @@
 
   .image-studio-project-node-frame {
     position: relative;
+    width: 100%;
     border-radius: 0.65rem;
     overflow: visible;
     border: 2px solid rgba(255, 255, 255, 0.12);
@@ -1146,6 +1172,59 @@
     width: 100%;
     height: 168px;
     object-fit: cover;
+  }
+
+  .image-studio-project-node-slots {
+    display: inline-flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: center;
+    width: max-content;
+    max-width: 100%;
+    /* Laisse la place au point de liaison bas (collé à l'image) */
+    margin: 1.05rem auto 0;
+    padding: 0.08rem 0.12rem;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 0.35rem;
+    background: rgba(12, 17, 22, 0.92);
+  }
+
+  .image-studio-project-node-slot-item {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .image-studio-project-node-slot-sep {
+    color: rgba(255, 255, 255, 0.28);
+    font-size: 0.55rem;
+    line-height: 1;
+    user-select: none;
+    padding: 0 0.02rem;
+  }
+
+  .image-studio-project-node-slot-btn {
+    appearance: none;
+    border: none;
+    border-radius: 0.22rem;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.88);
+    font-size: 0.55rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    line-height: 1;
+    padding: 0.2rem 0.24rem;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+  }
+
+  .image-studio-project-node-slot-btn:hover {
+    background: rgba(42, 245, 152, 0.12);
+    color: #2af598;
+  }
+
+  .image-studio-project-node-slot-btn:active {
+    transform: translateY(1px);
   }
 
   .image-studio-project-node-placeholder {

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { ImageIcon, Loader2 } from "lucide-react";
 import { getImageUrlFromHistory } from "@/bibliotheque/imageStudio/imageStudioHistory";
 import { getImageStudioUserPrompt } from "@/bibliotheque/imageStudio/promptMentions";
@@ -19,9 +19,12 @@ function sortNewestFirst(items) {
 export default function ImageStudioProjectsHistoryStrip({
   history,
   historyLoading,
+  onAddImage,
   t,
 }) {
   const items = useMemo(() => sortNewestFirst(history), [history]);
+  const didDragRef = useRef(false);
+  const canClickAdd = typeof onAddImage === "function";
 
   return (
     <aside
@@ -33,7 +36,9 @@ export default function ImageStudioProjectsHistoryStrip({
           {t("imageStudio.projectsHistoryTitle")}
         </span>
         <span className="image-studio-projects-history-hint">
-          {t("imageStudio.projectsHistoryHint")}
+          {canClickAdd
+            ? t("imageStudio.projectsHistoryHintCanvas")
+            : t("imageStudio.projectsHistoryHint")}
         </span>
       </div>
 
@@ -58,13 +63,18 @@ export default function ImageStudioProjectsHistoryStrip({
                   className="image-studio-projects-history-thumb"
                   draggable
                   title={getImageStudioUserPrompt(item?.input) || t("imageStudio.generatedImage")}
-                  aria-label={t("imageStudio.projectsHistoryDragAria")}
+                  aria-label={
+                    canClickAdd
+                      ? t("imageStudio.projectsHistoryAddAria")
+                      : t("imageStudio.projectsHistoryDragAria")
+                  }
                   onDragStart={(e) => {
                     const payload = serializeHistoryDragPayload(item);
                     if (!payload) {
                       e.preventDefault();
                       return;
                     }
+                    didDragRef.current = true;
                     e.dataTransfer.setData(IMAGE_STUDIO_HISTORY_DRAG_MIME, payload);
                     e.dataTransfer.setData("application/json", payload);
                     e.dataTransfer.setData("text/plain", payload);
@@ -73,6 +83,14 @@ export default function ImageStudioProjectsHistoryStrip({
                   }}
                   onDragEnd={(e) => {
                     e.currentTarget.classList.remove("is-dragging");
+                  }}
+                  onClick={() => {
+                    if (didDragRef.current) {
+                      didDragRef.current = false;
+                      return;
+                    }
+                    if (!canClickAdd) return;
+                    onAddImage(item);
                   }}
                 >
                   <img src={url} alt="" draggable={false} />

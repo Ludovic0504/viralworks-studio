@@ -560,6 +560,7 @@ export default function ImageStudio() {
   const [selectedProjectNodeId, setSelectedProjectNodeId] = useState(null);
   const [projectCanvasReloadToken, setProjectCanvasReloadToken] = useState(0);
   const selectedProjectNodeRef = useRef(null);
+  const projectCanvasApiRef = useRef(null);
   const projectNodeCountRef = useRef(0);
   const feedScrollTopRef = useRef(0);
   const thumbScrollTopRef = useRef(0);
@@ -1261,31 +1262,61 @@ export default function ImageStudio() {
     void loadProjects();
   }, [loadProjects]);
 
-  const handleSelectProjectNode = useCallback(
-    (payload) => {
-      if (!payload?.imageUrl) {
-        setSelectedProjectNodeId(null);
-        selectedProjectNodeRef.current = null;
-        return;
-      }
-      setSelectedProjectNodeId(payload.nodeId);
+  const handleSelectProjectNode = useCallback((payload) => {
+    if (!payload?.imageUrl) {
+      setSelectedProjectNodeId(null);
+      selectedProjectNodeRef.current = null;
+      return;
+    }
+    setSelectedProjectNodeId(payload.nodeId);
+    selectedProjectNodeRef.current = {
+      nodeId: payload.nodeId,
+      imageUrl: payload.imageUrl,
+      pos_x: payload.posX ?? 0,
+      pos_y: payload.posY ?? 0,
+    };
+  }, []);
+
+  const handleAssignProjectSlot = useCallback(
+    (kind, payload) => {
+      if (!payload?.imageUrl) return;
+      const tokenByKind = {
+        Image1: "@Image1",
+        Avatar: "@Avatar",
+        Produit: "@Produit",
+      };
+      const token = tokenByKind[kind];
+      if (!token) return;
+
+      setSelectedProjectNodeId(payload.nodeId || selectedProjectNodeId);
       selectedProjectNodeRef.current = {
         nodeId: payload.nodeId,
         imageUrl: payload.imageUrl,
         pos_x: payload.posX ?? 0,
         pos_y: payload.posY ?? 0,
       };
-      setImportedRefImage(payload.imageUrl);
-      setImportedRefPreview(payload.imageUrl);
+
+      if (kind === "Image1") {
+        setImportedRefImage(payload.imageUrl);
+        setImportedRefPreview(payload.imageUrl);
+      } else if (kind === "Avatar") {
+        setReferenceImage(payload.imageUrl);
+        setReferencePreview(payload.imageUrl);
+      } else if (kind === "Produit") {
+        setProductImage(payload.imageUrl);
+        setProductPreview(payload.imageUrl);
+      }
+
       setError(null);
-      if (!prompt.includes("@Image1")) {
-        insertPromptMentionAtCursor(promptInputRef, "@Image1");
+      if (!prompt.includes(token)) {
+        insertPromptMentionAtCursor(promptInputRef, token);
       }
       window.requestAnimationFrame(() => {
         promptInputRef.current?.focus();
+        resizePromptTextarea();
       });
     },
-    [prompt],
+    [prompt, selectedProjectNodeId, resizePromptTextarea],
   );
 
   const handleProjectCanvasChanged = useCallback(() => {
@@ -1380,7 +1411,7 @@ export default function ImageStudio() {
     async (payload, flowPos) => {
       if (!openProject?.id || !payload?.imageUrl) return;
       try {
-        await addImageToImageStudioProject({
+        const node = await addImageToImageStudioProject({
           projectId: openProject.id,
           imageUrl: payload.imageUrl,
           prompt: payload.prompt || null,
@@ -1388,10 +1419,12 @@ export default function ImageStudio() {
           posX: flowPos?.x,
           posY: flowPos?.y,
         });
+        if (node) {
+          projectCanvasApiRef.current?.appendNodes?.([node]);
+        }
         setOpenProject((cur) =>
           cur ? { ...cur, cover_url: payload.imageUrl } : cur,
         );
-        setProjectCanvasReloadToken((n) => n + 1);
         void loadProjects();
       } catch (err) {
         setError(
@@ -1402,12 +1435,31 @@ export default function ImageStudio() {
     [openProject?.id, loadProjects],
   );
 
+  const handleClickHistoryAddToCanvas = useCallback(
+    async (item) => {
+      if (!openProject?.id || !item) return;
+      const imageUrl = getImageUrlFromHistory(item);
+      if (!imageUrl) return;
+      const viewportCenter =
+        projectCanvasApiRef.current?.getViewportCenterPosition?.() ?? null;
+      await handleDropHistoryOnCanvas(
+        {
+          historyId: item.id || null,
+          imageUrl,
+          prompt: getImageStudioUserPrompt(item?.input) || "",
+        },
+        viewportCenter,
+      );
+    },
+    [openProject?.id, handleDropHistoryOnCanvas],
+  );
+
   const handleDropFileOnCanvas = useCallback(
     async (file, flowPos) => {
       if (!openProject?.id || !file) return;
       try {
         const imageUrl = await uploadDroppedImageFile(file);
-        await addImageToImageStudioProject({
+        const node = await addImageToImageStudioProject({
           projectId: openProject.id,
           imageUrl,
           prompt: file.name || null,
@@ -1415,8 +1467,10 @@ export default function ImageStudio() {
           posX: flowPos?.x,
           posY: flowPos?.y,
         });
+        if (node) {
+          projectCanvasApiRef.current?.appendNodes?.([node]);
+        }
         setOpenProject((cur) => (cur ? { ...cur, cover_url: imageUrl } : cur));
-        setProjectCanvasReloadToken((n) => n + 1);
         void loadProjects();
       } catch (err) {
         setError(
@@ -1451,6 +1505,7 @@ export default function ImageStudio() {
       );
 
       const createdNodes = [];
+      const createdEdges = [];
       for (let i = 0; i < results.length; i += 1) {
         const result = results[i];
         const pos = positions[i];
@@ -1467,7 +1522,7 @@ export default function ImageStudio() {
           projectNodeCountRef.current += 1;
           if (sourceRef?.nodeId) {
             try {
-              await createImageStudioProjectEdge({
+              const edge = await createImageStudioProjectEdge({
                 projectId: openProject.id,
                 sourceNodeId: sourceRef.nodeId,
                 targetNodeId: node.id,
@@ -1475,6 +1530,7 @@ export default function ImageStudio() {
                 targetHandle: "left",
                 edgeStyle: "arrow",
               });
+              if (edge) createdEdges.push(edge);
             } catch {
               // ignore duplicate edges
             }
@@ -1483,12 +1539,12 @@ export default function ImageStudio() {
       }
 
       if (createdNodes.length > 0) {
+        projectCanvasApiRef.current?.appendNodes?.(createdNodes, createdEdges);
         setOpenProject((cur) =>
           cur
             ? { ...cur, cover_url: createdNodes[createdNodes.length - 1].image_url }
             : cur,
         );
-        setProjectCanvasReloadToken((n) => n + 1);
         void loadProjects();
       }
     },
@@ -1779,10 +1835,12 @@ export default function ImageStudio() {
               </>
             ) : openProject ? (
               <ImageStudioProjectCanvas
+                ref={projectCanvasApiRef}
                 project={openProject}
                 reloadToken={projectCanvasReloadToken}
                 selectedNodeId={selectedProjectNodeId}
                 onSelectNode={handleSelectProjectNode}
+                onAssignSlot={handleAssignProjectSlot}
                 onBack={handleBackToProjects}
                 onCanvasChanged={handleProjectCanvasChanged}
                 onDropHistoryImage={handleDropHistoryOnCanvas}
@@ -1808,14 +1866,9 @@ export default function ImageStudio() {
             <ImageStudioProjectsHistoryStrip
               history={history}
               historyLoading={historyLoading}
+              onAddImage={openProject ? handleClickHistoryAddToCanvas : undefined}
               t={t}
             />
-          ) : null}
-
-          {studioTab === "projects" && openProject && selectedProjectNodeId ? (
-            <p className="image-studio-project-ref-banner shrink-0" role="status">
-              {t("imageStudio.projectSelectedAsRef")}
-            </p>
           ) : null}
 
           {error ? (

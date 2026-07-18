@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ReactFlow,
   Background,
@@ -37,6 +45,8 @@ import {
 
 const NODE_TYPES = { projectImage: ImageStudioProjectNode };
 const EDGE_TYPES = { projectLink: ImageStudioProjectEdge };
+/** Largeur / hauteur visuelle de l'image sur le canvas (hors boutons @). */
+const PROJECT_NODE_MEDIA_SIZE = 168;
 
 const CONNECTION_LINE_STYLE = {
   stroke: "#8fc9b5",
@@ -45,7 +55,7 @@ const CONNECTION_LINE_STYLE = {
 };
 
 function dbNodesToFlow(nodes, selectedId, options = {}) {
-  const { connectingFromId = null } = options;
+  const { connectingFromId = null, onAssignSlot = null } = options;
   return nodes.map((n) => ({
     id: n.id,
     type: "projectImage",
@@ -57,6 +67,7 @@ function dbNodesToFlow(nodes, selectedId, options = {}) {
       historyId: n.history_id,
       linkPending: connectingFromId === n.id,
       isConnectTarget: Boolean(connectingFromId && connectingFromId !== n.id),
+      onAssignSlot,
       raw: n,
     },
   }));
@@ -99,10 +110,12 @@ function ProjectCanvasInner({
   reloadToken,
   selectedNodeId,
   onSelectNode,
+  onAssignSlot,
   onBack,
   onCanvasChanged,
   onDropHistoryImage,
   onDropImageFile,
+  canvasApiRef,
   t,
 }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -115,21 +128,29 @@ function ProjectCanvasInner({
   const positionTimers = useRef(new Map());
   const dbNodesRef = useRef([]);
   const edgeStyleRef = useRef(edgeStyle);
+  const onAssignSlotRef = useRef(onAssignSlot);
   const styleMenuRef = useRef(null);
-  const { fitView, screenToFlowPosition } = useReactFlow();
+  const paneRef = useRef(null);
+  const hasLoadedProjectRef = useRef(null);
+  const handleAssignSlotStableRef = useRef(null);
+  const edgeCallbacksStableRef = useRef(null);
+  const { fitView, screenToFlowPosition, getViewport, setViewport } = useReactFlow();
+
+  const handleAssignSlot = useCallback((kind, payload) => {
+    onAssignSlotRef.current?.(kind, payload);
+  }, []);
 
   useEffect(() => {
     edgeStyleRef.current = edgeStyle;
   }, [edgeStyle]);
 
   useEffect(() => {
-    if (!styleMenuOpen) return;
-    const onDown = (e) => {
-      if (!styleMenuRef.current?.contains(e.target)) setStyleMenuOpen(false);
-    };
-    document.addEventListener("pointerdown", onDown, true);
-    return () => document.removeEventListener("pointerdown", onDown, true);
-  }, [styleMenuOpen]);
+    onAssignSlotRef.current = onAssignSlot;
+  }, [onAssignSlot]);
+
+  useEffect(() => {
+    hasLoadedProjectRef.current = null;
+  }, [project?.id]);
 
   const handleDeleteEdge = useCallback(
     async (edgeId) => {
@@ -153,25 +174,105 @@ function ProjectCanvasInner({
     [handleDeleteEdge, t],
   );
 
+  useEffect(() => {
+    handleAssignSlotStableRef.current = handleAssignSlot;
+    edgeCallbacksStableRef.current = edgeCallbacks;
+  }, [handleAssignSlot, edgeCallbacks]);
+
+  useImperativeHandle(
+    canvasApiRef,
+    () => ({
+      /** Centre du viewport visible → position top-left du nœud pour y centrer l'image. */
+      getViewportCenterPosition() {
+        const el = paneRef.current;
+        if (!el) return null;
+        const rect = el.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return null;
+        const flow = screenToFlowPosition({
+          x: rect.left + rect.width / 2,
+          y: rect.top + rect.height / 2,
+        });
+        return {
+          x: flow.x - PROJECT_NODE_MEDIA_SIZE / 2,
+          y: flow.y - PROJECT_NODE_MEDIA_SIZE / 2,
+        };
+      },
+      /** Ajoute des nœuds/liens sans recharger ni bouger le viewport. */
+      appendNodes(dbNodes, dbEdges = []) {
+        const nodesToAdd = Array.isArray(dbNodes) ? dbNodes.filter(Boolean) : [];
+        if (nodesToAdd.length === 0 && (!dbEdges || dbEdges.length === 0)) return;
+
+        if (nodesToAdd.length > 0) {
+          const existingIds = new Set(dbNodesRef.current.map((n) => n.id));
+          const fresh = nodesToAdd.filter((n) => n?.id && !existingIds.has(n.id));
+          if (fresh.length > 0) {
+            dbNodesRef.current = [...dbNodesRef.current, ...fresh];
+            setNodes((prev) => {
+              const prevIds = new Set(prev.map((n) => n.id));
+              const flowNodes = dbNodesToFlow(fresh, null, {
+                onAssignSlot: handleAssignSlotStableRef.current,
+              }).filter((n) => !prevIds.has(n.id));
+              return flowNodes.length ? [...prev, ...flowNodes] : prev;
+            });
+          }
+        }
+
+        if (Array.isArray(dbEdges) && dbEdges.length > 0) {
+          setEdges((prev) => {
+            const prevIds = new Set(prev.map((e) => e.id));
+            const flowEdges = dbEdgesToFlow(
+              dbEdges,
+              edgeCallbacksStableRef.current || {},
+            ).filter((e) => !prevIds.has(e.id));
+            return flowEdges.length ? [...prev, ...flowEdges] : prev;
+          });
+        }
+      },
+    }),
+    [screenToFlowPosition, setNodes, setEdges],
+  );
+
+  useEffect(() => {
+    if (!styleMenuOpen) return;
+    const onDown = (e) => {
+      if (!styleMenuRef.current?.contains(e.target)) setStyleMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, [styleMenuOpen]);
+
   const loadCanvas = useCallback(async () => {
     if (!project?.id) return;
-    setLoading(true);
+    const isInitialLoad = hasLoadedProjectRef.current !== project.id;
+    if (isInitialLoad) setLoading(true);
+    const preservedViewport = isInitialLoad ? null : getViewport();
     try {
       const canvas = await loadImageStudioProjectCanvas(project.id);
       dbNodesRef.current = canvas.nodes;
       setNodes(
-        dbNodesToFlow(canvas.nodes, null),
+        dbNodesToFlow(canvas.nodes, null, {
+          onAssignSlot: handleAssignSlotStableRef.current,
+        }),
       );
-      setEdges(dbEdgesToFlow(canvas.edges, edgeCallbacks));
-      window.requestAnimationFrame(() => {
-        if (canvas.nodes.length > 0) {
-          fitView({ padding: 0.2, duration: 200 });
-        }
-      });
+      setEdges(
+        dbEdgesToFlow(canvas.edges, edgeCallbacksStableRef.current || {}),
+      );
+      if (isInitialLoad) {
+        hasLoadedProjectRef.current = project.id;
+        window.requestAnimationFrame(() => {
+          if (canvas.nodes.length > 0) {
+            fitView({ padding: 0.2, duration: 200 });
+          }
+        });
+      } else if (preservedViewport) {
+        window.requestAnimationFrame(() => {
+          setViewport(preservedViewport, { duration: 0 });
+        });
+      }
     } finally {
-      setLoading(false);
+      if (isInitialLoad) setLoading(false);
     }
-  }, [project?.id, setNodes, setEdges, fitView, edgeCallbacks]);
+  }, [project?.id, setNodes, setEdges, fitView, getViewport, setViewport]);
 
   useEffect(() => {
     void loadCanvas();
@@ -181,15 +282,15 @@ function ProjectCanvasInner({
     setNodes((prev) =>
       prev.map((n) => ({
         ...n,
-        selected: n.id === selectedNodeId,
         data: {
           ...n.data,
           linkPending: connectingFromId === n.id,
           isConnectTarget: Boolean(connectingFromId && connectingFromId !== n.id),
+          onAssignSlot: handleAssignSlot,
         },
       })),
     );
-  }, [selectedNodeId, connectingFromId, setNodes]);
+  }, [connectingFromId, handleAssignSlot, setNodes]);
 
   useEffect(() => {
     setEdges((prev) =>
@@ -300,23 +401,36 @@ function ProjectCanvasInner({
     return true;
   }, []);
 
-  const handleNodeClick = useCallback(
-    (_event, node) => {
-      onSelectNode?.({
-        nodeId: node.id,
-        imageUrl: node.data?.imageUrl,
-        prompt: node.data?.prompt,
-        historyId: node.data?.historyId,
-        posX: node.position?.x ?? 0,
-        posY: node.position?.y ?? 0,
-      });
-    },
-    [onSelectNode],
-  );
+  const handleSelectionChange = useCallback(
+    ({ nodes: selectedNodes }) => {
+      const sel = Array.isArray(selectedNodes) ? selectedNodes : [];
+      const single = sel.length === 1 ? sel[0] : null;
 
-  const handlePaneClick = useCallback(() => {
-    onSelectNode?.(null);
-  }, [onSelectNode]);
+      setNodes((prev) =>
+        prev.map((n) => ({
+          ...n,
+          data: {
+            ...n.data,
+            showAssignSlots: Boolean(single && single.id === n.id),
+          },
+        })),
+      );
+
+      if (single) {
+        onSelectNode?.({
+          nodeId: single.id,
+          imageUrl: single.data?.imageUrl,
+          prompt: single.data?.prompt,
+          historyId: single.data?.historyId,
+          posX: single.position?.x ?? 0,
+          posY: single.position?.y ?? 0,
+        });
+        return;
+      }
+      onSelectNode?.(null);
+    },
+    [onSelectNode, setNodes],
+  );
 
   const handleEdgesChange = useCallback(
     (changes) => {
@@ -480,6 +594,7 @@ function ProjectCanvasInner({
       </div>
 
       <div
+        ref={paneRef}
         className={`image-studio-project-canvas${isDragOver ? " is-drop-target" : ""}`}
         onDragOver={handleCanvasDragOver}
         onDragLeave={handleCanvasDragLeave}
@@ -505,12 +620,17 @@ function ProjectCanvasInner({
             nodesConnectable
             edgesFocusable
             elementsSelectable
-            onNodeClick={handleNodeClick}
-            onPaneClick={handlePaneClick}
+            multiSelectionKeyCode="Shift"
+            selectionOnDrag
+            selectionMode={SelectionMode.Partial}
+            panOnDrag={[1, 2]}
+            panOnScroll={false}
+            zoomOnScroll
+            zoomOnPinch
+            zoomActivationKeyCode={null}
+            onSelectionChange={handleSelectionChange}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
-            selectionMode={SelectionMode.Partial}
-            fitView
             minZoom={0.2}
             maxZoom={2}
             proOptions={{ hideAttribution: true }}
@@ -551,10 +671,15 @@ function ProjectCanvasInner({
   );
 }
 
-export default function ImageStudioProjectCanvas(props) {
+const ImageStudioProjectCanvas = forwardRef(function ImageStudioProjectCanvas(
+  props,
+  ref,
+) {
   return (
     <ReactFlowProvider>
-      <ProjectCanvasInner {...props} />
+      <ProjectCanvasInner {...props} canvasApiRef={ref} />
     </ReactFlowProvider>
   );
-}
+});
+
+export default ImageStudioProjectCanvas;
