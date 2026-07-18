@@ -36,6 +36,10 @@ import ModalPromptAssistImageStudio from "@/composants/image/ModalPromptAssistIm
 import SheetReglagesImageStudio from "@/composants/image/SheetReglagesImageStudio";
 import ImageStudioFeedPanel from "@/composants/image/ImageStudioFeedPanel";
 import SheetHistoriqueImageStudio from "@/composants/image/SheetHistoriqueImageStudio";
+import ImageStudioModeTabs from "@/composants/image/ImageStudioModeTabs";
+import ImageStudioProjectsGrid from "@/composants/image/ImageStudioProjectsGrid";
+import ImageStudioProjectCanvas from "@/composants/image/ImageStudioProjectCanvas";
+import ImageStudioProjectsHistoryStrip from "@/composants/image/ImageStudioProjectsHistoryStrip";
 import ImageStudioPromptInput, {
   insertPromptMentionAtCursor,
 } from "@/composants/image/ImageStudioPromptInput";
@@ -57,7 +61,7 @@ import {
   listImageStudioHistory,
   saveImageStudioHistory,
 } from "@/bibliotheque/imageStudio/imageStudioHistory";
-import { groupHistoryIntoFeedRows, mergeFeedRowsFromHistory } from "@/bibliotheque/imageStudio/imageStudioFeed";
+import { mergeFeedRowsFromHistory } from "@/bibliotheque/imageStudio/imageStudioFeed";
 import { subscribeImageStudioHistory } from "@/bibliotheque/imageStudio/imageStudioRealtime";
 import {
   loadImageStudioUiState,
@@ -67,13 +71,26 @@ import {
   applyImageStudioHistoryCache,
   saveImageStudioHistoryCache,
 } from "@/bibliotheque/imageStudio/imageStudioHistoryCache";
-import { resolvePromptMentions, IMAGE_STUDIO_PROMPT_MAX_LENGTH, getImageStudioUserPrompt } from "@/bibliotheque/imageStudio/promptMentions";
+import { resolvePromptMentions, IMAGE_STUDIO_PROMPT_MAX_LENGTH, getImageStudioUserPrompt, removePromptMentionToken } from "@/bibliotheque/imageStudio/promptMentions";
 import { resolveImageStudioGuideApplyPayload } from "@/bibliotheque/imageStudio/imageStudioGuideApply";
 import {
   uploadImageStudioReferenceUrl,
   isSupportedImageStudioReferenceMime,
   IMAGE_STUDIO_REF_IMPORT_MESSAGE,
 } from "@/bibliotheque/imageStudio/uploadImageStudioReference";
+import {
+  listImageStudioProjects,
+  createImageStudioProject,
+  renameImageStudioProject,
+  deleteImageStudioProject,
+} from "@/bibliotheque/imageStudio/imageStudioProjects";
+import {
+  createImageStudioProjectNode,
+  createImageStudioProjectEdge,
+  loadImageStudioProjectCanvas,
+  addImageToImageStudioProject,
+  nextNodePositions,
+} from "@/bibliotheque/imageStudio/imageStudioProjectCanvas";
 import ModalBibliothequeAvatars from "@/composants/studio/avatar/ModalBibliothequeAvatars";
 import ModalBibliothequeProduits from "@/composants/studio/product/ModalBibliothequeProduits";
 import { capturePostHog, trackPostHogError } from "@/bibliotheque/posthog/client";
@@ -532,12 +549,43 @@ export default function ImageStudio() {
   const [scrollToEndToken, setScrollToEndToken] = useState(0);
   const [restoreFeedScrollTop, setRestoreFeedScrollTop] = useState(undefined);
   const [restoreThumbScrollTop, setRestoreThumbScrollTop] = useState(undefined);
+  const [activeTab, setActiveTab] = useState("generation");
+  const [isMobileLayout, setIsMobileLayout] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia(MOBILE_DROPDOWN_MQ).matches;
+  });
+  const [projects, setProjects] = useState([]);
+  const [projectsLoading, setProjectsLoading] = useState(false);
+  const [openProject, setOpenProject] = useState(null);
+  const [selectedProjectNodeId, setSelectedProjectNodeId] = useState(null);
+  const [projectCanvasReloadToken, setProjectCanvasReloadToken] = useState(0);
+  const selectedProjectNodeRef = useRef(null);
+  const projectNodeCountRef = useRef(0);
   const feedScrollTopRef = useRef(0);
   const thumbScrollTopRef = useRef(0);
   const feedPanelRef = useRef(null);
   const uiStateHydratedRef = useRef(false);
   const scrollPersistTimerRef = useRef(null);
   const [uiPersistReady, setUiPersistReady] = useState(false);
+
+  /** Projets : desktop/tablette uniquement — mobile = génération classique. */
+  const studioTab = isMobileLayout ? "generation" : activeTab;
+
+  useEffect(() => {
+    const mq = window.matchMedia(MOBILE_DROPDOWN_MQ);
+    const sync = () => setIsMobileLayout(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  useEffect(() => {
+    if (!isMobileLayout) return;
+    setActiveTab("generation");
+    setOpenProject(null);
+    setSelectedProjectNodeId(null);
+    selectedProjectNodeRef.current = null;
+  }, [isMobileLayout]);
 
   const persistUiState = useCallback(
     (patch = {}) => {
@@ -605,6 +653,27 @@ export default function ImageStudio() {
   }, [generating]);
 
   const hasImagePlan = !accessLoading && hasImageStudioPlan(plan);
+
+  const loadProjects = useCallback(async () => {
+    if (!session?.user?.id) {
+      setProjects([]);
+      return;
+    }
+    setProjectsLoading(true);
+    try {
+      const rows = await listImageStudioProjects();
+      setProjects(rows);
+    } catch {
+      setProjects([]);
+    } finally {
+      setProjectsLoading(false);
+    }
+  }, [session?.user?.id]);
+
+  useEffect(() => {
+    if (authLoading || studioTab !== "projects") return;
+    void loadProjects();
+  }, [authLoading, studioTab, loadProjects]);
 
   useEffect(() => {
     if (accessLoading) return;
@@ -876,10 +945,11 @@ export default function ImageStudio() {
     generationCount <= quotaHeadroom &&
     Boolean(modelsAvailability[model]) &&
     !accessLoading &&
-    !authLoading;
+    !authLoading &&
+    !(studioTab === "projects" && !openProject);
   const canClickGenerate = hasImagePlan
     ? canRunGeneration
-    : !generating && !accessLoading;
+    : !generating && !accessLoading && !(studioTab === "projects" && !openProject);
 
   useEffect(() => {
     if (generationCount > maxGenerationCount) {
@@ -953,7 +1023,17 @@ export default function ImageStudio() {
   const clearImportedRef = useCallback(() => {
     setImportedRefImage(null);
     setImportedRefPreview(null);
+    setSelectedProjectNodeId(null);
+    selectedProjectNodeRef.current = null;
   }, []);
+
+  const clearImportedRefAndMention = useCallback(() => {
+    clearImportedRef();
+    setPrompt((current) => removePromptMentionToken(current, "@Image1"));
+    window.requestAnimationFrame(() => {
+      resizePromptTextarea();
+    });
+  }, [clearImportedRef, resizePromptTextarea]);
 
   const openProductLibrary = useCallback(() => {
     void runWithAuth(() => {
@@ -1131,6 +1211,290 @@ export default function ImageStudio() {
     [modelsAvailability, clearImportedRef, clearReference, clearProduct, closeImagePreview],
   );
 
+  const handleTabChange = useCallback((tab) => {
+    if (isMobileLayout && tab === "projects") return;
+    setActiveTab(tab);
+    if (tab === "generation") {
+      setOpenProject(null);
+      setSelectedProjectNodeId(null);
+      selectedProjectNodeRef.current = null;
+    }
+  }, [isMobileLayout]);
+
+  const handleCreateProject = useCallback(async () => {
+    const created = await createImageStudioProject(t("imageStudio.defaultProjectName"));
+    if (!created) return null;
+    setProjects((prev) => [created, ...prev]);
+    return created;
+  }, [t]);
+
+  const handleRenameProject = useCallback(async (projectId, name) => {
+    const updated = await renameImageStudioProject(projectId, name);
+    if (!updated) return;
+    setProjects((prev) => prev.map((p) => (p.id === projectId ? updated : p)));
+    setOpenProject((cur) => (cur?.id === projectId ? updated : cur));
+  }, []);
+
+  const handleDeleteProject = useCallback(async (projectId) => {
+    await deleteImageStudioProject(projectId);
+    setProjects((prev) => prev.filter((p) => p.id !== projectId));
+    setOpenProject((cur) => {
+      if (cur?.id !== projectId) return cur;
+      setSelectedProjectNodeId(null);
+      selectedProjectNodeRef.current = null;
+      return null;
+    });
+  }, []);
+
+  const handleOpenProject = useCallback((project) => {
+    setOpenProject(project);
+    setSelectedProjectNodeId(null);
+    selectedProjectNodeRef.current = null;
+    projectNodeCountRef.current = 0;
+    setProjectCanvasReloadToken((n) => n + 1);
+  }, []);
+
+  const handleBackToProjects = useCallback(() => {
+    setOpenProject(null);
+    setSelectedProjectNodeId(null);
+    selectedProjectNodeRef.current = null;
+    void loadProjects();
+  }, [loadProjects]);
+
+  const handleSelectProjectNode = useCallback(
+    (payload) => {
+      if (!payload?.imageUrl) {
+        setSelectedProjectNodeId(null);
+        selectedProjectNodeRef.current = null;
+        return;
+      }
+      setSelectedProjectNodeId(payload.nodeId);
+      selectedProjectNodeRef.current = {
+        nodeId: payload.nodeId,
+        imageUrl: payload.imageUrl,
+        pos_x: payload.posX ?? 0,
+        pos_y: payload.posY ?? 0,
+      };
+      setImportedRefImage(payload.imageUrl);
+      setImportedRefPreview(payload.imageUrl);
+      setError(null);
+      if (!prompt.includes("@Image1")) {
+        insertPromptMentionAtCursor(promptInputRef, "@Image1");
+      }
+      window.requestAnimationFrame(() => {
+        promptInputRef.current?.focus();
+      });
+    },
+    [prompt],
+  );
+
+  const handleProjectCanvasChanged = useCallback(() => {
+    void loadProjects();
+  }, [loadProjects]);
+
+  const readFileAsDataUrl = useCallback((file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("Lecture du fichier impossible."));
+      reader.readAsDataURL(file);
+    });
+  }, []);
+
+  const uploadDroppedImageFile = useCallback(
+    async (file) => {
+      if (!isSupportedImageStudioReferenceMime(file.type)) {
+        throw new Error(IMAGE_STUDIO_REF_IMPORT_MESSAGE);
+      }
+      const userId = session?.user?.id;
+      const dataUrl = await readFileAsDataUrl(file);
+      if (!dataUrl) throw new Error("Lecture du fichier impossible.");
+      if (!userId) return dataUrl;
+      return uploadImageStudioReferenceUrl(userId, dataUrl);
+    },
+    [session?.user?.id, readFileAsDataUrl],
+  );
+
+  const handleDropHistoryOnFolder = useCallback(
+    async (project, payload) => {
+      if (!project?.id || !payload?.imageUrl) return;
+      try {
+        await addImageToImageStudioProject({
+          projectId: project.id,
+          imageUrl: payload.imageUrl,
+          prompt: payload.prompt || null,
+          historyId: payload.historyId || null,
+        });
+        setProjects((prev) =>
+          prev.map((p) =>
+            p.id === project.id
+              ? {
+                  ...p,
+                  cover_url: payload.imageUrl,
+                  updated_at: new Date().toISOString(),
+                }
+              : p,
+          ),
+        );
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Impossible d'ajouter l'image au projet.",
+        );
+      }
+    },
+    [],
+  );
+
+  const handleDropFileOnFolder = useCallback(
+    async (project, file) => {
+      if (!project?.id || !file) return;
+      try {
+        const imageUrl = await uploadDroppedImageFile(file);
+        await addImageToImageStudioProject({
+          projectId: project.id,
+          imageUrl,
+          prompt: file.name || null,
+          historyId: null,
+        });
+        setProjects((prev) =>
+          prev.map((p) =>
+            p.id === project.id
+              ? {
+                  ...p,
+                  cover_url: imageUrl,
+                  updated_at: new Date().toISOString(),
+                }
+              : p,
+          ),
+        );
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Impossible d'ajouter l'image au projet.",
+        );
+      }
+    },
+    [uploadDroppedImageFile],
+  );
+
+  const handleDropHistoryOnCanvas = useCallback(
+    async (payload, flowPos) => {
+      if (!openProject?.id || !payload?.imageUrl) return;
+      try {
+        await addImageToImageStudioProject({
+          projectId: openProject.id,
+          imageUrl: payload.imageUrl,
+          prompt: payload.prompt || null,
+          historyId: payload.historyId || null,
+          posX: flowPos?.x,
+          posY: flowPos?.y,
+        });
+        setOpenProject((cur) =>
+          cur ? { ...cur, cover_url: payload.imageUrl } : cur,
+        );
+        setProjectCanvasReloadToken((n) => n + 1);
+        void loadProjects();
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Impossible d'ajouter l'image au projet.",
+        );
+      }
+    },
+    [openProject?.id, loadProjects],
+  );
+
+  const handleDropFileOnCanvas = useCallback(
+    async (file, flowPos) => {
+      if (!openProject?.id || !file) return;
+      try {
+        const imageUrl = await uploadDroppedImageFile(file);
+        await addImageToImageStudioProject({
+          projectId: openProject.id,
+          imageUrl,
+          prompt: file.name || null,
+          historyId: null,
+          posX: flowPos?.x,
+          posY: flowPos?.y,
+        });
+        setOpenProject((cur) => (cur ? { ...cur, cover_url: imageUrl } : cur));
+        setProjectCanvasReloadToken((n) => n + 1);
+        void loadProjects();
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Impossible d'ajouter l'image au projet.",
+        );
+      }
+    },
+    [openProject?.id, uploadDroppedImageFile, loadProjects],
+  );
+
+  const appendGeneratedImagesToProject = useCallback(
+    async (results, trimmedPrompt) => {
+      if (!openProject?.id || !results.length) return;
+
+      const canvas = await loadImageStudioProjectCanvas(openProject.id);
+      projectNodeCountRef.current = canvas.nodes.length;
+
+      const sourceRef = selectedProjectNodeRef.current;
+      const sourceNode = sourceRef?.nodeId
+        ? canvas.nodes.find((n) => n.id === sourceRef.nodeId)
+        : null;
+      const sourcePos = sourceNode
+        ? { pos_x: sourceNode.pos_x, pos_y: sourceNode.pos_y }
+        : sourceRef
+          ? { pos_x: sourceRef.pos_x ?? 0, pos_y: sourceRef.pos_y ?? 0 }
+          : null;
+
+      const positions = nextNodePositions(
+        results.length,
+        sourcePos,
+        canvas.nodes.length,
+      );
+
+      const createdNodes = [];
+      for (let i = 0; i < results.length; i += 1) {
+        const result = results[i];
+        const pos = positions[i];
+        const node = await createImageStudioProjectNode({
+          projectId: openProject.id,
+          imageUrl: result.url,
+          prompt: trimmedPrompt,
+          historyId: result.historyId ?? null,
+          posX: pos.posX,
+          posY: pos.posY,
+        });
+        if (node) {
+          createdNodes.push(node);
+          projectNodeCountRef.current += 1;
+          if (sourceRef?.nodeId) {
+            try {
+              await createImageStudioProjectEdge({
+                projectId: openProject.id,
+                sourceNodeId: sourceRef.nodeId,
+                targetNodeId: node.id,
+                sourceHandle: "right",
+                targetHandle: "left",
+                edgeStyle: "arrow",
+              });
+            } catch {
+              // ignore duplicate edges
+            }
+          }
+        }
+      }
+
+      if (createdNodes.length > 0) {
+        setOpenProject((cur) =>
+          cur
+            ? { ...cur, cover_url: createdNodes[createdNodes.length - 1].image_url }
+            : cur,
+        );
+        setProjectCanvasReloadToken((n) => n + 1);
+        void loadProjects();
+      }
+    },
+    [openProject?.id, loadProjects],
+  );
+
   const handleGenerate = async () => {
     if (!hasImagePlan || !canRunGeneration) return;
     setError(null);
@@ -1157,33 +1521,39 @@ export default function ImageStudio() {
       productUrl: productImage || null,
       importedRefUrl: importedRefImage || null,
     };
+    const inProjectMode = studioTab === "projects" && Boolean(openProject?.id);
 
     setGenerating(true);
-    setFeedRows((prev) => [
-      ...prev,
-      {
-        id: batchId,
-        prompt: trimmedPrompt,
-        model,
-        aspectRatio,
-        createdAt: new Date().toISOString(),
-        images: [],
-        generating: true,
-        progress: { current: 0, total: generationCount },
-      },
-    ]);
+    if (!inProjectMode) {
+      setFeedRows((prev) => [
+        ...prev,
+        {
+          id: batchId,
+          prompt: trimmedPrompt,
+          model,
+          aspectRatio,
+          createdAt: new Date().toISOString(),
+          images: [],
+          generating: true,
+          progress: { current: 0, total: generationCount },
+        },
+      ]);
+    }
 
     let lastResult = null;
+    const projectResults = [];
 
     try {
       for (let i = 0; i < generationCount; i += 1) {
-        setFeedRows((prev) =>
-          prev.map((row) =>
-            row.id === batchId
-              ? { ...row, progress: { current: i + 1, total: generationCount } }
-              : row,
-          ),
-        );
+        if (!inProjectMode) {
+          setFeedRows((prev) =>
+            prev.map((row) =>
+              row.id === batchId
+                ? { ...row, progress: { current: i + 1, total: generationCount } }
+                : row,
+            ),
+          );
+        }
 
         const result = await generateImageStudio(
           generationPrompt,
@@ -1198,20 +1568,23 @@ export default function ImageStudio() {
         lastResult = result;
         setActiveHistoryId(result.historyId ?? null);
         setQuotaCount(result.count);
+        projectResults.push(result);
 
-        setFeedRows((prev) =>
-          prev.map((row) =>
-            row.id === batchId
-              ? {
-                  ...row,
-                  images: [
-                    ...row.images,
-                    { url: result.url, historyId: result.historyId },
-                  ],
-                }
-              : row,
-          ),
-        );
+        if (!inProjectMode) {
+          setFeedRows((prev) =>
+            prev.map((row) =>
+              row.id === batchId
+                ? {
+                    ...row,
+                    images: [
+                      ...row.images,
+                      { url: result.url, historyId: result.historyId },
+                    ],
+                  }
+                : row,
+            ),
+          );
+        }
 
         if (!result.historyId) {
           await saveImageStudioHistory(
@@ -1224,19 +1597,33 @@ export default function ImageStudio() {
           );
         }
       }
-      await loadHistory({ syncFeed: true });
-      setScrollToEndToken((token) => token + 1);
+
+      if (inProjectMode) {
+        await appendGeneratedImagesToProject(projectResults, trimmedPrompt);
+      } else {
+        await loadHistory({ syncFeed: true });
+        setScrollToEndToken((token) => token + 1);
+      }
       setPrompt("");
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Erreur lors de la génération.";
       if (!lastResult) {
-        setFeedRows((prev) => prev.filter((row) => row.id !== batchId));
+        if (!inProjectMode) {
+          setFeedRows((prev) => prev.filter((row) => row.id !== batchId));
+        }
         setError(message);
       } else {
+        if (inProjectMode && projectResults.length > 0) {
+          try {
+            await appendGeneratedImagesToProject(projectResults, trimmedPrompt);
+          } catch {
+            // keep error message below
+          }
+        }
         setError(
           generationCount > 1
-            ? `${message} Les images déjà générées restent visibles dans le flux.`
+            ? `${message} Les images déjà générées restent visibles.`
             : message,
         );
       }
@@ -1247,15 +1634,17 @@ export default function ImageStudio() {
       if (message.includes("Quota mensuel")) {
         setQuotaCount(quotaLimit);
       }
-      if (lastResult) {
+      if (lastResult && !inProjectMode) {
         void loadHistory({ syncFeed: true });
       }
     } finally {
-      setFeedRows((prev) =>
-        prev.map((row) =>
-          row.id === batchId ? { ...row, generating: false, progress: undefined } : row,
-        ),
-      );
+      if (!inProjectMode) {
+        setFeedRows((prev) =>
+          prev.map((row) =>
+            row.id === batchId ? { ...row, generating: false, progress: undefined } : row,
+          ),
+        );
+      }
       setGenerating(false);
     }
   };
@@ -1321,9 +1710,17 @@ export default function ImageStudio() {
               );
             })()}
           </h1>
-          <p className="mt-0.5 text-xs text-white/40 sm:text-sm">
-            {t("imageStudio.subtitle")}
-          </p>
+          {isMobileLayout ? (
+            <p className="mt-0.5 text-xs text-white/40 sm:text-sm">
+              {t("imageStudio.subtitle")}
+            </p>
+          ) : (
+            <ImageStudioModeTabs
+              activeTab={activeTab}
+              onChange={handleTabChange}
+              t={t}
+            />
+          )}
         </div>
         {hasImagePlan ? (
           <IndicateurCreditsImageStudio
@@ -1346,38 +1743,80 @@ export default function ImageStudio() {
       <div className="image-studio-main flex min-h-0 flex-1 flex-col">
         <div className="image-studio-workspace flex min-h-0 flex-1 flex-col gap-2 px-4 sm:px-6 lg:px-8">
           <div className="image-studio-canvas image-studio-canvas--feed relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl">
-            <button
-              type="button"
-              className="image-studio-history-fab sm:hidden"
-              onClick={() => setHistorySheetOpen(true)}
-              aria-label={`${t("imageStudio.history")} (${history.length} image${history.length !== 1 ? "s" : ""})`}
-              title={t("imageStudio.history")}
-            >
-              <Clock className="h-4 w-4" strokeWidth={2} aria-hidden />
-              {history.length > 0 ? (
-                <span className="image-studio-history-fab-badge" aria-hidden>
-                  {history.length > 99 ? "99+" : history.length}
-                </span>
-              ) : null}
-            </button>
+            {studioTab === "generation" ? (
+              <>
+                <button
+                  type="button"
+                  className="image-studio-history-fab sm:hidden"
+                  onClick={() => setHistorySheetOpen(true)}
+                  aria-label={`${t("imageStudio.history")} (${history.length} image${history.length !== 1 ? "s" : ""})`}
+                  title={t("imageStudio.history")}
+                >
+                  <Clock className="h-4 w-4" strokeWidth={2} aria-hidden />
+                  {history.length > 0 ? (
+                    <span className="image-studio-history-fab-badge" aria-hidden>
+                      {history.length > 99 ? "99+" : history.length}
+                    </span>
+                  ) : null}
+                </button>
 
-            <ImageStudioFeedPanel
-              ref={feedPanelRef}
-              feedRows={feedRows}
+                <ImageStudioFeedPanel
+                  ref={feedPanelRef}
+                  feedRows={feedRows}
+                  history={history}
+                  historyLoading={historyLoading}
+                  generating={generating}
+                  generationLoadingHint={generationLoadingHint}
+                  activeHistoryId={activeHistoryId}
+                  onSelectHistoryItem={focusHistoryImageInCanvas}
+                  onImageOpen={openImagePreview}
+                  restoreFeedScrollTop={restoreFeedScrollTop}
+                  restoreThumbScrollTop={restoreThumbScrollTop}
+                  scrollToEndToken={scrollToEndToken}
+                  onFeedScroll={handleFeedScroll}
+                  onThumbScroll={handleThumbScroll}
+                />
+              </>
+            ) : openProject ? (
+              <ImageStudioProjectCanvas
+                project={openProject}
+                reloadToken={projectCanvasReloadToken}
+                selectedNodeId={selectedProjectNodeId}
+                onSelectNode={handleSelectProjectNode}
+                onBack={handleBackToProjects}
+                onCanvasChanged={handleProjectCanvasChanged}
+                onDropHistoryImage={handleDropHistoryOnCanvas}
+                onDropImageFile={handleDropFileOnCanvas}
+                t={t}
+              />
+            ) : (
+              <ImageStudioProjectsGrid
+                projects={projects}
+                loading={projectsLoading}
+                onOpen={handleOpenProject}
+                onCreate={handleCreateProject}
+                onRename={handleRenameProject}
+                onDelete={handleDeleteProject}
+                onDropHistoryImage={handleDropHistoryOnFolder}
+                onDropImageFile={handleDropFileOnFolder}
+                t={t}
+              />
+            )}
+          </div>
+
+          {studioTab === "projects" ? (
+            <ImageStudioProjectsHistoryStrip
               history={history}
               historyLoading={historyLoading}
-              generating={generating}
-              generationLoadingHint={generationLoadingHint}
-              activeHistoryId={activeHistoryId}
-              onSelectHistoryItem={focusHistoryImageInCanvas}
-              onImageOpen={openImagePreview}
-              restoreFeedScrollTop={restoreFeedScrollTop}
-              restoreThumbScrollTop={restoreThumbScrollTop}
-              scrollToEndToken={scrollToEndToken}
-              onFeedScroll={handleFeedScroll}
-              onThumbScroll={handleThumbScroll}
+              t={t}
             />
-          </div>
+          ) : null}
+
+          {studioTab === "projects" && openProject && selectedProjectNodeId ? (
+            <p className="image-studio-project-ref-banner shrink-0" role="status">
+              {t("imageStudio.projectSelectedAsRef")}
+            </p>
+          ) : null}
 
           {error ? (
             <p className="shrink-0 text-sm text-red-400 sm:pb-0" role="alert">
@@ -1395,7 +1834,7 @@ export default function ImageStudio() {
                   preview={importedRefPreview}
                   disabled={generating}
                   onPick={openPromptImport}
-                  onClear={clearImportedRef}
+                  onClear={clearImportedRefAndMention}
                 />
 
                 <input

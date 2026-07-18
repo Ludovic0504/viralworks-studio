@@ -305,3 +305,15 @@ export function getMentionAssetAvailability(assets: PromptMentionAssets): Record
 export function isPromptMentionKind(value: string): value is PromptMentionKind {
   return MENTION_KINDS.includes(value as PromptMentionKind);
 }
+
+/** Retire toutes les occurrences d'une mention (@Image1, @Avatar, …) et nettoie les espaces. */
+export function removePromptMentionToken(prompt: string, token: string): string {
+  if (!prompt || !token) return prompt || "";
+  const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return String(prompt)
+    .replace(new RegExp(`${escaped}\\b`, "g"), "")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/ ?\n ?/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}

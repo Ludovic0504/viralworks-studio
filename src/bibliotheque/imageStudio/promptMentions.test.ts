@@ -4,6 +4,7 @@ import {
   getImageStudioUserPrompt,
   parseMentionKindsInOrder,
   promptHasMentions,
+  removePromptMentionToken,
   resolvePromptMentions,
   splitPromptForMentionHighlight,
   stripImageStudioCompositionBlock,
@@ -24,6 +25,16 @@ describe("promptMentions", () => {
   it("detects when prompt has mentions", () => {
     expect(promptHasMentions("plain prompt")).toBe(false);
     expect(promptHasMentions("with @Image1 ref")).toBe(true);
+  });
+
+  it("removes @Image1 mention when clearing the reference slot", () => {
+    expect(removePromptMentionToken("@Image1 un selfie réaliste", "@Image1")).toBe(
+      "un selfie réaliste",
+    );
+    expect(removePromptMentionToken("avec @Image1 et du texte", "@Image1")).toBe(
+      "avec et du texte",
+    );
+    expect(removePromptMentionToken("@Image1", "@Image1")).toBe("");
   });
 
   it("keeps user prompt separate from generation prompt", () => {
