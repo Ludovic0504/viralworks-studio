@@ -1405,10 +1405,49 @@
     margin: 0;
     padding: 0.1rem 0;
     display: flex;
+    align-items: center;
+    justify-content: flex-end;
     gap: 0.45rem;
     overflow-x: auto;
     overflow-y: hidden;
     max-width: 100%;
+  }
+
+  .image-studio-projects-history-more-item {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    align-self: stretch;
+  }
+
+  .image-studio-projects-history-more-btn {
+    appearance: none;
+    height: auto;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    color: rgba(126, 184, 164, 0.85);
+    font-size: 0.68rem;
+    font-weight: 500;
+    white-space: normal;
+    cursor: pointer;
+    transition: color 0.12s;
+  }
+
+  .image-studio-projects-history-more-btn:hover {
+    background: transparent;
+    border-color: transparent;
+    color: rgba(143, 201, 181, 0.95);
+  }
+
+  .image-studio-load-more-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    line-height: 1.1;
+    text-align: center;
   }
 
   .image-studio-projects-history-thumb {

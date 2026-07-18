@@ -50,6 +50,9 @@ function ImageStudioProjectNode({ data, selected }) {
               alt={prompt || ""}
               className="image-studio-project-node-img"
               draggable={false}
+              loading="eager"
+              decoding="async"
+              fetchPriority="high"
             />
           ) : (
             <div className="image-studio-project-node-placeholder" />

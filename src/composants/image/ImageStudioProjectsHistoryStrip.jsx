@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import { ImageIcon, Loader2 } from "lucide-react";
 import { getImageUrlFromHistory } from "@/bibliotheque/imageStudio/imageStudioHistory";
 import { getImageStudioUserPrompt } from "@/bibliotheque/imageStudio/promptMentions";
@@ -6,6 +6,24 @@ import {
   IMAGE_STUDIO_HISTORY_DRAG_MIME,
   serializeHistoryDragPayload,
 } from "@/bibliotheque/imageStudio/imageStudioHistoryDrag";
+
+/** Miniatures visibles avant « Voir plus » (bandeau Projets). */
+export const PROJECTS_HISTORY_PREVIEW_LIMIT = 6;
+
+function LoadMoreStackedLabel({ label }) {
+  const parts = String(label || "")
+    .trim()
+    .split(/\s+/);
+  if (parts.length < 2) {
+    return <span>{label}</span>;
+  }
+  return (
+    <span className="image-studio-load-more-stack" aria-hidden>
+      <span>{parts[0]}</span>
+      <span>{parts.slice(1).join(" ")}</span>
+    </span>
+  );
+}
 
 function sortNewestFirst(items) {
   return [...items].sort((a, b) => {
@@ -24,7 +42,13 @@ export default function ImageStudioProjectsHistoryStrip({
 }) {
   const items = useMemo(() => sortNewestFirst(history), [history]);
   const didDragRef = useRef(false);
+  const [expanded, setExpanded] = useState(false);
   const canClickAdd = typeof onAddImage === "function";
+
+  const visibleItems = expanded
+    ? items
+    : items.slice(0, PROJECTS_HISTORY_PREVIEW_LIMIT);
+  const hasMore = !expanded && items.length > PROJECTS_HISTORY_PREVIEW_LIMIT;
 
   return (
     <aside
@@ -53,7 +77,7 @@ export default function ImageStudioProjectsHistoryStrip({
         </div>
       ) : (
         <ul className="image-studio-projects-history-strip studio-subtle-scrollbar">
-          {items.map((item) => {
+          {visibleItems.map((item) => {
             const url = getImageUrlFromHistory(item);
             if (!url) return null;
             return (
@@ -62,7 +86,10 @@ export default function ImageStudioProjectsHistoryStrip({
                   type="button"
                   className="image-studio-projects-history-thumb"
                   draggable
-                  title={getImageStudioUserPrompt(item?.input) || t("imageStudio.generatedImage")}
+                  title={
+                    getImageStudioUserPrompt(item?.input) ||
+                    t("imageStudio.generatedImage")
+                  }
                   aria-label={
                     canClickAdd
                       ? t("imageStudio.projectsHistoryAddAria")
@@ -93,11 +120,30 @@ export default function ImageStudioProjectsHistoryStrip({
                     onAddImage(item);
                   }}
                 >
-                  <img src={url} alt="" draggable={false} />
+                  <img
+                    src={url}
+                    alt=""
+                    draggable={false}
+                    loading="lazy"
+                    decoding="async"
+                    fetchPriority="low"
+                  />
                 </button>
               </li>
             );
           })}
+          {hasMore ? (
+            <li className="image-studio-projects-history-more-item">
+              <button
+                type="button"
+                className="image-studio-projects-history-more-btn"
+                onClick={() => setExpanded(true)}
+                aria-label={t("imageStudio.loadMoreAria")}
+              >
+                <LoadMoreStackedLabel label={t("imageStudio.loadMore")} />
+              </button>
+            </li>
+          ) : null}
         </ul>
       )}
     </aside>

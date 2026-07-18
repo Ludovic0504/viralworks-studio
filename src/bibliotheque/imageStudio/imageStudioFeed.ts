@@ -22,8 +22,11 @@ export type ImageStudioFeedRow = {
 
 export const IMAGE_STUDIO_FEED_PROMPT_MAX = 140;
 
-/** Nombre de lignes de génération visibles par défaut dans le canva central. */
-export const FEED_VISIBLE_ROW_LIMIT = 6;
+/** Nombre d'images visibles par défaut dans le canva Génération. */
+export const FEED_VISIBLE_IMAGE_LIMIT = 6;
+
+/** @deprecated Utiliser FEED_VISIBLE_IMAGE_LIMIT (limite en images, plus en lignes). */
+export const FEED_VISIBLE_ROW_LIMIT = FEED_VISIBLE_IMAGE_LIMIT;
 
 export function feedRowContainsHistoryItem(
   row: ImageStudioFeedRow,
@@ -36,17 +39,55 @@ export function feedRowContainsHistoryItem(
   return Boolean(batchId && row.id === batchId);
 }
 
+/**
+ * Affiche les N images les plus récentes (fin du feed).
+ * Tronque éventuellement la ligne la plus ancienne du lot visible.
+ */
 export function getFeedRowVisibility(
   feedRows: ImageStudioFeedRow[],
   expanded: boolean,
-  limit = FEED_VISIBLE_ROW_LIMIT,
+  imageLimit = FEED_VISIBLE_IMAGE_LIMIT,
 ): { visibleRows: ImageStudioFeedRow[]; hiddenCount: number } {
-  if (expanded || feedRows.length <= limit) {
+  if (expanded || feedRows.length === 0) {
     return { visibleRows: feedRows, hiddenCount: 0 };
   }
+
+  const totalImages = feedRows.reduce(
+    (sum, row) => sum + (row.images?.length || 0),
+    0,
+  );
+  if (totalImages <= imageLimit) {
+    return { visibleRows: feedRows, hiddenCount: 0 };
+  }
+
+  let remaining = imageLimit;
+  const selected: ImageStudioFeedRow[] = [];
+
+  for (let i = feedRows.length - 1; i >= 0 && remaining > 0; i -= 1) {
+    const row = feedRows[i];
+    const images = row.images || [];
+
+    if (images.length === 0) {
+      if (row.generating) selected.unshift(row);
+      continue;
+    }
+
+    if (images.length <= remaining) {
+      selected.unshift(row);
+      remaining -= images.length;
+      continue;
+    }
+
+    selected.unshift({
+      ...row,
+      images: images.slice(images.length - remaining),
+    });
+    remaining = 0;
+  }
+
   return {
-    visibleRows: feedRows.slice(-limit),
-    hiddenCount: feedRows.length - limit,
+    visibleRows: selected,
+    hiddenCount: totalImages - imageLimit,
   };
 }
 
