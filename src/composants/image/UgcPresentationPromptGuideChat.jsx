@@ -41,6 +41,10 @@ import {
 } from "@/bibliotheque/imageStudio/ugcPresentationPhysicalPools";
 import { useImageStudioChatbotTr } from "@/bibliotheque/i18n/useImageStudioChatbotTr";
 import { translateLabeledOptions } from "@/bibliotheque/i18n/chatbotTranslate";
+import {
+  genderFromContext,
+  shouldSkipIdentitySteps,
+} from "@/bibliotheque/imageStudio/promptFromImage";
 
 /** @typedef {'presentationMode' | 'bodyZone' | 'posture' | 'gender' | 'age' | 'physical' | 'product' | 'autreTenue' | 'autreTenueCustom' | 'location' | 'ready'} UgcPresentationGuideStep */
 /** @typedef {'text' | 'image'} UgcPresentationProductInputMode */
@@ -414,7 +418,13 @@ function goToAfterBodyZone(bodyZone) {
   return { step: "posture", pose: null };
 }
 
-export default function UgcPresentationPromptGuideChat({ template, onBack, onApplyPrompt, onClose }) {
+export default function UgcPresentationPromptGuideChat({
+  template,
+  onBack,
+  onApplyPrompt,
+  onClose,
+  fromImageContext = null,
+}) {
   const { ui, tr, template: localizeTemplate, locale } = useImageStudioChatbotTr();
   const localizedTemplate = useMemo(
     () => localizeTemplate(template),
@@ -440,16 +450,35 @@ export default function UgcPresentationPromptGuideChat({ template, onBack, onApp
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
+  const skipIdentity = shouldSkipIdentitySteps(fromImageContext);
+  const seededGender = genderFromContext(fromImageContext);
+  const seededAge = Number.parseInt(String(fromImageContext?.personTraits?.ageRange || "").match(/\d+/)?.[0] || "", 10);
+  const seededAgeSafe = Number.isFinite(seededAge)
+    ? Math.min(UGC_PRESENTATION_AGE_MAX, Math.max(UGC_PRESENTATION_AGE_MIN, seededAge))
+    : UGC_PRESENTATION_AGE_DEFAULT;
+  const seededProfileId =
+    skipIdentity && seededGender
+      ? resolveUgcPresentationProfileIdFromAge(seededGender, seededAgeSafe)
+      : null;
+
   const [presentationMode, setPresentationMode] = useState(null);
   const [bodyZone, setBodyZone] = useState(null);
   const [pose, setPose] = useState(null);
-  const [gender, setGender] = useState(null);
-  const [age, setAge] = useState(UGC_PRESENTATION_AGE_DEFAULT);
-  const [profileId, setProfileId] = useState(null);
+  const [gender, setGender] = useState(seededGender);
+  const [age, setAge] = useState(seededAgeSafe);
+  const [profileId, setProfileId] = useState(seededProfileId);
   const [guideStep, setGuideStep] = useState(
     /** @type {UgcPresentationGuideStep} */ ("presentationMode"),
   );
-  const [slots, setSlots] = useState({});
+  const [slots, setSlots] = useState(() =>
+    seededProfileId
+      ? {
+          profileId: seededProfileId,
+          age: String(seededAgeSafe),
+          physicalMode: "from-image",
+        }
+      : {},
+  );
   const [draft, setDraft] = useState("");
   const [ready, setReady] = useState(false);
   const [adjustOpen, setAdjustOpen] = useState(false);
@@ -468,6 +497,9 @@ export default function UgcPresentationPromptGuideChat({ template, onBack, onApp
 
   const profile = useMemo(() => getUgcSelfieProfileById(profileId), [profileId]);
   const selectedAge = (slots.age ?? "").trim();
+  const productName = (slots.productName ?? "").trim();
+  const isProductImageMode = slots.productInputMode === "image";
+  const productFocusLabel = (slots.productFocus ?? "").trim();
   const isFullOutfit = bodyZone === "full-outfit";
 
   const filledSlots = useMemo(() => fillTemplateSlotDefaults(localizedTemplate, slots), [localizedTemplate, slots]);
@@ -567,22 +599,32 @@ export default function UgcPresentationPromptGuideChat({ template, onBack, onApp
   const handleBodyZoneSelect = useCallback((zoneId) => {
     setBodyZone(zoneId);
     const next = goToAfterBodyZone(zoneId);
+    const goToProduct = skipIdentity && next.step === "gender";
     setSlots((prev) => ({
       ...prev,
       bodyZone: zoneId,
       pose: next.pose ?? prev.pose,
+      ...(goToProduct && seededProfileId
+        ? { profileId: seededProfileId, age: String(seededAgeSafe), physicalMode: "from-image" }
+        : {}),
     }));
     if (next.pose) {
       setPose(next.pose);
     }
-    setGuideStep(next.step);
-  }, []);
+    setGuideStep(goToProduct ? "product" : next.step);
+  }, [seededAgeSafe, seededProfileId, skipIdentity]);
 
   const handlePostureSelect = useCallback((poseId) => {
     setPose(poseId);
-    setSlots((prev) => ({ ...prev, pose: poseId }));
-    setGuideStep("gender");
-  }, []);
+    setSlots((prev) => ({
+      ...prev,
+      pose: poseId,
+      ...(skipIdentity && seededProfileId
+        ? { profileId: seededProfileId, age: String(seededAgeSafe), physicalMode: "from-image" }
+        : {}),
+    }));
+    setGuideStep(skipIdentity ? "product" : "gender");
+  }, [seededAgeSafe, seededProfileId, skipIdentity]);
 
   const handleGenderSelect = useCallback((nextGender) => {
     setGender(nextGender);
@@ -755,13 +797,18 @@ export default function UgcPresentationPromptGuideChat({ template, onBack, onApp
         prompt: assembledPrompt,
         productImageUrl: productImagePreview,
         productFocus: productFocus || null,
+        avatarUrl: fromImageContext?.avatarUrl || null,
       });
     } else {
-      onApplyPrompt(assembledPrompt);
+      onApplyPrompt({
+        prompt: assembledPrompt,
+        avatarUrl: fromImageContext?.avatarUrl || null,
+      });
     }
     onClose();
   }, [
     assembledPrompt,
+    fromImageContext?.avatarUrl,
     onApplyPrompt,
     onClose,
     productImagePreview,

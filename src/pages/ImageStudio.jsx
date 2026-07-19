@@ -74,6 +74,10 @@ import {
 import { resolvePromptMentions, IMAGE_STUDIO_PROMPT_MAX_LENGTH, getImageStudioUserPrompt, removePromptMentionToken } from "@/bibliotheque/imageStudio/promptMentions";
 import { resolveImageStudioGuideApplyPayload } from "@/bibliotheque/imageStudio/imageStudioGuideApply";
 import {
+  buildGuideApplyExtrasFromImageContext,
+  ensureMentionTokensInPrompt,
+} from "@/bibliotheque/imageStudio/promptFromImage";
+import {
   uploadImageStudioReferenceUrl,
   isSupportedImageStudioReferenceMime,
   IMAGE_STUDIO_REF_IMPORT_MESSAGE,
@@ -541,6 +545,12 @@ export default function ImageStudio() {
   const [subscribeModalOpen, setSubscribeModalOpen] = useState(false);
   const [promptsModalOpen, setPromptsModalOpen] = useState(false);
   const [promptAssistModalOpen, setPromptAssistModalOpen] = useState(false);
+  /** true uniquement si Assist ouvert via Projet + @Avatar (parcours interne) */
+  const [promptAssistFromImage, setPromptAssistFromImage] = useState(false);
+  const [promptFromImageSession, setPromptFromImageSession] = useState(null);
+  /** Contexte après interview habits → ouvert dans Type d'image / guides */
+  const [promptFromImageContext, setPromptFromImageContext] = useState(null);
+  const [promptsInitialTemplate, setPromptsInitialTemplate] = useState(null);
   const [previewState, setPreviewState] = useState(null);
   const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
   const [historySheetOpen, setHistorySheetOpen] = useState(false);
@@ -922,6 +932,18 @@ export default function ImageStudio() {
   const resizePromptTextarea = useCallback(() => {
     const el = promptInputRef.current;
     if (!el) return;
+
+    const lockCompact = studioTab === "projects" && Boolean(openProject);
+    if (lockCompact) {
+      const style = window.getComputedStyle(el);
+      const lineHeight = parseFloat(style.lineHeight) || 20;
+      const paddingTop = parseFloat(style.paddingTop) || 0;
+      const paddingBottom = parseFloat(style.paddingBottom) || 0;
+      el.style.height = `${lineHeight + paddingTop + paddingBottom}px`;
+      el.style.overflowY = "auto";
+      return;
+    }
+
     el.style.height = "auto";
     const style = window.getComputedStyle(el);
     const lineHeight = parseFloat(style.lineHeight) || 20;
@@ -930,7 +952,7 @@ export default function ImageStudio() {
     const maxHeight = lineHeight * PROMPT_MAX_ROWS + paddingTop + paddingBottom;
     el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`;
     el.style.overflowY = el.scrollHeight > maxHeight ? "auto" : "hidden";
-  }, []);
+  }, [openProject, studioTab]);
 
   useEffect(() => {
     resizePromptTextarea();
@@ -974,7 +996,16 @@ export default function ImageStudio() {
   const clearReference = useCallback(() => {
     setReferenceImage(null);
     setReferencePreview(null);
+    setPromptFromImageSession(null);
   }, []);
+
+  const clearReferenceAndMention = useCallback(() => {
+    clearReference();
+    setPrompt((current) => removePromptMentionToken(current, "@Avatar"));
+    window.requestAnimationFrame(() => {
+      resizePromptTextarea();
+    });
+  }, [clearReference, resizePromptTextarea]);
 
   const openPromptImport = useCallback(() => {
     promptImportInputRef.current?.click();
@@ -1055,28 +1086,60 @@ export default function ImageStudio() {
     setProductFocus(null);
   }, []);
 
+  const clearProductAndMention = useCallback(() => {
+    clearProduct();
+    setPrompt((current) => removePromptMentionToken(current, "@Produit"));
+    window.requestAnimationFrame(() => {
+      resizePromptTextarea();
+    });
+  }, [clearProduct, resizePromptTextarea]);
+
   const handleGuideApplyPrompt = useCallback((payload) => {
     const {
       prompt: nextPrompt,
       productImageUrl,
       productFocus: nextProductFocus,
       importedRefImageUrl,
+      avatarUrl,
     } = resolveImageStudioGuideApplyPayload(payload);
-    setPrompt(nextPrompt);
-    if (productImageUrl) {
-      setProductImage(productImageUrl);
-      setProductPreview(productImageUrl);
-      setProductFocus(nextProductFocus);
-      setError(null);
-    } else if (nextProductFocus) {
-      setProductFocus(nextProductFocus);
+
+    const extras = buildGuideApplyExtrasFromImageContext(promptFromImageContext);
+    let prompt = nextPrompt;
+    const tokens = [
+      ...(extras.ensureTokens || []),
+      ...(avatarUrl || extras.avatarUrl ? ["@Avatar"] : []),
+    ];
+    prompt = ensureMentionTokensInPrompt(prompt, tokens);
+
+    setPrompt(prompt);
+
+    const resolvedAvatar = avatarUrl || extras.avatarUrl;
+    if (resolvedAvatar) {
+      setReferenceImage(resolvedAvatar);
+      setReferencePreview(resolvedAvatar);
     }
-    if (importedRefImageUrl) {
-      setImportedRefImage(importedRefImageUrl);
-      setImportedRefPreview(importedRefImageUrl);
+
+    const resolvedProduct = productImageUrl || extras.productImageUrl;
+    const resolvedFocus = nextProductFocus || extras.productFocus;
+    if (resolvedProduct) {
+      setProductImage(resolvedProduct);
+      setProductPreview(resolvedProduct);
+      setProductFocus(resolvedFocus);
+      setError(null);
+    } else if (resolvedFocus) {
+      setProductFocus(resolvedFocus);
+    }
+
+    const resolvedImported = importedRefImageUrl || extras.importedRefImageUrl;
+    if (resolvedImported) {
+      setImportedRefImage(resolvedImported);
+      setImportedRefPreview(resolvedImported);
       setError(null);
     }
-  }, []);
+
+    setPromptFromImageContext(null);
+    setPromptsInitialTemplate(null);
+  }, [promptFromImageContext]);
 
   const handlePromptAssistApply = useCallback((payload) => {
     const {
@@ -1302,6 +1365,11 @@ export default function ImageStudio() {
       } else if (kind === "Avatar") {
         setReferenceImage(payload.imageUrl);
         setReferencePreview(payload.imageUrl);
+        setPromptFromImageSession({
+          avatarUrl: payload.imageUrl,
+          nodeId: payload.nodeId || null,
+          source: "project",
+        });
       } else if (kind === "Produit") {
         setProductImage(payload.imageUrl);
         setProductPreview(payload.imageUrl);
@@ -1318,6 +1386,53 @@ export default function ImageStudio() {
     },
     [prompt, selectedProjectNodeId, resizePromptTextarea],
   );
+
+  const ensurePromptFromImageSession = useCallback(() => {
+    const avatarUrl = promptFromImageSession?.avatarUrl || (openProject ? referenceImage : null);
+    if (!avatarUrl || !openProject) return null;
+    if (!promptFromImageSession?.avatarUrl) {
+      setPromptFromImageSession({
+        avatarUrl,
+        nodeId: selectedProjectNodeId || null,
+        source: "project",
+      });
+    }
+    return avatarUrl;
+  }, [
+    openProject,
+    promptFromImageSession?.avatarUrl,
+    referenceImage,
+    selectedProjectNodeId,
+  ]);
+
+  /** Baguette : chat libre, sauf si @Avatar projet → Type d'image d'abord. */
+  const handleOpenPromptAssist = useCallback(() => {
+    const avatarUrl = ensurePromptFromImageSession();
+    if (avatarUrl) {
+      setPromptFromImageContext(null);
+      setPromptsInitialTemplate(null);
+      setPromptsModalOpen(true);
+      return;
+    }
+    setPromptAssistFromImage(false);
+    setPromptAssistModalOpen(true);
+  }, [ensurePromptFromImageSession]);
+
+  /** Chip Assistant prompt → toujours le choix Type d'image d'abord. */
+  const handleOpenPromptAssistantChip = useCallback(() => {
+    ensurePromptFromImageSession();
+    setPromptFromImageContext(null);
+    setPromptsInitialTemplate(null);
+    setPromptsModalOpen(true);
+  }, [ensurePromptFromImageSession]);
+
+  const handleFromImageContextReady = useCallback((ctx) => {
+    setPromptFromImageContext(ctx);
+    if (ctx?.avatarUrl) {
+      setReferenceImage(ctx.avatarUrl);
+      setReferencePreview(ctx.avatarUrl);
+    }
+  }, []);
 
   const handleProjectCanvasChanged = useCallback(() => {
     void loadProjects();
@@ -1482,15 +1597,23 @@ export default function ImageStudio() {
   );
 
   const appendGeneratedImagesToProject = useCallback(
-    async (results, trimmedPrompt) => {
+    async (results, trimmedPrompt, options = {}) => {
       if (!openProject?.id || !results.length) return;
+
+      const {
+        pendingIds = null,
+        aspectRatio: resultAspectRatio = "1:1",
+        positions: presetPositions = null,
+        sourceNodeId = null,
+      } = options;
 
       const canvas = await loadImageStudioProjectCanvas(openProject.id);
       projectNodeCountRef.current = canvas.nodes.length;
 
       const sourceRef = selectedProjectNodeRef.current;
-      const sourceNode = sourceRef?.nodeId
-        ? canvas.nodes.find((n) => n.id === sourceRef.nodeId)
+      const resolvedSourceId = sourceNodeId || sourceRef?.nodeId || null;
+      const sourceNode = resolvedSourceId
+        ? canvas.nodes.find((n) => n.id === resolvedSourceId)
         : null;
       const sourcePos = sourceNode
         ? { pos_x: sourceNode.pos_x, pos_y: sourceNode.pos_y }
@@ -1498,17 +1621,17 @@ export default function ImageStudio() {
           ? { pos_x: sourceRef.pos_x ?? 0, pos_y: sourceRef.pos_y ?? 0 }
           : null;
 
-      const positions = nextNodePositions(
-        results.length,
-        sourcePos,
-        canvas.nodes.length,
-      );
+      const positions =
+        Array.isArray(presetPositions) && presetPositions.length >= results.length
+          ? presetPositions
+          : nextNodePositions(results.length, sourcePos, canvas.nodes.length);
 
       const createdNodes = [];
       const createdEdges = [];
       for (let i = 0; i < results.length; i += 1) {
         const result = results[i];
         const pos = positions[i];
+        const pendingId = Array.isArray(pendingIds) ? pendingIds[i] : null;
         const node = await createImageStudioProjectNode({
           projectId: openProject.id,
           imageUrl: result.url,
@@ -1518,13 +1641,15 @@ export default function ImageStudio() {
           posY: pos.posY,
         });
         if (node) {
-          createdNodes.push(node);
+          const nodeWithAspect = { ...node, aspect_ratio: resultAspectRatio };
+          createdNodes.push(nodeWithAspect);
           projectNodeCountRef.current += 1;
-          if (sourceRef?.nodeId) {
+          let edge = null;
+          if (resolvedSourceId) {
             try {
-              const edge = await createImageStudioProjectEdge({
+              edge = await createImageStudioProjectEdge({
                 projectId: openProject.id,
-                sourceNodeId: sourceRef.nodeId,
+                sourceNodeId: resolvedSourceId,
                 targetNodeId: node.id,
                 sourceHandle: "right",
                 targetHandle: "left",
@@ -1535,11 +1660,20 @@ export default function ImageStudio() {
               // ignore duplicate edges
             }
           }
+          if (pendingId) {
+            projectCanvasApiRef.current?.resolvePendingNode?.(
+              pendingId,
+              nodeWithAspect,
+              edge,
+            );
+          }
         }
       }
 
       if (createdNodes.length > 0) {
-        projectCanvasApiRef.current?.appendNodes?.(createdNodes, createdEdges);
+        if (!pendingIds) {
+          projectCanvasApiRef.current?.appendNodes?.(createdNodes, createdEdges);
+        }
         setOpenProject((cur) =>
           cur
             ? { ...cur, cover_url: createdNodes[createdNodes.length - 1].image_url }
@@ -1578,6 +1712,11 @@ export default function ImageStudio() {
       importedRefUrl: importedRefImage || null,
     };
     const inProjectMode = studioTab === "projects" && Boolean(openProject?.id);
+    const pendingIds = inProjectMode
+      ? Array.from({ length: generationCount }, (_, i) => `pending-${batchId}-${i}`)
+      : null;
+    let projectPendingPositions = null;
+    let projectSourceNodeId = null;
 
     setGenerating(true);
     if (!inProjectMode) {
@@ -1594,6 +1733,63 @@ export default function ImageStudio() {
           progress: { current: 0, total: generationCount },
         },
       ]);
+    } else {
+      let sourceRef = selectedProjectNodeRef.current;
+      if (!sourceRef?.nodeId && promptFromImageSession?.nodeId) {
+        const pos = projectCanvasApiRef.current?.getNodePosition?.(
+          promptFromImageSession.nodeId,
+        );
+        sourceRef = {
+          nodeId: promptFromImageSession.nodeId,
+          pos_x: pos?.pos_x ?? 0,
+          pos_y: pos?.pos_y ?? 0,
+        };
+      }
+      if (!sourceRef?.nodeId && referenceImage) {
+        const nodeId = projectCanvasApiRef.current?.findNodeIdByImageUrl?.(referenceImage);
+        if (nodeId) {
+          const pos = projectCanvasApiRef.current?.getNodePosition?.(nodeId);
+          sourceRef = {
+            nodeId,
+            pos_x: pos?.pos_x ?? 0,
+            pos_y: pos?.pos_y ?? 0,
+          };
+        }
+      }
+      if (sourceRef?.nodeId) {
+        const livePos = projectCanvasApiRef.current?.getNodePosition?.(sourceRef.nodeId);
+        if (livePos) {
+          sourceRef = {
+            ...sourceRef,
+            pos_x: livePos.pos_x,
+            pos_y: livePos.pos_y,
+          };
+        }
+      }
+
+      projectSourceNodeId = sourceRef?.nodeId || null;
+      const sourcePos = sourceRef
+        ? { pos_x: sourceRef.pos_x ?? 0, pos_y: sourceRef.pos_y ?? 0 }
+        : null;
+      const existingCount =
+        projectCanvasApiRef.current?.getNodeCount?.() ?? projectNodeCountRef.current ?? 0;
+      projectNodeCountRef.current = existingCount;
+      projectPendingPositions = nextNodePositions(
+        generationCount,
+        sourcePos,
+        existingCount,
+      );
+
+      projectCanvasApiRef.current?.addPendingNodes?.(
+        pendingIds.map((id, i) => ({
+          id,
+          pos_x: projectPendingPositions[i].posX,
+          pos_y: projectPendingPositions[i].posY,
+          aspectRatio,
+          prompt: trimmedPrompt,
+        })),
+        projectSourceNodeId,
+      );
     }
 
     let lastResult = null;
@@ -1652,10 +1848,29 @@ export default function ImageStudio() {
             generationRefs,
           );
         }
+
+        if (inProjectMode && pendingIds?.[i] && projectPendingPositions?.[i]) {
+          try {
+            await appendGeneratedImagesToProject([result], trimmedPrompt, {
+              pendingIds: [pendingIds[i]],
+              aspectRatio,
+              positions: [projectPendingPositions[i]],
+              sourceNodeId: projectSourceNodeId,
+            });
+          } catch (appendErr) {
+            console.error(appendErr);
+          }
+        }
       }
 
       if (inProjectMode) {
-        await appendGeneratedImagesToProject(projectResults, trimmedPrompt);
+        // Images déjà posées au fil de l’eau ; nettoyage des pending restants si besoin
+        if (pendingIds) {
+          const leftover = pendingIds.slice(projectResults.length);
+          if (leftover.length) {
+            projectCanvasApiRef.current?.removePendingNodes?.(leftover);
+          }
+        }
       } else {
         await loadHistory({ syncFeed: true });
         setScrollToEndToken((token) => token + 1);
@@ -1667,14 +1882,15 @@ export default function ImageStudio() {
       if (!lastResult) {
         if (!inProjectMode) {
           setFeedRows((prev) => prev.filter((row) => row.id !== batchId));
+        } else if (pendingIds) {
+          projectCanvasApiRef.current?.removePendingNodes?.(pendingIds);
         }
         setError(message);
       } else {
-        if (inProjectMode && projectResults.length > 0) {
-          try {
-            await appendGeneratedImagesToProject(projectResults, trimmedPrompt);
-          } catch {
-            // keep error message below
+        if (inProjectMode && pendingIds) {
+          const leftover = pendingIds.slice(projectResults.length);
+          if (leftover.length) {
+            projectCanvasApiRef.current?.removePendingNodes?.(leftover);
           }
         }
         setError(
@@ -1841,6 +2057,8 @@ export default function ImageStudio() {
                 selectedNodeId={selectedProjectNodeId}
                 onSelectNode={handleSelectProjectNode}
                 onAssignSlot={handleAssignProjectSlot}
+                avatarAssignedNodeId={promptFromImageSession?.nodeId || null}
+                avatarAssignedUrl={promptFromImageSession?.avatarUrl || referenceImage || null}
                 onBack={handleBackToProjects}
                 onCanvasChanged={handleProjectCanvasChanged}
                 onDropHistoryImage={handleDropHistoryOnCanvas}
@@ -1880,7 +2098,11 @@ export default function ImageStudio() {
 
         {/* Mobile : canva (flex) → commande · Desktop : feed puis barre en bas */}
         <div className="image-studio-command-bar z-30 shrink-0 px-3 sm:sticky sm:bottom-0 sm:px-6 lg:px-8">
-          <div className="image-studio-command-bar-inner mx-auto max-w-[1400px]">
+            <div
+              className={`image-studio-command-bar-inner mx-auto max-w-[1400px]${
+                studioTab === "projects" && openProject ? " is-project-prompt-compact" : ""
+              }`}
+            >
             <div className="image-studio-command-layout">
               <div className="image-studio-prompt-row">
                 <PromptImportSlot
@@ -1911,7 +2133,7 @@ export default function ImageStudio() {
                   onOpenAvatarPicker={openAvatarLibrary}
                   onOpenProductPicker={openProductLibrary}
                   onOpenImage1Upload={openPromptImport}
-                  onOpenPromptAssist={() => setPromptAssistModalOpen(true)}
+                  onOpenPromptAssist={handleOpenPromptAssist}
                   onResize={resizePromptTextarea}
                 />
               </div>
@@ -1920,7 +2142,7 @@ export default function ImageStudio() {
                 <button
                   type="button"
                   className="image-studio-prompt-guide-chip shrink-0"
-                  onClick={() => setPromptsModalOpen(true)}
+                  onClick={handleOpenPromptAssistantChip}
                   disabled={generating}
                   title="Choisir un type d'image — l'assistant remplit le prompt"
                   aria-label="Choisir un type d'image — l'assistant remplit le prompt"
@@ -1971,7 +2193,7 @@ export default function ImageStudio() {
                     preview={referencePreview}
                     disabled={generating}
                     onPick={handleAvatarShortcut}
-                    onClear={clearReference}
+                    onClear={clearReferenceAndMention}
                     imageClassName="[object-position:16%_center]"
                   />
 
@@ -1980,7 +2202,7 @@ export default function ImageStudio() {
                     preview={productPreview}
                     disabled={generating}
                     onPick={handleProductShortcut}
-                    onClear={clearProduct}
+                    onClear={clearProductAndMention}
                   />
                 </div>
 
@@ -2034,14 +2256,30 @@ export default function ImageStudio() {
 
       <ModalPromptsImageStudio
         open={promptsModalOpen}
-        onClose={() => setPromptsModalOpen(false)}
+        onClose={() => {
+          setPromptsModalOpen(false);
+          setPromptsInitialTemplate(null);
+        }}
         onApplyPrompt={handleGuideApplyPrompt}
+        fromImageContext={promptFromImageContext}
+        fromImageAvatarUrl={
+          promptFromImageSession?.avatarUrl ||
+          (openProject ? referenceImage : null) ||
+          null
+        }
+        onFromImageContextReady={handleFromImageContextReady}
+        initialTemplate={promptsInitialTemplate}
       />
 
       <ModalPromptAssistImageStudio
         open={promptAssistModalOpen}
-        onClose={() => setPromptAssistModalOpen(false)}
+        onClose={() => {
+          setPromptAssistModalOpen(false);
+          setPromptAssistFromImage(false);
+        }}
         onApplyPrompt={handlePromptAssistApply}
+        fromImage={null}
+        onFromImageComplete={null}
       />
 
       <ModalImageStudioPreview

@@ -10,9 +10,13 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+type ChatContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string; detail?: "auto" | "low" | "high" } };
+
 interface ChatMessage {
   role: "system" | "user" | "assistant";
-  content: string;
+  content: string | ChatContentPart[];
 }
 
 interface RequestBody {
@@ -99,7 +103,17 @@ serve(async (req) => {
 
     const MAX_MESSAGE_CHARS = 24000;
     for (const m of messages) {
-      if (m.content && m.content.length > MAX_MESSAGE_CHARS) {
+      const contentLen =
+        typeof m.content === "string"
+          ? m.content.length
+          : Array.isArray(m.content)
+            ? m.content.reduce((sum, part) => {
+                if (part.type === "text") return sum + (part.text?.length ?? 0);
+                // Les data URL d’images sont longues : on borne seulement le texte
+                return sum;
+              }, 0)
+            : 0;
+      if (contentLen > MAX_MESSAGE_CHARS) {
         return new Response(
           JSON.stringify({
             error: `Message trop long (max ${MAX_MESSAGE_CHARS} caractères par message).`,

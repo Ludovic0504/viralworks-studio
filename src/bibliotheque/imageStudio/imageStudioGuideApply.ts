@@ -14,6 +14,8 @@ export type ImageStudioGuideApplyPayload =
       productFocus?: string | null;
       /** Deuxième vêtement uploadé — mappé sur @Image1 dans le prompt assemblé. */
       importedRefImageUrl?: string | null;
+      /** Avatar / identité — mappé sur @Avatar. */
+      avatarUrl?: string | null;
     };
 
 export function resolveImageStudioGuideApplyPayload(payload: ImageStudioGuideApplyPayload): {
@@ -21,6 +23,7 @@ export function resolveImageStudioGuideApplyPayload(payload: ImageStudioGuideApp
   productImageUrl: string | null;
   productFocus: string | null;
   importedRefImageUrl: string | null;
+  avatarUrl: string | null;
 } {
   if (typeof payload === "string") {
     return {
@@ -28,6 +31,7 @@ export function resolveImageStudioGuideApplyPayload(payload: ImageStudioGuideApp
       productImageUrl: null,
       productFocus: null,
       importedRefImageUrl: null,
+      avatarUrl: null,
     };
   }
 
@@ -37,10 +41,12 @@ export function resolveImageStudioGuideApplyPayload(payload: ImageStudioGuideApp
     typeof payload.productFocus === "string" ? payload.productFocus.trim() : "";
   const importedRefImageUrl =
     typeof payload.importedRefImageUrl === "string" ? payload.importedRefImageUrl.trim() : "";
+  const avatarUrl = typeof payload.avatarUrl === "string" ? payload.avatarUrl.trim() : "";
   return {
     prompt: payload.prompt,
     productImageUrl: url || null,
     productFocus: productFocus || null,
     importedRefImageUrl: importedRefImageUrl || null,
+    avatarUrl: avatarUrl || null,
   };
 }

@@ -1,5 +1,6 @@
 import {
   chatCompletion,
+  messageContentToText,
   type ChatMessage,
 } from "@/bibliotheque/openai/chatgpt-client";
 import {
@@ -78,5 +79,5 @@ export async function promptAssistChatCompletion(
     max_tokens: PROMPT_ASSIST_OPENAI_MAX_TOKENS,
   });
 
-  return response.choices[0]?.message?.content?.trim() ?? "";
+  return messageContentToText(response.choices[0]?.message?.content);
 }

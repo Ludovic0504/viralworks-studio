@@ -25,6 +25,13 @@ import { fillTemplateSlotDefaults } from "@/bibliotheque/imageStudio/promptTempl
 import { IMAGE_STUDIO_PRODUCT_MENTION_TOKEN } from "@/bibliotheque/imageStudio/imageStudioGuideApply";
 import { readGuideProductImageFile } from "@/bibliotheque/imageStudio/guideProductImage";
 import GuideProductImagePicker from "@/composants/image/GuideProductImagePicker";
+import {
+  buildClothingNotesForPrompt,
+  genderFromContext,
+  physiqueFromContext,
+  shouldSkipClothingProductStep,
+  shouldSkipIdentitySteps,
+} from "@/bibliotheque/imageStudio/promptFromImage";
 import { useImageStudioChatbotTr } from "@/bibliotheque/i18n/useImageStudioChatbotTr";
 import {
   translateHintOption,
@@ -215,6 +222,7 @@ export default function BrandCampaignShootPromptGuideChat({
   onBack,
   onApplyPrompt,
   onClose,
+  fromImageContext = null,
 }) {
   const { ui, tr, template: localizeTemplate, locale } = useImageStudioChatbotTr();
   const localizedTemplate = useMemo(
@@ -251,7 +259,16 @@ export default function BrandCampaignShootPromptGuideChat({
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
-  const [gender, setGender] = useState(null);
+  const skipIdentity = shouldSkipIdentitySteps(fromImageContext);
+  const skipClothing = shouldSkipClothingProductStep(fromImageContext);
+  const seededGender = genderFromContext(fromImageContext);
+  const seededPhysique = physiqueFromContext(fromImageContext);
+  const seededOutfit = buildClothingNotesForPrompt(
+    fromImageContext?.clothing,
+    fromImageContext?.personTraits,
+  );
+
+  const [gender, setGender] = useState(seededGender);
   const [ambianceId, setAmbianceId] = useState(null);
   const [cameraAngleId, setCameraAngleId] = useState(null);
   const [gazeId, setGazeId] = useState(null);
@@ -263,15 +280,55 @@ export default function BrandCampaignShootPromptGuideChat({
   const [outputFormat, setOutputFormat] = useState(null);
 
   const [guideStep, setGuideStep] = useState(
-    /** @type {BrandCampaignGuideStep} */ ("gender"),
+    /** @type {BrandCampaignGuideStep} */ (skipIdentity ? "ambiance" : "gender"),
   );
-  const [slots, setSlots] = useState({});
+  const [slots, setSlots] = useState(() => {
+    if (!skipIdentity) return {};
+    return {
+      gender: seededGender || "",
+      physique: seededPhysique || "",
+      physicalMode: "from-image",
+      productOutfit: skipClothing ? seededOutfit || IMAGE_STUDIO_PRODUCT_MENTION_TOKEN : "",
+      productInputMode: skipClothing ? "from-image" : undefined,
+    };
+  });
   const [draft, setDraft] = useState("");
   const [ready, setReady] = useState(false);
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [productValidationShown, setProductValidationShown] = useState(false);
   const [guideProductImagePreview, setGuideProductImagePreview] = useState(null);
   const [guideProductImageError, setGuideProductImageError] = useState(null);
+
+  // Si le contexte arrive après le premier rendu, sauter identité / tenue.
+  useEffect(() => {
+    if (!fromImageContext?.personTraits) return;
+    const g = genderFromContext(fromImageContext);
+    const physique = physiqueFromContext(fromImageContext);
+    const outfit = buildClothingNotesForPrompt(
+      fromImageContext.clothing,
+      fromImageContext.personTraits,
+    );
+    const skipClothes = shouldSkipClothingProductStep(fromImageContext);
+    if (g) setGender(g);
+    setSlots((prev) => ({
+      ...prev,
+      gender: g || prev.gender || "",
+      physique: physique || prev.physique || "",
+      physicalMode: prev.physicalMode || "from-image",
+      ...(skipClothes
+        ? {
+            productOutfit: prev.productOutfit || outfit || IMAGE_STUDIO_PRODUCT_MENTION_TOKEN,
+            productInputMode: prev.productInputMode || "from-image",
+          }
+        : {}),
+    }));
+    setGuideStep((current) => {
+      if (current === "gender" || current === "physical" || (skipClothes && current === "product")) {
+        return "ambiance";
+      }
+      return current;
+    });
+  }, [fromImageContext]);
 
   const ambiance = useMemo(
     () => localizedAmbianceOptions.find((item) => item.id === ambianceId) ?? null,
@@ -398,8 +455,8 @@ export default function BrandCampaignShootPromptGuideChat({
   const handleEnvironmentSelect = useCallback((choiceId, promptValue) => {
     setEnvironmentChoiceId(choiceId);
     setSlots((prev) => ({ ...prev, environment: promptValue }));
-    setGuideStep("product");
-  }, []);
+    setGuideStep(skipClothing ? (skipIdentity ? "format" : "physical") : "product");
+  }, [skipClothing, skipIdentity]);
 
   const handleEnvironmentSurprise = useCallback(() => {
     if (!ambianceId) return;
@@ -407,8 +464,8 @@ export default function BrandCampaignShootPromptGuideChat({
     const option = bank[Math.floor(Math.random() * bank.length)] ?? bank[0];
     setEnvironmentChoiceId("surprise");
     setSlots((prev) => ({ ...prev, environment: option.promptValue }));
-    setGuideStep("product");
-  }, [ambianceId]);
+    setGuideStep(skipClothing ? (skipIdentity ? "format" : "physical") : "product");
+  }, [ambianceId, skipClothing, skipIdentity]);
 
   const handleGuideProductImagePick = useCallback(async (file) => {
     setGuideProductImageError(null);
@@ -440,9 +497,9 @@ export default function BrandCampaignShootPromptGuideChat({
         productImageUrl: guideProductImagePreview,
         productInputMode: productOutfit.length >= 2 ? "text" : "image",
       }));
-      setGuideStep("physical");
+      setGuideStep(skipIdentity ? "format" : "physical");
     },
-    [guideProductImagePreview],
+    [guideProductImagePreview, skipIdentity],
   );
 
   const handlePhysicalRandom = useCallback(() => {
@@ -524,13 +581,19 @@ export default function BrandCampaignShootPromptGuideChat({
 
   const handleApply = useCallback(() => {
     if (!assembledPrompt) return;
-    if (slots.productImageUrl) {
-      onApplyPrompt({ prompt: assembledPrompt, productImageUrl: slots.productImageUrl });
+    const payload = {
+      prompt: assembledPrompt,
+      productImageUrl: slots.productImageUrl || null,
+      avatarUrl: fromImageContext?.avatarUrl || null,
+      productFocus: seededOutfit || null,
+    };
+    if (payload.productImageUrl || payload.avatarUrl || payload.productFocus) {
+      onApplyPrompt(payload);
     } else {
       onApplyPrompt(assembledPrompt);
     }
     onClose();
-  }, [assembledPrompt, onApplyPrompt, onClose, slots.productImageUrl]);
+  }, [assembledPrompt, fromImageContext?.avatarUrl, onApplyPrompt, onClose, seededOutfit, slots.productImageUrl]);
 
   const canSubmitGuideProduct =
     Boolean(draft.trim()) || Boolean(guideProductImagePreview);
@@ -584,7 +647,14 @@ export default function BrandCampaignShootPromptGuideChat({
       ? surpriseLabel
       : environmentOptions.find((item) => item.id === environmentChoiceId)?.label ?? null;
   const productOutfit = slots.productOutfit?.trim() ?? "";
+  // Ne jamais afficher les notes techniques EN (seed from-image) comme bulle utilisateur.
+  const showProductInChat =
+    !skipClothing &&
+    Boolean(productOutfit) &&
+    slots.productInputMode !== "from-image" &&
+    productOutfit !== (seededOutfit || "").trim();
   const physicalAnswerLabel = useMemo(() => {
+    if (skipIdentity) return null;
     if (guideStep === "physical") return null;
     if (slots.physicalMode === "random") return ui("brandKeepRandom", "Garder aléatoire");
     if (slots.physicalMode === "manual" && physicalAge && physicalMorphology) {
@@ -594,7 +664,15 @@ export default function BrandCampaignShootPromptGuideChat({
       return `${physicalAge} ${ui("brandAgeYears", "ans")}, ${morphologyLabel}`;
     }
     return null;
-  }, [guideStep, localizedMorphologyOptions, physicalAge, physicalMorphology, slots.physicalMode, ui]);
+  }, [
+    guideStep,
+    localizedMorphologyOptions,
+    physicalAge,
+    physicalMorphology,
+    skipIdentity,
+    slots.physicalMode,
+    ui,
+  ]);
   const formatLabel =
     outputFormat === "story"
       ? localizedFormatOptions.find((item) => item.id === "story")?.label ?? null
@@ -606,16 +684,16 @@ export default function BrandCampaignShootPromptGuideChat({
   const canConfirmPhysical = physicalAge !== null && physicalMorphology !== null;
 
   const botTurnKeys = useMemo(() => {
-    const keys = ["gender"];
-    if (gender) keys.push("ambiance");
+    const keys = skipIdentity ? [] : ["gender"];
+    if (gender || skipIdentity) keys.push("ambiance");
     if (ambianceId) keys.push("cameraAngle");
     if (cameraAngleId && cameraAngleId !== "face-a-face") keys.push("gaze");
     if (distanceId || guideStep === "distance" || slots.distanceBlock) keys.push("distance");
     if (slots.action || guideStep === "action") keys.push("action");
     if (slots.environment || guideStep === "environment") keys.push("environment");
-    if (guideStep === "product" || productOutfit) keys.push("product");
+    if (!skipClothing && (guideStep === "product" || productOutfit)) keys.push("product");
     if (productValidationShown) keys.push("product-validation");
-    if (guideStep === "physical" || physicalAnswerLabel) keys.push("physical");
+    if (!skipIdentity && (guideStep === "physical" || physicalAnswerLabel)) keys.push("physical");
     if (guideStep === "format" || ready) keys.push("format");
     if (ready) keys.push("result");
     return keys;
@@ -629,6 +707,8 @@ export default function BrandCampaignShootPromptGuideChat({
     productOutfit,
     productValidationShown,
     ready,
+    skipClothing,
+    skipIdentity,
     slots.action,
     slots.distanceBlock,
     slots.environment,
@@ -708,35 +788,50 @@ export default function BrandCampaignShootPromptGuideChat({
         role="log"
         aria-live="polite"
       >
-        <ConversationBubble role="bot" visible={isBotVisible("gender")}>
-          <p className="image-studio-prompt-guide-bubble-text">
-            {ui("brandPresenterQuestion", "Qui présente le produit ?")}
-          </p>
-          {guideStep === "gender" ? (
-            <div
-              className="image-studio-prompt-guide-elements-actions image-studio-prompt-guide-bubble-actions"
-              role="group"
-              aria-label={ui("ugcGenderAria", "Sexe")}
-            >
-              <button
-                type="button"
-                className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
-                onClick={() => handleGenderSelect("homme")}
-              >
-                {ui("ugcGenderHomme", "Homme")}
-              </button>
-              <button
-                type="button"
-                className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
-                onClick={() => handleGenderSelect("femme")}
-              >
-                {ui("ugcGenderFemme", "Femme")}
-              </button>
-            </div>
-          ) : null}
-        </ConversationBubble>
+        {skipIdentity ? (
+          <ConversationBubble role="bot" visible>
+            <p className="image-studio-prompt-guide-bubble-text">
+              {skipClothing
+                ? ui(
+                    "fromImageBrandIntroKeep",
+                    "On part de ton avatar, avec les habits de l’image.",
+                  )
+                : ui("fromImageBrandIntro", "On part de ton avatar.")}
+            </p>
+          </ConversationBubble>
+        ) : null}
 
-        {genderLabel ? (
+        {!skipIdentity ? (
+          <ConversationBubble role="bot" visible={isBotVisible("gender")}>
+            <p className="image-studio-prompt-guide-bubble-text">
+              {ui("brandPresenterQuestion", "Qui présente le produit ?")}
+            </p>
+            {guideStep === "gender" ? (
+              <div
+                className="image-studio-prompt-guide-elements-actions image-studio-prompt-guide-bubble-actions"
+                role="group"
+                aria-label={ui("ugcGenderAria", "Sexe")}
+              >
+                <button
+                  type="button"
+                  className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
+                  onClick={() => handleGenderSelect("homme")}
+                >
+                  {ui("ugcGenderHomme", "Homme")}
+                </button>
+                <button
+                  type="button"
+                  className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
+                  onClick={() => handleGenderSelect("femme")}
+                >
+                  {ui("ugcGenderFemme", "Femme")}
+                </button>
+              </div>
+            ) : null}
+          </ConversationBubble>
+        ) : null}
+
+        {!skipIdentity && genderLabel ? (
           <ConversationBubble role="user">
             <p className="image-studio-prompt-guide-bubble-text">{genderLabel}</p>
           </ConversationBubble>
@@ -904,7 +999,7 @@ export default function BrandCampaignShootPromptGuideChat({
           </ConversationBubble>
         ) : null}
 
-        {slots.environment ? (
+        {!skipClothing && slots.environment ? (
           <ConversationBubble role="bot" visible={isBotVisible("product")}>
             <p className="image-studio-prompt-guide-bubble-text">
               {ui("brandOutfitQuestion", "Décris la tenue ou le produit à mettre en avant")}
@@ -929,7 +1024,7 @@ export default function BrandCampaignShootPromptGuideChat({
           </ConversationBubble>
         ) : null}
 
-        {productOutfit ? (
+        {showProductInChat ? (
           <ConversationBubble role="user">
             {slots.productImageUrl ? (
               <div className="image-studio-prompt-ugc-product-answer">
@@ -946,7 +1041,7 @@ export default function BrandCampaignShootPromptGuideChat({
           </ConversationBubble>
         ) : null}
 
-        {productOutfit ? (
+        {!skipIdentity && showProductInChat ? (
           <ConversationBubble role="bot" wide visible={isBotVisible("physical")}>
             <p className="image-studio-prompt-guide-bubble-text">
               {ui("brandPhysicalQuestion", "Veux-tu préciser l'apparence physique ?")}

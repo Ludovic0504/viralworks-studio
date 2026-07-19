@@ -22,6 +22,7 @@ import { readGuideProductImageFile } from "@/bibliotheque/imageStudio/guideProdu
 import GuideProductImagePicker from "@/composants/image/GuideProductImagePicker";
 import { useImageStudioChatbotTr } from "@/bibliotheque/i18n/useImageStudioChatbotTr";
 import { translateLabeledOptions } from "@/bibliotheque/i18n/chatbotTranslate";
+import { genderFromContext, shouldSkipIdentitySteps } from "@/bibliotheque/imageStudio/promptFromImage";
 
 /** @typedef {'productType' | 'gender' | 'bodyZone' | 'container' | 'textureOrObject' | 'posture' | 'decor' | 'lighting' | 'product' | 'ready'} ProduitApplicationGuideStep */
 
@@ -186,6 +187,7 @@ export default function ProduitEnApplicationPromptGuideChat({
   onBack,
   onApplyPrompt,
   onClose,
+  fromImageContext = null,
 }) {
   const { ui, tr, template: localizeTemplate, locale } = useImageStudioChatbotTr();
   const localizedTemplate = useMemo(
@@ -259,8 +261,11 @@ export default function ProduitEnApplicationPromptGuideChat({
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
+  const skipIdentity = shouldSkipIdentitySteps(fromImageContext);
+  const seededGender = genderFromContext(fromImageContext);
+
   const [productTypeId, setProductTypeId] = useState(null);
-  const [genderId, setGenderId] = useState(null);
+  const [genderId, setGenderId] = useState(seededGender);
   const [bodyZoneId, setBodyZoneId] = useState(null);
   const [containerId, setContainerId] = useState(null);
   const [textureTypeId, setTextureTypeId] = useState(null);
@@ -270,7 +275,9 @@ export default function ProduitEnApplicationPromptGuideChat({
   const [lightingId, setLightingId] = useState(null);
 
   const [guideStep, setGuideStep] = useState(/** @type {ProduitApplicationGuideStep} */ ("productType"));
-  const [slots, setSlots] = useState({});
+  const [slots, setSlots] = useState(() =>
+    skipIdentity && seededGender ? { genderId: seededGender } : {},
+  );
   const [draft, setDraft] = useState("");
   const [ready, setReady] = useState(false);
   const [adjustOpen, setAdjustOpen] = useState(false);
@@ -328,9 +335,15 @@ export default function ProduitEnApplicationPromptGuideChat({
       containerId: "",
       textureTypeId: "",
       objectTypeId: "",
+      ...(skipIdentity && seededGender ? { genderId: seededGender } : {}),
     }));
-    setGuideStep("gender");
-  }, []);
+    if (skipIdentity && seededGender) {
+      setGenderId(seededGender);
+      setGuideStep("bodyZone");
+    } else {
+      setGuideStep("gender");
+    }
+  }, [seededGender, skipIdentity]);
 
   const handleGenderSelect = useCallback((nextGenderId) => {
     setGenderId(nextGenderId);
@@ -492,13 +505,13 @@ export default function ProduitEnApplicationPromptGuideChat({
 
   const handleApply = useCallback(() => {
     if (!assembledPrompt) return;
-    if (slots.productImageUrl) {
-      onApplyPrompt({ prompt: assembledPrompt, productImageUrl: slots.productImageUrl });
-    } else {
-      onApplyPrompt(assembledPrompt);
-    }
+    onApplyPrompt({
+      prompt: assembledPrompt,
+      productImageUrl: slots.productImageUrl || null,
+      avatarUrl: fromImageContext?.avatarUrl || null,
+    });
     onClose();
-  }, [assembledPrompt, onApplyPrompt, onClose, slots.productImageUrl]);
+  }, [assembledPrompt, fromImageContext?.avatarUrl, onApplyPrompt, onClose, slots.productImageUrl]);
 
   const canSubmitGuideProduct = Boolean(draft.trim()) || Boolean(guideProductImagePreview);
 

@@ -24,6 +24,12 @@ import { readGuideProductImageFile } from "@/bibliotheque/imageStudio/guideProdu
 import GuideProductImagePicker from "@/composants/image/GuideProductImagePicker";
 import { useImageStudioChatbotTr } from "@/bibliotheque/i18n/useImageStudioChatbotTr";
 import { translateLabeledOptions } from "@/bibliotheque/i18n/chatbotTranslate";
+import {
+  buildClothingNotesForPrompt,
+  genderFromContext,
+  shouldSkipClothingProductStep,
+  shouldSkipIdentitySteps,
+} from "@/bibliotheque/imageStudio/promptFromImage";
 
 /** @typedef {'sceneType' | 'gender' | 'zone' | 'framing' | 'outfit' | 'background' | 'ambiance' | 'customAmbiance' | 'product' | 'pose' | 'format' | 'ready'} EditorialGuideStep */
 
@@ -147,6 +153,7 @@ export default function EditorialWornHeldPromptGuideChat({
   onBack,
   onApplyPrompt,
   onClose,
+  fromImageContext = null,
 }) {
   const { ui, tr, template: localizeTemplate, packshotOptions, locale } = useImageStudioChatbotTr();
   const localizedTemplate = useMemo(
@@ -193,8 +200,16 @@ export default function EditorialWornHeldPromptGuideChat({
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
+  const skipIdentity = shouldSkipIdentitySteps(fromImageContext);
+  const skipClothing = shouldSkipClothingProductStep(fromImageContext);
+  const seededGender = genderFromContext(fromImageContext);
+  const seededOutfit = buildClothingNotesForPrompt(
+    fromImageContext?.clothing,
+    fromImageContext?.personTraits,
+  );
+
   const [sceneTypeId, setSceneTypeId] = useState(null);
-  const [genderId, setGenderId] = useState(null);
+  const [genderId, setGenderId] = useState(seededGender);
   const [zoneId, setZoneId] = useState(null);
   const [framingId, setFramingId] = useState(null);
   const [backgroundId, setBackgroundId] = useState(null);
@@ -203,7 +218,14 @@ export default function EditorialWornHeldPromptGuideChat({
   const [postureId, setPostureId] = useState(null);
 
   const [guideStep, setGuideStep] = useState(/** @type {EditorialGuideStep} */ ("sceneType"));
-  const [slots, setSlots] = useState({});
+  const [slots, setSlots] = useState(() =>
+    skipIdentity
+      ? {
+          genderId: seededGender || "",
+          ...(skipClothing ? { outfitDescription: seededOutfit || "" } : {}),
+        }
+      : {},
+  );
   const [draft, setDraft] = useState("");
   const [ready, setReady] = useState(false);
   const [adjustOpen, setAdjustOpen] = useState(false);
@@ -260,9 +282,20 @@ export default function EditorialWornHeldPromptGuideChat({
     setSceneTypeId(nextSceneTypeId);
     setZoneId(null);
     setFramingId(null);
-    setSlots((prev) => ({ ...prev, sceneTypeId: nextSceneTypeId, zoneId: "", framingId: "" }));
-    setGuideStep("gender");
-  }, []);
+    setSlots((prev) => ({
+      ...prev,
+      sceneTypeId: nextSceneTypeId,
+      zoneId: "",
+      framingId: "",
+      ...(skipIdentity && seededGender ? { genderId: seededGender } : {}),
+    }));
+    if (skipIdentity && seededGender) {
+      setGenderId(seededGender);
+      setGuideStep("zone");
+    } else {
+      setGuideStep("gender");
+    }
+  }, [seededGender, skipIdentity]);
 
   const handleGenderSelect = useCallback((nextGenderId) => {
     setGenderId(nextGenderId);
@@ -280,12 +313,12 @@ export default function EditorialWornHeldPromptGuideChat({
   const handleFramingSelect = useCallback((nextFramingId) => {
     setFramingId(nextFramingId);
     setSlots((prev) => ({ ...prev, framingId: nextFramingId }));
-    if (nextFramingId === "corps-entier") {
+    if (nextFramingId === "corps-entier" && !skipClothing) {
       setGuideStep("outfit");
     } else {
       setGuideStep("background");
     }
-  }, []);
+  }, [skipClothing]);
 
   const handleOutfitSubmit = useCallback((raw) => {
     const outfitDescription = raw.trim();
@@ -454,13 +487,14 @@ export default function EditorialWornHeldPromptGuideChat({
 
   const handleApply = useCallback(() => {
     if (!assembledPrompt) return;
-    if (slots.productImageUrl) {
-      onApplyPrompt({ prompt: assembledPrompt, productImageUrl: slots.productImageUrl });
-    } else {
-      onApplyPrompt(assembledPrompt);
-    }
+    onApplyPrompt({
+      prompt: assembledPrompt,
+      productImageUrl: slots.productImageUrl || null,
+      avatarUrl: fromImageContext?.avatarUrl || null,
+      productFocus: seededOutfit || null,
+    });
     onClose();
-  }, [assembledPrompt, onApplyPrompt, onClose, slots.productImageUrl]);
+  }, [assembledPrompt, fromImageContext?.avatarUrl, onApplyPrompt, onClose, seededOutfit, slots.productImageUrl]);
 
   const canSubmitGuideProduct =
     Boolean(draft.trim()) || Boolean(guideProductImagePreview);
@@ -518,6 +552,7 @@ export default function EditorialWornHeldPromptGuideChat({
   const backgroundLabel = findOptionLabel(localizedBackgroundOptions, backgroundId);
   const ambianceLabel = findOptionLabel(localizedAmbianceOptions, ambianceId);
   const outfitDescription = slots.outfitDescription?.trim() ?? "";
+  const showOutfitInChat = Boolean(outfitDescription) && !skipClothing;
   const productDescription = slots.productDescription?.trim() ?? "";
   const customAmbiance = slots.customAmbiance?.trim() ?? "";
   const formatLabel = findOptionLabel(localizedFormatOptions, slots.formatId);
@@ -537,10 +572,10 @@ export default function EditorialWornHeldPromptGuideChat({
 
   const botTurnKeys = useMemo(() => {
     const keys = ["sceneType"];
-    if (sceneTypeId) keys.push("gender");
+    if (!skipIdentity && sceneTypeId) keys.push("gender");
     if (genderId) keys.push("zone");
     if (zoneId) keys.push("framing");
-    if (framingId === "corps-entier") keys.push("outfit");
+    if (!skipClothing && framingId === "corps-entier") keys.push("outfit");
     if (backgroundId || guideStep === "background" || slots.backgroundId) keys.push("background");
     if (backgroundId === "environnement") keys.push("ambiance");
     if (ambianceId === "autre" || guideStep === "customAmbiance") keys.push("customAmbiance");
@@ -561,6 +596,8 @@ export default function EditorialWornHeldPromptGuideChat({
     productValidationShown,
     ready,
     sceneTypeId,
+    skipClothing,
+    skipIdentity,
     slots.backgroundId,
     zoneId,
   ]);
@@ -660,7 +697,7 @@ export default function EditorialWornHeldPromptGuideChat({
           </ConversationBubble>
         ) : null}
 
-        {sceneTypeId ? (
+        {!skipIdentity && sceneTypeId ? (
           <ConversationBubble role="bot" visible={isBotVisible("gender")}>
             <p className="image-studio-prompt-guide-bubble-text">
               {ui("editorialModelGender", "Genre du modèle")}
@@ -677,7 +714,7 @@ export default function EditorialWornHeldPromptGuideChat({
           </ConversationBubble>
         ) : null}
 
-        {genderLabel ? (
+        {!skipIdentity && genderLabel ? (
           <ConversationBubble role="user">
             <p className="image-studio-prompt-guide-bubble-text">{genderLabel}</p>
           </ConversationBubble>
@@ -731,7 +768,7 @@ export default function EditorialWornHeldPromptGuideChat({
           </ConversationBubble>
         ) : null}
 
-        {framingId === "corps-entier" ? (
+        {framingId === "corps-entier" && !skipClothing ? (
           <ConversationBubble role="bot" visible={isBotVisible("outfit")}>
             <p className="image-studio-prompt-guide-bubble-text">
               {ui("editorialOutfitQuestion", "Décris la tenue du modèle")}
@@ -742,13 +779,13 @@ export default function EditorialWornHeldPromptGuideChat({
           </ConversationBubble>
         ) : null}
 
-        {outfitDescription ? (
+        {showOutfitInChat ? (
           <ConversationBubble role="user">
             <p className="image-studio-prompt-guide-bubble-text">{outfitDescription}</p>
           </ConversationBubble>
         ) : null}
 
-        {(framingId && framingId !== "corps-entier") || outfitDescription ? (
+        {(framingId && framingId !== "corps-entier") || showOutfitInChat || (skipClothing && framingId) ? (
           <ConversationBubble role="bot" visible={isBotVisible("background")}>
             <p className="image-studio-prompt-guide-bubble-text">
               {ui("editorialBackgroundType", "Type de fond")}

@@ -70,6 +70,7 @@ import BrandCampaignShootPromptGuideChat from "@/composants/image/BrandCampaignS
 import EditorialWornHeldPromptGuideChat from "@/composants/image/EditorialWornHeldPromptGuideChat";
 import ProduitEnApplicationPromptGuideChat from "@/composants/image/ProduitEnApplicationPromptGuideChat";
 import OutfitStudioPromptGuideChat from "@/composants/image/OutfitStudioPromptGuideChat";
+import PromptFromImageAssistChat from "@/composants/image/PromptFromImageAssistChat";
 import { useImageStudioChatbotTr } from "@/bibliotheque/i18n/useImageStudioChatbotTr";
 import { translateHintOption } from "@/bibliotheque/i18n/chatbotTranslate";
 
@@ -244,6 +245,7 @@ function PromptTemplateChat({
   onBack,
   onApplyPrompt,
   onClose,
+  fromImageContext: _fromImageContext = null,
 }) {
   const { ui, tr, shot, template: localizeTemplate, packshotOptions, locale } =
     useImageStudioChatbotTr();
@@ -1859,7 +1861,15 @@ function PromptTemplateChat({
   );
 }
 
-export default function ModalPromptsImageStudio({ open, onClose, onApplyPrompt }) {
+export default function ModalPromptsImageStudio({
+  open,
+  onClose,
+  onApplyPrompt,
+  fromImageContext = null,
+  fromImageAvatarUrl = null,
+  onFromImageContextReady = null,
+  initialTemplate = null,
+}) {
   const { ui, template: localizeTemplate, locale } = useImageStudioChatbotTr();
   const localizedTemplates = useMemo(
     () => IMAGE_STUDIO_PROMPT_TEMPLATES.map((item) => localizeTemplate(item)),
@@ -1867,13 +1877,25 @@ export default function ModalPromptsImageStudio({ open, onClose, onApplyPrompt }
   );
   const [view, setView] = useState("hub");
   const [activeTemplate, setActiveTemplate] = useState(null);
+  const [pendingFromImageTemplate, setPendingFromImageTemplate] = useState(null);
+  const [localFromImageContext, setLocalFromImageContext] = useState(null);
+
+  // Préférer le contexte local (interview fraîche) au prop parent éventuellement stale.
+  const effectiveFromImageContext = localFromImageContext || fromImageContext;
 
   useEffect(() => {
     if (!open) {
       setView("hub");
       setActiveTemplate(null);
+      setPendingFromImageTemplate(null);
+      setLocalFromImageContext(null);
+      return;
     }
-  }, [open]);
+    if (initialTemplate) {
+      setActiveTemplate(initialTemplate);
+      setView("chat");
+    }
+  }, [open, initialTemplate]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -1889,15 +1911,49 @@ export default function ModalPromptsImageStudio({ open, onClose, onApplyPrompt }
     };
   }, [open, onClose]);
 
-  const openTemplate = useCallback((template) => {
-    setActiveTemplate(template);
-    setView("chat");
-  }, []);
+  const openTemplate = useCallback(
+    (template) => {
+      if (!template) return;
+      const needsClothingInterview =
+        Boolean(fromImageAvatarUrl) && !effectiveFromImageContext?.personTraits;
+      if (needsClothingInterview) {
+        setPendingFromImageTemplate(template);
+        setActiveTemplate(null);
+        setView("fromImage");
+        return;
+      }
+      setPendingFromImageTemplate(null);
+      setActiveTemplate(template);
+      setView("chat");
+    },
+    [effectiveFromImageContext?.personTraits, fromImageAvatarUrl],
+  );
 
   const handleBack = useCallback(() => {
+    if (view === "fromImage") {
+      setView("hub");
+      setPendingFromImageTemplate(null);
+      return;
+    }
     setView("hub");
     setActiveTemplate(null);
-  }, []);
+  }, [view]);
+
+  const handleFromImageInterviewComplete = useCallback(
+    (ctx) => {
+      setLocalFromImageContext(ctx);
+      onFromImageContextReady?.(ctx);
+      const template = pendingFromImageTemplate;
+      setPendingFromImageTemplate(null);
+      if (template) {
+        setActiveTemplate(template);
+        setView("chat");
+      } else {
+        setView("hub");
+      }
+    },
+    [onFromImageContextReady, pendingFromImageTemplate],
+  );
 
   if (!open) return null;
 
@@ -1907,6 +1963,8 @@ export default function ModalPromptsImageStudio({ open, onClose, onApplyPrompt }
     window.setTimeout(onClose, 0);
   };
 
+  const guideFromImageContext = effectiveFromImageContext;
+
   return createPortal(
     <div
       className="image-studio-prompts-modal-backdrop"
@@ -1914,7 +1972,9 @@ export default function ModalPromptsImageStudio({ open, onClose, onApplyPrompt }
       onClick={handleBackdropClose}
     >
       <div
-        className={`image-studio-prompts-modal${view === "chat" ? " image-studio-prompts-modal--chat" : ""}`}
+        className={`image-studio-prompts-modal${
+          view === "chat" || view === "fromImage" ? " image-studio-prompts-modal--chat" : ""
+        }`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="image-studio-prompts-title"
@@ -1968,62 +2028,97 @@ export default function ModalPromptsImageStudio({ open, onClose, onApplyPrompt }
               ))}
             </div>
           </>
+        ) : view === "fromImage" && fromImageAvatarUrl ? (
+          <div className="image-studio-prompt-from-image-embed">
+            <div className="image-studio-prompt-guide-chat-head image-studio-prompt-guide-chat-head--minimal">
+              <button
+                type="button"
+                className="image-studio-prompt-guide-back"
+                onClick={handleBack}
+                aria-label={ui("back", "Retour aux modèles")}
+              >
+                <ArrowLeft className="h-4 w-4" strokeWidth={2.25} />
+              </button>
+              <div className="image-studio-prompt-guide-chat-title-row">
+                <p className="image-studio-prompt-guide-chat-title">
+                  {pendingFromImageTemplate
+                    ? localizeTemplate(pendingFromImageTemplate).label
+                    : ui("imageType", "Type d'image")}
+                </p>
+                <span className="pulse-dot pulse-dot--online shrink-0" aria-hidden="true" />
+              </div>
+            </div>
+            <PromptFromImageAssistChat
+              avatarUrl={fromImageAvatarUrl}
+              preselectedTemplate={pendingFromImageTemplate}
+              embedded
+              onClose={onClose}
+              onComplete={(ctx) => handleFromImageInterviewComplete(ctx)}
+            />
+          </div>
         ) : activeTemplate ? (
           isUgcSelfieGuideTemplate(activeTemplate) ? (
             <UgcSelfiePromptGuideChat
-              key={`${activeTemplate.id}-${locale}`}
+              key={`${activeTemplate.id}-${locale}-${guideFromImageContext?.clothing?.mode ?? "plain"}`}
               template={activeTemplate}
               onBack={handleBack}
               onApplyPrompt={onApplyPrompt}
               onClose={onClose}
+              fromImageContext={guideFromImageContext}
             />
           ) : isUgcPresentationGuideTemplate(activeTemplate) ? (
             <UgcPresentationPromptGuideChat
-              key={`${activeTemplate.id}-${locale}`}
+              key={`${activeTemplate.id}-${locale}-${guideFromImageContext?.clothing?.mode ?? "plain"}`}
               template={activeTemplate}
               onBack={handleBack}
               onApplyPrompt={onApplyPrompt}
               onClose={onClose}
+              fromImageContext={guideFromImageContext}
             />
           ) : isBrandCampaignShootGuideTemplate(activeTemplate) ? (
             <BrandCampaignShootPromptGuideChat
-              key={`${activeTemplate.id}-${locale}`}
+              key={`${activeTemplate.id}-${locale}-${guideFromImageContext?.clothing?.mode ?? "plain"}`}
               template={activeTemplate}
               onBack={handleBack}
               onApplyPrompt={onApplyPrompt}
               onClose={onClose}
+              fromImageContext={guideFromImageContext}
             />
           ) : isEditorialWornHeldGuideTemplate(activeTemplate) ? (
             <EditorialWornHeldPromptGuideChat
-              key={`${activeTemplate.id}-${locale}`}
+              key={`${activeTemplate.id}-${locale}-${guideFromImageContext?.clothing?.mode ?? "plain"}`}
               template={activeTemplate}
               onBack={handleBack}
               onApplyPrompt={onApplyPrompt}
               onClose={onClose}
+              fromImageContext={guideFromImageContext}
             />
           ) : isProduitEnApplicationGuideTemplate(activeTemplate) ? (
             <ProduitEnApplicationPromptGuideChat
-              key={`${activeTemplate.id}-${locale}`}
+              key={`${activeTemplate.id}-${locale}-${guideFromImageContext?.clothing?.mode ?? "plain"}`}
               template={activeTemplate}
               onBack={handleBack}
               onApplyPrompt={onApplyPrompt}
               onClose={onClose}
+              fromImageContext={guideFromImageContext}
             />
           ) : isOutfitStudioGuideTemplate(activeTemplate) ? (
             <OutfitStudioPromptGuideChat
-              key={`${activeTemplate.id}-${locale}`}
+              key={`${activeTemplate.id}-${locale}-${guideFromImageContext?.clothing?.mode ?? "plain"}`}
               template={activeTemplate}
               onBack={handleBack}
               onApplyPrompt={onApplyPrompt}
               onClose={onClose}
+              fromImageContext={guideFromImageContext}
             />
           ) : (
           <PromptTemplateChat
-            key={`${activeTemplate.id}-${locale}`}
+            key={`${activeTemplate.id}-${locale}-${guideFromImageContext?.clothing?.mode ?? "plain"}`}
             template={activeTemplate}
             onBack={handleBack}
             onApplyPrompt={onApplyPrompt}
             onClose={onClose}
+            fromImageContext={guideFromImageContext}
           />
           )
         ) : null}

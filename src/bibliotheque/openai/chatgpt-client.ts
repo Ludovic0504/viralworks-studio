@@ -11,10 +11,15 @@
 
 import { getBrowserSupabase } from "../supabase/client-navigateur";
 
-// Types pour les messages ChatGPT
+/** Partie de contenu multimodal (texte + image) pour Vision. */
+export type ChatContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string; detail?: "auto" | "low" | "high" } };
+
+// Types pour les messages ChatGPT (texte seul ou multimodal)
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
-  content: string;
+  content: string | ChatContentPart[];
 }
 
 export interface ChatCompletionOptions {
@@ -27,7 +32,10 @@ export interface ChatCompletionOptions {
 export interface ChatCompletionResponse {
   id: string;
   choices: Array<{
-    message: ChatMessage;
+    message: {
+      role: "system" | "user" | "assistant";
+      content: string | ChatContentPart[] | null;
+    };
     finish_reason: string;
   }>;
   usage?: {
@@ -36,6 +44,17 @@ export interface ChatCompletionResponse {
     total_tokens: number;
   };
 }
+
+function messageContentToText(content: string | ChatContentPart[] | null | undefined): string {
+  if (!content) return "";
+  if (typeof content === "string") return content;
+  return content
+    .map((part) => (part.type === "text" ? part.text : ""))
+    .join("")
+    .trim();
+}
+
+export { messageContentToText };
 
 /**
  * Récupère l'URL de la Edge Function Supabase
@@ -173,7 +192,7 @@ export async function generateResponse(
     console.log("🔄 [generateResponse] Appel de chatCompletion...");
     const response = await chatCompletion(messages, options);
     console.log("✅ [generateResponse] Réponse reçue de Supabase");
-    return response.choices[0]?.message?.content || "";
+    return messageContentToText(response.choices[0]?.message?.content);
   } catch (supabaseError) {
     console.error("❌ [generateResponse] Erreur capturée:", supabaseError);
     // Si Supabase échoue, essayer avec Netlify Function (fallback)

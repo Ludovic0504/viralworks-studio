@@ -259,3 +259,77 @@ export function nextNodePositions(
   }
   return positions;
 }
+
+/** Dimensions visuelles d’une carte canvas selon le format de génération. */
+export function getProjectNodeMediaSize(
+  aspectRatio: string | null | undefined,
+  maxSide = 168,
+): { width: number; height: number } {
+  const parts = String(aspectRatio || "1:1")
+    .split(":")
+    .map((part) => Number(part.trim()));
+  const w = parts[0];
+  const h = parts[1];
+  if (!w || !h || !Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) {
+    return { width: maxSide, height: maxSide };
+  }
+  if (w >= h) {
+    return { width: maxSide, height: Math.max(48, Math.round(maxSide * (h / w))) };
+  }
+  return { width: Math.max(48, Math.round(maxSide * (w / h))), height: maxSide };
+}
+
+/** Taille carte à partir des pixels natifs de l’image. */
+export function getProjectNodeMediaSizeFromPixels(
+  naturalWidth: number,
+  naturalHeight: number,
+  maxSide = 168,
+): { width: number; height: number } {
+  if (!naturalWidth || !naturalHeight) {
+    return { width: maxSide, height: maxSide };
+  }
+  if (naturalWidth >= naturalHeight) {
+    return {
+      width: maxSide,
+      height: Math.max(48, Math.round(maxSide * (naturalHeight / naturalWidth))),
+    };
+  }
+  return {
+    width: Math.max(48, Math.round(maxSide * (naturalWidth / naturalHeight))),
+    height: maxSide,
+  };
+}
+
+const ASPECT_PRESETS: Array<{ id: string; value: number }> = [
+  { id: "1:1", value: 1 },
+  { id: "4:5", value: 4 / 5 },
+  { id: "9:16", value: 9 / 16 },
+  { id: "16:9", value: 16 / 9 },
+  { id: "3:4", value: 3 / 4 },
+  { id: "4:3", value: 4 / 3 },
+];
+
+/** Libellé de ratio (preset proche ou W:H simplifié). */
+export function aspectRatioFromDimensions(
+  naturalWidth: number,
+  naturalHeight: number,
+): string {
+  if (!naturalWidth || !naturalHeight) return "1:1";
+  const ratio = naturalWidth / naturalHeight;
+  let best = ASPECT_PRESETS[0];
+  let bestDiff = Number.POSITIVE_INFINITY;
+  for (const preset of ASPECT_PRESETS) {
+    const diff = Math.abs(ratio - preset.value);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = preset;
+    }
+  }
+  if (bestDiff <= 0.06) return best.id;
+
+  const a = Math.round(naturalWidth);
+  const b = Math.round(naturalHeight);
+  const gcd = (x: number, y: number): number => (y ? gcd(y, x % y) : x);
+  const g = gcd(a, b) || 1;
+  return `${Math.max(1, Math.round(a / g))}:${Math.max(1, Math.round(b / g))}`;
+}

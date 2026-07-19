@@ -19,6 +19,14 @@ import { fillTemplateSlotDefaults } from "@/bibliotheque/imageStudio/promptTempl
 import { readGuideProductImageFile } from "@/bibliotheque/imageStudio/guideProductImage";
 import { useImageStudioChatbotTr } from "@/bibliotheque/i18n/useImageStudioChatbotTr";
 import { translateLabeledOptions } from "@/bibliotheque/i18n/chatbotTranslate";
+import {
+  buildClothingNotesForPrompt,
+  buildGuideApplyExtrasFromImageContext,
+  genderFromContext,
+  outfitStudioInitialStep,
+  shouldSkipClothingProductStep,
+  shouldSkipIdentitySteps,
+} from "@/bibliotheque/imageStudio/promptFromImage";
 
 /** @typedef {'gender' | 'clothing' | 'sceneType' | 'subContext' | 'framing' | 'ratio' | 'pose' | 'ready'} OutfitStudioGuideStep */
 
@@ -276,7 +284,13 @@ function GuideOutfitImagePicker({
   );
 }
 
-export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyPrompt, onClose }) {
+export default function OutfitStudioPromptGuideChat({
+  template,
+  onBack,
+  onApplyPrompt,
+  onClose,
+  fromImageContext = null,
+}) {
   const { ui, tr, template: localizeTemplate, locale } = useImageStudioChatbotTr();
   const localizedTemplate = useMemo(
     () => localizeTemplate(template),
@@ -302,21 +316,48 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
-  const [genderId, setGenderId] = useState(null);
+  const skipIdentity = shouldSkipIdentitySteps(fromImageContext);
+  const skipClothing = shouldSkipClothingProductStep(fromImageContext);
+  const seededGender = genderFromContext(fromImageContext);
+  const seededOutfitNotes = buildClothingNotesForPrompt(
+    fromImageContext?.clothing,
+    fromImageContext?.personTraits,
+  );
+  const fromImageExtras = buildGuideApplyExtrasFromImageContext(fromImageContext);
+  const initialStep = outfitStudioInitialStep(fromImageContext);
+
+  const [genderId, setGenderId] = useState(seededGender);
   const [sceneTypeId, setSceneTypeId] = useState(null);
   const [subContextId, setSubContextId] = useState(null);
   const [framingId, setFramingId] = useState(null);
   const [ratioId, setRatioId] = useState(null);
   const [poseId, setPoseId] = useState(null);
 
-  const [guideStep, setGuideStep] = useState(/** @type {OutfitStudioGuideStep} */ ("gender"));
-  const [slots, setSlots] = useState({});
+  const [guideStep, setGuideStep] = useState(/** @type {OutfitStudioGuideStep} */ (initialStep));
+  const [slots, setSlots] = useState(() => {
+    if (!skipIdentity) return {};
+    return {
+      genderId: seededGender || "",
+      ...(skipClothing ? { clothingNotes: seededOutfitNotes || "" } : {}),
+    };
+  });
   const [draft, setDraft] = useState("");
   const [ready, setReady] = useState(false);
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [clothingValidationShown, setClothingValidationShown] = useState(false);
   const [clothingImageError, setClothingImageError] = useState(null);
-  const [clothingPreviews, setClothingPreviews] = useState([]);
+  const [clothingPreviews, setClothingPreviews] = useState(() => {
+    if (!skipClothing || fromImageContext?.clothing?.mode !== "change") return [];
+    return (fromImageContext.clothing.refs || [])
+      .filter((r) => r.source === "image" && r.imageUrl)
+      .slice(0, MAX_CLOTHING_IMAGES)
+      .map((r, index) => ({
+        id: r.id || `from-image-${index}`,
+        dataUrl: r.imageUrl,
+        filename: `${r.pieceType || "piece"}-${index + 1}.jpg`,
+        pieceType: r.pieceType === "chaussures" ? "accessoire" : r.pieceType || "inconnu",
+      }));
+  });
 
   const poseOptions = useMemo(
     () =>
@@ -513,7 +554,7 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
   const handleApply = useCallback(() => {
     if (!assembledPrompt) return;
 
-    const clothingNotes = slots.clothingNotes?.trim() ?? "";
+    const clothingNotes = slots.clothingNotes?.trim() || seededOutfitNotes || "";
     const { productImageUrl, importedRefImageUrl } = resolveOutfitStudioReferenceImageUrls({
       imageUrls: clothingPreviews.map((preview) => preview.dataUrl),
       imageFilenames: clothingPreviews.map((preview) => preview.filename),
@@ -521,18 +562,26 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
       assembledPrompt,
     });
 
-    if (productImageUrl) {
-      onApplyPrompt({
-        prompt: assembledPrompt,
-        productImageUrl,
-        importedRefImageUrl,
-        productFocus: clothingNotes || null,
-      });
-    } else {
-      onApplyPrompt(assembledPrompt);
-    }
+    onApplyPrompt({
+      prompt: assembledPrompt,
+      productImageUrl: productImageUrl || fromImageExtras.productImageUrl,
+      importedRefImageUrl: importedRefImageUrl || fromImageExtras.importedRefImageUrl,
+      productFocus: clothingNotes || fromImageExtras.productFocus,
+      avatarUrl: fromImageContext?.avatarUrl || null,
+    });
     onClose();
-  }, [assembledPrompt, clothingPreviews, onApplyPrompt, onClose, slots.clothingNotes]);
+  }, [
+    assembledPrompt,
+    clothingPreviews,
+    fromImageContext?.avatarUrl,
+    fromImageExtras.importedRefImageUrl,
+    fromImageExtras.productFocus,
+    fromImageExtras.productImageUrl,
+    onApplyPrompt,
+    onClose,
+    seededOutfitNotes,
+    slots.clothingNotes,
+  ]);
 
   const genderLabel = findOptionLabel(localizedGenderOptions, genderId);
   const sceneTypeLabel = findOptionLabel(localizedSceneTypeOptions, sceneTypeId);
@@ -544,6 +593,7 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
 
   const clothingAnswerLabel = useMemo(() => {
     if (guideStep === "clothing") return null;
+    if (skipClothing) return null;
 
     const notes = slots.clothingNotes?.trim() ?? "";
     const imageCount = Number(slots.clothingImageCount || 0);
@@ -559,7 +609,7 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
     }
     if (notes) parts.push(notes);
     return parts.join(" — ");
-  }, [guideStep, slots.clothingImageCount, slots.clothingNotes, ui]);
+  }, [guideStep, skipClothing, slots.clothingImageCount, slots.clothingNotes, ui]);
 
   const poseAnswerLabel = useMemo(() => {
     if (!poseId && guideStep !== "pose" && !ready) return null;
@@ -574,16 +624,21 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
   }, [genderId, guideStep, poseId, poseLabel, ready, slots.poseId, ui]);
 
   const botTurnKeys = useMemo(() => {
-    const keys = ["gender"];
-    if (genderId) keys.push("clothing");
-    if (guideStep !== "gender" && guideStep !== "clothing") keys.push("sceneType");
+    const keys = skipIdentity ? [] : ["gender"];
+    if (!skipClothing && genderId) keys.push("clothing");
+    if (
+      (skipIdentity || genderId) &&
+      (skipClothing || (guideStep !== "gender" && guideStep !== "clothing"))
+    ) {
+      keys.push("sceneType");
+    }
     if (sceneTypeId && sceneTypeId !== "studio-blanc") keys.push("subContext");
     if (framingId || guideStep === "framing" || (sceneTypeId && (subContextId || sceneTypeId === "studio-blanc"))) {
       keys.push("framing");
     }
     if (ratioId || guideStep === "ratio" || framingId) keys.push("ratio");
     if (guideStep === "pose" || poseAnswerLabel) keys.push("pose");
-    if (clothingValidationShown) keys.push("clothing-validation");
+    if (!skipClothing && clothingValidationShown) keys.push("clothing-validation");
     if (ready) keys.push("result");
     return keys;
   }, [
@@ -595,6 +650,8 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
     ratioId,
     ready,
     sceneTypeId,
+    skipClothing,
+    skipIdentity,
     subContextId,
   ]);
 
@@ -672,28 +729,43 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
         role="log"
         aria-live="polite"
       >
-        <ConversationBubble role="bot" visible={isBotVisible("gender")}>
-          <p className="image-studio-prompt-guide-bubble-text">
-            {ui("outfitModelGender", "Sexe du modèle")}
-          </p>
-          {guideStep === "gender" ? (
-            <OptionButtonRow
-              options={localizedGenderOptions}
-              selectedId={genderId}
-              disabled={false}
-              onSelect={handleGenderSelect}
-              ariaLabel={ui("outfitModelGender", "Sexe du modèle")}
-            />
-          ) : null}
-        </ConversationBubble>
+        {skipIdentity ? (
+          <ConversationBubble role="bot" visible>
+            <p className="image-studio-prompt-guide-bubble-text">
+              {skipClothing
+                ? ui(
+                    "fromImageOutfitIntroKeep",
+                    "On part de ton avatar, avec les habits de l’image.",
+                  )
+                : ui("fromImageOutfitIntro", "On part de ton avatar.")}
+            </p>
+          </ConversationBubble>
+        ) : null}
 
-        {genderLabel ? (
+        {!skipIdentity ? (
+          <ConversationBubble role="bot" visible={isBotVisible("gender")}>
+            <p className="image-studio-prompt-guide-bubble-text">
+              {ui("outfitModelGender", "Sexe du modèle")}
+            </p>
+            {guideStep === "gender" ? (
+              <OptionButtonRow
+                options={localizedGenderOptions}
+                selectedId={genderId}
+                disabled={false}
+                onSelect={handleGenderSelect}
+                ariaLabel={ui("outfitModelGender", "Sexe du modèle")}
+              />
+            ) : null}
+          </ConversationBubble>
+        ) : null}
+
+        {!skipIdentity && genderLabel ? (
           <ConversationBubble role="user">
             <p className="image-studio-prompt-guide-bubble-text">{genderLabel}</p>
           </ConversationBubble>
         ) : null}
 
-        {genderId ? (
+        {!skipClothing && genderId ? (
           <ConversationBubble role="bot" visible={isBotVisible("clothing")} wide>
             <p className="image-studio-prompt-guide-bubble-text">
               {ui(
@@ -782,7 +854,7 @@ export default function OutfitStudioPromptGuideChat({ template, onBack, onApplyP
           </ConversationBubble>
         ) : null}
 
-        {clothingAnswerLabel ? (
+        {clothingAnswerLabel || (skipClothing && genderId) ? (
           <ConversationBubble role="bot" visible={isBotVisible("sceneType")} wide>
             <p className="image-studio-prompt-guide-bubble-text">
               {ui("outfitSceneTypeQuestion", "Type de scène")}

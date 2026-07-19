@@ -55,19 +55,29 @@ const CONNECTION_LINE_STYLE = {
 };
 
 function dbNodesToFlow(nodes, selectedId, options = {}) {
-  const { connectingFromId = null, onAssignSlot = null } = options;
+  const {
+    connectingFromId = null,
+    onAssignSlot = null,
+    avatarAssignedNodeId = null,
+    avatarAssignedUrl = null,
+  } = options;
   return nodes.map((n) => ({
     id: n.id,
     type: "projectImage",
     position: { x: n.pos_x, y: n.pos_y },
     selected: n.id === selectedId,
     data: {
-      imageUrl: n.image_url,
+      imageUrl: n.image_url || "",
       prompt: n.prompt || "",
       historyId: n.history_id,
+      aspectRatio: n.aspect_ratio || n.aspectRatio || "1:1",
+      generating: Boolean(n.generating),
       linkPending: connectingFromId === n.id,
       isConnectTarget: Boolean(connectingFromId && connectingFromId !== n.id),
       onAssignSlot,
+      avatarAssigned:
+        Boolean(avatarAssignedNodeId && avatarAssignedNodeId === n.id) ||
+        Boolean(avatarAssignedUrl && avatarAssignedUrl === n.image_url),
       raw: n,
     },
   }));
@@ -111,6 +121,8 @@ function ProjectCanvasInner({
   selectedNodeId,
   onSelectNode,
   onAssignSlot,
+  avatarAssignedNodeId,
+  avatarAssignedUrl,
   onBack,
   onCanvasChanged,
   onDropHistoryImage,
@@ -197,6 +209,138 @@ function ProjectCanvasInner({
           y: flow.y - PROJECT_NODE_MEDIA_SIZE / 2,
         };
       },
+      getNodePosition(nodeId) {
+        if (!nodeId) return null;
+        const db = dbNodesRef.current.find((n) => n.id === nodeId);
+        if (db) return { pos_x: db.pos_x, pos_y: db.pos_y };
+        return null;
+      },
+      getNodeCount() {
+        return dbNodesRef.current.length;
+      },
+      findNodeIdByImageUrl(imageUrl) {
+        if (!imageUrl) return null;
+        const db = dbNodesRef.current.find((n) => n.image_url === imageUrl);
+        return db?.id ?? null;
+      },
+      /** Cartes placeholder pendant la génération (ids locaux, hors DB). */
+      addPendingNodes(pendingNodes, sourceNodeId = null) {
+        const list = Array.isArray(pendingNodes) ? pendingNodes.filter(Boolean) : [];
+        if (list.length === 0) return;
+
+        setNodes((prev) => {
+          const prevIds = new Set(prev.map((n) => n.id));
+          const flowNodes = list
+            .filter((n) => n?.id && !prevIds.has(n.id))
+            .map((n) => ({
+              id: n.id,
+              type: "projectImage",
+              position: { x: n.pos_x ?? 0, y: n.pos_y ?? 0 },
+              selected: false,
+              draggable: false,
+              selectable: false,
+              data: {
+                imageUrl: "",
+                prompt: n.prompt || "",
+                historyId: null,
+                aspectRatio: n.aspectRatio || "1:1",
+                generating: true,
+                linkPending: false,
+                isConnectTarget: false,
+                onAssignSlot: null,
+                avatarAssigned: false,
+                raw: n,
+              },
+            }));
+          return flowNodes.length ? [...prev, ...flowNodes] : prev;
+        });
+
+        if (sourceNodeId) {
+          setEdges((prev) => {
+            const prevIds = new Set(prev.map((e) => e.id));
+            const nextEdges = list
+              .filter((n) => n?.id)
+              .map((n) => ({
+                id: `pending-edge-${n.id}`,
+                type: "projectLink",
+                source: sourceNodeId,
+                target: n.id,
+                sourceHandle: "right",
+                targetHandle: "left",
+                ...getEdgeVisualProps("dashed", false),
+                data: {
+                  edgeStyle: "dashed",
+                  onDelete: null,
+                  deleteLabel: "",
+                },
+              }))
+              .filter((e) => !prevIds.has(e.id));
+            return nextEdges.length ? [...prev, ...nextEdges] : prev;
+          });
+        }
+      },
+      resolvePendingNode(pendingId, dbNode, dbEdge = null) {
+        if (!pendingId || !dbNode?.id) return;
+
+        const existingIds = new Set(dbNodesRef.current.map((n) => n.id));
+        if (!existingIds.has(dbNode.id)) {
+          dbNodesRef.current = [...dbNodesRef.current, dbNode];
+        }
+
+        setNodes((prev) => {
+          const withoutPending = prev.filter((n) => n.id !== pendingId);
+          const prevIds = new Set(withoutPending.map((n) => n.id));
+          if (prevIds.has(dbNode.id)) return withoutPending;
+          const flowNodes = dbNodesToFlow([dbNode], null, {
+            onAssignSlot: handleAssignSlotStableRef.current,
+            avatarAssignedNodeId,
+            avatarAssignedUrl,
+          });
+          // Conserver le format choisi pour la génération
+          const withAspect = flowNodes.map((n) => ({
+            ...n,
+            data: {
+              ...n.data,
+              aspectRatio:
+                dbNode.aspect_ratio ||
+                dbNode.aspectRatio ||
+                prev.find((p) => p.id === pendingId)?.data?.aspectRatio ||
+                "1:1",
+            },
+          }));
+          return [...withoutPending, ...withAspect];
+        });
+
+        setEdges((prev) => {
+          let next = prev.filter(
+            (e) => e.id !== `pending-edge-${pendingId}` && e.target !== pendingId,
+          );
+          if (dbEdge?.id) {
+            const prevIds = new Set(next.map((e) => e.id));
+            const flowEdges = dbEdgesToFlow(
+              [dbEdge],
+              edgeCallbacksStableRef.current || {},
+            ).filter((e) => !prevIds.has(e.id));
+            if (flowEdges.length) next = [...next, ...flowEdges];
+          }
+          return next;
+        });
+      },
+      removePendingNodes(pendingIds) {
+        const ids = new Set(
+          (Array.isArray(pendingIds) ? pendingIds : []).filter(Boolean),
+        );
+        if (ids.size === 0) return;
+        setNodes((prev) => prev.filter((n) => !ids.has(n.id)));
+        setEdges((prev) =>
+          prev.filter(
+            (e) =>
+              !ids.has(e.target) &&
+              !ids.has(e.source) &&
+              !String(e.id || "").startsWith("pending-edge-"),
+          ),
+        );
+      },
       /** Ajoute des nœuds/liens sans recharger ni bouger le viewport. */
       appendNodes(dbNodes, dbEdges = []) {
         const nodesToAdd = Array.isArray(dbNodes) ? dbNodes.filter(Boolean) : [];
@@ -211,6 +355,8 @@ function ProjectCanvasInner({
               const prevIds = new Set(prev.map((n) => n.id));
               const flowNodes = dbNodesToFlow(fresh, null, {
                 onAssignSlot: handleAssignSlotStableRef.current,
+                avatarAssignedNodeId,
+                avatarAssignedUrl,
               }).filter((n) => !prevIds.has(n.id));
               return flowNodes.length ? [...prev, ...flowNodes] : prev;
             });
@@ -229,7 +375,7 @@ function ProjectCanvasInner({
         }
       },
     }),
-    [screenToFlowPosition, setNodes, setEdges],
+    [screenToFlowPosition, setNodes, setEdges, avatarAssignedNodeId, avatarAssignedUrl],
   );
 
   useEffect(() => {
@@ -252,6 +398,8 @@ function ProjectCanvasInner({
       setNodes(
         dbNodesToFlow(canvas.nodes, null, {
           onAssignSlot: handleAssignSlotStableRef.current,
+          avatarAssignedNodeId,
+          avatarAssignedUrl,
         }),
       );
       setEdges(
@@ -272,7 +420,7 @@ function ProjectCanvasInner({
     } finally {
       if (isInitialLoad) setLoading(false);
     }
-  }, [project?.id, setNodes, setEdges, fitView, getViewport, setViewport]);
+  }, [project?.id, setNodes, setEdges, fitView, getViewport, setViewport, avatarAssignedNodeId, avatarAssignedUrl]);
 
   useEffect(() => {
     void loadCanvas();
@@ -287,10 +435,19 @@ function ProjectCanvasInner({
           linkPending: connectingFromId === n.id,
           isConnectTarget: Boolean(connectingFromId && connectingFromId !== n.id),
           onAssignSlot: handleAssignSlot,
+          avatarAssigned:
+            Boolean(avatarAssignedNodeId && avatarAssignedNodeId === n.id) ||
+            Boolean(avatarAssignedUrl && avatarAssignedUrl === n.data?.imageUrl),
         },
       })),
     );
-  }, [connectingFromId, handleAssignSlot, setNodes]);
+  }, [
+    connectingFromId,
+    handleAssignSlot,
+    avatarAssignedNodeId,
+    avatarAssignedUrl,
+    setNodes,
+  ]);
 
   useEffect(() => {
     setEdges((prev) =>
@@ -642,6 +799,7 @@ function ProjectCanvasInner({
             }}
             onNodesDelete={(deleted) => {
               for (const node of deleted) {
+                if (String(node.id || "").startsWith("pending-")) continue;
                 void deleteImageStudioProjectNode(node.id);
               }
               if (deleted.some((n) => n.id === selectedNodeId)) {

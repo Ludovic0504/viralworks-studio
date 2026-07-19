@@ -13,6 +13,7 @@ import { readGuideProductImageFile } from "@/bibliotheque/imageStudio/guideProdu
 import { IMAGE_STUDIO_PRODUCT_MENTION_TOKEN } from "@/bibliotheque/imageStudio/imageStudioGuideApply";
 import { useRequireAuthAction } from "@/contexte/ActionAuthModalContext";
 import PromptAssistAssistantContent from "@/composants/image/PromptAssistAssistantContent";
+import PromptFromImageAssistChat from "@/composants/image/PromptFromImageAssistChat";
 import { useImageStudioChatbotTr } from "@/bibliotheque/i18n/useImageStudioChatbotTr";
 
 function nextMessageId() {
@@ -93,7 +94,13 @@ function formatPromptAssistError(error, ui) {
   );
 }
 
-export default function ModalPromptAssistImageStudio({ open, onClose, onApplyPrompt }) {
+export default function ModalPromptAssistImageStudio({
+  open,
+  onClose,
+  onApplyPrompt,
+  fromImage = null,
+  onFromImageComplete = null,
+}) {
   const { ui } = useImageStudioChatbotTr();
   const { runWithAuth } = useRequireAuthAction();
   const messagesRef = useRef(null);
@@ -278,6 +285,34 @@ export default function ModalPromptAssistImageStudio({ open, onClose, onApplyPro
     event.stopPropagation();
     window.setTimeout(onClose, 0);
   };
+
+  if (fromImage?.avatarUrl) {
+    return createPortal(
+      <div
+        className="image-studio-prompts-modal-backdrop"
+        role="presentation"
+        onClick={handleBackdropClose}
+      >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="PromptAssist"
+          onClick={(event) => event.stopPropagation()}
+          className="image-studio-prompt-from-image-dialog"
+        >
+          <PromptFromImageAssistChat
+            avatarUrl={fromImage.avatarUrl}
+            onClose={onClose}
+            onComplete={(ctx, template) => {
+              onFromImageComplete?.(ctx, template);
+              onClose?.();
+            }}
+          />
+        </div>
+      </div>,
+      document.body,
+    );
+  }
 
   const canSend = Boolean(draft.trim() || attachedImageUrl);
 

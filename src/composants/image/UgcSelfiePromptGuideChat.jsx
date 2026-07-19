@@ -19,6 +19,13 @@ import { readGuideProductImageFile } from "@/bibliotheque/imageStudio/guideProdu
 import GuideProductImagePicker from "@/composants/image/GuideProductImagePicker";
 import { useImageStudioChatbotTr } from "@/bibliotheque/i18n/useImageStudioChatbotTr";
 import { translateLabeledOptions } from "@/bibliotheque/i18n/chatbotTranslate";
+import {
+  buildClothingNotesForPrompt,
+  genderFromContext,
+  shouldSkipClothingProductStep,
+  shouldSkipIdentitySteps,
+  ugcSelfieInitialStep,
+} from "@/bibliotheque/imageStudio/promptFromImage";
 
 /** @typedef {'gender' | 'age' | 'physical' | 'product' | 'location' | 'ready'} UgcSelfieGuideStep */
 
@@ -233,7 +240,13 @@ function LocationGrid({ presets, selectedId, disabled, onSelect, onOther, otherL
   );
 }
 
-export default function UgcSelfiePromptGuideChat({ template, onBack, onApplyPrompt, onClose }) {
+export default function UgcSelfiePromptGuideChat({
+  template,
+  onBack,
+  onApplyPrompt,
+  onClose,
+  fromImageContext = null,
+}) {
   const { ui, tr, template: localizeTemplate, locale } = useImageStudioChatbotTr();
   const localizedTemplate = useMemo(
     () => localizeTemplate(template),
@@ -259,11 +272,40 @@ export default function UgcSelfiePromptGuideChat({ template, onBack, onApplyProm
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
+  const skipIdentity = shouldSkipIdentitySteps(fromImageContext);
+  const skipClothing = shouldSkipClothingProductStep(fromImageContext);
+  const seededGender = genderFromContext(fromImageContext);
+  const seededOutfit = buildClothingNotesForPrompt(
+    fromImageContext?.clothing,
+    fromImageContext?.personTraits,
+  );
+  const initialStep = ugcSelfieInitialStep(fromImageContext);
+  const seededProfileId = useMemo(() => {
+    if (!seededGender) return null;
+    const profiles = getUgcSelfieProfilesForGender(seededGender);
+    return profiles[0]?.id ?? null;
+  }, [seededGender]);
+
   /** @type {[null | 'homme' | 'femme', import('react').Dispatch<import('react').SetStateAction<null | 'homme' | 'femme'>>]} */
-  const [gender, setGender] = useState(null);
-  const [profileId, setProfileId] = useState(null);
-  const [guideStep, setGuideStep] = useState(/** @type {UgcSelfieGuideStep} */ ("gender"));
-  const [slots, setSlots] = useState({});
+  const [gender, setGender] = useState(seededGender);
+  const [profileId, setProfileId] = useState(skipIdentity ? seededProfileId : null);
+  const [guideStep, setGuideStep] = useState(/** @type {UgcSelfieGuideStep} */ (initialStep));
+  const [slots, setSlots] = useState(() => {
+    if (!skipIdentity || !seededProfileId) return {};
+    const resolved = resolveUgcSelfiePhysicalSlots(seededProfileId, {}, "photo");
+    return {
+      profileId: seededProfileId,
+      ...(resolved || {}),
+      physicalMode: "from-image",
+      ...(skipClothing
+        ? {
+            productName: seededOutfit || IMAGE_STUDIO_PRODUCT_MENTION_TOKEN,
+            productImageUrl: null,
+            productInputMode: "from-image",
+          }
+        : {}),
+    };
+  });
   const [draft, setDraft] = useState("");
   const [ready, setReady] = useState(false);
   const [adjustOpen, setAdjustOpen] = useState(false);
@@ -443,13 +485,19 @@ export default function UgcSelfiePromptGuideChat({ template, onBack, onApplyProm
 
   const handleApply = useCallback(() => {
     if (!assembledPrompt) return;
-    if (slots.productImageUrl) {
-      onApplyPrompt({ prompt: assembledPrompt, productImageUrl: slots.productImageUrl });
+    const payload = {
+      prompt: assembledPrompt,
+      productImageUrl: slots.productImageUrl || null,
+      avatarUrl: fromImageContext?.avatarUrl || null,
+      productFocus: seededOutfit || null,
+    };
+    if (payload.productImageUrl || payload.avatarUrl || payload.productFocus) {
+      onApplyPrompt(payload);
     } else {
       onApplyPrompt(assembledPrompt);
     }
     onClose();
-  }, [assembledPrompt, onApplyPrompt, onClose, slots.productImageUrl]);
+  }, [assembledPrompt, fromImageContext?.avatarUrl, onApplyPrompt, onClose, seededOutfit, slots.productImageUrl]);
 
   const inputPlaceholder =
     guideStep === "product"
@@ -489,6 +537,11 @@ export default function UgcSelfiePromptGuideChat({ template, onBack, onApplyProm
         ? ui("ugcGenderFemme", "Femme")
         : null;
   const productName = (slots.productName ?? "").trim();
+  const showProductInChat =
+    !skipClothing &&
+    Boolean(productName) &&
+    slots.productInputMode !== "from-image" &&
+    productName !== (seededOutfit || "").trim();
   const locationLabel = useMemo(() => {
     const location = (slots.location ?? "").trim();
     if (!location) return null;
@@ -497,15 +550,24 @@ export default function UgcSelfiePromptGuideChat({ template, onBack, onApplyProm
   }, [localizedLocationPresets, slots.location]);
 
   const botTurnKeys = useMemo(() => {
-    const keys = ["gender"];
-    if (gender) keys.push("age");
-    if (profileId) keys.push("physical");
-    if (guideStep === "product" || productName) keys.push("product");
-    if (productValidationShown) keys.push("product-validation");
-    if (guideStep === "location" || ready) keys.push("location");
+    const keys = skipIdentity ? [] : ["gender"];
+    if (!skipIdentity && gender) keys.push("age");
+    if (!skipIdentity && profileId) keys.push("physical");
+    if (!skipClothing && (guideStep === "product" || showProductInChat)) keys.push("product");
+    if (!skipClothing && productValidationShown) keys.push("product-validation");
+    if (guideStep === "location" || ready || (skipIdentity && skipClothing)) keys.push("location");
     if (ready) keys.push("result");
     return keys;
-  }, [gender, guideStep, productName, productValidationShown, profileId, ready]);
+  }, [
+    gender,
+    guideStep,
+    productValidationShown,
+    profileId,
+    ready,
+    showProductInChat,
+    skipClothing,
+    skipIdentity,
+  ]);
 
   const { isBotVisible, isTyping } = useConversationBotVisibility(botTurnKeys);
 
@@ -603,39 +665,54 @@ export default function UgcSelfiePromptGuideChat({ template, onBack, onApplyProm
         role="log"
         aria-live="polite"
       >
-        <ConversationBubble role="bot" visible={isBotVisible("gender")}>
-          <p className="image-studio-prompt-guide-bubble-text">{ui("genderQuestion", "Quel sexe ?")}</p>
-          {guideStep === "gender" ? (
-            <div
-              className="image-studio-prompt-guide-elements-actions image-studio-prompt-guide-bubble-actions"
-              role="group"
-              aria-label={ui("ugcGenderAria", "Sexe")}
-            >
-              <button
-                type="button"
-                className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
-                onClick={() => handleGenderSelect("homme")}
-              >
-                {ui("ugcGenderHomme", "Homme")}
-              </button>
-              <button
-                type="button"
-                className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
-                onClick={() => handleGenderSelect("femme")}
-              >
-                {ui("ugcGenderFemme", "Femme")}
-              </button>
-            </div>
-          ) : null}
-        </ConversationBubble>
+        {skipIdentity ? (
+          <ConversationBubble role="bot" visible>
+            <p className="image-studio-prompt-guide-bubble-text">
+              {skipClothing
+                ? ui(
+                    "fromImageUgcIntroKeep",
+                    "On part de ton avatar, avec les habits de l’image.",
+                  )
+                : ui("fromImageUgcIntro", "On part de ton avatar.")}
+            </p>
+          </ConversationBubble>
+        ) : null}
 
-        {genderLabel ? (
+        {!skipIdentity ? (
+          <ConversationBubble role="bot" visible={isBotVisible("gender")}>
+            <p className="image-studio-prompt-guide-bubble-text">{ui("genderQuestion", "Quel sexe ?")}</p>
+            {guideStep === "gender" ? (
+              <div
+                className="image-studio-prompt-guide-elements-actions image-studio-prompt-guide-bubble-actions"
+                role="group"
+                aria-label={ui("ugcGenderAria", "Sexe")}
+              >
+                <button
+                  type="button"
+                  className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
+                  onClick={() => handleGenderSelect("homme")}
+                >
+                  {ui("ugcGenderHomme", "Homme")}
+                </button>
+                <button
+                  type="button"
+                  className="studio-toolbar-btn image-studio-prompt-guide-elements-btn"
+                  onClick={() => handleGenderSelect("femme")}
+                >
+                  {ui("ugcGenderFemme", "Femme")}
+                </button>
+              </div>
+            ) : null}
+          </ConversationBubble>
+        ) : null}
+
+        {!skipIdentity && genderLabel ? (
           <ConversationBubble role="user">
             <p className="image-studio-prompt-guide-bubble-text">{genderLabel}</p>
           </ConversationBubble>
         ) : null}
 
-        {gender ? (
+        {!skipIdentity && gender ? (
           <ConversationBubble role="bot" wide visible={isBotVisible("age")}>
             <p className="image-studio-prompt-guide-bubble-text">{ui("ugcAgeQuestion", "Quel âge ?")}</p>
             {guideStep === "age" ? (
@@ -649,13 +726,13 @@ export default function UgcSelfiePromptGuideChat({ template, onBack, onApplyProm
           </ConversationBubble>
         ) : null}
 
-        {profile ? (
+        {!skipIdentity && profile ? (
           <ConversationBubble role="user">
             <p className="image-studio-prompt-guide-bubble-text">{profile.ageLabel}</p>
           </ConversationBubble>
         ) : null}
 
-        {profileId ? (
+        {!skipIdentity && profileId ? (
           <ConversationBubble role="bot" wide visible={isBotVisible("physical")}>
             <p className="image-studio-prompt-guide-bubble-text">
               {ui("ugcCustomizePhysical", "Personnaliser le physique ? (optionnel)")}
@@ -705,13 +782,13 @@ export default function UgcSelfiePromptGuideChat({ template, onBack, onApplyProm
           </ConversationBubble>
         ) : null}
 
-        {guideStep !== "physical" && profileId && physicalAnswerLabel ? (
+        {!skipIdentity && guideStep !== "physical" && profileId && physicalAnswerLabel ? (
           <ConversationBubble role="user">
             <p className="image-studio-prompt-guide-bubble-text">{physicalAnswerLabel}</p>
           </ConversationBubble>
         ) : null}
 
-        {guideStep === "product" || productName ? (
+        {!skipClothing && (guideStep === "product" || (showProductInChat && productName)) ? (
           <ConversationBubble role="bot" visible={isBotVisible("product")}>
             <p className="image-studio-prompt-guide-bubble-text">{localizedTemplate.botAskRequired}</p>
             {guideStep === "product" ? (
@@ -728,13 +805,13 @@ export default function UgcSelfiePromptGuideChat({ template, onBack, onApplyProm
           </ConversationBubble>
         ) : null}
 
-        {productValidationShown ? (
+        {!skipClothing && productValidationShown ? (
           <ConversationBubble role="bot" visible={isBotVisible("product-validation")}>
             <p className="image-studio-prompt-guide-bubble-text">{localizedTemplate.botAskRequired}</p>
           </ConversationBubble>
         ) : null}
 
-        {productName ? (
+        {showProductInChat ? (
           <ConversationBubble role="user">
             {slots.productImageUrl ? (
               <div className="image-studio-prompt-ugc-product-answer">
