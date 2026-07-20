@@ -2,7 +2,7 @@ import { useMemo, useSyncExternalStore } from "react";
 import { ArrowRight } from "lucide-react";
 import LienNavSync from "@/composants/disposition/LienNavSync";
 import AccueilDemoVideo from "@/composants/accueil/AccueilDemoVideo";
-import { PROMO_ACQUISITION_IMAGES } from "@/bibliotheque/promo/imagesPromo";
+import AccueilImageStudioTeaser from "@/composants/accueil/AccueilImageStudioTeaser";
 import { useT } from "@/contexte/FournisseurLocale";
 
 function subscribeMobileMax767(cb) {
@@ -21,21 +21,6 @@ function getMobileMax767ServerSnapshot() {
 
 function blockMediaSave(event) {
   event.preventDefault();
-}
-
-function AccueilPromoImageCard({ src, alt, className }) {
-  return (
-    <div className={className}>
-      <img
-        src={src}
-        alt={alt}
-        className="accueil-vcard-media h-full w-full object-cover"
-        loading="lazy"
-        decoding="async"
-        draggable={false}
-      />
-    </div>
-  );
 }
 
 export default function Accueil() {
@@ -81,43 +66,43 @@ export default function Accueil() {
                 <h1 className="accueil-fade-up accueil-fade-up-d2 mb-2 font-black tracking-tight text-white/[0.93] max-md:text-[clamp(24px,7.2vw,32px)] max-md:leading-[0.92] text-[clamp(30px,5.2vw,52px)] leading-[0.9] md:mb-3">
                   <span className="block">{t("accueil.titleLine1")}</span>
                   <span className="block">{t("accueil.titleLine2")}</span>
-                  <span className="block bg-gradient-to-br from-[#21f3b9] from-0% via-[#818cf8] via-[42%] to-[#facc15] to-100% bg-clip-text text-transparent">
+                  <span className="block bg-gradient-to-br from-[#1adfb0] from-0% via-[#00c896] via-[40%] to-[#818cf8] to-100% bg-clip-text text-transparent">
                     {t("accueil.titleLine3")}
                   </span>
                 </h1>
 
-                <p className="accueil-fade-up accueil-fade-up-d3 mb-3 max-w-[440px] max-md:mb-2 max-md:text-[12px] max-md:leading-snug text-sm leading-relaxed text-white/[0.36] max-[580px]:mx-auto md:mb-4">
+                <p className="accueil-fade-up accueil-fade-up-d3 mb-3 max-w-[440px] max-md:mb-2 max-md:text-[12px] max-md:leading-snug text-sm leading-relaxed text-white/[0.58] max-[580px]:mx-auto md:mb-4">
                   {t("accueil.subtitle")}{" "}
-                  <strong className="font-medium text-white/[0.58]">{t("accueil.subtitleStrong")}</strong>
+                  <strong className="font-medium text-white/[0.78]">{t("accueil.subtitleStrong")}</strong>
                 </p>
 
                 <div className="accueil-fade-up accueil-fade-up-d4 relative z-20 mb-2 flex flex-wrap items-center gap-2 max-md:mb-1.5 max-md:gap-2 md:mb-3 md:gap-2.5 max-[580px]:justify-center">
                   <LienNavSync
                     to="/viralworks"
-                    className="group inline-flex items-center gap-2 rounded-[11px] bg-[#21f3b9] px-5 py-3 text-sm font-extrabold text-[#07090f] shadow-[0_0_28px_rgba(33,243,185,0.26)] transition-all duration-200 hover:-translate-y-px hover:shadow-[0_0_44px_rgba(33,243,185,0.42)] max-md:px-4 max-md:py-2.5 max-md:text-[13px]"
+                    className="group btn-vws-primary inline-flex items-center gap-2 rounded-[11px] px-5 py-3 text-sm font-extrabold max-md:px-4 max-md:py-2.5 max-md:text-[13px]"
                   >
                     <span>{t("accueil.ctaCreate")}</span>
                     <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5" />
                   </LienNavSync>
                   <LienNavSync
                     to="/lab"
-                    className="relative z-20 inline-flex items-center rounded-[11px] border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-[13px] font-semibold text-white/35 transition-all duration-200 hover:bg-white/[0.06] hover:text-white/60 max-md:px-3.5 max-md:py-2.5 max-md:text-xs"
+                    className="relative z-20 inline-flex items-center rounded-[11px] border border-white/[0.15] bg-white/[0.05] px-4 py-3 text-[13px] font-semibold text-white/65 transition-all duration-200 hover:border-white/25 hover:bg-white/[0.1] hover:text-white/90 max-md:px-3.5 max-md:py-2.5 max-md:text-xs"
                   >
                     {t("accueil.ctaLab")}
                   </LienNavSync>
                 </div>
 
-                <div className="accueil-fade-up accueil-fade-up-d4 mb-2 flex flex-wrap items-center gap-2 text-[10px] font-medium text-white/25 max-md:mb-0 max-[580px]:justify-center md:mb-0 md:gap-3">
+                <div className="accueil-fade-up accueil-fade-up-d4 mb-2 flex flex-wrap items-center gap-2 text-[10px] font-medium text-white/[0.48] max-md:mb-0 max-[580px]:justify-center md:mb-0 md:gap-3">
                   <span className="inline-flex items-center gap-1.5">
-                    <span className="text-[#21f3b9]">✓</span> {t("accueil.perkNoHidden")}
+                    <span className="text-[#1adfb0]">✓</span> {t("accueil.perkNoHidden")}
                   </span>
                   <span className="hidden h-2.5 w-px bg-white/10 sm:block" aria-hidden />
                   <span className="inline-flex items-center gap-1.5">
-                    <span className="text-[#21f3b9]">✓</span> {t("accueil.perkFast")}
+                    <span className="text-[#1adfb0]">✓</span> {t("accueil.perkFast")}
                   </span>
                   <span className="hidden h-2.5 w-px bg-white/10 sm:block" aria-hidden />
                   <span className="inline-flex items-center gap-1.5">
-                    <span className="text-[#21f3b9]">✓</span> {t("accueil.perkPro")}
+                    <span className="text-[#1adfb0]">✓</span> {t("accueil.perkPro")}
                   </span>
                 </div>
               </div>
@@ -128,7 +113,7 @@ export default function Accueil() {
                 <div className="accueil-hero-videos-shift w-full">
                 <div className="accueil-videos-frame relative mx-auto aspect-[260/340] w-auto max-w-full shrink-0 overflow-hidden md:h-[clamp(200px,min(34dvh,38vh),440px)] md:max-w-[min(96vw,400px)] md:overflow-visible">
                   <div
-                    className="pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 rounded-full bg-[rgba(33,243,185,0.08)] blur-[clamp(18px,4vw,28px)] max-md:blur-[14px]"
+                    className="pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 rounded-full bg-[rgba(0,200,150,0.08)] blur-[clamp(18px,4vw,28px)] max-md:blur-[14px]"
                     style={{
                       bottom: "-2.35%",
                       width: "50%",
@@ -149,7 +134,7 @@ export default function Accueil() {
                       src={demoVideos[1].src}
                       preload={preloadCenter}
                       label={demoVideos[1].label}
-                      className="accueil-vcard accueil-vcard-c group absolute bottom-0 z-[3] h-[57.647%] w-[42.308%] overflow-hidden rounded-2xl border border-[rgba(33,243,185,0.13)] shadow-[0_24px_65px_rgba(0,0,0,0.75)]"
+                      className="accueil-vcard accueil-vcard-c group absolute bottom-0 z-[3] h-[57.647%] w-[42.308%] overflow-hidden rounded-2xl border border-[rgba(0,200,150,0.13)] shadow-[0_24px_65px_rgba(0,0,0,0.75)]"
                     />
                   ) : null}
                   {demoVideos[2] ? (
@@ -176,67 +161,45 @@ export default function Accueil() {
       </div>
 
       <section
-        className="accueil-image-promo-section relative z-[1] py-12 sm:py-14"
+        className="accueil-image-promo-section relative z-[1] py-14 sm:py-16 md:py-20"
         aria-labelledby="accueil-image-promo-title"
       >
-        <div className="accueil-inner relative z-10 mx-auto flex min-h-0 w-full min-w-0 max-w-[1100px] flex-1 flex-col px-6 sm:px-8 md:justify-center md:gap-3 md:px-12 xl:px-16">
-          <div className="accueil-promo-grid flex min-h-0 w-full min-w-0 flex-col gap-8 sm:gap-10 md:py-2">
-            <div className="accueil-fade-up accueil-fade-up-d3 accueil-promo-images-slot pointer-events-none flex w-full min-h-0 min-w-0 shrink-0 max-md:items-center max-md:justify-center max-md:overflow-hidden md:items-center md:justify-start">
-              <div className="accueil-promo-images-shift w-full">
-              <div className="accueil-videos-frame relative mx-auto aspect-[260/340] w-auto max-w-full shrink-0 overflow-hidden md:mx-0 md:h-[clamp(200px,min(34dvh,38vh),440px)] md:max-w-[min(96vw,400px)] md:overflow-visible">
-                <div
-                  className="pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 rounded-full bg-[rgba(33,243,185,0.08)] blur-[clamp(18px,4vw,28px)] max-md:blur-[14px]"
-                  style={{
-                    bottom: "-2.35%",
-                    width: "50%",
-                    height: "64.7%",
-                  }}
-                  aria-hidden
-                />
-                {PROMO_ACQUISITION_IMAGES[0] ? (
-                  <AccueilPromoImageCard
-                    src={PROMO_ACQUISITION_IMAGES[0].src}
-                    alt={PROMO_ACQUISITION_IMAGES[0].alt}
-                    className="accueil-vcard accueil-vcard-l group absolute z-[1] h-[45.882%] w-[33.846%] overflow-hidden rounded-2xl border border-white/10 shadow-[0_18px_50px_rgba(0,0,0,0.65)]"
-                  />
-                ) : null}
-                {PROMO_ACQUISITION_IMAGES[1] ? (
-                  <AccueilPromoImageCard
-                    src={PROMO_ACQUISITION_IMAGES[1].src}
-                    alt={PROMO_ACQUISITION_IMAGES[1].alt}
-                    className="accueil-vcard accueil-vcard-c group absolute bottom-0 z-[3] h-[57.647%] w-[42.308%] overflow-hidden rounded-2xl border border-[rgba(33,243,185,0.13)] shadow-[0_24px_65px_rgba(0,0,0,0.75)]"
-                  />
-                ) : null}
-                {PROMO_ACQUISITION_IMAGES[2] ? (
-                  <AccueilPromoImageCard
-                    src={PROMO_ACQUISITION_IMAGES[2].src}
-                    alt={PROMO_ACQUISITION_IMAGES[2].alt}
-                    className="accueil-vcard accueil-vcard-r group absolute z-[1] h-[45.882%] w-[33.846%] overflow-hidden rounded-2xl border border-white/10 shadow-[0_18px_50px_rgba(0,0,0,0.65)]"
-                  />
-                ) : null}
-              </div>
-              </div>
-            </div>
-
-            <div className="flex w-full min-w-0 flex-col justify-center self-center text-left">
+        <div className="accueil-inner relative z-10 mx-auto flex w-full min-w-0 max-w-[1100px] flex-col px-6 sm:px-8 md:px-12 xl:px-16">
+          <div className="accueil-image-promo-layout grid w-full min-w-0 grid-cols-1 items-center gap-8 md:grid-cols-2 md:gap-x-12 lg:gap-x-16">
+            <div className="order-1 flex min-w-0 flex-col justify-center text-left">
               <h2
                 id="accueil-image-promo-title"
-                className="accueil-fade-up accueil-fade-up-d1 mb-3 text-left font-black tracking-tight text-white/[0.93] text-[clamp(22px,4.5vw,36px)] leading-[1.05] md:mb-4"
+                className="accueil-fade-up accueil-fade-up-d1 mb-3 font-black tracking-tight text-white/[0.93] text-[clamp(22px,4.5vw,36px)] leading-[1.05] md:mb-4"
               >
                 {t("promo.accueilTitle")}
               </h2>
-              <p className="accueil-fade-up accueil-fade-up-d2 mb-8 max-w-[560px] text-left text-sm leading-relaxed text-white/[0.36] sm:mb-10 sm:text-[15px] md:mb-8">
+              <p className="accueil-fade-up accueil-fade-up-d2 mb-0 max-w-[420px] text-sm leading-relaxed text-white/[0.58] sm:text-[15px] md:mb-7">
                 {t("promo.accueilSubtitle")}
               </p>
 
-              <div className="accueil-fade-up accueil-fade-up-d4 flex justify-start">
+              <div className="accueil-fade-up accueil-fade-up-d4 mt-6 hidden flex-col items-start gap-3 md:mt-0 md:flex">
                 <LienNavSync
                   to="/image-studio"
-                  className="group inline-flex items-center gap-2 rounded-[11px] bg-[#21f3b9] px-5 py-3 text-sm font-extrabold text-[#07090f] shadow-[0_0_28px_rgba(33,243,185,0.26)] transition-all duration-200 hover:-translate-y-px hover:shadow-[0_0_44px_rgba(33,243,185,0.42)] max-md:px-4 max-md:py-2.5 max-md:text-[13px]"
+                  className="group btn-vws-primary inline-flex items-center justify-center gap-2 rounded-[11px] px-5 py-3 text-sm font-extrabold"
                 >
                   <span>{t("promo.accueilCta")}</span>
                 </LienNavSync>
+                <p className="text-[12px] leading-snug text-white/35">{t("promo.extrasLine")}</p>
               </div>
+            </div>
+
+            <div className="accueil-fade-up accueil-fade-up-d3 order-2 min-w-0">
+              <AccueilImageStudioTeaser />
+            </div>
+
+            <div className="accueil-fade-up accueil-fade-up-d4 order-3 flex flex-col items-start gap-3 md:hidden">
+              <LienNavSync
+                to="/image-studio"
+                className="group btn-vws-primary inline-flex w-full items-center justify-center gap-2 rounded-[11px] px-5 py-3 text-sm font-extrabold max-md:px-4 max-md:py-2.5 max-md:text-[13px]"
+              >
+                <span>{t("promo.accueilCta")}</span>
+              </LienNavSync>
+              <p className="text-[12px] leading-snug text-white/35">{t("promo.extrasLine")}</p>
             </div>
           </div>
         </div>
@@ -322,14 +285,7 @@ export default function Accueil() {
           transform: rotate(3deg) scale(0.9) translateX(6px);
         }
         @media (min-width: 768px) {
-          .accueil-promo-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 4rem;
-            align-items: center;
-          }
-          .accueil-hero-videos-shift,
-          .accueil-promo-images-shift {
+          .accueil-hero-videos-shift {
             transform: translateY(-5rem);
           }
         }
@@ -339,15 +295,6 @@ export default function Accueil() {
           }
           .accueil-videos-frame {
             height: clamp(280px, min(50lvh, 520px), 560px);
-          }
-          .accueil-image-promo-section {
-            padding-top: 0.5rem;
-          }
-          .accueil-promo-images-slot {
-            margin-top: -2.75rem;
-          }
-          .accueil-promo-images-shift {
-            transform: translateY(-4.25rem);
           }
           .accueil-vcard-l {
             transform: rotate(-5deg) scale(0.87) translateX(-2px);
