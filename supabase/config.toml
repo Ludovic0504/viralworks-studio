@@ -86,3 +86,14 @@ verify_jwt = false
 # verify_jwt laissé à true (défaut) pour que le JWT utilisateur soit transmis au gateway.
 [functions.community-read-messages]
 verify_jwt = true
+
+# OAuth linking réseaux sociaux (JWT vérifié dans la fonction)
+[functions.social-oauth-start]
+verify_jwt = false
+
+# Callback OAuth plateformes (pas de JWT — redirect navigateur)
+[functions.social-oauth-callback]
+verify_jwt = false
+
+[functions.social-oauth-disconnect]
+verify_jwt = false
