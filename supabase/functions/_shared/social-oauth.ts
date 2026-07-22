@@ -107,9 +107,16 @@ export function getCallbackRedirectUri(): string {
 
 export function providerConfigured(provider: SocialProvider): { ok: boolean; missing: string[] } {
   const missing: string[] = [];
-  if (provider === "instagram" || provider === "facebook") {
+  if (provider === "facebook") {
     if (!Deno.env.get("META_APP_ID")?.trim()) missing.push("META_APP_ID");
     if (!Deno.env.get("META_APP_SECRET")?.trim()) missing.push("META_APP_SECRET");
+  } else if (provider === "instagram") {
+    // Instagram Login uses Instagram App ID/Secret (fallback Meta app credentials).
+    const igId = Deno.env.get("INSTAGRAM_APP_ID")?.trim() || Deno.env.get("META_APP_ID")?.trim();
+    const igSecret =
+      Deno.env.get("INSTAGRAM_APP_SECRET")?.trim() || Deno.env.get("META_APP_SECRET")?.trim();
+    if (!igId) missing.push("INSTAGRAM_APP_ID");
+    if (!igSecret) missing.push("INSTAGRAM_APP_SECRET");
   } else if (provider === "tiktok") {
     if (!Deno.env.get("TIKTOK_CLIENT_KEY")?.trim()) missing.push("TIKTOK_CLIENT_KEY");
     if (!Deno.env.get("TIKTOK_CLIENT_SECRET")?.trim()) missing.push("TIKTOK_CLIENT_SECRET");
@@ -120,27 +127,37 @@ export function providerConfigured(provider: SocialProvider): { ok: boolean; mis
   return { ok: missing.length === 0, missing };
 }
 
+function getInstagramAppCredentials(): { clientId: string; clientSecret: string } {
+  const clientId =
+    Deno.env.get("INSTAGRAM_APP_ID")?.trim() || Deno.env.get("META_APP_ID")?.trim() || "";
+  const clientSecret =
+    Deno.env.get("INSTAGRAM_APP_SECRET")?.trim() || Deno.env.get("META_APP_SECRET")?.trim() || "";
+  return { clientId, clientSecret };
+}
+
 export function buildAuthorizeUrl(provider: SocialProvider, state: string): string {
   const redirectUri = getCallbackRedirectUri();
 
-  if (provider === "facebook" || provider === "instagram") {
+  if (provider === "instagram") {
+    // Business Login for Instagram (no Facebook Page required)
+    const { clientId } = getInstagramAppCredentials();
+    const url = new URL("https://www.instagram.com/oauth/authorize");
+    url.searchParams.set("client_id", clientId);
+    url.searchParams.set("redirect_uri", redirectUri);
+    url.searchParams.set("response_type", "code");
+    url.searchParams.set("scope", "instagram_business_basic");
+    url.searchParams.set("state", state);
+    return url.toString();
+  }
+
+  if (provider === "facebook") {
     const clientId = Deno.env.get("META_APP_ID")!.trim();
-    const scopes =
-      provider === "instagram"
-        ? [
-            "instagram_basic",
-            "pages_show_list",
-            "pages_read_engagement",
-            "instagram_manage_insights",
-            "business_management",
-          ].join(",")
-        : ["public_profile", "email", "pages_show_list", "pages_read_engagement"].join(",");
     const url = new URL("https://www.facebook.com/v21.0/dialog/oauth");
     url.searchParams.set("client_id", clientId);
     url.searchParams.set("redirect_uri", redirectUri);
     url.searchParams.set("state", state);
     url.searchParams.set("response_type", "code");
-    url.searchParams.set("scope", scopes);
+    url.searchParams.set("scope", "public_profile");
     return url.toString();
   }
 
@@ -150,7 +167,7 @@ export function buildAuthorizeUrl(provider: SocialProvider, state: string): stri
     url.searchParams.set("client_key", clientKey);
     url.searchParams.set("redirect_uri", redirectUri);
     url.searchParams.set("response_type", "code");
-    url.searchParams.set("scope", "user.info.basic,user.info.profile,video.list");
+    url.searchParams.set("scope", "user.info.basic");
     url.searchParams.set("state", state);
     return url.toString();
   }
@@ -196,13 +213,95 @@ export async function exchangeCodeForConnection(
 ): Promise<UpsertConnection> {
   const redirectUri = getCallbackRedirectUri();
 
-  if (provider === "facebook" || provider === "instagram") {
-    return exchangeMeta(provider, code, redirectUri);
+  if (provider === "instagram") {
+    return exchangeInstagramLogin(code, redirectUri);
+  }
+  if (provider === "facebook") {
+    return exchangeMeta("facebook", code, redirectUri);
   }
   if (provider === "tiktok") {
     return exchangeTikTok(code, redirectUri);
   }
   return exchangeYouTube(code, redirectUri);
+}
+
+async function exchangeInstagramLogin(
+  code: string,
+  redirectUri: string,
+): Promise<Omit<UpsertConnection, "user_id">> {
+  const { clientId, clientSecret } = getInstagramAppCredentials();
+  if (!clientId || !clientSecret) {
+    throw new Error("INSTAGRAM_APP_ID / INSTAGRAM_APP_SECRET manquants");
+  }
+
+  // Strip trailing #_ that Instagram sometimes appends to the code
+  const cleanCode = code.replace(/#_$/, "").trim();
+
+  const body = new FormData();
+  body.set("client_id", clientId);
+  body.set("client_secret", clientSecret);
+  body.set("grant_type", "authorization_code");
+  body.set("redirect_uri", redirectUri);
+  body.set("code", cleanCode);
+
+  const tokenRes = await fetch("https://api.instagram.com/oauth/access_token", {
+    method: "POST",
+    body,
+  });
+  const tokenJson = await tokenRes.json();
+  const shortLived =
+    tokenJson?.access_token ||
+    (Array.isArray(tokenJson?.data) ? tokenJson.data[0]?.access_token : null);
+  const userId =
+    tokenJson?.user_id ||
+    (Array.isArray(tokenJson?.data) ? tokenJson.data[0]?.user_id : null);
+
+  if (!tokenRes.ok || !shortLived) {
+    throw new Error(
+      tokenJson?.error_message ||
+        tokenJson?.error?.message ||
+        "Échec échange token Instagram",
+    );
+  }
+
+  let accessToken = String(shortLived);
+  let expiresAt: string | null = null;
+
+  const llUrl = new URL("https://graph.instagram.com/access_token");
+  llUrl.searchParams.set("grant_type", "ig_exchange_token");
+  llUrl.searchParams.set("client_secret", clientSecret);
+  llUrl.searchParams.set("access_token", accessToken);
+  const llRes = await fetch(llUrl.toString());
+  const llJson = await llRes.json();
+  if (llRes.ok && llJson.access_token) {
+    accessToken = String(llJson.access_token);
+    if (typeof llJson.expires_in === "number") {
+      expiresAt = new Date(Date.now() + llJson.expires_in * 1000).toISOString();
+    }
+  }
+
+  const meRes = await fetch(
+    `https://graph.instagram.com/v21.0/me?fields=user_id,username,name,profile_picture_url&access_token=${encodeURIComponent(accessToken)}`,
+  );
+  const me = await meRes.json();
+  if (!meRes.ok || !(me.user_id || me.id || userId)) {
+    throw new Error(me.error?.message || "Impossible de lire le profil Instagram");
+  }
+
+  const igUserId = String(me.user_id || me.id || userId);
+
+  return {
+    provider: "instagram",
+    provider_user_id: igUserId,
+    username: typeof me.username === "string" ? me.username : null,
+    display_name: typeof me.name === "string" ? me.name : me.username ?? null,
+    avatar_url: typeof me.profile_picture_url === "string" ? me.profile_picture_url : null,
+    access_token: accessToken,
+    refresh_token: null,
+    token_expires_at: expiresAt,
+    scopes: ["instagram_business_basic"],
+    metadata: { auth: "instagram_login", instagram_user_id: igUserId },
+  };
 }
 
 async function exchangeMeta(
@@ -266,30 +365,16 @@ async function exchangeMeta(
       access_token: accessToken,
       refresh_token: null,
       token_expires_at: expiresAt,
-      scopes: ["public_profile", "email", "pages_show_list", "pages_read_engagement"],
+      scopes: ["public_profile"],
       metadata,
     };
   }
 
-  // Instagram : trouver le compte Business / Creator lié
-  const pagesRes = await fetch(
-    `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,instagram_business_account{id,username,name,profile_picture_url}&access_token=${encodeURIComponent(accessToken)}`,
-  );
-  const pagesJson = await pagesRes.json();
-  const pages = Array.isArray(pagesJson.data) ? pagesJson.data : [];
-  let ig: { id: string; username?: string; name?: string; profile_picture_url?: string } | null = null;
-  for (const page of pages) {
-    if (page?.instagram_business_account?.id) {
-      ig = page.instagram_business_account;
-      metadata.facebook_page_id = page.id;
-      metadata.facebook_page_name = page.name;
-      break;
-    }
-  }
-
+  // Instagram : trouver le compte Business / Creator (Page ou Business Manager)
+  const ig = await resolveInstagramFromMeta(accessToken, metadata);
   if (!ig?.id) {
     throw new Error(
-      "Aucun compte Instagram professionnel lié à une Page Facebook. Convertis ton compte Instagram en Professionnel (Business/Créateur) et lie-le à une Page.",
+      "Aucun compte Instagram professionnel trouvé. Vérifie que @ton_compte est lié à ta Page Facebook (Connected assets), puis réessaie.",
     );
   }
 
@@ -306,10 +391,92 @@ async function exchangeMeta(
       "instagram_basic",
       "pages_show_list",
       "pages_read_engagement",
-      "instagram_manage_insights",
+      "business_management",
     ],
     metadata,
   };
+}
+
+type IgAccount = {
+  id: string;
+  username?: string;
+  name?: string;
+  profile_picture_url?: string;
+};
+
+async function resolveInstagramFromMeta(
+  accessToken: string,
+  metadata: Record<string, unknown>,
+): Promise<IgAccount | null> {
+  const pageFields = [
+    "id",
+    "name",
+    "access_token",
+    "instagram_business_account{id,username,name,profile_picture_url}",
+    "connected_instagram_account{id,username,name,profile_picture_url}",
+  ].join(",");
+
+  const pagesRes = await fetch(
+    `https://graph.facebook.com/v21.0/me/accounts?fields=${pageFields}&limit=100&access_token=${encodeURIComponent(accessToken)}`,
+  );
+  const pagesJson = await pagesRes.json();
+  const pages = Array.isArray(pagesJson.data) ? pagesJson.data : [];
+
+  for (const page of pages) {
+    const igNode = page?.instagram_business_account || page?.connected_instagram_account;
+    if (igNode?.id) {
+      metadata.facebook_page_id = page.id;
+      metadata.facebook_page_name = page.name;
+      metadata.discovery = "page";
+      if (typeof page.access_token === "string" && page.access_token) {
+        metadata.page_access_token_present = true;
+      }
+      return igNode as IgAccount;
+    }
+
+    // Retry with page token (sometimes IG only appears there)
+    if (typeof page?.access_token === "string" && page.access_token && page.id) {
+      const pageDetailRes = await fetch(
+        `https://graph.facebook.com/v21.0/${page.id}?fields=instagram_business_account{id,username,name,profile_picture_url},connected_instagram_account{id,username,name,profile_picture_url}&access_token=${encodeURIComponent(page.access_token)}`,
+      );
+      const pageDetail = await pageDetailRes.json();
+      const fromPage =
+        pageDetail?.instagram_business_account || pageDetail?.connected_instagram_account;
+      if (fromPage?.id) {
+        metadata.facebook_page_id = page.id;
+        metadata.facebook_page_name = page.name;
+        metadata.discovery = "page_token";
+        return fromPage as IgAccount;
+      }
+    }
+  }
+
+  // Fallback Business Manager assets
+  const bizRes = await fetch(
+    `https://graph.facebook.com/v21.0/me/businesses?fields=id,name&limit=50&access_token=${encodeURIComponent(accessToken)}`,
+  );
+  const bizJson = await bizRes.json();
+  const businesses = Array.isArray(bizJson.data) ? bizJson.data : [];
+
+  for (const biz of businesses) {
+    if (!biz?.id) continue;
+    for (const edge of ["owned_instagram_accounts", "client_instagram_accounts"] as const) {
+      const igRes = await fetch(
+        `https://graph.facebook.com/v21.0/${biz.id}/${edge}?fields=id,username,name,profile_picture_url&limit=50&access_token=${encodeURIComponent(accessToken)}`,
+      );
+      const igJson = await igRes.json();
+      const accounts = Array.isArray(igJson.data) ? igJson.data : [];
+      const first = accounts.find((a: { id?: string }) => a?.id);
+      if (first?.id) {
+        metadata.business_id = biz.id;
+        metadata.business_name = biz.name;
+        metadata.discovery = edge;
+        return first as IgAccount;
+      }
+    }
+  }
+
+  return null;
 }
 
 async function exchangeTikTok(

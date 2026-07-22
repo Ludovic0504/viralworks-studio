@@ -14,7 +14,7 @@ export default function ProtectedRoute({ children }) {
   }
 
   if (!session) {
-    const sp = new URLSearchParams();
+    const sp = new URLSearchParams(location.search);
     sp.set("login", "1");
     sp.set("next", location.pathname);
     return <Navigate to={{ pathname: location.pathname, search: `?${sp.toString()}` }} replace />;

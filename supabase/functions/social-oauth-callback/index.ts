@@ -95,8 +95,19 @@ serve(async (req) => {
     return redirect(okUrl.toString());
   } catch (err) {
     console.error("[social-oauth-callback]", err);
-    const site = Deno.env.get("SITE_URL")?.trim() || "https://viralworks-studio.com";
     const message = err instanceof Error ? err.message : "Erreur de connexion";
+    // Prefer return_origin from state so local tests don't land on production login.
+    let site = Deno.env.get("SITE_URL")?.trim() || "https://viralworks-studio.com";
+    try {
+      const stateParam = new URL(req.url).searchParams.get("state");
+      const secret = getStateSecret();
+      if (stateParam && secret) {
+        const parsed = await verifyOAuthState(stateParam, secret);
+        if (parsed?.return_origin) site = parsed.return_origin;
+      }
+    } catch {
+      /* keep SITE_URL fallback */
+    }
     return redirect(errorReturnPath(site, message));
   }
 });
