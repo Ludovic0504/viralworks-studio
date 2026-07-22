@@ -167,7 +167,7 @@ export function buildAuthorizeUrl(provider: SocialProvider, state: string): stri
     url.searchParams.set("client_key", clientKey);
     url.searchParams.set("redirect_uri", redirectUri);
     url.searchParams.set("response_type", "code");
-    url.searchParams.set("scope", "user.info.basic");
+    url.searchParams.set("scope", "user.info.basic,user.info.profile");
     url.searchParams.set("state", state);
     return url.toString();
   }
