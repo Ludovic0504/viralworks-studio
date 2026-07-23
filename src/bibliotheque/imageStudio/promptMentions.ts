@@ -8,6 +8,8 @@ export type PromptMentionAssets = {
   image1Url?: string | null;
   /** Précision sur l'article à extraire de l'image @Produit (consigne technique, pas dans le prompt utilisateur). */
   productFocus?: string | null;
+  /** Consigne accessoires / objets tenus relatifs à @Avatar (consigne technique). */
+  avatarFocus?: string | null;
 };
 
 export type PromptMentionOption = {
@@ -221,6 +223,12 @@ function buildCompositionInstructions(
   const productImageIndex = imageIndexByKind.get("Produit");
   if (productFocus && productImageIndex != null && mentionKinds.includes("Produit")) {
     lines.push(buildProductReferenceFocusLine(productImageIndex, productFocus));
+  }
+
+  const avatarFocus = typeof assets.avatarFocus === "string" ? assets.avatarFocus.trim() : "";
+  const avatarImageIndex = imageIndexByKind.get("Avatar");
+  if (avatarFocus && avatarImageIndex != null && mentionKinds.includes("Avatar")) {
+    lines.push(`@Avatar accessories: ${avatarFocus}`);
   }
 
   return lines.join(" ");

@@ -45,11 +45,18 @@ export type ClothingDecision =
       notes: string;
     };
 
+/** Accessoires / objets tenus visibles sur l’avatar de référence. */
+export type AccessoriesDecision =
+  | { mode: "keep" }
+  | { mode: "remove" }
+  | { mode: "replace"; notes: string };
+
 export type PromptFromImageContext = {
   avatarUrl: string;
   source: "project";
   personTraits: PersonTraits | null;
   clothing: ClothingDecision | null;
+  accessories: AccessoriesDecision | null;
 };
 
 export type ClothingInterviewStep =
@@ -62,5 +69,8 @@ export type ClothingInterviewStep =
   | "fallback_piece_type"
   | "full_outfit_scope"
   | "rest_of_outfit"
+  | "keep_accessories"
+  | "other_accessories"
+  | "await_accessories_input"
   | "pick_chatbot"
   | "done";

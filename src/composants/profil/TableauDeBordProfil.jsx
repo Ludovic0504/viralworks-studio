@@ -8,29 +8,25 @@ import {
   ChevronDown,
   ChevronUp,
   Shield,
+  RefreshCw,
 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 const SOCIAL_NETWORKS = [
   {
     id: "instagram",
     label: "Instagram",
-    Icon: InstagramGlyph,
+    iconSrc: "/assets/social/instagram.png",
   },
   {
     id: "tiktok",
     label: "TikTok",
-    Icon: TikTokGlyph,
+    iconSrc: "/assets/social/tiktok.png",
   },
   {
     id: "youtube",
     label: "YouTube",
-    Icon: YouTubeGlyph,
-  },
-  {
-    id: "facebook",
-    label: "Facebook",
-    Icon: FacebookGlyph,
+    iconSrc: "/assets/social/youtube.png",
   },
 ];
 
@@ -65,46 +61,100 @@ const AGENTS = [
   },
 ];
 
-function InstagramGlyph({ className }) {
+const numberFmt = new Intl.NumberFormat("fr-FR");
+
+function formatMetric(value) {
+  if (value == null || Number.isNaN(Number(value))) return "—";
+  return numberFmt.format(Number(value));
+}
+
+function formatRetention(value) {
+  if (value == null || Number.isNaN(Number(value))) return "—";
+  const n = Number(value);
+  const pct = n <= 1 ? n * 100 : n;
+  return `${Math.round(pct)} %`;
+}
+
+function formatEngagement(value) {
+  if (value == null || Number.isNaN(Number(value))) return "—";
+  const pct = Number(value) * 100;
+  if (pct < 0.1) return `${pct.toFixed(2)} %`;
+  if (pct < 10) return `${pct.toFixed(1)} %`;
+  return `${Math.round(pct)} %`;
+}
+
+function formatShortDate(iso) {
+  if (!iso) return null;
+  try {
+    return new Intl.DateTimeFormat("fr-FR", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    }).format(new Date(iso));
+  } catch {
+    return null;
+  }
+}
+
+function insightStatusLabel(status, connected) {
+  if (!connected) return "Non connecté";
+  switch (status) {
+    case "ok":
+      return "Stats actives";
+    case "scope_missing":
+      return "Stats indisponibles";
+    case "expired":
+      return "Session expirée";
+    case "error":
+      return "Erreur";
+    case "loading":
+      return "Chargement…";
+    case "connected":
+      return "Connecté";
+    case "not_connected":
+      return "Non connecté";
+    default:
+      return connected ? "Connecté" : "Non connecté";
+  }
+}
+
+function MetricRow({ label, value }) {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden>
-      <rect x="3" y="3" width="18" height="18" rx="5" stroke="currentColor" strokeWidth="1.6" />
-      <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.6" />
-      <circle cx="17.5" cy="6.5" r="1.1" fill="currentColor" />
-    </svg>
+    <div className="dash-insight-metric">
+      <span className="dash-insight-metric-label">{label}</span>
+      <span className="dash-insight-metric-value">{value}</span>
+    </div>
   );
 }
 
-function TikTokGlyph({ className }) {
+function VideoInsightRow({ video, showProvider }) {
+  if (!video) return null;
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M14 4v9.2a3.8 3.8 0 1 1-2.6-3.6V7.2c1.4.9 2.7 1.4 4.2 1.5V4H14Z"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function YouTubeGlyph({ className }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden>
-      <rect x="3" y="6" width="18" height="12" rx="3" stroke="currentColor" strokeWidth="1.6" />
-      <path d="M11 9.5v5l4.5-2.5L11 9.5Z" fill="currentColor" />
-    </svg>
-  );
-}
-
-function FacebookGlyph({ className }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M14 8h2V5h-2c-2.2 0-4 1.8-4 4v2H8v3h2v6h3v-6h2.2l.8-3H13V9c0-.6.4-1 1-1Z"
-        fill="currentColor"
-      />
-    </svg>
+    <div className="dash-insight-video">
+      {video.thumbnailUrl ? (
+        <img
+          src={video.thumbnailUrl}
+          alt=""
+          className="dash-insight-thumb"
+          width={64}
+          height={36}
+          loading="lazy"
+          decoding="async"
+        />
+      ) : (
+        <div className="dash-insight-thumb dash-insight-thumb--empty" aria-hidden />
+      )}
+      <div className="dash-insight-video-body min-w-0">
+        <p className="dash-insight-video-title" title={video.title || undefined}>
+          {video.title || "Sans titre"}
+        </p>
+        <p className="dash-insight-video-meta">
+          {showProvider ? `${showProvider} · ` : ""}
+          {formatMetric(video.views)} vues · {formatMetric(video.likes)} likes · rétention{" "}
+          {formatRetention(video.retention)}
+        </p>
+      </div>
+    </div>
   );
 }
 
@@ -144,10 +194,14 @@ export default function TableauDeBordProfil({
   isAdmin = false,
   videosRemaining,
   creationsThisMonth,
-  networksConnected = 0,
+  networksConnected: _networksConnected = 0,
   socialConnections = [],
   socialBusyProvider = null,
   socialFlash = null,
+  socialInsights = [],
+  socialInsightsLoading = false,
+  socialInsightsError = null,
+  onRefreshSocialInsights,
   onConnectSocial,
   onDisconnectSocial,
   onDismissSocialFlash,
@@ -158,6 +212,8 @@ export default function TableauDeBordProfil({
   getKindPath,
 }) {
   const [showAllActivity, setShowAllActivity] = useState(false);
+  const [openProviderId, setOpenProviderId] = useState(null);
+  const [top3Open, setTop3Open] = useState(true);
 
   const greetingName = displayName?.trim() || "là";
   const activityItems = showAllActivity ? recentActivity : recentActivity.slice(0, 6);
@@ -165,6 +221,176 @@ export default function TableauDeBordProfil({
   const connectionByProvider = Object.fromEntries(
     (socialConnections || []).map((c) => [c.provider, c]),
   );
+
+  const insightByProvider = useMemo(() => {
+    const map = {};
+    for (const row of socialInsights || []) {
+      if (row?.provider) map[row.provider] = row;
+    }
+    return map;
+  }, [socialInsights]);
+
+  const hasConnected = SOCIAL_NETWORKS.some(
+    (n) => connectionByProvider[n.id]?.status === "connected",
+  );
+  const networksConnectedCount = SOCIAL_NETWORKS.filter(
+    (n) => connectionByProvider[n.id]?.status === "connected",
+  ).length;
+
+  const globalReport = useMemo(() => {
+    const byProvider = new Map((socialInsights || []).map((p) => [p.provider, p]));
+
+    const platforms = SOCIAL_NETWORKS.map((network) => {
+      const p = byProvider.get(network.id);
+      const connected = Boolean(
+        (socialConnections || []).find(
+          (c) => c.provider === network.id && c.status === "connected",
+        ),
+      );
+
+      if (!p || p.status !== "ok") {
+        return {
+          id: network.id,
+          label: network.label,
+          iconSrc: network.iconSrc,
+          connected,
+          ready: false,
+          status: p?.status || (connected ? "error" : "not_connected"),
+          statusMessage: p?.message || null,
+          viewsSum: null,
+          likesSum: null,
+          viewsAvg: null,
+          likesAvg: null,
+          engagement: null,
+          sampleSize: 0,
+          truncated: false,
+        };
+      }
+
+      const catalog = p.catalog;
+      const videos =
+        Array.isArray(catalog?.videos) && catalog.videos.length > 0
+          ? catalog.videos
+          : (() => {
+              const fallback = [];
+              if (p.lastPost?.id) fallback.push(p.lastPost);
+              for (const v of p.topVideos || []) {
+                if (v?.id && !fallback.some((x) => x.id === v.id)) fallback.push(v);
+              }
+              return fallback;
+            })();
+
+      const withViews = videos.filter((v) => v.views != null);
+      const withLikes = videos.filter((v) => v.likes != null);
+      const viewsSum =
+        catalog?.viewsSum != null
+          ? catalog.viewsSum
+          : withViews.length
+            ? withViews.reduce((s, v) => s + (Number(v.views) || 0), 0)
+            : null;
+      const likesSum =
+        catalog?.likesSum != null
+          ? catalog.likesSum
+          : withLikes.length
+            ? withLikes.reduce((s, v) => s + (Number(v.likes) || 0), 0)
+            : null;
+      const viewsAvg =
+        catalog?.avgViews != null
+          ? catalog.avgViews
+          : withViews.length && viewsSum != null
+            ? viewsSum / withViews.length
+            : null;
+      const likesAvg = withLikes.length && likesSum != null ? likesSum / withLikes.length : null;
+      const engagement =
+        viewsSum != null && viewsSum > 0 && likesSum != null ? likesSum / viewsSum : null;
+
+      return {
+        id: network.id,
+        label: network.label,
+        iconSrc: network.iconSrc,
+        connected: true,
+        ready: true,
+        status: "ok",
+        statusMessage: p.message || null,
+        viewsSum,
+        likesSum,
+        viewsAvg,
+        likesAvg,
+        engagement,
+        sampleSize: catalog?.videoCount ?? videos.length,
+        truncated: Boolean(catalog?.truncated),
+      };
+    });
+
+    const ready = platforms.filter((p) => p.ready);
+    const viewsTotal = ready.reduce((s, p) => s + (p.viewsSum || 0), 0);
+    const likesTotal = ready.reduce((s, p) => s + (p.likesSum || 0), 0);
+    const hasViews = ready.some((p) => p.viewsSum != null);
+    const hasLikes = ready.some((p) => p.likesSum != null);
+
+    const withShare = platforms.map((p) => ({
+      ...p,
+      viewsShare:
+        hasViews && p.viewsSum != null && viewsTotal > 0 ? p.viewsSum / viewsTotal : null,
+      likesShare:
+        hasLikes && p.likesSum != null && likesTotal > 0 ? p.likesSum / likesTotal : null,
+    }));
+
+    const rankedByViews = [...withShare]
+      .filter((p) => p.ready && p.viewsSum != null)
+      .sort((a, b) => (b.viewsSum || 0) - (a.viewsSum || 0));
+    const rankById = new Map(rankedByViews.map((p, i) => [p.id, i + 1]));
+
+    const volumeLeader = rankedByViews[0] || null;
+    const engagementLeader =
+      [...withShare]
+        .filter((p) => p.ready && p.engagement != null)
+        .sort((a, b) => (b.engagement || 0) - (a.engagement || 0))[0] || null;
+
+    const ok = withShare.filter((p) => p.ready);
+
+    const ranked = [];
+    for (const p of socialInsights || []) {
+      if (p.status !== "ok") continue;
+      if (!SOCIAL_NETWORKS.some((n) => n.id === p.provider)) continue;
+      const pool =
+        Array.isArray(p.catalog?.videos) && p.catalog.videos.length > 0
+          ? p.catalog.videos
+          : p.topVideos || [];
+      for (const v of pool) {
+        if (v?.views == null) continue;
+        ranked.push({
+          ...v,
+          provider: p.provider,
+          providerLabel: SOCIAL_NETWORKS.find((n) => n.id === p.provider)?.label || p.provider,
+        });
+      }
+    }
+    ranked.sort((a, b) => (b.views || 0) - (a.views || 0));
+
+    const sampleTotal = withShare.reduce((s, p) => s + (p.sampleSize || 0), 0);
+    const anyTruncated = withShare.some((p) => p.truncated);
+    const coverageNotes = (socialInsights || [])
+      .filter((p) => p.status === "ok" && p.message)
+      .map((p) => p.message);
+
+    return {
+      platforms: withShare.map((p) => ({ ...p, rank: rankById.get(p.id) || null })),
+      viewsTotal: hasViews ? viewsTotal : null,
+      likesTotal: hasLikes ? likesTotal : null,
+      volumeLeader,
+      engagementLeader,
+      top3: ranked.slice(0, 3),
+      okCount: ok.length,
+      sampleTotal,
+      anyTruncated,
+      coverageNotes,
+    };
+  }, [socialInsights, socialConnections]);
+
+  const toggleProvider = (id) => {
+    setOpenProviderId((prev) => (prev === id ? null : id));
+  };
 
   return (
     <div className="dash-board">
@@ -206,7 +432,7 @@ export default function TableauDeBordProfil({
         </div>
         <div className="dash-kpi-card">
           <p className="dash-kpi-label">Réseaux connectés</p>
-          <p className="dash-kpi-value">{networksConnected}</p>
+          <p className="dash-kpi-value">{networksConnectedCount}</p>
         </div>
       </div>
 
@@ -215,70 +441,23 @@ export default function TableauDeBordProfil({
           <div className="profil-section-head-main">
             <h3 className="profil-section-title">Réseaux sociaux</h3>
           </div>
+          {hasConnected ? (
+            <button
+              type="button"
+              className="dash-insight-refresh"
+              disabled={socialInsightsLoading}
+              onClick={() => onRefreshSocialInsights?.()}
+              title="Actualiser"
+            >
+              <RefreshCw
+                className={`h-3.5 w-3.5${socialInsightsLoading ? " animate-spin" : ""}`}
+                aria-hidden
+              />
+              Actualiser
+            </button>
+          ) : null}
         </div>
-        <div className="dash-social-grid">
-          {SOCIAL_NETWORKS.map((network) => {
-            const NetworkIcon = network.Icon;
-            const conn = connectionByProvider[network.id];
-            const connected = conn?.status === "connected";
-            const busy = socialBusyProvider === network.id;
-            const accountLabel =
-              conn?.username || conn?.display_name || (connected ? "Compte relié" : null);
-            const statsBits = [];
-            if (network.id === "youtube" && conn?.metadata) {
-              if (conn.metadata.subscriber_count != null) {
-                statsBits.push(`${conn.metadata.subscriber_count} abonnés`);
-              }
-              if (conn.metadata.video_count != null) {
-                statsBits.push(`${conn.metadata.video_count} vidéos`);
-              }
-              if (conn.metadata.view_count != null) {
-                statsBits.push(`${conn.metadata.view_count} vues`);
-              }
-            }
 
-            return (
-              <div
-                key={network.id}
-                className={`dash-social-card${connected ? " is-connected" : ""}`}
-              >
-                <div className="dash-social-card-main">
-                  <NetworkIcon className="dash-social-icon" />
-                  <div className="min-w-0">
-                    <span className="dash-social-label">{network.label}</span>
-                    {connected && accountLabel ? (
-                      <p className="dash-social-account" title={accountLabel}>
-                        @{String(accountLabel).replace(/^@/, "")}
-                      </p>
-                    ) : null}
-                    {statsBits.length > 0 ? (
-                      <p className="dash-social-stats">{statsBits.join(" · ")}</p>
-                    ) : null}
-                  </div>
-                </div>
-                {connected ? (
-                  <button
-                    type="button"
-                    className="dash-social-connect dash-social-connect--disconnect"
-                    disabled={busy}
-                    onClick={() => onDisconnectSocial?.(network.id)}
-                  >
-                    {busy ? "…" : "Déconnecter"}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="dash-social-connect"
-                    disabled={busy}
-                    onClick={() => onConnectSocial?.(network.id)}
-                  >
-                    {busy ? "…" : "Connecter"}
-                  </button>
-                )}
-              </div>
-            );
-          })}
-        </div>
         {socialFlash ? (
           <div
             className={`dash-social-notice${socialFlash.type === "error" ? " is-error" : ""}`}
@@ -290,6 +469,338 @@ export default function TableauDeBordProfil({
             </button>
           </div>
         ) : null}
+
+        {hasConnected ? (
+          <div className="dash-insight-panel">
+            {socialInsightsLoading && globalReport.okCount === 0 ? (
+              <div className="dash-insight-skeleton" aria-busy="true">
+                <div className="dash-insight-skeleton-bar" />
+                <div className="dash-insight-skeleton-bar dash-insight-skeleton-bar--short" />
+              </div>
+            ) : socialInsightsError && globalReport.okCount === 0 ? (
+              <p className="dash-insight-empty">{socialInsightsError}</p>
+            ) : (
+              <>
+                <div className="dash-rd-table">
+                  <div className="dash-rd-thead" aria-hidden>
+                    <span className="dash-rd-th dash-rd-th--plat" />
+                    <span className="dash-rd-th">Vues</span>
+                    <span className="dash-rd-th">Likes</span>
+                    <span className="dash-rd-th">Vidéos</span>
+                    <span className="dash-rd-th">Moy. vues</span>
+                    <span className="dash-rd-th">Engagement</span>
+                  </div>
+                  {globalReport.platforms.map((p) => {
+                    const needsReconnect =
+                      p.ready &&
+                      p.id === "instagram" &&
+                      (p.status === "scope_missing" ||
+                        p.status === "expired" ||
+                        (p.viewsSum == null && p.likesSum == null));
+                    const statusLabel =
+                      p.status === "scope_missing" || needsReconnect
+                        ? "Reconnecte"
+                        : p.status === "expired"
+                          ? "Expiré"
+                          : p.status === "error"
+                            ? "Erreur"
+                            : !p.ready
+                              ? "En attente"
+                              : null;
+                    return (
+                      <div
+                        key={p.id}
+                        className={`dash-rd-trow${!p.ready ? " is-muted" : ""}`}
+                      >
+                        <div className="dash-rd-plat">
+                          <img
+                            src={p.iconSrc}
+                            alt=""
+                            className="dash-social-icon"
+                            width={20}
+                            height={20}
+                            decoding="async"
+                          />
+                          <span className="dash-rd-plat-name">{p.label}</span>
+                          {p.ready && p.id === "instagram" ? (
+                            <span className="dash-rd-plat-note">(90 derniers jours)</span>
+                          ) : null}
+                          {statusLabel ? (
+                            <span className="dash-rd-tag">{statusLabel}</span>
+                          ) : null}
+                        </div>
+                        {p.ready ? (
+                          <>
+                            <span className="dash-rd-num">
+                              {p.viewsSum != null ? formatMetric(p.viewsSum) : "—"}
+                            </span>
+                            <span className="dash-rd-num">
+                              {p.likesSum != null ? formatMetric(p.likesSum) : "—"}
+                            </span>
+                            <span className="dash-rd-num">
+                              {p.sampleSize || 0}
+                              {p.truncated ? "+" : ""}
+                            </span>
+                            <span className="dash-rd-num">
+                              {p.viewsAvg != null
+                                ? formatMetric(Math.round(p.viewsAvg))
+                                : "—"}
+                            </span>
+                            <span className="dash-rd-num">
+                              {formatEngagement(p.engagement)}
+                            </span>
+                          </>
+                        ) : (
+                          <p className="dash-rd-status-msg dash-rd-status-msg--span">
+                            {p.statusMessage ||
+                              (p.connected
+                                ? "Stats indisponibles — Actualiser ou reconnecte."
+                                : "Compte non connecté.")}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="dash-insight-accordion">
+                  <button
+                    type="button"
+                    className="dash-insight-accordion-trigger"
+                    aria-expanded={top3Open}
+                    onClick={() => setTop3Open((v) => !v)}
+                  >
+                    <span>Top 3 cross-plateforme</span>
+                    {top3Open ? (
+                      <ChevronUp className="h-4 w-4" aria-hidden />
+                    ) : (
+                      <ChevronDown className="h-4 w-4" aria-hidden />
+                    )}
+                  </button>
+                  {top3Open ? (
+                    <div className="dash-insight-accordion-body">
+                      {globalReport.top3.length > 0 ? (
+                        <div className="dash-insight-video-list">
+                          {globalReport.top3.map((video, i) => (
+                            <VideoInsightRow
+                              key={`${video.provider}-${video.id}-${i}`}
+                              video={video}
+                              showProvider={video.providerLabel}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="dash-insight-empty">
+                          Pas encore de vidéos classées. Connecte un réseau pour comparer.
+                        </p>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              </>
+            )}
+          </div>
+        ) : null}
+
+        <div className="dash-social-block">
+          <div className="dash-social-grid dash-social-grid--3">
+            {SOCIAL_NETWORKS.map((network) => {
+              const conn = connectionByProvider[network.id];
+              const connected = conn?.status === "connected";
+              const insight = insightByProvider[network.id];
+              const status =
+                insight?.status ||
+                (connected
+                  ? socialInsightsLoading
+                    ? "loading"
+                    : "connected"
+                  : "not_connected");
+              const open = openProviderId === network.id;
+              const busy = socialBusyProvider === network.id;
+              const accountLabel =
+                conn?.username || conn?.display_name || (connected ? "Compte relié" : null);
+
+              return (
+                <div
+                  key={network.id}
+                  className={`dash-social-card dash-social-card--stack${connected ? " is-connected" : ""}${open ? " is-open" : ""}`}
+                >
+                  <div className="dash-social-card-top">
+                    <div className="dash-social-card-main">
+                      <img
+                        src={network.iconSrc}
+                        alt=""
+                        className="dash-social-icon"
+                        width={28}
+                        height={28}
+                        decoding="async"
+                      />
+                      <div className="min-w-0">
+                        <span className="dash-social-label">{network.label}</span>
+                        {connected && accountLabel ? (
+                          <p className="dash-social-account" title={accountLabel}>
+                            @{String(accountLabel).replace(/^@/, "")}
+                          </p>
+                        ) : (
+                          <p className="dash-social-account dash-social-account--muted">Non connecté</p>
+                        )}
+                      </div>
+                    </div>
+                    <span className={`dash-insight-badge dash-insight-badge--${status}`}>
+                      {insightStatusLabel(status, connected)}
+                    </span>
+                  </div>
+
+                  <div className="dash-social-card-actions">
+                    {connected ? (
+                      <button
+                        type="button"
+                        className="dash-social-connect dash-social-connect--disconnect"
+                        disabled={busy}
+                        onClick={() => onDisconnectSocial?.(network.id)}
+                      >
+                        {busy ? "…" : "Déconnecter"}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="dash-social-connect"
+                        disabled={busy}
+                        onClick={() => onConnectSocial?.(network.id)}
+                      >
+                        {busy ? "…" : "Connecter"}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className={`dash-social-stats-toggle${open ? " is-active" : ""}`}
+                      aria-expanded={open}
+                      onClick={() => toggleProvider(network.id)}
+                    >
+                      Stats
+                      {open ? (
+                        <ChevronUp className="h-3.5 w-3.5" aria-hidden />
+                      ) : (
+                        <ChevronDown className="h-3.5 w-3.5" aria-hidden />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {openProviderId
+            ? (() => {
+                const network = SOCIAL_NETWORKS.find((n) => n.id === openProviderId);
+                if (!network) return null;
+                const conn = connectionByProvider[network.id];
+                const connected = conn?.status === "connected";
+                const insight = insightByProvider[network.id];
+                const status =
+                  insight?.status ||
+                  (connected
+                    ? socialInsightsLoading
+                      ? "loading"
+                      : "connected"
+                    : "not_connected");
+                const busy = socialBusyProvider === network.id;
+                const published = formatShortDate(insight?.lastPost?.publishedAt);
+
+                return (
+                  <div className="dash-social-detail-panel" key={network.id}>
+                    <div className="dash-social-detail-head">
+                      <img
+                        src={network.iconSrc}
+                        alt=""
+                        className="dash-social-icon"
+                        width={28}
+                        height={28}
+                        decoding="async"
+                      />
+                      <span className="dash-insight-provider-name">{network.label}</span>
+                    </div>
+
+                    {!connected ? (
+                      <p className="dash-insight-empty">
+                        Connecte {network.label} pour voir les stats.
+                      </p>
+                    ) : status === "scope_missing" || status === "expired" ? (
+                      <div className="dash-insight-cta-row">
+                        <p className="dash-insight-empty">
+                          {insight?.message ||
+                            (network.id === "instagram"
+                              ? "Reconnecte Instagram pour autoriser likes / vues."
+                              : network.id === "tiktok"
+                                ? "Reconnecte TikTok (video.list + user.info.stats)."
+                                : "Stats indisponibles. Reconnecte le compte.")}
+                        </p>
+                        <button
+                          type="button"
+                          className="dash-social-connect"
+                          disabled={busy}
+                          onClick={() => onConnectSocial?.(network.id)}
+                        >
+                          {busy ? "…" : "Reconnecter"}
+                        </button>
+                      </div>
+                    ) : status === "error" ? (
+                      <p className="dash-insight-empty">
+                        {insight?.message || "Impossible de charger les stats."}
+                      </p>
+                    ) : status === "ok" ? (
+                      <div className="dash-social-detail-grid">
+                        <div>
+                          <div className="dash-insight-section-label">Profil</div>
+                          <div className="dash-insight-metrics">
+                            <MetricRow
+                              label="Vues"
+                              value={formatMetric(insight?.profile?.views)}
+                            />
+                            <MetricRow
+                              label="Likes"
+                              value={formatMetric(insight?.profile?.likes)}
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <div className="dash-insight-section-label">Dernier post</div>
+                          {insight?.lastPost ? (
+                            <>
+                              <VideoInsightRow video={insight.lastPost} />
+                              {published ? (
+                                <p className="dash-insight-video-date">Publié le {published}</p>
+                              ) : null}
+                              <div className="dash-insight-metrics">
+                                <MetricRow
+                                  label="Vues"
+                                  value={formatMetric(insight.lastPost.views)}
+                                />
+                                <MetricRow
+                                  label="Likes"
+                                  value={formatMetric(insight.lastPost.likes)}
+                                />
+                                <MetricRow
+                                  label="Rétention"
+                                  value={formatRetention(insight.lastPost.retention)}
+                                />
+                              </div>
+                            </>
+                          ) : (
+                            <p className="dash-insight-empty">Aucun post récent trouvé.</p>
+                          )}
+                        </div>
+                      </div>
+                    ) : status === "loading" ? (
+                      <p className="dash-insight-empty">Chargement des stats…</p>
+                    ) : (
+                      <p className="dash-insight-empty">Aucune donnée.</p>
+                    )}
+                  </div>
+                );
+              })()
+            : null}
+        </div>
       </section>
 
       <section className="profil-section">

@@ -115,6 +115,20 @@ export const chatbotGuideExtrasEn = {
     promptAssistUnavailable: "The AI service is unavailable right now. Try again later.",
     promptAssistGenericError: "An error occurred. Check your connection or sign in again.",
     promptAssistErrorPrefix: "An error occurred:",
+    fromImageWelcome: "We'll start from your avatar. Analyzing the person in the image…",
+    fromImageKeepOrChange: "Do you want to keep the clothes from this image, or change them?",
+    fromImageKeepLabel: "Keep the clothes",
+    fromImageChangeLabel: "Change the clothes",
+    fromImageKeepAccessories:
+      "Should we keep the accessories visible in this image (held objects, bags, etc.)?",
+    fromImageKeepAccessoriesYes: "Yes",
+    fromImageKeepAccessoriesNo: "No",
+    fromImageOtherAccessories: "Should we add other accessories?",
+    fromImageOtherAccessoriesYes: "Yes",
+    fromImageOtherAccessoriesNo: "No",
+    fromImageDescribeAccessories:
+      "Describe the accessories to add (e.g. sunglasses, handbag, watch…).",
+    fromImageAccessoriesPlaceholder: "E.g. sunglasses, handbag…",
   },
   ugc: {
     gender: { homme: "Man", femme: "Woman" },

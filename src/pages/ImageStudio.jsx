@@ -524,6 +524,7 @@ export default function ImageStudio() {
   const [productImage, setProductImage] = useState(null);
   const [productPreview, setProductPreview] = useState(null);
   const [productFocus, setProductFocus] = useState(null);
+  const [avatarFocus, setAvatarFocus] = useState(null);
   const [avatarLibraryOpen, setAvatarLibraryOpen] = useState(false);
   const [productLibraryOpen, setProductLibraryOpen] = useState(false);
   const [activeHistoryId, setActiveHistoryId] = useState(null);
@@ -990,12 +991,14 @@ export default function ImageStudio() {
   const handleAvatarLibrarySelect = useCallback((url) => {
     setReferenceImage(url);
     setReferencePreview(url);
+    setAvatarFocus(null);
     setError(null);
   }, []);
 
   const clearReference = useCallback(() => {
     setReferenceImage(null);
     setReferencePreview(null);
+    setAvatarFocus(null);
     setPromptFromImageSession(null);
   }, []);
 
@@ -1099,6 +1102,7 @@ export default function ImageStudio() {
       prompt: nextPrompt,
       productImageUrl,
       productFocus: nextProductFocus,
+      avatarFocus: nextAvatarFocus,
       importedRefImageUrl,
       avatarUrl,
     } = resolveImageStudioGuideApplyPayload(payload);
@@ -1117,6 +1121,13 @@ export default function ImageStudio() {
     if (resolvedAvatar) {
       setReferenceImage(resolvedAvatar);
       setReferencePreview(resolvedAvatar);
+    }
+
+    const resolvedAvatarFocus = nextAvatarFocus || extras.avatarFocus;
+    if (resolvedAvatarFocus) {
+      setAvatarFocus(resolvedAvatarFocus);
+    } else if (!resolvedAvatar) {
+      setAvatarFocus(null);
     }
 
     const resolvedProduct = productImageUrl || extras.productImageUrl;
@@ -1695,6 +1706,7 @@ export default function ImageStudio() {
       productUrl: productImage,
       image1Url: importedRefImage,
       productFocus,
+      avatarFocus,
     });
 
     const generationPrompt = resolved.generationPrompt;
@@ -1943,8 +1955,9 @@ export default function ImageStudio() {
       productUrl: productImage,
       image1Url: importedRefImage,
       productFocus,
+      avatarFocus,
     }),
-    [referenceImage, productImage, importedRefImage, productFocus],
+    [referenceImage, productImage, importedRefImage, productFocus, avatarFocus],
   );
 
   const requestGenerate = () => {

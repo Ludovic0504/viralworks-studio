@@ -3,6 +3,7 @@ import {
   IMAGE_STUDIO_PRODUCT_MENTION_TOKEN,
 } from "@/bibliotheque/imageStudio/imageStudioGuideApply";
 import type {
+  AccessoriesDecision,
   ClothingDecision,
   ClothingPieceType,
   PersonTraits,
@@ -77,11 +78,32 @@ export function buildClothingNotesForPrompt(
   return parts.filter(Boolean).join(" ");
 }
 
+/**
+ * Consigne accessoires / objets tenus (enceinte, sac, etc.) par rapport à @Avatar.
+ */
+export function buildAccessoriesNotesForPrompt(
+  accessories: AccessoriesDecision | null | undefined,
+): string {
+  if (!accessories) return "";
+  if (accessories.mode === "keep") {
+    return "Keep any handheld accessories or props held by the person in the @Avatar reference image.";
+  }
+  if (accessories.mode === "replace") {
+    const notes = accessories.notes.trim();
+    return notes
+      ? `Do NOT reproduce any handheld accessories or props from the @Avatar reference image. Instead, include these accessories: ${notes}.`
+      : "Do NOT reproduce any handheld accessories, objects, or props held by the person in the @Avatar reference image. Hands should be empty unless the prompt specifies a product to hold.";
+  }
+  return "Do NOT reproduce any handheld accessories, objects, speakers, bags, bottles, or props held by the person in the @Avatar reference image. Hands should be empty unless the prompt specifies a product to hold.";
+}
+
 export type FromImageGuideApplyExtras = {
   avatarUrl: string | null;
   productImageUrl: string | null;
   importedRefImageUrl: string | null;
   productFocus: string | null;
+  /** Consigne accessoires injectée côté @Avatar dans le bloc [Refs]. */
+  avatarFocus: string | null;
   /** Mentions à garantir dans le prompt */
   ensureTokens: string[];
 };
@@ -98,6 +120,7 @@ export function buildGuideApplyExtrasFromImageContext(
       productImageUrl: null,
       importedRefImageUrl: null,
       productFocus: null,
+      avatarFocus: null,
       ensureTokens: [],
     };
   }
@@ -115,12 +138,14 @@ export function buildGuideApplyExtrasFromImageContext(
   if (importedRefImageUrl) ensureTokens.push(IMAGE_STUDIO_IMAGE1_MENTION_TOKEN);
 
   const productFocus = buildClothingNotesForPrompt(ctx.clothing, ctx.personTraits) || null;
+  const avatarFocus = buildAccessoriesNotesForPrompt(ctx.accessories) || null;
 
   return {
     avatarUrl: ctx.avatarUrl || null,
     productImageUrl,
     importedRefImageUrl,
     productFocus,
+    avatarFocus,
     ensureTokens,
   };
 }

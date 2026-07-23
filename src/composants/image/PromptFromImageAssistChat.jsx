@@ -8,19 +8,25 @@ import {
   addClothingTextRef,
   analyzeClothingRef,
   analyzePersonFromImage,
+  applyAccessoriesNotes,
   applyClothingPieceType,
   applyFullOutfitScope,
   applyPersonFallbackDetails,
   applyPersonFallbackGender,
   applyPersonTraits,
   beginClothingImageRef,
+  buildAccessoriesDecision,
   buildClothingDecision,
   buildPersonTraitsFromFallback,
   canAddMoreClothingRefs,
   chooseAddMoreClothing,
   chooseChangeOutfit,
+  chooseDropAccessories,
+  chooseKeepAccessories,
   chooseKeepOutfit,
+  chooseNoOtherAccessories,
   chooseRestRandom,
+  chooseWantOtherAccessories,
   clothingRefsRemaining,
   createInitialClothingInterviewState,
   pieceTypeLabel,
@@ -194,6 +200,7 @@ export default function PromptFromImageAssistChat({
       source: "project",
       personTraits: state.personTraits,
       clothing: buildClothingDecision(state),
+      accessories: buildAccessoriesDecision(state),
     }),
     [avatarUrl],
   );
@@ -208,6 +215,26 @@ export default function PromptFromImageAssistChat({
     [finishToContext, onComplete, preselectedTemplate],
   );
 
+  const askAccessoriesOrFinish = useCallback(
+    (state) => {
+      if (state.step === "keep_accessories") {
+        pushBot(
+          ui(
+            "fromImageKeepAccessories",
+            "Doit-on garder les accessoires visibles sur cette image (objets tenus, sacs, etc.) ?",
+          ),
+        );
+        return;
+      }
+      if (preselectedTemplate) {
+        window.setTimeout(() => completeInterview(state), 0);
+      } else {
+        pushBot(ui("fromImagePickType", "Parfait. Quel type d’image veux-tu créer ?"));
+      }
+    },
+    [completeInterview, preselectedTemplate, pushBot, ui],
+  );
+
   useEffect(() => {
     if (!preselectedTemplate) return;
     if (interview.step !== "pick_chatbot") return;
@@ -220,15 +247,10 @@ export default function PromptFromImageAssistChat({
     pushUser(ui("fromImageKeepLabel", "Garder les habits"));
     setInterview((s) => {
       const next = chooseKeepOutfit(s);
-      if (preselectedTemplate) {
-        window.setTimeout(() => completeInterview(next), 0);
-      }
+      window.setTimeout(() => askAccessoriesOrFinish(next), 0);
       return next;
     });
-    if (!preselectedTemplate) {
-      pushBot(ui("fromImagePickType", "Parfait. Quel type d’image veux-tu créer ?"));
-    }
-  }, [busy, completeInterview, preselectedTemplate, pushBot, pushUser, ui]);
+  }, [askAccessoriesOrFinish, busy, pushUser, ui]);
 
   const handleChange = useCallback(() => {
     if (busy) return;
@@ -241,6 +263,60 @@ export default function PromptFromImageAssistChat({
       ),
     );
   }, [busy, pushBot, pushUser, ui]);
+
+  const handleKeepAccessories = useCallback(() => {
+    if (busy) return;
+    pushUser(ui("fromImageKeepAccessoriesYes", "Oui"));
+    setInterview((s) => {
+      const next = chooseKeepAccessories(s);
+      if (preselectedTemplate) {
+        window.setTimeout(() => completeInterview(next), 0);
+      }
+      return next;
+    });
+    if (!preselectedTemplate) {
+      pushBot(ui("fromImagePickType", "Parfait. Quel type d’image veux-tu créer ?"));
+    }
+  }, [busy, completeInterview, preselectedTemplate, pushBot, pushUser, ui]);
+
+  const handleDropAccessories = useCallback(() => {
+    if (busy) return;
+    pushUser(ui("fromImageKeepAccessoriesNo", "Non"));
+    setInterview((s) => chooseDropAccessories(s));
+    pushBot(
+      ui(
+        "fromImageOtherAccessories",
+        "Doit-on mettre d’autres accessoires ?",
+      ),
+    );
+  }, [busy, pushBot, pushUser, ui]);
+
+  const handleWantOtherAccessories = useCallback(() => {
+    if (busy) return;
+    pushUser(ui("fromImageOtherAccessoriesYes", "Oui"));
+    setInterview((s) => chooseWantOtherAccessories(s));
+    pushBot(
+      ui(
+        "fromImageDescribeAccessories",
+        "Décris les accessoires à ajouter (ex. lunettes de soleil, sac à main, montre…).",
+      ),
+    );
+  }, [busy, pushBot, pushUser, ui]);
+
+  const handleNoOtherAccessories = useCallback(() => {
+    if (busy) return;
+    pushUser(ui("fromImageOtherAccessoriesNo", "Non"));
+    setInterview((s) => {
+      const next = chooseNoOtherAccessories(s);
+      if (preselectedTemplate) {
+        window.setTimeout(() => completeInterview(next), 0);
+      }
+      return next;
+    });
+    if (!preselectedTemplate) {
+      pushBot(ui("fromImagePickType", "Parfait. Quel type d’image veux-tu créer ?"));
+    }
+  }, [busy, completeInterview, preselectedTemplate, pushBot, pushUser, ui]);
 
   const processClothingImage = useCallback(
     async (imageUrl) => {
@@ -259,13 +335,20 @@ export default function PromptFromImageAssistChat({
             ),
           );
         } else {
-          setInterview((s) => applyClothingPieceType(s, pieceType));
-          pushBot(
-            ui(
-              "fromImagePieceDetected",
-              `J’ai détecté ${pieceTypeLabel(pieceType)}. Pour le reste de la tenue ?`,
-            ),
-          );
+          setInterview((s) => {
+            const next = applyClothingPieceType(s, pieceType);
+            if (next.step === "keep_accessories") {
+              window.setTimeout(() => askAccessoriesOrFinish(next), 0);
+            } else {
+              pushBot(
+                ui(
+                  "fromImagePieceDetected",
+                  `J’ai détecté ${pieceTypeLabel(pieceType)}. Pour le reste de la tenue ?`,
+                ),
+              );
+            }
+            return next;
+          });
         }
       } catch {
         setInterview((s) => requestPieceTypeFallback(s));
@@ -279,7 +362,7 @@ export default function PromptFromImageAssistChat({
         setBusy(false);
       }
     },
-    [clearAttached, pushBot, pushUser, ui],
+    [askAccessoriesOrFinish, clearAttached, pushBot, pushUser, ui],
   );
 
   const handleGenderFallback = useCallback(
@@ -310,6 +393,8 @@ export default function PromptFromImageAssistChat({
               "Tu veux un vêtement précis sur cette image, ou toute la tenue ?",
             ),
           );
+        } else if (next.step === "keep_accessories") {
+          window.setTimeout(() => askAccessoriesOrFinish(next), 0);
         } else {
           pushBot(
             ui("fromImageRestAsk", "Pour le reste de la tenue : au hasard, ou une autre référence ?"),
@@ -318,7 +403,7 @@ export default function PromptFromImageAssistChat({
         return next;
       });
     },
-    [busy, pushBot, pushUser, ui],
+    [askAccessoriesOrFinish, busy, pushBot, pushUser, ui],
   );
 
   const handleFullOutfitScope = useCallback(
@@ -329,12 +414,19 @@ export default function PromptFromImageAssistChat({
           ? ui("fromImageFullOutfit", "Toute la tenue")
           : ui("fromImageOnePiece", "Un vêtement précis"),
       );
-      setInterview((s) => applyFullOutfitScope(s, scope));
-      pushBot(
-        ui("fromImageRestAsk", "Pour le reste de la tenue : au hasard, ou une autre référence ?"),
-      );
+      setInterview((s) => {
+        const next = applyFullOutfitScope(s, scope);
+        if (next.step === "keep_accessories") {
+          window.setTimeout(() => askAccessoriesOrFinish(next), 0);
+        } else {
+          pushBot(
+            ui("fromImageRestAsk", "Pour le reste de la tenue : au hasard, ou une autre référence ?"),
+          );
+        }
+        return next;
+      });
     },
-    [busy, pushBot, pushUser, ui],
+    [askAccessoriesOrFinish, busy, pushBot, pushUser, ui],
   );
 
   const handleRestRandom = useCallback(() => {
@@ -342,27 +434,18 @@ export default function PromptFromImageAssistChat({
     pushUser(ui("fromImageRestRandom", "Le reste au hasard"));
     setInterview((s) => {
       const next = chooseRestRandom(s);
-      if (preselectedTemplate) {
-        window.setTimeout(() => completeInterview(next), 0);
-      }
+      window.setTimeout(() => askAccessoriesOrFinish(next), 0);
       return next;
     });
-    if (!preselectedTemplate) {
-      pushBot(ui("fromImagePickType", "Parfait. Quel type d’image veux-tu créer ?"));
-    }
-  }, [busy, completeInterview, preselectedTemplate, pushBot, pushUser, ui]);
+  }, [askAccessoriesOrFinish, busy, pushUser, ui]);
 
   const handleRestMore = useCallback(() => {
     if (busy) return;
     setInterview((s) => {
       if (!canAddMoreClothingRefs(s)) {
         pushUser(ui("fromImageRestDone", "C’est bon"));
-        const next = { ...chooseRestRandom(s), restRandom: false, step: "pick_chatbot" };
-        if (preselectedTemplate) {
-          window.setTimeout(() => completeInterview(next), 0);
-        } else {
-          pushBot(ui("fromImagePickType", "Parfait. Quel type d’image veux-tu créer ?"));
-        }
+        const next = { ...chooseRestRandom(s), restRandom: false, step: "keep_accessories" };
+        window.setTimeout(() => askAccessoriesOrFinish(next), 0);
         return next;
       }
       pushUser(ui("fromImageRestMore", "Autre référence"));
@@ -374,7 +457,7 @@ export default function PromptFromImageAssistChat({
       );
       return chooseAddMoreClothing(s);
     });
-  }, [busy, completeInterview, preselectedTemplate, pushBot, pushUser, ui]);
+  }, [askAccessoriesOrFinish, busy, pushBot, pushUser, ui]);
 
   const handleSend = useCallback(async () => {
     if (busy) return;
@@ -397,6 +480,22 @@ export default function PromptFromImageAssistChat({
       return;
     }
 
+    if (interview.step === "await_accessories_input") {
+      if (!text) return;
+      pushUser(text);
+      setDraft("");
+      setInterview((s) => {
+        const next = applyAccessoriesNotes(s, text);
+        if (preselectedTemplate) {
+          window.setTimeout(() => completeInterview(next), 0);
+        } else {
+          pushBot(ui("fromImagePickType", "Parfait. Quel type d’image veux-tu créer ?"));
+        }
+        return next;
+      });
+      return;
+    }
+
     if (interview.step === "await_clothing_input") {
       if (imageUrl) {
         setDraft("");
@@ -408,12 +507,8 @@ export default function PromptFromImageAssistChat({
       setDraft("");
       setInterview((s) => {
         const next = addClothingTextRef(s, text);
-        if (next.step === "pick_chatbot") {
-          if (preselectedTemplate) {
-            window.setTimeout(() => completeInterview(next), 0);
-          } else {
-            pushBot(ui("fromImagePickType", "Parfait. Quel type d’image veux-tu créer ?"));
-          }
+        if (next.step === "keep_accessories") {
+          window.setTimeout(() => askAccessoriesOrFinish(next), 0);
         } else {
           pushBot(
             ui("fromImageRestAsk", "Pour le reste de la tenue : au hasard, ou une autre référence ?"),
@@ -424,6 +519,7 @@ export default function PromptFromImageAssistChat({
       return;
     }
   }, [
+    askAccessoriesOrFinish,
     attachedImageUrl,
     busy,
     completeInterview,
@@ -451,8 +547,12 @@ export default function PromptFromImageAssistChat({
   );
 
   const showCompose =
-    interview.step === "await_clothing_input" || interview.step === "fallback_age_colors";
-  const canSend = Boolean(draft.trim() || (interview.step === "await_clothing_input" && attachedImageUrl));
+    interview.step === "await_clothing_input" ||
+    interview.step === "fallback_age_colors" ||
+    interview.step === "await_accessories_input";
+  const canSend = Boolean(
+    draft.trim() || (interview.step === "await_clothing_input" && attachedImageUrl),
+  );
 
   return (
     <div
@@ -519,6 +619,32 @@ export default function PromptFromImageAssistChat({
               </OptionButton>
               <OptionButton onClick={handleChange}>
                 {ui("fromImageChangeLabel", "Changer les habits")}
+              </OptionButton>
+            </OptionRow>
+          </ConversationBubble>
+        ) : null}
+
+        {interview.step === "keep_accessories" && !busy ? (
+          <ConversationBubble role="bot">
+            <OptionRow>
+              <OptionButton onClick={handleKeepAccessories}>
+                {ui("fromImageKeepAccessoriesYes", "Oui")}
+              </OptionButton>
+              <OptionButton onClick={handleDropAccessories}>
+                {ui("fromImageKeepAccessoriesNo", "Non")}
+              </OptionButton>
+            </OptionRow>
+          </ConversationBubble>
+        ) : null}
+
+        {interview.step === "other_accessories" && !busy ? (
+          <ConversationBubble role="bot">
+            <OptionRow>
+              <OptionButton onClick={handleWantOtherAccessories}>
+                {ui("fromImageOtherAccessoriesYes", "Oui")}
+              </OptionButton>
+              <OptionButton onClick={handleNoOtherAccessories}>
+                {ui("fromImageOtherAccessoriesNo", "Non")}
               </OptionButton>
             </OptionRow>
           </ConversationBubble>
@@ -656,7 +782,12 @@ export default function PromptFromImageAssistChat({
               placeholder={
                 interview.step === "fallback_age_colors"
                   ? ui("fromImageAgeColorsPlaceholder", "Ex. 25-30, cheveux bruns…")
-                  : ui("fromImageClothesPlaceholder", "Décris les habits ou joins une image…")
+                  : interview.step === "await_accessories_input"
+                    ? ui(
+                        "fromImageAccessoriesPlaceholder",
+                        "Ex. lunettes de soleil, sac à main…",
+                      )
+                    : ui("fromImageClothesPlaceholder", "Décris les habits ou joins une image…")
               }
               className="image-studio-prompt-guide-input"
               disabled={busy}

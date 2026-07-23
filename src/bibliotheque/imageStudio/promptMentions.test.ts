@@ -69,6 +69,21 @@ describe("promptMentions", () => {
     expect(result.generationPrompt).toContain("Ignore every other garment");
   });
 
+  it("injects avatar accessories focus in refs block", () => {
+    const userText = "Realistic outdoor selfie of @Avatar";
+    const result = resolvePromptMentions(userText, {
+      avatarUrl: "https://cdn/avatar.png",
+      productUrl: null,
+      image1Url: null,
+      avatarFocus:
+        "Do NOT reproduce any handheld accessories, objects, speakers, bags, bottles, or props held by the person in the @Avatar reference image.",
+    });
+
+    expect(result.userPrompt).toBe(userText);
+    expect(result.generationPrompt).toContain("@Avatar accessories:");
+    expect(result.generationPrompt).toContain("Do NOT reproduce any handheld accessories");
+  });
+
   it("resolves attached mentions to ordered reference images with role instructions", () => {
     const result = resolvePromptMentions("Show @Avatar with @Produit", {
       avatarUrl: "https://cdn/avatar.png",

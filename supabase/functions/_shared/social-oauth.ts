@@ -111,12 +111,12 @@ export function providerConfigured(provider: SocialProvider): { ok: boolean; mis
     if (!Deno.env.get("META_APP_ID")?.trim()) missing.push("META_APP_ID");
     if (!Deno.env.get("META_APP_SECRET")?.trim()) missing.push("META_APP_SECRET");
   } else if (provider === "instagram") {
-    // Instagram Login uses Instagram App ID/Secret (fallback Meta app credentials).
+    // Business Login for Instagram (scopes instagram_business_*)
     const igId = Deno.env.get("INSTAGRAM_APP_ID")?.trim() || Deno.env.get("META_APP_ID")?.trim();
     const igSecret =
       Deno.env.get("INSTAGRAM_APP_SECRET")?.trim() || Deno.env.get("META_APP_SECRET")?.trim();
-    if (!igId) missing.push("INSTAGRAM_APP_ID");
-    if (!igSecret) missing.push("INSTAGRAM_APP_SECRET");
+    if (!igId) missing.push("INSTAGRAM_APP_ID ou META_APP_ID");
+    if (!igSecret) missing.push("INSTAGRAM_APP_SECRET ou META_APP_SECRET");
   } else if (provider === "tiktok") {
     if (!Deno.env.get("TIKTOK_CLIENT_KEY")?.trim()) missing.push("TIKTOK_CLIENT_KEY");
     if (!Deno.env.get("TIKTOK_CLIENT_SECRET")?.trim()) missing.push("TIKTOK_CLIENT_SECRET");
@@ -139,13 +139,17 @@ export function buildAuthorizeUrl(provider: SocialProvider, state: string): stri
   const redirectUri = getCallbackRedirectUri();
 
   if (provider === "instagram") {
-    // Business Login for Instagram (no Facebook Page required)
+    // Business Login for Instagram — scopes valides pour cette app Meta
+    // (instagram_manage_insights via Facebook Login est rejeté = Invalid Scopes)
     const { clientId } = getInstagramAppCredentials();
     const url = new URL("https://www.instagram.com/oauth/authorize");
     url.searchParams.set("client_id", clientId);
     url.searchParams.set("redirect_uri", redirectUri);
     url.searchParams.set("response_type", "code");
-    url.searchParams.set("scope", "instagram_business_basic");
+    url.searchParams.set(
+      "scope",
+      ["instagram_business_basic", "instagram_business_manage_insights"].join(","),
+    );
     url.searchParams.set("state", state);
     return url.toString();
   }
@@ -157,7 +161,16 @@ export function buildAuthorizeUrl(provider: SocialProvider, state: string): stri
     url.searchParams.set("redirect_uri", redirectUri);
     url.searchParams.set("state", state);
     url.searchParams.set("response_type", "code");
-    url.searchParams.set("scope", "public_profile");
+    // Pages requises pour stats (pas les user_*)
+    url.searchParams.set(
+      "scope",
+      [
+        "public_profile",
+        "pages_show_list",
+        "pages_read_engagement",
+        "read_insights",
+      ].join(","),
+    );
     return url.toString();
   }
 
@@ -167,7 +180,11 @@ export function buildAuthorizeUrl(provider: SocialProvider, state: string): stri
     url.searchParams.set("client_key", clientKey);
     url.searchParams.set("redirect_uri", redirectUri);
     url.searchParams.set("response_type", "code");
-    url.searchParams.set("scope", "user.info.basic,user.info.profile");
+    // basic/profile = identité ; stats = likes profil ; video.list = posts + vues/likes
+    url.searchParams.set(
+      "scope",
+      ["user.info.basic", "user.info.profile", "user.info.stats", "video.list"].join(","),
+    );
     url.searchParams.set("state", state);
     return url.toString();
   }
@@ -255,6 +272,9 @@ async function exchangeInstagramLogin(
   const userId =
     tokenJson?.user_id ||
     (Array.isArray(tokenJson?.data) ? tokenJson.data[0]?.user_id : null);
+  const rawPermissions =
+    tokenJson?.permissions ||
+    (Array.isArray(tokenJson?.data) ? tokenJson.data[0]?.permissions : null);
 
   if (!tokenRes.ok || !shortLived) {
     throw new Error(
@@ -290,6 +310,16 @@ async function exchangeInstagramLogin(
 
   const igUserId = String(me.user_id || me.id || userId);
 
+  let grantedScopes = [
+    "instagram_business_basic",
+    "instagram_business_manage_insights",
+  ];
+  if (typeof rawPermissions === "string" && rawPermissions.trim()) {
+    grantedScopes = rawPermissions.split(/[,\s]+/).filter(Boolean);
+  } else if (Array.isArray(rawPermissions)) {
+    grantedScopes = rawPermissions.map(String).filter(Boolean);
+  }
+
   return {
     provider: "instagram",
     provider_user_id: igUserId,
@@ -299,7 +329,7 @@ async function exchangeInstagramLogin(
     access_token: accessToken,
     refresh_token: null,
     token_expires_at: expiresAt,
-    scopes: ["instagram_business_basic"],
+    scopes: grantedScopes,
     metadata: { auth: "instagram_login", instagram_user_id: igUserId },
   };
 }
@@ -356,27 +386,43 @@ async function exchangeMeta(
   const metadata: Record<string, unknown> = { meta_user_id: me.id };
 
   if (provider === "facebook") {
+    const page = await resolveFacebookPage(accessToken, metadata);
+    if (!page?.id || !page.access_token) {
+      throw new Error(
+        "Aucune Page Facebook trouvée. Tu dois administrer une Page, puis reconnecter Facebook.",
+      );
+    }
+
+    // Token Page (long-lived) — jamais en metadata client-readable
     return {
       provider,
-      provider_user_id: String(me.id),
-      username: null,
-      display_name: typeof me.name === "string" ? me.name : null,
-      avatar_url: me.picture?.data?.url ?? null,
-      access_token: accessToken,
+      provider_user_id: String(page.id),
+      username: typeof page.name === "string" ? page.name : null,
+      display_name: typeof page.name === "string" ? page.name : typeof me.name === "string" ? me.name : null,
+      avatar_url: page.picture_url || me.picture?.data?.url || null,
+      access_token: page.access_token,
       refresh_token: null,
-      token_expires_at: expiresAt,
-      scopes: ["public_profile"],
+      token_expires_at: null,
+      scopes: [
+        "public_profile",
+        "pages_show_list",
+        "pages_read_engagement",
+        "read_insights",
+      ],
       metadata,
     };
   }
 
-  // Instagram : trouver le compte Business / Creator (Page ou Business Manager)
+  // Instagram via Facebook Login : Page liée + token Page pour total_views
   const ig = await resolveInstagramFromMeta(accessToken, metadata);
   if (!ig?.id) {
     throw new Error(
-      "Aucun compte Instagram professionnel trouvé. Vérifie que @ton_compte est lié à ta Page Facebook (Connected assets), puis réessaie.",
+      "Aucun compte Instagram professionnel trouvé. Vérifie que @ton_compte est lié à ta Page Facebook (Comptes connectés), puis réessaie.",
     );
   }
+
+  metadata.auth = "facebook_login";
+  metadata.instagram_user_id = String(ig.id);
 
   return {
     provider: "instagram",
@@ -384,11 +430,13 @@ async function exchangeMeta(
     username: ig.username ?? null,
     display_name: ig.name ?? ig.username ?? null,
     avatar_url: ig.profile_picture_url ?? null,
-    access_token: accessToken,
+    // Token Page préféré (accès IG Graph + total_views) ; sinon token user
+    access_token: ig.page_access_token || accessToken,
     refresh_token: null,
-    token_expires_at: expiresAt,
+    token_expires_at: ig.page_access_token ? null : expiresAt,
     scopes: [
       "instagram_basic",
+      "instagram_manage_insights",
       "pages_show_list",
       "pages_read_engagement",
       "business_management",
@@ -397,11 +445,81 @@ async function exchangeMeta(
   };
 }
 
+type FacebookPage = {
+  id: string;
+  name?: string;
+  access_token?: string;
+  picture_url?: string | null;
+  tasks?: string[];
+};
+
+async function resolveFacebookPage(
+  userAccessToken: string,
+  metadata: Record<string, unknown>,
+): Promise<FacebookPage | null> {
+  const fields = [
+    "id",
+    "name",
+    "access_token",
+    "tasks",
+    "fan_count",
+    "followers_count",
+    "picture.type(large){url}",
+  ].join(",");
+
+  const pagesRes = await fetch(
+    `https://graph.facebook.com/v21.0/me/accounts?fields=${fields}&limit=100&access_token=${encodeURIComponent(userAccessToken)}`,
+  );
+  const pagesJson = await pagesRes.json();
+  if (!pagesRes.ok) {
+    throw new Error(
+      pagesJson?.error?.message ||
+        "Impossible de lister tes Pages Facebook (permissions pages_show_list ?).",
+    );
+  }
+
+  const pages = Array.isArray(pagesJson.data) ? pagesJson.data : [];
+  if (pages.length === 0) return null;
+
+  // Préférer une Page où l'user a ANALYZE / CREATE_CONTENT / MANAGE
+  const ranked = [...pages].sort((a, b) => {
+    const score = (p: { tasks?: string[] }) => {
+      const t = Array.isArray(p.tasks) ? p.tasks.map(String) : [];
+      let s = 0;
+      if (t.includes("ANALYZE")) s += 4;
+      if (t.includes("MANAGE")) s += 3;
+      if (t.includes("CREATE_CONTENT")) s += 2;
+      if (t.includes("MODERATE")) s += 1;
+      return s;
+    };
+    return score(b) - score(a);
+  });
+
+  const page = ranked[0];
+  if (!page?.id || !page.access_token) return null;
+
+  metadata.facebook_page_id = page.id;
+  metadata.facebook_page_name = page.name ?? null;
+  metadata.fan_count = page.fan_count ?? null;
+  metadata.followers_count = page.followers_count ?? null;
+  metadata.page_tasks = Array.isArray(page.tasks) ? page.tasks : [];
+  // Ne jamais stocker page.access_token ici
+
+  return {
+    id: String(page.id),
+    name: typeof page.name === "string" ? page.name : undefined,
+    access_token: String(page.access_token),
+    picture_url: page.picture?.data?.url ?? null,
+    tasks: Array.isArray(page.tasks) ? page.tasks.map(String) : [],
+  };
+}
+
 type IgAccount = {
   id: string;
   username?: string;
   name?: string;
   profile_picture_url?: string;
+  page_access_token?: string;
 };
 
 async function resolveInstagramFromMeta(
@@ -423,21 +541,24 @@ async function resolveInstagramFromMeta(
   const pages = Array.isArray(pagesJson.data) ? pagesJson.data : [];
 
   for (const page of pages) {
+    const pageToken =
+      typeof page?.access_token === "string" && page.access_token ? String(page.access_token) : null;
     const igNode = page?.instagram_business_account || page?.connected_instagram_account;
     if (igNode?.id) {
       metadata.facebook_page_id = page.id;
       metadata.facebook_page_name = page.name;
       metadata.discovery = "page";
-      if (typeof page.access_token === "string" && page.access_token) {
-        metadata.page_access_token_present = true;
-      }
-      return igNode as IgAccount;
+      metadata.page_access_token_present = Boolean(pageToken);
+      return {
+        ...(igNode as IgAccount),
+        page_access_token: pageToken || undefined,
+      };
     }
 
     // Retry with page token (sometimes IG only appears there)
-    if (typeof page?.access_token === "string" && page.access_token && page.id) {
+    if (pageToken && page.id) {
       const pageDetailRes = await fetch(
-        `https://graph.facebook.com/v21.0/${page.id}?fields=instagram_business_account{id,username,name,profile_picture_url},connected_instagram_account{id,username,name,profile_picture_url}&access_token=${encodeURIComponent(page.access_token)}`,
+        `https://graph.facebook.com/v21.0/${page.id}?fields=instagram_business_account{id,username,name,profile_picture_url},connected_instagram_account{id,username,name,profile_picture_url}&access_token=${encodeURIComponent(pageToken)}`,
       );
       const pageDetail = await pageDetailRes.json();
       const fromPage =
@@ -446,7 +567,11 @@ async function resolveInstagramFromMeta(
         metadata.facebook_page_id = page.id;
         metadata.facebook_page_name = page.name;
         metadata.discovery = "page_token";
-        return fromPage as IgAccount;
+        metadata.page_access_token_present = true;
+        return {
+          ...(fromPage as IgAccount),
+          page_access_token: pageToken,
+        };
       }
     }
   }
@@ -516,9 +641,26 @@ async function exchangeTikTok(
     typeof data.expires_in === "number"
       ? new Date(Date.now() + data.expires_in * 1000).toISOString()
       : null;
+  const grantedScopes = String(
+    data.scope || "user.info.basic,user.info.profile,user.info.stats,video.list",
+  )
+    .split(/[,\s]+/)
+    .filter(Boolean);
+
+  const userFields = [
+    "open_id",
+    "union_id",
+    "avatar_url",
+    "display_name",
+    "username",
+    "follower_count",
+    "following_count",
+    "likes_count",
+    "video_count",
+  ].join(",");
 
   const userRes = await fetch(
-    "https://open.tiktokapis.com/v2/user/info/?fields=open_id,union_id,avatar_url,display_name,username",
+    `https://open.tiktokapis.com/v2/user/info/?fields=${encodeURIComponent(userFields)}`,
     {
       headers: { Authorization: `Bearer ${accessToken}` },
     },
@@ -538,8 +680,14 @@ async function exchangeTikTok(
     access_token: accessToken,
     refresh_token: refreshToken,
     token_expires_at: expiresAt,
-    scopes: String(data.scope || "user.info.basic").split(/[,\s]+/).filter(Boolean),
-    metadata: { union_id: user.union_id ?? null },
+    scopes: grantedScopes,
+    metadata: {
+      union_id: user.union_id ?? null,
+      follower_count: user.follower_count ?? null,
+      following_count: user.following_count ?? null,
+      likes_count: user.likes_count ?? null,
+      video_count: user.video_count ?? null,
+    },
   };
 }
 

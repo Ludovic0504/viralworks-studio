@@ -10,7 +10,9 @@ describe("imageStudioGuideApply", () => {
       prompt: "hello prompt",
       productImageUrl: null,
       productFocus: null,
+      avatarFocus: null,
       importedRefImageUrl: null,
+      avatarUrl: null,
     });
   });
 
@@ -20,13 +22,17 @@ describe("imageStudioGuideApply", () => {
         prompt: "use @Produit",
         productImageUrl: "data:image/png;base64,abc",
         productFocus: "la veste uniquement",
+        avatarFocus: "Do NOT reproduce accessories from @Avatar",
         importedRefImageUrl: "data:image/png;base64,def",
+        avatarUrl: "data:image/png;base64,avatar",
       }),
     ).toEqual({
       prompt: "use @Produit",
       productImageUrl: "data:image/png;base64,abc",
       productFocus: "la veste uniquement",
+      avatarFocus: "Do NOT reproduce accessories from @Avatar",
       importedRefImageUrl: "data:image/png;base64,def",
+      avatarUrl: "data:image/png;base64,avatar",
     });
   });
 

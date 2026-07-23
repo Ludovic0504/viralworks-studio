@@ -1,4 +1,5 @@
 import type {
+  AccessoriesDecision,
   ClothingDecision,
   ClothingInterviewStep,
   ClothingPieceType,
@@ -21,6 +22,7 @@ export type ClothingInterviewState = {
   /** Ref en cours d’analyse (image) */
   pendingRefImageUrl: string | null;
   pendingPieceType: ClothingPieceType | null;
+  accessories: AccessoriesDecision | null;
 };
 
 export function createInitialClothingInterviewState(): ClothingInterviewState {
@@ -33,6 +35,7 @@ export function createInitialClothingInterviewState(): ClothingInterviewState {
     notes: "",
     pendingRefImageUrl: null,
     pendingPieceType: null,
+    accessories: null,
   };
 }
 
@@ -101,7 +104,7 @@ export function chooseKeepOutfit(state: ClothingInterviewState): ClothingIntervi
     refs: [],
     restRandom: false,
     notes: "",
-    step: "pick_chatbot",
+    step: "keep_accessories",
   };
 }
 
@@ -110,6 +113,51 @@ export function chooseChangeOutfit(state: ClothingInterviewState): ClothingInter
     ...state,
     keepOutfit: false,
     step: "await_clothing_input",
+  };
+}
+
+export function chooseKeepAccessories(state: ClothingInterviewState): ClothingInterviewState {
+  return {
+    ...state,
+    accessories: { mode: "keep" },
+    step: "pick_chatbot",
+  };
+}
+
+export function chooseDropAccessories(state: ClothingInterviewState): ClothingInterviewState {
+  return {
+    ...state,
+    accessories: null,
+    step: "other_accessories",
+  };
+}
+
+export function chooseNoOtherAccessories(state: ClothingInterviewState): ClothingInterviewState {
+  return {
+    ...state,
+    accessories: { mode: "remove" },
+    step: "pick_chatbot",
+  };
+}
+
+export function chooseWantOtherAccessories(state: ClothingInterviewState): ClothingInterviewState {
+  return {
+    ...state,
+    step: "await_accessories_input",
+  };
+}
+
+export function applyAccessoriesNotes(
+  state: ClothingInterviewState,
+  notes: string,
+): ClothingInterviewState {
+  const trimmed = notes.trim();
+  return {
+    ...state,
+    accessories: trimmed
+      ? { mode: "replace", notes: trimmed }
+      : { mode: "remove" },
+    step: "pick_chatbot",
   };
 }
 
@@ -181,7 +229,7 @@ function commitPendingImageRef(
     refs,
     pendingRefImageUrl: null,
     pendingPieceType: null,
-    step: refs.length >= MAX_REFS ? "pick_chatbot" : "rest_of_outfit",
+    step: refs.length >= MAX_REFS ? "keep_accessories" : "rest_of_outfit",
   };
   return next;
 }
@@ -203,7 +251,7 @@ export function addClothingTextRef(
     ...state,
     refs,
     notes,
-    step: refs.length >= MAX_REFS ? "pick_chatbot" : "rest_of_outfit",
+    step: refs.length >= MAX_REFS ? "keep_accessories" : "rest_of_outfit",
   };
 }
 
@@ -211,13 +259,13 @@ export function chooseRestRandom(state: ClothingInterviewState): ClothingIntervi
   return {
     ...state,
     restRandom: true,
-    step: "pick_chatbot",
+    step: "keep_accessories",
   };
 }
 
 export function chooseAddMoreClothing(state: ClothingInterviewState): ClothingInterviewState {
   if (!canAddMoreClothingRefs(state)) {
-    return { ...state, step: "pick_chatbot" };
+    return { ...state, step: "keep_accessories" };
   }
   return {
     ...state,
@@ -235,6 +283,12 @@ export function buildClothingDecision(state: ClothingInterviewState): ClothingDe
     restRandom: state.restRandom,
     notes: state.notes,
   };
+}
+
+export function buildAccessoriesDecision(
+  state: ClothingInterviewState,
+): AccessoriesDecision | null {
+  return state.accessories;
 }
 
 export function pieceTypeLabel(pieceType: ClothingPieceType): string {

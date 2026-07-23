@@ -12,6 +12,8 @@ export type ImageStudioGuideApplyPayload =
       prompt: string;
       productImageUrl?: string | null;
       productFocus?: string | null;
+      /** Consigne accessoires relative à @Avatar. */
+      avatarFocus?: string | null;
       /** Deuxième vêtement uploadé — mappé sur @Image1 dans le prompt assemblé. */
       importedRefImageUrl?: string | null;
       /** Avatar / identité — mappé sur @Avatar. */
@@ -22,6 +24,7 @@ export function resolveImageStudioGuideApplyPayload(payload: ImageStudioGuideApp
   prompt: string;
   productImageUrl: string | null;
   productFocus: string | null;
+  avatarFocus: string | null;
   importedRefImageUrl: string | null;
   avatarUrl: string | null;
 } {
@@ -30,6 +33,7 @@ export function resolveImageStudioGuideApplyPayload(payload: ImageStudioGuideApp
       prompt: payload,
       productImageUrl: null,
       productFocus: null,
+      avatarFocus: null,
       importedRefImageUrl: null,
       avatarUrl: null,
     };
@@ -39,6 +43,8 @@ export function resolveImageStudioGuideApplyPayload(payload: ImageStudioGuideApp
     typeof payload.productImageUrl === "string" ? payload.productImageUrl.trim() : "";
   const productFocus =
     typeof payload.productFocus === "string" ? payload.productFocus.trim() : "";
+  const avatarFocus =
+    typeof payload.avatarFocus === "string" ? payload.avatarFocus.trim() : "";
   const importedRefImageUrl =
     typeof payload.importedRefImageUrl === "string" ? payload.importedRefImageUrl.trim() : "";
   const avatarUrl = typeof payload.avatarUrl === "string" ? payload.avatarUrl.trim() : "";
@@ -46,6 +52,7 @@ export function resolveImageStudioGuideApplyPayload(payload: ImageStudioGuideApp
     prompt: payload.prompt,
     productImageUrl: url || null,
     productFocus: productFocus || null,
+    avatarFocus: avatarFocus || null,
     importedRefImageUrl: importedRefImageUrl || null,
     avatarUrl: avatarUrl || null,
   };

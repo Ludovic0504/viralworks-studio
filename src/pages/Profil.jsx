@@ -27,6 +27,7 @@ import {
   listSocialConnections,
   startSocialOAuth,
   disconnectSocialProvider,
+  fetchSocialInsights,
 } from "@/bibliotheque/supabase/socialConnections";
 import {
   User,
@@ -177,6 +178,9 @@ export default function Profil() {
   const [socialConnections, setSocialConnections] = useState([]);
   const [socialBusyProvider, setSocialBusyProvider] = useState(null);
   const [socialFlash, setSocialFlash] = useState(null);
+  const [socialInsights, setSocialInsights] = useState([]);
+  const [socialInsightsLoading, setSocialInsightsLoading] = useState(false);
+  const [socialInsightsError, setSocialInsightsError] = useState(null);
 
   useEffect(() => {
     const userId = session?.user?.id;
@@ -407,10 +411,38 @@ export default function Profil() {
   const loadSocialConnections = async () => {
     try {
       const rows = await listSocialConnections();
-      setSocialConnections(rows.filter((r) => r.status === "connected"));
+      const connected = rows.filter((r) => r.status === "connected");
+      setSocialConnections(connected);
+      if (connected.length > 0) {
+        void loadSocialInsights();
+      } else {
+        setSocialInsights([]);
+        setSocialInsightsError(null);
+      }
     } catch (err) {
       console.warn("Erreur chargement connexions sociales:", err);
       setSocialConnections([]);
+      setSocialInsights([]);
+    }
+  };
+
+  const loadSocialInsights = async (forceRefresh = false) => {
+    setSocialInsightsLoading(true);
+    setSocialInsightsError(null);
+    try {
+      const result = await fetchSocialInsights({ forceRefresh });
+      if (result.error) {
+        setSocialInsightsError(result.error);
+        setSocialInsights([]);
+        return;
+      }
+      setSocialInsights(result.data?.providers || []);
+    } catch (err) {
+      console.warn("Erreur chargement insights sociaux:", err);
+      setSocialInsightsError(err instanceof Error ? err.message : "Erreur stats");
+      setSocialInsights([]);
+    } finally {
+      setSocialInsightsLoading(false);
     }
   };
 
@@ -454,6 +486,19 @@ export default function Profil() {
         type: "ok",
         message: `Compte ${provider} déconnecté.`,
       });
+      setSocialInsights((prev) =>
+        (prev || []).map((p) =>
+          p.provider === provider
+            ? {
+                ...p,
+                status: "not_connected",
+                profile: { views: null, likes: null },
+                lastPost: null,
+                topVideos: [],
+              }
+            : p,
+        ),
+      );
     } catch (err) {
       setSocialFlash({
         type: "error",
@@ -738,6 +783,10 @@ export default function Profil() {
           socialConnections={socialConnections}
           socialBusyProvider={socialBusyProvider}
           socialFlash={socialFlash}
+          socialInsights={socialInsights}
+          socialInsightsLoading={socialInsightsLoading}
+          socialInsightsError={socialInsightsError}
+          onRefreshSocialInsights={() => loadSocialInsights(true)}
           onConnectSocial={handleConnectSocial}
           onDisconnectSocial={handleDisconnectSocial}
           onDismissSocialFlash={() => setSocialFlash(null)}

@@ -97,3 +97,7 @@ verify_jwt = false
 
 [functions.social-oauth-disconnect]
 verify_jwt = false
+
+# Insights réseaux (JWT vérifié dans la fonction ; tokens via service_role)
+[functions.social-insights]
+verify_jwt = false

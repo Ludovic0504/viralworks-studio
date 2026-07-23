@@ -1,4 +1,5 @@
 export type {
+  AccessoriesDecision,
   ClothingDecision,
   ClothingInterviewStep,
   ClothingPieceType,
@@ -18,6 +19,7 @@ export { analyzeClothingRef } from "./analyzeClothingRef";
 
 export {
   addClothingTextRef,
+  applyAccessoriesNotes,
   applyClothingPieceType,
   applyClothingPieceTypeFallback,
   applyFullOutfitScope,
@@ -25,12 +27,17 @@ export {
   applyPersonFallbackGender,
   applyPersonTraits,
   beginClothingImageRef,
+  buildAccessoriesDecision,
   buildClothingDecision,
   canAddMoreClothingRefs,
   chooseAddMoreClothing,
   chooseChangeOutfit,
+  chooseDropAccessories,
+  chooseKeepAccessories,
   chooseKeepOutfit,
+  chooseNoOtherAccessories,
   chooseRestRandom,
+  chooseWantOtherAccessories,
   clothingRefsRemaining,
   createInitialClothingInterviewState,
   pieceTypeLabel,
@@ -40,6 +47,7 @@ export {
 
 export {
   brandCampaignInitialStep,
+  buildAccessoriesNotesForPrompt,
   buildClothingNotesForPrompt,
   buildGuideApplyExtrasFromImageContext,
   ensureMentionTokensInPrompt,

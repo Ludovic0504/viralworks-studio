@@ -17,6 +17,49 @@ export type SocialConnectionPublic = {
   token_expires_at: string | null;
 };
 
+export type SocialInsightStatus =
+  | "ok"
+  | "not_connected"
+  | "scope_missing"
+  | "expired"
+  | "error";
+
+export type SocialInsightPost = {
+  id: string;
+  title: string | null;
+  thumbnailUrl: string | null;
+  publishedAt: string | null;
+  views: number | null;
+  likes: number | null;
+  retention: number | null;
+};
+
+export type SocialVideoCatalog = {
+  videoCount: number;
+  truncated: boolean;
+  viewsSum: number | null;
+  likesSum: number | null;
+  avgViews: number | null;
+  medianViews: number | null;
+  videos: SocialInsightPost[];
+};
+
+export type SocialProviderInsights = {
+  provider: SocialProvider;
+  status: SocialInsightStatus;
+  message?: string;
+  profile: { views: number | null; likes: number | null };
+  lastPost: SocialInsightPost | null;
+  topVideos: SocialInsightPost[];
+  catalog?: SocialVideoCatalog | null;
+  fetchedAt?: string;
+  fromCache?: boolean;
+};
+
+export type SocialInsightsResponse = {
+  providers: SocialProviderInsights[];
+};
+
 const PUBLIC_COLUMNS =
   "id,user_id,provider,provider_user_id,username,display_name,avatar_url,status,metadata,connected_at,updated_at,token_expires_at";
 
@@ -88,6 +131,43 @@ export async function disconnectSocialProvider(
     return { success: false, error: (data as { error: string }).error };
   }
   return { success: true };
+}
+
+export async function fetchSocialInsights(options?: {
+  forceRefresh?: boolean;
+}): Promise<{ data?: SocialInsightsResponse; error?: string }> {
+  const supabase = getBrowserSupabase();
+  const { data, error } = await supabase.functions.invoke("social-insights", {
+    body: { forceRefresh: Boolean(options?.forceRefresh) },
+  });
+
+  if (error) {
+    let detail = error.message || "Impossible de charger les stats";
+    try {
+      const ctx = (error as { context?: Response }).context;
+      if (ctx && typeof ctx.json === "function") {
+        const body = await ctx.json();
+        if (body?.error) detail = String(body.error);
+      }
+    } catch {
+      /* ignore */
+    }
+    if ((data as { error?: string } | null)?.error) {
+      detail = String((data as { error: string }).error);
+    }
+    return { error: detail };
+  }
+
+  if ((data as { error?: string } | null)?.error) {
+    return { error: String((data as { error: string }).error) };
+  }
+
+  const providers = (data as SocialInsightsResponse | null)?.providers;
+  if (!Array.isArray(providers)) {
+    return { error: "Réponse insights invalide" };
+  }
+
+  return { data: { providers } };
 }
 
 export function connectionLabel(conn: SocialConnectionPublic | undefined): string {
